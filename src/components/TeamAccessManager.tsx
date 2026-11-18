@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { KeyRound, Pencil, Search, ShieldCheck, Users } from "lucide-react";
+import { Link, useInRouterContext } from "react-router-dom";
+import { KeyRound, Pencil, Plus, Search, UserCheck, UserX } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { EVENT_LABELS } from "@/lib/eventos-auditoria";
+import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
+import { securityPermissionLabel } from "@/lib/security-profile-labels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -29,7 +29,7 @@ import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import { MENSAGEM_TRAVA_056, perfilCompativel056 } from "@/lib/compatibilidade-056";
 import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
-import type { CodigoPrimeiroAcesso, SecurityProfile, SensitivePermission } from "@/types";
+import { SENSITIVE_PERMISSIONS, type CodigoPrimeiroAcesso, type SecurityAuditEvent, type SecurityProfile, type SensitivePermission } from "@/types";
 
 type Action = "edit" | "code" | "deactivate" | "reactivate";
 
@@ -43,6 +43,65 @@ function memberStatus(profile: SecurityProfile): { label: string; className: str
   }
   return { label: "Ativo", className: "bg-status-ok/15 text-status-ok" };
 }
+const TOTAL_PERMISSOES = Object.keys(SENSITIVE_PERMISSIONS).length;
+
+/** Situação do perfil neste computador (o PIN fica no keyring de cada máquina). */
+function situacaoNoComputador(profile: SecurityProfile): { titulo: string; detalhe: string; classe: string } | null {
+  if (!profile.ativo) return { titulo: "Inativo", detalhe: "Não aparece na lista de acesso.", classe: "bg-muted text-muted-foreground" };
+  if (profile.onboarding_pendente) return { titulo: "Ainda não fez o primeiro acesso", detalhe: "Gere um código para a pessoa entrar.", classe: "bg-muted text-foreground" };
+  if (profile.pin_configured) return { titulo: "PIN neste computador", detalhe: "Criado pela própria pessoa.", classe: "bg-status-ok-bg text-status-ok" };
+  return { titulo: "Sem PIN neste computador", detalhe: "Usa outro PC. Para entrar aqui, gere um código.", classe: "bg-status-wait-bg text-status-wait" };
+}
+
+/** Últimos eventos de segurança, ao lado da equipe; "Ver tudo" leva à auditoria completa. */
+function AuditoriaRecente() {
+  const [eventos, setEventos] = useState<SecurityAuditEvent[] | null>(null);
+  const [falhou, setFalhou] = useState(false);
+  const dentroDoRoteador = useInRouterContext();
+  useEffect(() => {
+    let ativo = true;
+    Promise.resolve()
+      .then(() => SensitiveAccessService.listAuditEvents(6))
+      .then((lista) => ativo && setEventos(lista ?? []))
+      .catch(() => ativo && setFalhou(true));
+    return () => {
+      ativo = false;
+    };
+  }, []);
+  return (
+    <section aria-labelledby="auditoria-recente-titulo" className="self-start rounded-2xl border bg-card p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="auditoria-recente-titulo" className="text-base font-bold">Auditoria recente</h2>
+        {dentroDoRoteador && (
+          <Link to="/configuracoes?aba=observabilidade" className="text-sm font-semibold text-primary hover:underline">Ver tudo</Link>
+        )}
+      </div>
+      {falhou ? (
+        <p className="mt-3 text-sm text-muted-foreground">Não foi possível carregar a auditoria.</p>
+      ) : eventos == null ? (
+        <p className="mt-3 text-sm text-muted-foreground">Carregando…</p>
+      ) : eventos.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">Nenhum evento ainda.</p>
+      ) : (
+        <ul className="mt-2 divide-y">
+          {eventos.map((evento) => (
+            <li key={evento.id} className="flex gap-3 py-2.5">
+              <span aria-hidden="true" className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", evento.success ? "bg-primary" : "bg-status-bad")} />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">{EVENT_LABELS[evento.event_type] ?? evento.details ?? evento.event_type}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {evento.profile_name || "Sistema"}
+                  {evento.created_at ? ` · ${formatDateTimeSalvador(parseDbTimestampUtc(evento.created_at), "")}` : ""}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function TeamAccessManager({
   activeProfileId,
   onChanged,
@@ -68,6 +127,8 @@ export function TeamAccessManager({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [criando, setCriando] = useState(false);
+  const [criandoBusy, setCriandoBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -184,116 +245,146 @@ export function TeamAccessManager({
           ? "Reativar colaborador"
           : "Editar acesso";
 
+  const ativos = profiles.filter((profile) => profile.ativo).length;
+
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-primary" /> Sua equipe
-              </CardTitle>
-            </div>
-            <Badge variant="outline">
-              {profiles.filter((profile) => profile.ativo).length} ativos
-            </Badge>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[14rem] flex-1 sm:max-w-sm">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            aria-label="Buscar colaborador"
+            className="h-11 border-transparent bg-muted pl-10 md:h-10"
+            placeholder="Buscar pessoa ou função"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        <label className="flex min-h-11 items-center gap-2 text-sm text-muted-foreground md:min-h-0">
+          <input
+            type="checkbox"
+            checked={includeInactive}
+            onChange={(event) => setIncludeInactive(event.target.checked)}
+          />{" "}
+          Mostrar inativos
+        </label>
+        <span className="text-sm text-muted-foreground">{ativos} {ativos === 1 ? "ativo" : "ativos"}</span>
+        {catalogReady && (
+          <Button className="ml-auto h-10" onClick={() => setCriando(true)}>
+            <Plus className="mr-1.5 h-4 w-4" /> Novo perfil
+          </Button>
+        )}
+      </div>
+      {notice && (
+        <p role="status" className="rounded-xl border border-status-ok/30 bg-status-ok-bg p-4 text-sm text-status-ok">
+          {notice}
+        </p>
+      )}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        {loadError ? (
+          <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border p-4 text-sm">
+            <p>{loadError}</p>
+            <Button variant="outline" onClick={() => void load()}>
+              Tentar novamente
+            </Button>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative sm:w-72">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                aria-label="Buscar colaborador"
-                className="pl-9"
-                placeholder="Buscar pessoa ou função"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </div>
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={includeInactive}
-                onChange={(event) => setIncludeInactive(event.target.checked)}
-              />{" "}
-              Mostrar inativos
-            </label>
-          </div>
-          {notice && (
-            <p role="status" className="rounded-xl border border-status-ok/30 bg-status-ok-bg p-4 text-sm text-status-ok">
-              {notice}
-            </p>
-          )}
-          {loadError ? (
-            <div
-              role="alert"
-              className="flex items-center justify-between gap-3 rounded-lg border p-4 text-sm"
-            >
-              <p>{loadError}</p>
-              <Button variant="outline" onClick={() => void load()}>
-                Tentar novamente
-              </Button>
-            </div>
-          ) : loading ? (
-            <p
-              role="status"
-              className="py-8 text-center text-sm text-muted-foreground"
-            >
-              Carregando equipe...
-            </p>
-          ) : (
-            <div role="list" aria-label="Colaboradores" className="divide-y rounded-xl border">
-              {visible.length === 0 && (
-                <p className="p-6 text-center text-sm text-muted-foreground">
-                  Nenhum colaborador encontrado.
-                </p>
-              )}
-              {visible.map((profile) => (
-                <div
-                  role="listitem"
-                  key={profile.id}
-                  className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex items-center gap-3">
+        ) : loading ? (
+          <p role="status" className="py-8 text-center text-sm text-muted-foreground">
+            Carregando equipe...
+          </p>
+        ) : (
+          <div role="list" aria-label="Colaboradores" className="grid content-start gap-4 md:grid-cols-2">
+            {visible.length === 0 && (
+              <p className="rounded-2xl border p-6 text-center text-sm text-muted-foreground md:col-span-2">
+                Nenhum colaborador encontrado.
+              </p>
+            )}
+            {visible.map((profile) => {
+              const situacao = situacaoNoComputador(profile);
+              const permissoes = profile.permissions;
+              return (
+                <div role="listitem" key={profile.id} className={cn("flex flex-col gap-4 rounded-2xl border bg-card p-5", !profile.ativo && "bg-muted/40")}>
+                  <div className="flex items-start gap-3">
                     <ProfileAvatar
                       icon={profileAppearance(profile).icon}
                       color={profileAppearance(profile).color}
                       pending={profile.onboarding_pendente}
                     />
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{profile.nome}</span>
-                        {profile.id === activeProfileId && (
-                          <Badge variant="secondary">Você</Badge>
-                        )}
-                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${memberStatus(profile).className}`}>
-                          {memberStatus(profile).label}
-                        </span>
+                        <span className="font-bold [overflow-wrap:anywhere]">{profile.nome}</span>
+                        {profile.id === activeProfileId && <Badge variant="secondary">Você</Badge>}
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {securityRoleLabel(profile.role)} ·{" "}
-                        {profile.permissions.length
-                          ? `${profile.permissions.length} permissões adicionais`
-                          : "Acesso básico"}
+                      <p className="text-sm text-muted-foreground">
+                        {securityRoleLabel(profile.role)}
+                        {memberStatus(profile).label !== "Ativo" && (
+                          <>
+                            {" · "}
+                            <span className={cn("font-semibold", memberStatus(profile).className.includes("text-status-wait") ? "text-status-wait" : memberStatus(profile).className.includes("text-primary") ? "text-primary" : "")}>
+                              {memberStatus(profile).label}
+                            </span>
+                          </>
+                        )}
                       </p>
-
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      title={profile.ativo ? `Desativar o acesso de ${profile.nome}` : `Reativar o acesso de ${profile.nome}`}
+                      className={cn(
+                        "h-11 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-semibold md:h-8",
+                        profile.ativo
+                          ? "border-destructive/30 text-destructive hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive"
+                          : "border-status-ok/30 text-status-ok hover:bg-status-ok-bg hover:text-status-ok",
+                      )}
+                      onClick={() => open(profile, profile.ativo ? "deactivate" : "reactivate")}
+                    >
+                      {profile.ativo ? <UserX className="h-3.5 w-3.5" aria-hidden="true" /> : <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />}
+                      {profile.ativo ? "Desativar" : "Reativar"}
+                    </Button>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {profile.ativo && (
+                  {situacao && (
+                    <div className={cn("rounded-xl px-4 py-3 text-sm", situacao.classe)}>
+                      <p className="font-semibold">{situacao.titulo}</p>
+                      <p className="text-xs opacity-90">{situacao.detalhe}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+                      Pode · {permissoes.length} de {TOTAL_PERMISSOES}
+                    </p>
+                    {permissoes.length === 0 ? (
+                      <p className="mt-2 text-sm text-muted-foreground">Só as telas do dia a dia.</p>
+                    ) : (
+                      <ul className="mt-2 flex flex-wrap gap-1.5">
+                        {permissoes.slice(0, 4).map((permissao) => (
+                          <li key={permissao} className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium first-letter:uppercase">
+                            {securityPermissionLabel(permissao)}
+                          </li>
+                        ))}
+                        {permissoes.length > 4 && (
+                          <li className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium" title={permissoes.slice(4).map(securityPermissionLabel).join(", ")}>
+                            +{permissoes.length - 4}
+                          </li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                  {profile.ativo && (
+                  <div className="mt-auto flex flex-wrap gap-2">
+                    {(
                       <>
                         <Button
-                          size="sm"
-                          variant="outline"
+                          variant={profile.onboarding_pendente || !profile.pin_configured ? "outline" : "default"}
+                          className="h-11 flex-1 md:h-9"
                           onClick={() => open(profile, "edit")}
                         >
                           <Pencil className="mr-2 h-3.5 w-3.5" />
                           Editar
                         </Button>
                         <Button
-                          size="sm"
-                          variant="outline"
+                          variant={profile.onboarding_pendente || !profile.pin_configured ? "default" : "outline"}
+                          className="h-11 flex-1 md:h-9"
                           onClick={() => open(profile, "code")}
                         >
                           <KeyRound className="mr-2 h-3.5 w-3.5" />
@@ -301,36 +392,49 @@ export function TeamAccessManager({
                         </Button>
                       </>
                     )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className={
-                        profile.ativo ? "text-destructive" : "text-status-ok"
-                      }
-                      onClick={() =>
-                        open(
-                          profile,
-                          profile.ativo ? "deactivate" : "reactivate",
-                        )
-                      }
-                    >
-                      {profile.ativo ? "Desativar" : "Reativar"}
-                    </Button>
                   </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-          <p className="flex items-start gap-2 text-xs text-muted-foreground">
-            <ShieldCheck className="h-4 w-4 shrink-0" />
-            Alterações respeitam as permissões administrativas e ficam
-            registradas na auditoria.
-          </p>
-        </CardContent>
-      </Card>
-      {catalogReady && (
-        <CreateProfileCard profiles={profiles} onCreated={changed} />
-      )}
+              );
+            })}
+          </div>
+        )}
+        <AuditoriaRecente />
+      </div>
+      <Dialog
+        open={criando}
+        onOpenChange={(aberto) => {
+          if (!aberto && criandoBusy) return;
+          setCriando(aberto);
+          if (!aberto) setCriandoBusy(false);
+        }}
+      >
+        <DialogContent
+          tamanho="g"
+          onPointerDownOutside={(evento) => {
+            if (criandoBusy) evento.preventDefault();
+          }}
+          onEscapeKeyDown={(evento) => {
+            if (criandoBusy) evento.preventDefault();
+          }}
+        >
+          <DialogHeader className="sr-only">
+            <DialogTitle>Novo perfil</DialogTitle>
+            <DialogDescription>Cadastrar uma pessoa da equipe.</DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            {catalogReady && (
+              <CreateProfileCard
+                profiles={profiles}
+                onBusyChange={setCriandoBusy}
+                onCreated={async () => {
+                  await changed();
+                }}
+              />
+            )}
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={!!selection}
         onOpenChange={(value) => {

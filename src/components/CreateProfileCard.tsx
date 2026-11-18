@@ -25,12 +25,16 @@ import { PROFILE_PRESETS, PERMISSION_DETAILS } from "@/lib/profile-presets";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import type { CodigoPrimeiroAcesso, SecurityProfile, SensitivePermission } from "@/types";
 
-type Props = { profiles: SecurityProfile[]; onCreated: () => Promise<void> };
+type Props = {
+  profiles: SecurityProfile[];
+  onCreated: () => Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
+};
 const PRESET_INICIAL = PROFILE_PRESETS.find((item) => item.disponivel)!;
 const ROLE_INICIAL = PRESET_INICIAL.role;
 const steps = ["Pessoa e função", "Liberações", "Revisão"];
 
-export function CreateProfileCard({ profiles, onCreated }: Props) {
+export function CreateProfileCard({ profiles, onCreated, onBusyChange }: Props) {
   const [name, setName] = useState("");
   const [role, setRole] = useState(ROLE_INICIAL);
   const [permissions, setPermissions] = useState<SensitivePermission[]>([...PRESET_INICIAL.permissions]);
@@ -87,6 +91,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
     if (nameError || !compat.ok || adminPinError || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
+    onBusyChange?.(true);
     setError(null);
     try {
       const code = await SensitiveAccessService.createProfileWithCode(
@@ -109,11 +114,12 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
     } finally {
       inFlight.current = false;
       setBusy(false);
+      onBusyChange?.(false);
     }
   }
 
   return (
-    <Card id="novo-colaborador" className="overflow-hidden">
+    <Card id="novo-colaborador" className="shrink-0 overflow-hidden">
       <CardHeader className="border-b bg-muted/20">
         <CardTitle className="flex items-center gap-2">
           <UserPlus className="h-5 w-5 text-primary" /> Novo colaborador

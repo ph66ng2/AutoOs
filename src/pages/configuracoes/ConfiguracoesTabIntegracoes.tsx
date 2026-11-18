@@ -65,7 +65,8 @@ export function ConfiguracoesTabIntegracoes({
   photoTunnelPublicHost,
 }: ConfiguracoesTabIntegracoesProps) {
   return (
-    <TabsContent value="smtp" className="space-y-4">
+    <TabsContent value="smtp" className="mt-0 space-y-4 p-5 md:p-6">
+      <h2 className="text-xl font-bold">Integrações</h2>
       <Card>
         <CardHeader>
           <CardTitle>SMTP (email real)</CardTitle>
@@ -73,10 +74,6 @@ export function ConfiguracoesTabIntegracoes({
         <CardContent>
           {canConfigureSmtp ? (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="rounded-lg border border-status-work/30 bg-status-work-bg p-4 text-sm text-status-work">
-                Configuração padrão aplicada no sistema: smtp.gmail.com, porta 465, TLS/SSL habilitado, remetente BMI Tag. Para usar Gmail, gere uma Senha de App em https://myaccount.google.com/apppasswords e cole-a no campo de senha abaixo.
-              </div>
-
               <div className="flex items-center gap-2 rounded-md border p-3">
                 <Checkbox
                   checked={smtpEditUnlocked}

@@ -58,7 +58,8 @@ export function ConfiguracoesTabInfra({
   restaurarBackupBanco,
 }: ConfiguracoesTabInfraProps) {
   return (
-    <TabsContent value="infra" className="space-y-4">
+    <TabsContent value="infra" className="mt-0 space-y-4 p-5 md:p-6">
+      <h2 className="text-xl font-bold">Banco de dados</h2>
       <Card>
         <CardHeader>
           <CardTitle>Banco e schema</CardTitle>

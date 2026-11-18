@@ -76,6 +76,7 @@ Cada linha é algo que o dono pediu ou aprovou. Onde diz **rejeitado**, foi test
     - **Cartão Cliente:** um só (nome, documento, e-mail, telefone, canais com WhatsApp riscado quando recusa, contato). A OS acrescenta o rodapé "Portal do Cliente".
     - **O que aconteceu:** a linha do tempo do Histórico da OS serve aos dois. Na venda ela substitui "Registro", com as mesmas datas e sem "Registrado por", que não existe.
     - **Condições e total:** dentro do cartão do orçamento (OS) ou de Itens (venda), abaixo do total. Na venda, Condições sai da coluna da direita.
+26. **Dinheiro com cor de sentido** (decisão do dono, 18/11/2026; corrige a prancheta de Finanças, que pintava gasto de azul e variável de amarelo). O que entra (faturado, recebido, o que sobra) é azul, o `primary` do sistema; o que sai (gastos) é vermelho (`st-bad`): fixo no tom cheio, variável no mesmo vermelho mais claro. Nenhuma outra cor representa dinheiro. Vale para Finanças e para qualquer gráfico ou número de R$ que venha depois. O resto da prancheta de Finanças vale como está (o dono pediu a tela igual ao mock), exceto "em peças de OS", que não tem dado.
 16. **PDFs não mudam.** OS, orçamento e orçamento de insumos continuam no modelo de `pdf-service.ts`; só a moldura da prévia muda.
 
 ### Temas
