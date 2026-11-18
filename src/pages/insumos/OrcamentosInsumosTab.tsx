@@ -104,12 +104,15 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
-    setOrcamentoId(null);
-    setAcaoInicial(null);
-    setDialogAberto(true);
+    navigate("/vendas/novo");
   }
 
   function abrir(id: number, acao: AcaoInicialOrcamentoInsumos | null = null) {
+    // Editar e renovar a validade são o formulário em página (V.4).
+    if (acao === "editar" || acao === "renovar") {
+      navigate(`/vendas/${id}/editar${acao === "renovar" ? "?foco=validade" : ""}`);
+      return;
+    }
     setOrcamentoId(id);
     setAcaoInicial(acao);
     setDialogAberto(true);

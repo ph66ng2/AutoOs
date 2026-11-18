@@ -88,12 +88,22 @@ describe("VendaDetalhe (/vendas/:id)", () => {
     expect(mocks.navigate).toHaveBeenCalledWith("/insumos?entrada=7&quantidade=15&voltar=%2Fvendas%2F34");
   });
 
+  it("Editar quantidades e Renovar validade levam ao formulário em página", async () => {
+    mocks.obter.mockResolvedValue(venda());
+    const usuario = userEvent.setup();
+    renderPagina();
+    await usuario.click(await screen.findByRole("button", { name: "Editar quantidades" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/vendas/34/editar");
+  });
+
   it("vencido mostra o aviso e a ação vira Renovar validade", async () => {
     mocks.obter.mockResolvedValue(venda({ validade: "2020-01-08" }));
     renderPagina();
     expect(await screen.findByText("Orçamento vencido")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Renovar validade" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Aprovar" })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Renovar validade" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/vendas/34/editar?foco=validade");
   });
 
   it("cancelado depois de aprovado: barra para em Cancelado, sem data, e a ação é excluir de vez", async () => {

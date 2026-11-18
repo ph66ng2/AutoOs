@@ -132,7 +132,7 @@ describe("OrcamentosInsumosTab", () => {
     render(<OrcamentosInsumosTab />);
     await screen.findByText("OI-2");
     fireEvent.click(screen.getByRole("button", { name: /novo orçamento/i }));
-    expect(await screen.findByTestId("dialogo")).toHaveTextContent("novo");
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith("/vendas/novo"));
     expect(mocks.ensureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ permission: "FINANCIAL_ACTIONS" }));
   });
 
@@ -143,6 +143,7 @@ describe("OrcamentosInsumosTab", () => {
     fireEvent.click(screen.getByRole("button", { name: /novo orçamento/i }));
     await waitFor(() => expect(mocks.ensureSensitiveAccess).toHaveBeenCalled());
     expect(screen.queryByTestId("dialogo")).toBeNull();
+    expect(mocks.navigate).not.toHaveBeenCalledWith("/vendas/novo");
   });
 
   it("estado vazio e erro de carga", async () => {
@@ -160,7 +161,7 @@ describe("OrcamentosInsumosTab", () => {
     const aoAlterarEstoque = vi.fn();
     render(<OrcamentosInsumosTab onEstoqueAlterado={aoAlterarEstoque} />);
     await screen.findByText("OI-2");
-    await userEvent.click(screen.getByRole("button", { name: /novo orçamento/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Marcar entregue" }));
     await userEvent.click(await screen.findByText("simular-acao"));
     expect(aoAlterarEstoque).toHaveBeenCalledTimes(1);
   });

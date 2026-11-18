@@ -281,9 +281,10 @@ export function useOrcamentoInsumosEditor({
     }
   }
 
-  async function salvar() {
-    if (!podeSalvar || cliente?.id == null) return;
-    if (!(await liberar("Salvar orçamento de insumos", "Informe o PIN para salvar valores do orçamento."))) return;
+  /** Devolve o orçamento salvo, ou null se não salvou (sem permissão, PIN recusado ou erro). */
+  async function salvar(): Promise<OrcamentoInsumosDetalhe | null> {
+    if (!podeSalvar || cliente?.id == null) return null;
+    if (!(await liberar("Salvar orçamento de insumos", "Informe o PIN para salvar valores do orçamento."))) return null;
     const entrada = {
       cliente_id: cliente.id,
       contato_id: contato?.id ?? null,
@@ -296,14 +297,18 @@ export function useOrcamentoInsumosEditor({
         valor_unitario: linha.valor_unitario,
       })),
     };
-    await executar(
-      () =>
-        detalhe
-          ? db.atualizarOrcamentoInsumos(detalhe.id, { ...entrada, atualizado_em: detalhe.atualizado_em })
-          : db.criarOrcamentoInsumos(entrada),
+    const salvo: { orcamento: OrcamentoInsumosDetalhe | null } = { orcamento: null };
+    const falha = await executar(
+      async () => {
+        salvo.orcamento = detalhe
+          ? await db.atualizarOrcamentoInsumos(detalhe.id, { ...entrada, atualizado_em: detalhe.atualizado_em })
+          : await db.criarOrcamentoInsumos(entrada);
+        return salvo.orcamento;
+      },
       "Orçamento salvo.",
       "Salvar orçamento",
     );
+    return falha ? null : salvo.orcamento;
   }
 
   async function gerarPdf() {

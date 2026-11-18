@@ -170,6 +170,11 @@ export default function VendaDetalhe() {
   const [excluido, setExcluido] = useState<string | null>(null);
 
   function abrir(nova: AcaoInicialOrcamentoInsumos) {
+    // Editar e renovar a validade são o formulário em página (V.4).
+    if (nova === "editar" || nova === "renovar") {
+      navigate(`/vendas/${vendaId}/editar${nova === "renovar" ? "?foco=validade" : ""}`);
+      return;
+    }
     setAcao(nova);
     setJanelaAberta(true);
   }
