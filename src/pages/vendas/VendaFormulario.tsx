@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Selo } from "@/components/detalhe/Selo";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, Info, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -124,10 +125,7 @@ export default function VendaFormulario() {
           )}
         </h1>
         {status && (
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${STATUS_ORCAMENTO_INSUMOS_COR[status]}`}>
-            <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full bg-current" />
-            {STATUS_ORCAMENTO_INSUMOS_LABEL[status]}
-          </span>
+          <Selo rotulo={STATUS_ORCAMENTO_INSUMOS_LABEL[status]} classes={STATUS_ORCAMENTO_INSUMOS_COR[status]} />
         )}
       </div>
 

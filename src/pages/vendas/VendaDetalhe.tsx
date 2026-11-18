@@ -3,6 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { BarraEtapas, type EtapaDaBarra } from "@/components/detalhe/BarraEtapas";
+import { CartaoCliente } from "@/components/detalhe/CartaoCliente";
+import { LinhaDoTempoSimples } from "@/components/detalhe/LinhaDoTempo";
+import { Selo } from "@/components/detalhe/Selo";
 import { menuVenda } from "@/components/vendas/menu-venda";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useVendaInsumos } from "@/hooks/useVendaInsumos";
@@ -14,8 +18,8 @@ import {
   STATUS_ORCAMENTO_INSUMOS_COR,
   STATUS_ORCAMENTO_INSUMOS_LABEL,
 } from "@/lib/orcamento-insumos";
+import type { StatusFamilia } from "@/lib/status-familia";
 import { cn, formatCurrency } from "@/lib/utils";
-import { formatarDocumento, formatarTelefone } from "@/lib/validations";
 import { OrcamentoInsumosDialog, type AcaoInicialOrcamentoInsumos } from "@/pages/insumos/OrcamentoInsumosDialog";
 import { SENSITIVE_PERMISSIONS, type OrcamentoInsumosDetalhe, type StatusOrcamentoInsumos } from "@/types";
 
@@ -46,35 +50,13 @@ function diasAte(validade: string, hoje: string): number {
   return Math.round((a.getTime() - b.getTime()) / 86_400_000);
 }
 
-function iniciais(nome?: string | null): string {
-  const partes = (nome ?? "").trim().split(/\s+/).filter(Boolean);
-  if (partes.length === 0) return "?";
-  return (partes.length === 1 ? partes[0].slice(0, 2) : partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
-}
-
-function Selo({ status, vencido }: { status: StatusOrcamentoInsumos; vencido: boolean }) {
+function SeloVenda({ status, vencido }: { status: StatusOrcamentoInsumos; vencido: boolean }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${STATUS_ORCAMENTO_INSUMOS_COR[status]}`}>
-        <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full bg-current" />
-        {STATUS_ORCAMENTO_INSUMOS_LABEL[status]}
-      </span>
-      {vencido && (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-status-bad-bg px-2.5 py-0.5 text-xs font-bold text-status-bad">
-          <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full bg-current" />
-          Vencido
-        </span>
-      )}
+      <Selo rotulo={STATUS_ORCAMENTO_INSUMOS_LABEL[status]} classes={STATUS_ORCAMENTO_INSUMOS_COR[status]} />
+      {vencido && <Selo rotulo="Vencido" classes="bg-status-bad-bg text-status-bad" />}
     </span>
   );
-}
-
-interface Etapa {
-  rotulo: string;
-  data: string;
-  /** "feita", "atual" (com a cor da família) ou "futura". */
-  estado: "feita" | "atual" | "futura";
-  cor?: string;
 }
 
 /**
@@ -82,7 +64,7 @@ interface Etapa {
  * Aprovado; Cancelado para na etapa seguinte à última alcançada, sem data, porque o
  * banco não guarda quando foi cancelado (decisão 23).
  */
-function etapasDaVenda(venda: OrcamentoInsumosDetalhe, vencido: boolean): Etapa[] {
+function etapasDaVenda(venda: OrcamentoInsumosDetalhe, vencido: boolean): EtapaDaBarra[] {
   const datas = [venda.criado_em, venda.enviado_em, venda.decidido_em, venda.entregue_em];
   const rotulos = ["Rascunho", "Enviado", "Aprovado", "Entregue"];
   let atual = 0;
@@ -121,7 +103,7 @@ function etapasDaVenda(venda: OrcamentoInsumosDetalhe, vencido: boolean): Etapa[
   }
   return rotulos.map((rotulo, indice) => ({
     rotulo,
-    data: indice <= atual ? diaMes(datas[indice]) : "",
+    detalhe: indice <= atual ? diaMes(datas[indice]) : "",
     estado: indice < atual ? "feita" : indice === atual ? "atual" : "futura",
     cor: indice === atual ? cor : undefined,
   }));
@@ -147,13 +129,30 @@ function Cartao({ titulo, acao, children, className }: { titulo?: string; acao?:
   );
 }
 
-function Linha({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
+function Condicao({ rotulo, destaque, children }: { rotulo: string; destaque?: boolean; children: React.ReactNode }) {
   return (
-    <>
-      <dt className="text-muted-foreground">{rotulo}</dt>
-      <dd className="font-semibold">{children}</dd>
-    </>
+    <div className="rounded-xl bg-muted px-3 py-2">
+      <dt className="text-xs text-muted-foreground">{rotulo}</dt>
+      <dd className={cn("text-sm font-semibold", destaque && "text-status-bad")}>{children}</dd>
+    </div>
   );
+}
+
+/**
+ * O que aconteceu na venda (decisão 25): as mesmas datas do antigo "Registro", sem
+ * "Registrado por" (não existe). Cancelado não tem data própria no banco: não entra.
+ */
+function eventosDaVenda(venda: OrcamentoInsumosDetalhe): { titulo: string; data: string; familia: StatusFamilia }[] {
+  const eventos: { titulo: string; data: string; familia: StatusFamilia }[] = [];
+  const empurrar = (titulo: string, valor: string | null | undefined, familia: StatusFamilia) => {
+    if (instante(valor)) eventos.push({ titulo, data: dataHora(valor), familia });
+  };
+  empurrar("Criado", venda.criado_em, "neutral");
+  empurrar("Enviado", venda.enviado_em, "wait");
+  // Decidido e depois cancelado foi aprovado antes de cancelar.
+  empurrar(venda.status === "REPROVADO" ? "Reprovado" : "Aprovado", venda.decidido_em, venda.status === "REPROVADO" ? "bad" : "ok");
+  empurrar("Entregue", venda.entregue_em, "ok");
+  return eventos;
 }
 
 /** Página do orçamento de insumos (OI-n): leitura e ações, como na prancheta "Orçamento como página". */
@@ -254,12 +253,6 @@ export default function VendaDetalhe() {
   const pagamento = venda.forma_pagamento_codigo
     ? formaPagamentoRotulo(venda.forma_pagamento_codigo, venda.forma_pagamento_detalhe)
     : "Definida na aprovação";
-  // Cancelado com data de decisão foi aprovado antes de cancelar.
-  const rotuloDecisao = venda.status === "REPROVADO" ? "Reprovado" : venda.decidido_em ? "Aprovado" : "Decidido";
-  const recusaEmail = venda.cliente_receber_email === false;
-  const recusaWhatsapp = venda.cliente_receber_whatsapp === false;
-  const telefoneCliente = venda.cliente_telefone ? formatarTelefone(venda.cliente_telefone) : "—";
-  const contatoLinha = [venda.contato_email, venda.contato_telefone ? formatarTelefone(venda.contato_telefone) : null].filter(Boolean).join(" · ");
 
   return (
     <div className="space-y-4">
@@ -267,7 +260,7 @@ export default function VendaDetalhe() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
           <h1 className="font-mono text-[26px] font-bold leading-tight">{venda.numero_exibicao}</h1>
-          <Selo status={venda.status} vencido={vencido} />
+          <SeloVenda status={venda.status} vencido={vencido} />
           <span className="truncate text-muted-foreground">{venda.cliente_nome}</span>
         </div>
         {menu.length > 0 || !principal.contorno || principal.destrutiva ? (
@@ -291,20 +284,8 @@ export default function VendaDetalhe() {
         )}
       </div>
 
-      <section aria-label="Etapas do orçamento" className="grid grid-cols-4 gap-3 rounded-2xl border bg-card px-5 py-4">
-        {etapas.map((etapa) => (
-          <div key={etapa.rotulo} aria-current={etapa.estado === "atual" ? "step" : undefined}>
-            <span
-              aria-hidden="true"
-              className={cn(
-                "block h-1.5 rounded-full",
-                etapa.estado === "feita" ? "bg-primary" : etapa.estado === "atual" ? etapa.cor : "bg-track",
-              )}
-            />
-            <p className={cn("mt-2 text-sm font-semibold", etapa.estado === "futura" && "text-muted-foreground")}>{etapa.rotulo}</p>
-            <p className="text-xs tabular-nums text-muted-foreground">{etapa.data}</p>
-          </div>
-        ))}
+      <section aria-label="Etapas do orçamento" className="rounded-2xl border bg-card px-5 py-4">
+        <BarraEtapas rotulo="Andamento do orçamento" etapas={etapas} />
       </section>
 
       {/* As duas colunas terminam na mesma linha: o último cartão de cada uma estica. */}
@@ -429,6 +410,11 @@ export default function VendaDetalhe() {
               <dt className="border-t pt-2 font-bold">Total</dt>
               <dd className="border-t pt-2 text-right text-xl font-extrabold tabular-nums">{formatCurrency(venda.valor_total)}</dd>
             </dl>
+            <h3 className="mt-5 text-xs font-semibold text-muted-foreground">Condições</h3>
+            <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+              <Condicao rotulo="Validade" destaque={aberto && vencido}>{validadeTexto}</Condicao>
+              <Condicao rotulo="Pagamento">{pagamento}</Condicao>
+            </dl>
           </Cartao>
 
           {venda.observacoes && (
@@ -439,55 +425,22 @@ export default function VendaDetalhe() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <Cartao titulo="Cliente">
-            <p className="font-semibold">{venda.cliente_nome}</p>
-            {venda.cliente_documento && <p className="font-mono text-xs text-muted-foreground">{formatarDocumento(venda.cliente_documento)}</p>}
-            <dl className="mt-3 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1.5 rounded-xl bg-muted px-4 py-3 text-sm">
-              <Linha rotulo="E-mail">{venda.cliente_email || "—"}</Linha>
-              <Linha rotulo="Telefone">{telefoneCliente}</Linha>
-              <Linha rotulo="Canais">
-                <span className={cn(recusaEmail && "text-muted-foreground line-through")}>Recebe e-mail</span>
-                {" e "}
-                <span className={cn(recusaWhatsapp && "text-muted-foreground line-through")}>WhatsApp</span>
-              </Linha>
-            </dl>
-            {(recusaEmail || recusaWhatsapp) && (
-              <p className="mt-3 rounded-xl bg-status-wait-bg px-4 py-2.5 text-sm text-status-wait">
-                {recusaEmail && recusaWhatsapp
-                  ? "Este cliente pediu para não receber e-mail nem WhatsApp. O envio continua possível, mas confirme com ele antes."
-                  : recusaWhatsapp
-                    ? "Este cliente pediu para não receber WhatsApp. O envio continua possível, mas prefira o e-mail."
-                    : "Este cliente pediu para não receber e-mail. O envio continua possível, mas prefira o WhatsApp."}
-              </p>
-            )}
-            {venda.contato_nome && (
-              <div className="mt-3 flex items-center gap-3">
-                <span aria-hidden="true" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold">
-                  {iniciais(venda.contato_nome)}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold">{venda.contato_nome}</span>
-                  {contatoLinha && <span className="block truncate text-xs text-muted-foreground">{contatoLinha}</span>}
-                </span>
-              </div>
-            )}
-          </Cartao>
+          <CartaoCliente
+            dados={{
+              nome: venda.cliente_nome,
+              documento: venda.cliente_documento,
+              email: venda.cliente_email,
+              telefone: venda.cliente_telefone,
+              recebeEmail: venda.cliente_receber_email,
+              recebeWhatsapp: venda.cliente_receber_whatsapp,
+              contato: venda.contato_nome
+                ? { nome: venda.contato_nome, papel: "Quem recebe o orçamento", email: venda.contato_email, telefone: venda.contato_telefone }
+                : null,
+            }}
+          />
 
-          <Cartao titulo="Condições">
-            <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1.5 text-sm">
-              <dt className="text-muted-foreground">Validade</dt>
-              <dd className={cn("font-semibold", aberto && vencido && "text-status-bad")}>{validadeTexto}</dd>
-              <Linha rotulo="Pagamento">{pagamento}</Linha>
-            </dl>
-          </Cartao>
-
-          <Cartao titulo="Registro" className="flex-1">
-            <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1.5 text-sm tabular-nums">
-              <Linha rotulo="Criado">{dataHora(venda.criado_em)}</Linha>
-              <Linha rotulo="Enviado">{dataHora(venda.enviado_em)}</Linha>
-              <Linha rotulo={rotuloDecisao}>{dataHora(venda.decidido_em)}</Linha>
-              <Linha rotulo="Entregue">{dataHora(venda.entregue_em)}</Linha>
-            </dl>
+          <Cartao titulo="Histórico" className="flex-1">
+            <LinhaDoTempoSimples eventos={eventosDaVenda(venda)} />
           </Cartao>
         </div>
       </div>
