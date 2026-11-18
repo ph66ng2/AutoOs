@@ -1,3 +1,4 @@
+import { parseDbTimestampUtc } from "@/lib/date-utils";
 import type { Equipamento } from "@/types";
 
 export interface MesBancada {
@@ -12,8 +13,22 @@ const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "O
 
 /** Ano e mês (1..12) de uma data do banco ("2026-11-09", "2026-11-09 17:02:00" ou ISO). */
 function anoMes(valor?: string | null): [number, number] | null {
-  const casamento = valor?.match(/^(\d{4})-(\d{2})/);
-  return casamento ? [Number(casamento[1]), Number(casamento[2])] : null;
+  if (!valor) return null;
+  const texto = valor.trim();
+  // Data só-dia (entrada na bancada) fica no calendário; instante UTC vai para o fuso da operação.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) {
+    return [Number(texto.slice(0, 4)), Number(texto.slice(5, 7))];
+  }
+  const instante = parseDbTimestampUtc(texto);
+  if (!instante) return null;
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bahia",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(instante);
+  const ano = Number(partes.find((parte) => parte.type === "year")?.value);
+  const mes = Number(partes.find((parte) => parte.type === "month")?.value);
+  return Number.isFinite(ano) && Number.isFinite(mes) ? [ano, mes] : null;
 }
 
 /**

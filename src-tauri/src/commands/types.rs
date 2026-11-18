@@ -795,7 +795,7 @@ pub const EQUIPAMENTO_SELECT: &str = "
                SELECT COUNT(*)::INT4
                  FROM equipamentos ciclo
                 WHERE ciclo.empresa_id IS NOT DISTINCT FROM equipamentos.empresa_id
-                  AND ciclo.serial_number = equipamentos.serial_number
+                  AND LOWER(ciclo.serial_number) = LOWER(equipamentos.serial_number)
                   AND ciclo.id <= equipamentos.id
            ) AS ciclo_serial,
            (

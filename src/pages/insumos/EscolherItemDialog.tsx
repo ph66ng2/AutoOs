@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,11 @@ export function EscolherItemDialog({
   onEscolher: (produto: Produto) => void;
 }) {
   const [busca, setBusca] = useState("");
-  const { produtos, loading } = useInsumos({ busca: busca || undefined, page: 1 });
+  const { produtos, loading, recarregar } = useInsumos({ busca: busca || undefined, page: 1 });
+  // O diálogo fica montado com a página; sem isto, a lista fica com o estoque da primeira carga.
+  useEffect(() => {
+    if (open) void recarregar();
+  }, [open, recarregar]);
 
   return (
     <Dialog open={open} onOpenChange={(aberto) => { onOpenChange(aberto); if (!aberto) setBusca(""); }}>

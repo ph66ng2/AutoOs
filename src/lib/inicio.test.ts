@@ -17,6 +17,15 @@ describe("movimentoDaBancada", () => {
     expect(meses[3]).toMatchObject({ entregues: 1 });
     expect(meses[0]).toMatchObject({ entraram: 0, reprovados: 1 });
   });
+
+  it("agrupa instante UTC no mês de America/Bahia e preserva data só-dia", () => {
+    const meses = movimentoDaBancada([
+      eq({ status: "ENTREGUE", data_saida: "2026-12-01T01:00:00Z" }),
+      eq({ data_entrada: "2026-12-01" }),
+    ], 2026);
+    expect(meses[10]).toMatchObject({ rotulo: "Nov", entregues: 1 });
+    expect(meses[11]).toMatchObject({ rotulo: "Dez", entraram: 1, entregues: 0 });
+  });
 });
 
 describe("variacaoPercentual e saudacao", () => {
