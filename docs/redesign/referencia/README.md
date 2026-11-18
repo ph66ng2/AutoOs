@@ -118,12 +118,6 @@ Tema escuro: [03-modal-forma-de-pagamento-escuro.webp](telas/04-atendimento/03-m
 
 Tema escuro: [04-modal-decisao-do-cliente-escuro.webp](telas/04-atendimento/04-modal-decisao-do-cliente-escuro.webp)
 
-### Modal escolha de ajuste
-
-![modal escolha de ajuste, tema claro](telas/04-atendimento/05-modal-escolha-de-ajuste-claro.webp)
-
-Tema escuro: [05-modal-escolha-de-ajuste-escuro.webp](telas/04-atendimento/05-modal-escolha-de-ajuste-escuro.webp)
-
 ### Modais equipamento
 
 Folha com todos os modais de equipamento, com campos de hoje.
