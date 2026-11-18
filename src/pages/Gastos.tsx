@@ -1,5 +1,10 @@
 import { useState, useCallback, useEffect } from "react";
-import { Plus, RefreshCw } from "lucide-react";
+import { CalendarDays, ChevronRight, DollarSign, Download, Eye, EyeOff, Plus, RefreshCw } from "lucide-react";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { COR_ENTRA, COR_FIXO, CartaoNumero, CartaoVariaveis, ComposicaoGastos, GraficoFaturamento, LancamentosDoMes, MedidorTracos, PesoNoFaturamento, PorCategoria } from "@/components/financas/PainelFinancas";
+import { useExportarLancamentos, useFinancasAno } from "@/hooks/useFinancasAno";
+import { NOMES_MES, categoriasDoMes, dinheiro, dinheiroComSinal, maiorCategoria, mediaVariavelAnterior, totaisDoMes } from "@/lib/financas";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -18,18 +23,10 @@ import {
   useGastosVariaveis,
   useResumoMensal,
 } from "@/hooks/useGastos";
-import { GastosSummaryCards } from "@/components/gastos/GastosSummaryCards";
-import { FaturamentoEGastosCard } from "@/components/gastos/FaturamentoEGastosCard";
-import { GastosPorCategoria } from "@/components/gastos/GastosPorCategoria";
 import { GastosTable } from "@/components/gastos/GastosTable";
 import { GastosFormFixo } from "@/components/gastos/GastosFormFixo";
 import { GastosFormVariavel } from "@/components/gastos/GastosFormVariavel";
 import { PageHeader } from "@/components/PageHeader";
-
-const MESES = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-];
 
 export default function Gastos() {
   const now = new Date();
@@ -43,7 +40,7 @@ export default function Gastos() {
   const [salvando, setSalvando] = useState(false);
 
   const { ensureSensitiveAccess } = useSensitiveAccess();
-  const { error: showError } = useNotification();
+  const { error: showError, success } = useNotification();
 
   const {
     gastosFixos,
@@ -63,7 +60,6 @@ export default function Gastos() {
   } = useGastosVariaveis(mes, ano);
 
   const {
-    resumo,
     loading: loadingResumo,
     error: errorResumo,
     recarregar: recarregarResumo,
@@ -164,73 +160,201 @@ export default function Gastos() {
     }
   }
 
-  const totalFixoAtivo = gastosFixos.filter((g) => g.ativo !== false).reduce((soma, g) => soma + (g.valor || 0), 0);
+  const [ocultar, setOcultar] = useState(false);
+  const [todasAbertas, setTodasAbertas] = useState(false);
+  const exportar = useExportarLancamentos();
+  const totais = totaisDoMes(gastosFixos, gastosVariaveis);
+  const { meses, anterior, loading: loadingAno, error: erroAno } = useFinancasAno(ano, totais.fixo);
+  const mesAtual = meses[mes - 1];
+  const faturadoMes = mesAtual?.faturado ?? 0;
+  const saldo = faturadoMes - totais.total;
+  const mesAnterior = mes === 1 ? anterior[11] : meses[mes - 2];
+  const saldoAnterior = mesAnterior ? mesAnterior.faturado - mesAnterior.fixo - mesAnterior.variavel : null;
+  const media = mediaVariavelAnterior([...anterior, ...meses], mes, ano);
+  const maiorVariavel = Math.max(0, ...[...anterior, ...meses].filter((m) => !m.futuro).map((m) => m.variavel));
+  const categorias = categoriasDoMes(gastosFixos, gastosVariaveis);
+  const maior = maiorCategoria(categorias);
+  const opcoesMes = Array.from({ length: 36 }, (_, indice) => {
+    const data = new Date(now.getFullYear(), now.getMonth() - indice, 1);
+    return { mes: data.getMonth() + 1, ano: data.getFullYear() };
+  });
+
+  async function baixarCsv() {
+    try {
+      const nome = await exportar(mes, ano, gastosFixos, gastosVariaveis);
+      success("Finanças", `Lançamentos salvos em ${nome}, na pasta temporária do app.`);
+    } catch (err) {
+      showError("Finanças", "Baixar lançamentos", err);
+    }
+  }
 
   return (
     <div className="space-y-5">
       <PageHeader titulo="Finanças">
         <div className="flex flex-wrap items-center gap-2">
-          <div role="group" aria-label="Mês" className="flex items-center gap-1">
-            <Select value={String(mes)} onValueChange={(v) => setMes(Number(v))}>
-              <SelectTrigger aria-label="Mês" className="h-10 w-[132px]">
-                <SelectValue placeholder="Mês" />
-              </SelectTrigger>
-              <SelectContent>
-                {MESES.map((m, i) => (
-                  <SelectItem key={i} value={String(i + 1)}>
-                    {m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={String(ano)} onValueChange={(v) => setAno(Number(v))}>
-              <SelectTrigger aria-label="Ano" className="h-10 w-[92px]">
-                <SelectValue placeholder="Ano" />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i).map((y) => (
-                  <SelectItem key={y} value={String(y)}>
-                    {y}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="icon" className="h-10 w-10" aria-label="Recarregar" onClick={() => void recarregarTudo()}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
+          <Select value={`${ano}-${mes}`} onValueChange={(valor) => { const [a, m] = valor.split("-").map(Number); setAno(a); setMes(m); }}>
+            <SelectTrigger aria-label="Mês" className="h-10 w-auto gap-2 px-3 font-semibold">
+              <CalendarDays className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {opcoesMes.map((opcao) => (
+                <SelectItem key={`${opcao.ano}-${opcao.mes}`} value={`${opcao.ano}-${opcao.mes}`}>
+                  {NOMES_MES[opcao.mes - 1]}, {opcao.ano}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button variant="outline" className="h-10" onClick={() => void abrirNovoVariavel()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Gasto Variável
+            <Plus className="h-4 w-4 mr-1.5" />
+            Gasto variável
           </Button>
           <Button className="h-10" onClick={() => void abrirNovoFixo()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Gasto Fixo
+            <Plus className="h-4 w-4 mr-1.5" />
+            Gasto fixo
           </Button>
         </div>
       </PageHeader>
 
       {error && <ErrorAlert variant="error" context="Gastos" message={error} action="Carregar" />}
 
-      <GastosSummaryCards
-        resumo={resumo}
-        gastosFixos={gastosFixos}
-        gastosVariaveis={gastosVariaveis}
-        loading={loading}
-      />
+      <div className="space-y-4 rounded-3xl border bg-card/40 p-4 md:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <DollarSign className="h-4 w-4" aria-hidden="true" /> Financeiro / Finanças
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10"
+              aria-pressed={ocultar}
+              aria-label={ocultar ? "Mostrar valores" : "Ocultar valores"}
+              title={ocultar ? "Mostrar valores" : "Ocultar valores"}
+              onClick={() => setOcultar((atual) => !atual)}
+            >
+              {ocultar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </Button>
+            <Button variant="outline" size="icon" className="h-10 w-10" aria-label="Baixar lançamentos do mês (CSV)" title="Baixar lançamentos do mês (CSV)" onClick={() => void baixarCsv()}>
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="h-10 w-10" aria-label="Recarregar" title="Recarregar" onClick={() => void recarregarTudo()}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <FaturamentoEGastosCard mes={mes} ano={ano} totalFixo={totalFixoAtivo} />
-        <GastosPorCategoria categorias={resumo?.por_categoria ?? []} loading={loadingResumo} />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-busy={loading || undefined}>
+          <CartaoNumero
+            rotulo="Gastos fixos"
+            valor={dinheiro(totais.fixo, ocultar)}
+            medida={<MedidorTracos fracao={totais.total ? totais.fixo / totais.total : 0} cor={COR_FIXO} rotulo="Parte dos fixos nos gastos do mês" />}
+            rodape={`${totais.quantidadeFixos} ${totais.quantidadeFixos === 1 ? "gasto fixo" : "gastos fixos"} no mês`}
+          />
+          <CartaoVariaveis valor={totais.variavel} quantidade={totais.quantidadeVariaveis} media={media} maximo={maiorVariavel} ocultar={ocultar} />
+          <CartaoNumero
+            rotulo="Saldo do mês"
+            valor={<span className={saldo < 0 ? "text-status-bad" : undefined}>{dinheiroComSinal(saldo, ocultar)}</span>}
+            medida={
+              <div role="img" aria-label="Gastos e o que sobrou do faturado" className="flex h-7 gap-1 overflow-hidden rounded-[4px]">
+                {faturadoMes > 0 || totais.total > 0 ? (
+                  <>
+                    <span className="rounded-[4px]" style={{ flexGrow: Math.max(totais.total, 0.0001), background: COR_FIXO }} />
+                    {saldo > 0 && <span className="rounded-[4px]" style={{ flexGrow: saldo, background: COR_ENTRA }} />}
+                  </>
+                ) : (
+                  <span className="flex-1 rounded-[4px] bg-track" />
+                )}
+              </div>
+            }
+            rodape={
+              saldoAnterior == null || loadingAno ? (
+                "faturado menos gastos"
+              ) : (
+                <>
+                  <span className={cn("font-semibold", saldo - saldoAnterior >= 0 ? "text-primary" : "text-status-bad")}>
+                    {dinheiroComSinal(saldo - saldoAnterior, ocultar)}
+                  </span>{" "}
+                  vs. {NOMES_MES[(mes + 10) % 12].toLowerCase()}
+                </>
+              )
+            }
+          />
+          <CartaoNumero
+            rotulo="Maior categoria"
+            valor={maior?.categoria ?? "—"}
+            medida={
+              <div role="img" aria-label="Peso de cada categoria nos gastos" className="flex h-7 items-end gap-1.5">
+                {(maior?.todas ?? []).slice(0, 7).map((item, indice) => (
+                  <span
+                    key={item.categoria}
+                    className={cn("flex-1 rounded-[3px]", indice === 0 ? "" : "bg-track")}
+                    style={{ height: `${Math.max(15, (item.valor / (maior?.valor || 1)) * 100)}%`, background: indice === 0 ? COR_FIXO : undefined }}
+                  />
+                ))}
+              </div>
+            }
+            rodape={
+              maior ? (
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 text-left hover:text-foreground"
+                  onClick={() => document.getElementById("financas-por-categoria")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                >
+                  <span>{dinheiro(maior.valor, ocultar)} · {Math.round(maior.parte * 100)}% dos gastos</span>
+                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              ) : (
+                "Nenhum gasto neste mês"
+              )
+            }
+          />
+        </div>
+
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <GraficoFaturamento
+            meses={meses}
+            anterior={anterior}
+            mesEscolhido={mes}
+            loading={loadingAno}
+            error={erroAno}
+            ocultar={ocultar}
+            onEscolherMes={setMes}
+          />
+          <LancamentosDoMes
+            fixos={gastosFixos}
+            variaveis={gastosVariaveis}
+            ocultar={ocultar}
+            onEditarFixo={(g) => void abrirEditarFixo(g)}
+            onEditarVariavel={(g) => void abrirEditarVariavel(g)}
+            onVerTodas={() => setTodasAbertas(true)}
+          />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          <ComposicaoGastos fixo={totais.fixo} variavel={totais.variavel} ocultar={ocultar} />
+          <PorCategoria id="financas-por-categoria" categorias={categorias} ocultar={ocultar} />
+          <PesoNoFaturamento gastos={totais.total} faturado={faturadoMes} ocultar={ocultar} />
+        </div>
       </div>
 
-      <GastosTable
-        gastosFixos={gastosFixos}
-        gastosVariaveis={gastosVariaveis}
-        loading={loading}
-        onEditFixo={(g) => void abrirEditarFixo(g)}
-        onEditVariavel={(g) => void abrirEditarVariavel(g)}
-      />
+      <Dialog open={todasAbertas} onOpenChange={setTodasAbertas}>
+        <DialogContent tamanho="visualizador">
+          <DialogHeader>
+            <DialogTitle>Lançamentos de {NOMES_MES[mes - 1].toLowerCase()} de {ano}</DialogTitle>
+            <DialogDescription className="sr-only">Todos os gastos fixos e variáveis do mês, com busca e filtros.</DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <GastosTable
+              gastosFixos={gastosFixos}
+              gastosVariaveis={gastosVariaveis}
+              loading={loading}
+              onEditFixo={(g) => { setTodasAbertas(false); void abrirEditarFixo(g); }}
+              onEditVariavel={(g) => { setTodasAbertas(false); void abrirEditarVariavel(g); }}
+            />
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
 
       <GastosFormFixo
         open={fixoDialogOpen}
