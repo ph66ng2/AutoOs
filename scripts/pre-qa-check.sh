@@ -27,6 +27,28 @@ check '(sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)
 check '[Ss][Qq][Ll]ite' 'referência a SQLite (proibida no projeto)'
 check '\b(TODO|FIXME|HACK)\b' 'TODO/FIXME novo (confirme se foi pedido)'
 
+# Cor só por token (plano do redesign, regra 10): hex e cor fixa do Tailwind em linha nova de src/.
+# COR_FORA: arquivos onde cor literal é legítima. Arquivo novo aqui precisa de justificativa no PR.
+COR_FORA=(
+  src/index.css                                 # definição dos tokens
+  src/lib/pdf-service.ts                        # PDF impresso, sem tema
+  src/lib/email-service.ts                      # HTML de e-mail, sem tema
+  src/lib/email-orcamento-portal.ts             # HTML de e-mail, sem tema
+  src/lib/orcamento-insumos.ts                  # texto/HTML de envio do orçamento
+  src/lib/profile-appearance.ts                 # cores escolhidas para o avatar do perfil
+  src/components/perfil/AppearancePicker.tsx    # amostras das cores do avatar
+  src/lib/equipamento-imagem-utils.ts           # desenho em canvas da foto
+  src/components/equipamentos/PdfPreviewDialog.tsx  # papel branco da prévia do PDF
+  src/components/ui/dialog.tsx                  # véu do modal, igual nos dois temas
+  src/components/ui/alert-dialog.tsx            # véu do modal, igual nos dois temas
+)
+excluir_cor=()
+for arquivo in "${COR_FORA[@]}"; do excluir_cor+=(":!$arquivo"); done
+cor=$(git diff "$BASE" -U0 -- src "${excluir_cor[@]}" ':!*.test.ts' ':!*.test.tsx' \
+  | grep -E '^\+[^+]' \
+  | grep -E '(^|[^&[:alnum:]_/-])#([0-9a-fA-F]{6}([0-9a-fA-F]{2})?|[0-9a-fA-F]{0,2}[a-fA-F][0-9a-fA-F]{0,2})\b|\b(bg|text|border|ring|fill|stroke|from|via|to|outline|divide|placeholder|shadow|decoration|accent|caret)-(red|blue|green|yellow|orange|amber|lime|emerald|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-[0-9]{2,3}\b|\b(bg|text|border)-(white|black)\b' || true)
+[ -n "$cor" ] && { report 'cor fixa (hex ou cor do Tailwind) fora dos tokens'; printf '%s\n' "$cor" | head -5; }
+
 # invoke() fora de lib/db.ts
 inv=$(git diff "$BASE" -U0 -- src ':!src/lib/db.ts' ':!e2e' | grep -E '^\+[^+].*\binvoke\(' || true)
 [ -n "$inv" ] && { report 'invoke() fora de src/lib/db.ts'; printf '%s\n' "$inv" | head -5; }
