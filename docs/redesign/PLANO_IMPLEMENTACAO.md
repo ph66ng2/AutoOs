@@ -170,7 +170,7 @@ Cada fase abaixo vira um PR (ou mais). Rode o `fatiador` uma vez no início de c
 - No topo: ação principal com 176px e o ⋯.
 - Barra de 6 etapas e abas Orçamento, Verificação, Fotos, Histórico, Comunicação.
 - Coluna lateral com Cliente, Equipamento, Comunicação e o painel do portal.
-- Os diálogos que hoje abrem a partir dos detalhes continuam abrindo como modais.
+- Formulários que montam ou editam orçamento são páginas (ajuste de orçamento e verificação técnica, decisão 24 do `ALVO.md`); confirmações continuam modais.
 - O E2E que abre os detalhes vai precisar seguir a rota nova. É a única edição de teste permitida no plano: só a navegação, nunca a verificação. Peça o OK do usuário antes.
 
 **Fase 7: modais.**

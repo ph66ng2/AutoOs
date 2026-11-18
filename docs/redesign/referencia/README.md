@@ -369,3 +369,39 @@ Respostas ao orçamento em painel que sobe do rodapé.
 ![portal responder orcamento, tema claro](telas/09-portal/05-portal-responder-orcamento-claro.webp)
 
 Tema escuro: [05-portal-responder-orcamento-escuro.webp](telas/09-portal/05-portal-responder-orcamento-escuro.webp)
+
+## Páginas de orçamento da OS e família de Detalhes
+
+Decisões 24 e 25 do `ALVO.md`: formulários que montam ou editam orçamento são páginas; confirmações continuam janelas.
+
+### Ajuste de orçamento da OS (/equipamentos/:id/orcamento)
+
+Era a janela "Ajuste de Orçamento". Valores (original, antes do ajuste, novo calculado), serviços e peças, valor, prazo, observações e aviso da forma de pagamento. Barra fixa: Cancelar e Confirmar. O status da OS não muda.
+
+![ajuste de orçamento da os (/equipamentos/:id/orcamento), tema claro](telas/11-paginas-de-orcamento/01-ajuste-de-orcamento-pagina-claro.webp)
+
+Tema escuro: [01-ajuste-de-orcamento-pagina-escuro.webp](telas/11-paginas-de-orcamento/01-ajuste-de-orcamento-pagina-escuro.webp)
+
+### Verificação técnica (/equipamentos/:id/verificacao)
+
+Era a janela grande. Técnico, diagnóstico, serviços com peças do estoque, observações e foto. Checklist e custos ao vivo estão marcados PROPOSTA. Barra fixa: Cancelar e Finalizar verificação.
+
+![verificação técnica (/equipamentos/:id/verificacao), tema claro](telas/11-paginas-de-orcamento/02-verificacao-tecnica-pagina-claro.webp)
+
+Tema escuro: [02-verificacao-tecnica-pagina-escuro.webp](telas/11-paginas-de-orcamento/02-verificacao-tecnica-pagina-escuro.webp)
+
+### Ajuste e verificação: estados, janelas e celular
+
+Peça sem saldo, peça inválida, sem permissão, orçamento já aprovado, total zero sem garantia; as janelas que continuam (escolha do ajuste, cliente já respondeu, OS só de garantia, PIN) e as duas páginas no celular.
+
+![ajuste e verificação: estados, janelas e celular, tema claro](telas/11-paginas-de-orcamento/03-estados-janelas-e-celular-claro.webp)
+
+Tema escuro: [03-estados-janelas-e-celular-escuro.webp](telas/11-paginas-de-orcamento/03-estados-janelas-e-celular-escuro.webp)
+
+### Detalhes da OS e venda: família única
+
+Barra de etapas com data (e pessoa na OS), selo único, cartão Cliente único, linha do tempo nos dois, Condições e total dentro do cartão do orçamento.
+
+![detalhes da os e venda: família única, tema claro](telas/11-paginas-de-orcamento/04-detalhes-familia-unica-claro.webp)
+
+Tema escuro: [04-detalhes-familia-unica-escuro.webp](telas/11-paginas-de-orcamento/04-detalhes-familia-unica-escuro.webp)

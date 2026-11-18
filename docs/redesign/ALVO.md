@@ -66,6 +66,16 @@ Cada linha é algo que o dono pediu ou aprovou. Onde diz **rejeitado**, foi test
 
 14. **Todos os modais seguem 7 formatos e 3 larguras** (P 440, M 560, G 760; visualizador até 1040). Ação principal à direita, destrutiva em vermelho com o nome do que faz, PIN dentro do próprio modal, erro embaixo do campo.
 15. **Os modais mantêm os campos e botões de hoje.** As folhas de modais do canvas foram feitas lendo o código de cada diálogo.
+24. **Formulários que montam ou editam orçamento são páginas; confirmações continuam modais** (decisão do dono, 18/11/2026). Substitui a regra antiga de que "os diálogos que hoje abrem a partir dos detalhes continuam abrindo como modais".
+    - Viram página: criar/editar venda (`/vendas/novo`, `/vendas/:id/editar`), **ajuste de orçamento da OS** (`/equipamentos/:id/orcamento`) e **verificação técnica** (`/equipamentos/:id/verificacao`). Barra fixa no rodapé com cancelar e a ação de hoje ("Confirmar" no ajuste, "Finalizar verificação" na verificação).
+    - Continuam janela: escolha do ajuste de orçamento aprovado ou respondido (aparece **ao confirmar** a página, como no código; não antes de editar), OS só de garantia, forma de pagamento ao aprovar, reprovar, cancelar, entregar, excluir, recusa por falta de estoque, PIN, envio de fotos e prévia do PDF.
+    - Pranchetas: "Ajuste de orçamento · página", "Verificação técnica · página" e "Ajuste e verificação · estados, janelas e celular", na página Atendimento do canvas.
+25. **Detalhes da OS e página da venda são da mesma família** (prancheta "Detalhes OS × venda · família única"):
+    - **Barra de etapas:** um desenho, com nome e data de cada etapa alcançada. A OS acrescenta "· pessoa" quando o histórico de status tem o autor; a venda mostra só a data.
+    - **Selo:** um só (o do DS) no cabeçalho de detalhe e de edição; as listas usam nome + barrinha.
+    - **Cartão Cliente:** um só (nome, documento, e-mail, telefone, canais com WhatsApp riscado quando recusa, contato). A OS acrescenta o rodapé "Portal do Cliente".
+    - **O que aconteceu:** a linha do tempo do Histórico da OS serve aos dois. Na venda ela substitui "Registro", com as mesmas datas e sem "Registrado por", que não existe.
+    - **Condições e total:** dentro do cartão do orçamento (OS) ou de Itens (venda), abaixo do total. Na venda, Condições sai da coluna da direita.
 16. **PDFs não mudam.** OS, orçamento e orçamento de insumos continuam no modelo de `pdf-service.ts`; só a moldura da prévia muda.
 
 ### Temas
@@ -146,6 +156,7 @@ Aparece nas telas para dar a ideia do todo, mas **não implemente sem um ticket 
 - **Menu lateral:** contadores (só onde o número já existe na tela).
 - **Balcão:** fila do dia ("Prontos para retirada" e "Chegaram hoje").
 - **Portal:** tema escuro.
+- **Verificação técnica:** checklist de 7 itens no formulário (os itens existem no código e aparecem em verificações antigas, mas o formulário de hoje não os mostra nem salva) e custos calculados enquanto digita (hoje o total só é calculado ao finalizar). Os dois estão marcados PROPOSTA na prancheta.
 
 O celular da equipe e o site do produto estão no canvas, mas **não fazem parte deste redesign**.
 
