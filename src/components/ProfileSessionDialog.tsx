@@ -113,7 +113,7 @@ export function ProfileSessionDialog({
     if (canStartFirstAccess) return selectedProfile.onboarding_pendente ? "Fazer primeiro acesso" : "Ativar neste computador";
     if (missingRequiredPin) return "PIN não configurado neste PC";
     if (isAdminWithoutPin) return "Configurar PIN e continuar";
-    if (mode === "startup") return "Entrar com este perfil";
+    if (mode === "startup") return "Entrar";
     if (mode === "selector") {
       return isCurrentProfileSelected
         ? (unlocked ? "Continuar com este perfil" : "Desbloquear este perfil")
@@ -138,6 +138,16 @@ export function ProfileSessionDialog({
   const [errorShakes, setErrorShakes] = useState(0);
   /** Só no login: em qual modo este computador entra (a mesma preferência de Perfil › Modo). */
   const [modoEntrada, setModoEntrada] = useState<AppMode>(() => getAppMode() ?? "standard");
+  const [versao, setVersao] = useState<string | null>(null);
+  useEffect(() => {
+    if (mode !== "startup") return;
+    let ativo = true;
+    import("@tauri-apps/api/app")
+      .then(({ getVersion }) => getVersion())
+      .then((v) => { if (ativo) setVersao(v); })
+      .catch(() => undefined);
+    return () => { ativo = false; };
+  }, [mode]);
   const previousError = useRef(error);
   useEffect(() => {
     if (error && error !== previousError.current && shouldAskForPin) setErrorShakes((n) => n + 1);
@@ -203,8 +213,12 @@ export function ProfileSessionDialog({
       }}
     >
       <DialogContent
+        // Na abertura do app a escolha de perfil é a própria página (canvas "Entrar com PIN"):
+        // fundo claro do app, cartão no centro, sem o escurecido de janela.
+        overlayClassName={mode === "startup" ? "bg-background" : undefined}
         className={cn(
           "max-w-[640px] gap-0 overflow-hidden rounded-2xl bg-card p-0 text-foreground",
+          mode === "startup" && "shadow-[0_12px_40px_hsl(var(--foreground)/0.08)]",
           mandatory && "[&>button]:hidden",
         )}
         onPointerDownOutside={(event) => {
@@ -439,6 +453,9 @@ export function ProfileSessionDialog({
                 )}
               </div>
             </>
+          )}
+          {mode === "startup" && versao && (
+            <p className="mt-6 text-center text-xs text-muted-foreground">Versão {versao} · banco conectado</p>
           )}
         </div>
       </DialogContent>

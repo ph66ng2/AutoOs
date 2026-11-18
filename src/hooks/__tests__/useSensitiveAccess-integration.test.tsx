@@ -64,7 +64,7 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     });
     render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
     await user.type(await screen.findByLabelText("PIN do perfil"), "2580");
-    await user.click(screen.getByRole("button", { name: "Entrar com este perfil" }));
+    await user.click(screen.getByRole("button", { name: "Entrar" }));
     await waitFor(() => expect(document.querySelector(".pin-entry__lock")).not.toBeNull());
 
     // Fecha durante o cadeadinho: o PIN já foi aceito, então a entrada conclui.
@@ -134,7 +134,7 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     });
     render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
     await user.type(await screen.findByLabelText("PIN do perfil"), "1234");
-    await user.click(screen.getByRole("button", { name: "Entrar com este perfil" }));
+    await user.click(screen.getByRole("button", { name: "Entrar" }));
     await screen.findByText(/ainda não tem PIN neste computador. Use o código que o administrador te passou/);
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Validando..." })).not.toBeInTheDocument();
@@ -153,7 +153,7 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
       return Promise.resolve(null);
     });
     render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
-    await user.click(await screen.findByRole("button", { name: "Entrar com este perfil" }));
+    await user.click(await screen.findByRole("button", { name: "Entrar" }));
 
     expect((await screen.findAllByText(/cofre de senhas do sistema está bloqueado/)).length).toBeGreaterThan(0);
     const comandos = mockInvoke.mock.calls.map(([cmd]) => cmd);

@@ -215,7 +215,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         startupPromptedRef.current = true;
         setDialogMode("startup");
         setPromptOptions({
-          title: "Quem está usando o AutoOS?",
+          title: "Quem está usando?",
           description: "Escolha seu perfil e informe o PIN para entrar.",
         });
         setDialogMandatory(true);
@@ -268,7 +268,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       startupPromptedRef.current = true;
       setDialogMode("startup");
       setPromptOptions({
-        title: "Quem está usando o AutoOS?",
+        title: "Quem está usando?",
         description: "Escolha seu perfil e informe o PIN para entrar.",
       });
       setDialogMandatory(true);

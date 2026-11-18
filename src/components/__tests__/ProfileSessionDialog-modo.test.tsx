@@ -29,7 +29,7 @@ describe("entrada: modo deste computador", () => {
     expect(screen.getByText("PIN de Marina")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Modo completo/ })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(screen.getByRole("radio", { name: /Balcão/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Entrar com este perfil" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
     expect(localStorage.getItem("autoos_app_mode")).toBe("counter");
     expect(onSubmit).toHaveBeenCalledOnce();
   });
