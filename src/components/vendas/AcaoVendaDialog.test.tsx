@@ -38,6 +38,7 @@ vi.mock("@/components/equipamentos/PdfPreviewDialog", () => ({
 vi.mock("react-router-dom", () => ({ useNavigate: () => mocks.navigate }));
 
 import { AcaoVendaDialog, faltasDaRecusa } from "./AcaoVendaDialog";
+import { PdfService } from "@/lib/pdf-service";
 
 function venda(status: StatusOrcamentoInsumos, extra: Partial<OrcamentoInsumosDetalhe> = {}): OrcamentoInsumosDetalhe {
   return {
@@ -58,6 +59,8 @@ function abrir(acao: string, status: StatusOrcamentoInsumos, props: Record<strin
   const onFechar = vi.fn();
   const onAlterado = vi.fn();
   const onExcluido = vi.fn();
+  // O modal sempre busca a versão atual; na página, a do banco é igual à mostrada (salvo no teste de cópia antiga).
+  if (!("venda" in props)) mocks.db.obterOrcamentoInsumos.mockResolvedValue(venda(status));
   render(
     <AcaoVendaDialog
       acao={acao as never}
@@ -189,5 +192,156 @@ describe("AcaoVendaDialog (V.5)", () => {
     abrir("entregar", "APROVADO", { venda: undefined });
     expect(await screen.findByText("Marcar OI-34 como entregue?")).toBeInTheDocument();
     expect(mocks.db.obterOrcamentoInsumos).toHaveBeenCalledWith(34);
+  });
+});
+
+describe("AcaoVendaDialog: casos da antiga janela do orçamento", () => {
+  it("aprovar com Pix grava com o token e avisa a tela", async () => {
+    mocks.db.aprovarOrcamentoInsumos.mockResolvedValue(venda("APROVADO"));
+    const { onAlterado, onFechar } = abrir("aprovar", "ENVIADO");
+    await screen.findByRole("heading", { name: "Aprovar OI-34" });
+    fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar e baixar estoque" }));
+    await waitFor(() => expect(mocks.db.aprovarOrcamentoInsumos).toHaveBeenCalledWith(34, "token-ENVIADO", { codigo: "PIX", detalhe: null }));
+    await waitFor(() => expect(onAlterado).toHaveBeenCalled());
+    expect(onFechar).toHaveBeenCalled();
+  });
+
+  it("outra recusa da aprovação (vencido) fica no modal de aprovação", async () => {
+    mocks.db.aprovarOrcamentoInsumos.mockRejectedValue("O orçamento OI-34 venceu em 01/01/2026 e não pode ser aprovado.");
+    abrir("aprovar", "ENVIADO");
+    await screen.findByRole("heading", { name: "Aprovar OI-34" });
+    fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "A_COMBINAR" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar e baixar estoque" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/venceu em 01\/01\/2026/);
+    expect(screen.getByRole("heading", { name: "Aprovar OI-34" })).toBeInTheDocument();
+  });
+
+  it("reprovar pede PIN depois de confirmar e manda o token", async () => {
+    mocks.db.reprovarOrcamentoInsumos.mockResolvedValue(venda("REPROVADO"));
+    abrir("reprovar", "ENVIADO");
+    const modal = await screen.findByRole("alertdialog");
+    expect(mocks.ensureSensitiveAccess).not.toHaveBeenCalled();
+    fireEvent.click(within(modal).getByRole("button", { name: "Reprovar" }));
+    await waitFor(() => expect(mocks.db.reprovarOrcamentoInsumos).toHaveBeenCalledWith(34, "token-ENVIADO"));
+    expect(mocks.ensureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ permission: "FINANCIAL_ACTIONS" }));
+  });
+
+  it("marcar entregue confirma e manda o token", async () => {
+    mocks.db.marcarOrcamentoInsumosEntregue.mockResolvedValue(venda("ENTREGUE"));
+    abrir("entregar", "APROVADO");
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Marcar entregue" }));
+    await waitFor(() => expect(mocks.db.marcarOrcamentoInsumosEntregue).toHaveBeenCalledWith(34, "token-APROVADO"));
+  });
+
+  it("excluir: Voltar não apaga", async () => {
+    const { onFechar } = abrir("excluir", "CANCELADO");
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Voltar" }));
+    expect(onFechar).toHaveBeenCalled();
+    expect(mocks.db.excluirOrcamentoInsumos).not.toHaveBeenCalled();
+  });
+
+  it("excluir com PIN recusado não apaga", async () => {
+    mocks.ensureSensitiveAccess.mockResolvedValue(false);
+    abrir("excluir", "CANCELADO");
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Excluir orçamento" }));
+    await waitFor(() => expect(mocks.ensureSensitiveAccess).toHaveBeenCalled());
+    expect(mocks.db.excluirOrcamentoInsumos).not.toHaveBeenCalled();
+  });
+
+  it("backend rejeita a exclusão: mostra o motivo e o modal continua aberto", async () => {
+    mocks.db.excluirOrcamentoInsumos.mockRejectedValue("Conflito de concorrência: outro usuário alterou este orçamento.");
+    const { onFechar, onExcluido } = abrir("excluir", "CANCELADO");
+    const modal = await screen.findByRole("alertdialog");
+    fireEvent.click(within(modal).getByRole("button", { name: "Excluir orçamento" }));
+    expect(await within(modal).findByRole("alert")).toHaveTextContent("Conflito de concorrência: outro usuário alterou este orçamento.");
+    expect(onFechar).not.toHaveBeenCalled();
+    expect(onExcluido).not.toHaveBeenCalled();
+  });
+
+  it("PDF abre a prévia gerada do orçamento", async () => {
+    abrir("pdf", "RASCUNHO");
+    expect(await screen.findByTestId("pdf-preview")).toHaveTextContent("OI-34.pdf");
+    expect(PdfService.construirOrcamentoInsumos).toHaveBeenCalledWith(expect.objectContaining({ numero_exibicao: "OI-34" }));
+  });
+
+  it("WhatsApp enviado marca pelo canal WHATSAPP", async () => {
+    mocks.enviarWhatsapp.mockResolvedValue({ sucesso: true });
+    mocks.db.marcarOrcamentoInsumosEnviado.mockResolvedValue(venda("ENVIADO"));
+    abrir("whatsapp", "RASCUNHO");
+    expect(await screen.findByRole("radio", { name: /WhatsApp para Lúcia Costa/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Enviar por WhatsApp" }));
+    await waitFor(() => expect(mocks.db.marcarOrcamentoInsumosEnviado).toHaveBeenCalledWith(34, "token-RASCUNHO", "WHATSAPP"));
+  });
+
+  it("envio que falha não marca como enviado e mostra o motivo no modal", async () => {
+    mocks.enviarEmail.mockResolvedValue({ sucesso: false, erro: "SMTP recusou a conexão." });
+    const { onFechar } = abrir("email", "RASCUNHO");
+    await screen.findByRole("heading", { name: "Enviar orçamento OI-34" });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar por e-mail" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("SMTP recusou a conexão.");
+    expect(mocks.db.marcarOrcamentoInsumosEnviado).not.toHaveBeenCalled();
+    expect(onFechar).not.toHaveBeenCalled();
+  });
+
+  it("pela lista, a ação só roda depois da carga e usa o token novo", async () => {
+    let resolver: (valor: OrcamentoInsumosDetalhe) => void = () => undefined;
+    mocks.db.obterOrcamentoInsumos.mockReturnValue(new Promise<OrcamentoInsumosDetalhe>((resolve) => { resolver = resolve; }));
+    mocks.db.aprovarOrcamentoInsumos.mockResolvedValue(venda("APROVADO"));
+    abrir("aprovar", "ENVIADO", { venda: undefined });
+    expect(await screen.findByText("Carregando orçamento...")).toBeInTheDocument();
+    expect(mocks.ensureSensitiveAccess).not.toHaveBeenCalled();
+
+    resolver(venda("ENVIADO", { atualizado_em: "token-novo" }));
+    await screen.findByRole("heading", { name: "Aprovar OI-34" });
+    expect(mocks.ensureSensitiveAccess).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar e baixar estoque" }));
+    await waitFor(() => expect(mocks.db.aprovarOrcamentoInsumos).toHaveBeenCalledWith(34, "token-novo", { codigo: "PIX", detalhe: null }));
+  });
+
+  it.each([
+    ["aprovar", "APROVADO"],
+    ["entregar", "RASCUNHO"],
+    ["reprovar", "APROVADO"],
+    ["cancelar", "ENTREGUE"],
+    ["excluir", "RASCUNHO"],
+    ["email", "CANCELADO"],
+  ] as const)("%s em %s: a situação não permite, nada abre", async (acao, status) => {
+    const { onFechar } = abrir(acao, status);
+    await waitFor(() => expect(onFechar).toHaveBeenCalled());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(mocks.ensureSensitiveAccess).not.toHaveBeenCalled();
+  });
+});
+
+describe("AcaoVendaDialog: revisão", () => {
+  it("na página, a ação usa a versão atual do banco, não a cópia mostrada", async () => {
+    mocks.db.obterOrcamentoInsumos.mockResolvedValue(venda("ENVIADO", { atualizado_em: "token-do-banco" }));
+    mocks.db.reprovarOrcamentoInsumos.mockResolvedValue(venda("REPROVADO"));
+    abrir("reprovar", "ENVIADO", { venda: venda("ENVIADO", { atualizado_em: "token-antigo" }) });
+    const modal = await screen.findByRole("alertdialog");
+    expect(screen.queryByText("Carregando orçamento...")).toBeNull();
+    fireEvent.click(within(modal).getByRole("button", { name: "Reprovar" }));
+    await waitFor(() => expect(mocks.db.reprovarOrcamentoInsumos).toHaveBeenCalledWith(34, "token-do-banco"));
+  });
+
+  it("recusa por falta com dois itens de mesmo nome não oferece Dar entrada", async () => {
+    const duplicada = venda("ENVIADO", {
+      itens: [
+        { id: 1, orcamento_id: 34, produto_id: 9, descricao: "Ribbon", categoria: "RIBBON", quantidade: 1, valor_unitario: 32, valor_total: 32, saldo_estoque: 9 },
+        { id: 2, orcamento_id: 34, produto_id: 10, descricao: "Ribbon", categoria: "RIBBON", quantidade: 10, valor_unitario: 32, valor_total: 320, saldo_estoque: 6 },
+      ],
+    } as Partial<OrcamentoInsumosDetalhe>);
+    mocks.db.aprovarOrcamentoInsumos.mockRejectedValue("Estoque insuficiente para aprovar OI-34. Nada foi baixado.\n- Ribbon: precisa de 10, há 6 em estoque");
+    mocks.db.obterOrcamentoInsumos.mockResolvedValue(duplicada);
+    abrir("aprovar", "ENVIADO", { venda: duplicada });
+    await screen.findByRole("heading", { name: "Aprovar OI-34" });
+    fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar e baixar estoque" }));
+    expect(await screen.findByRole("heading", { name: "Não deu para aprovar OI-34" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dar entrada no estoque" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Editar quantidades" })).toBeInTheDocument();
   });
 });

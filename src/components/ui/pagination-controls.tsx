@@ -32,7 +32,7 @@ export function PaginationControls({
           Mostrando {primeiro}–{ultimo} de {totalItems}
         </span>
       )}
-      <ol className="flex h-11 items-center gap-1 md:h-8">
+      <ol className="flex min-h-11 min-w-0 max-w-full flex-wrap items-center gap-1 md:min-h-8">
         {visiblePaginationItems(totalPages, page).map((item) =>
           typeof item === "number" ? (
             <li key={item}>

@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   hasPermission: vi.fn(() => true),
   listar: vi.fn(),
   ensureSensitiveAccess: vi.fn(),
-  dialogProps: vi.fn(),
+  modalProps: vi.fn(),
   navigate: vi.fn(),
 }));
 
@@ -21,19 +21,19 @@ vi.mock("@/lib/db", () => ({ db: { listarOrcamentosInsumos: mocks.listar } }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensureSensitiveAccess, hasPermission: mocks.hasPermission }),
 }));
-// V.5: as ações abrem o modal próprio (AcaoVendaDialog); as props são lidas como antes.
+// Cada ação abre o seu modal (AcaoVendaDialog, V.5).
 vi.mock("@/components/vendas/AcaoVendaDialog", () => ({
-  AcaoVendaDialog: (modal: { acao: string | null; vendaId: number | null; onAlterado?: () => void }) => {
-    const props = { open: modal.acao != null, orcamentoId: modal.vendaId, acaoInicial: modal.acao, onChanged: modal.onAlterado };
-    mocks.dialogProps(props);
-    return props.open ? (
-      <div data-testid="dialogo">
-        {props.orcamentoId ?? "novo"}
-        <button onClick={props.onChanged}>simular-acao</button>
+  AcaoVendaDialog: (props: { acao: string | null; vendaId: number | null; onAlterado?: () => void }) => {
+    mocks.modalProps(props);
+    return props.acao ? (
+      <div data-testid="modal-acao">
+        {props.acao} {props.vendaId}
+        <button onClick={props.onAlterado}>simular-acao</button>
       </div>
     ) : null;
   },
 }));
+
 
 import { OrcamentosInsumosTab } from "@/pages/insumos/OrcamentosInsumosTab";
 
@@ -144,7 +144,7 @@ describe("OrcamentosInsumosTab", () => {
     await screen.findByText("OI-2");
     fireEvent.click(screen.getByRole("button", { name: /novo orçamento/i }));
     await waitFor(() => expect(mocks.ensureSensitiveAccess).toHaveBeenCalled());
-    expect(screen.queryByTestId("dialogo")).toBeNull();
+    expect(mocks.navigate).not.toHaveBeenCalledWith("/vendas/novo");
     expect(mocks.navigate).not.toHaveBeenCalledWith("/vendas/novo");
   });
 
@@ -178,7 +178,7 @@ describe("Vendas de insumos: ação principal, prazo e permissão (fase V.2)", (
     return { ...linha(numero, status, 100), validade };
   }
 
-  it("Enviado mostra Aprovar e a ação vai para a janela; vencido vira Renovar validade", async () => {
+  it("Enviado mostra Aprovar e a ação abre o modal; vencido vira Renovar validade", async () => {
     mocks.listar.mockResolvedValue({
       items: [comValidade(5, "ENVIADO", "2999-12-31"), comValidade(4, "ENVIADO", "2020-01-01")],
       total: 2,
@@ -193,7 +193,7 @@ describe("Vendas de insumos: ação principal, prazo e permissão (fase V.2)", (
     expect(within(emDia).getByRole("combobox", { name: "Mais ações" })).toBeInTheDocument();
 
     await usuario.click(within(emDia).getByRole("button", { name: "Aprovar" }));
-    expect(mocks.dialogProps).toHaveBeenLastCalledWith(expect.objectContaining({ open: true, orcamentoId: 50, acaoInicial: "aprovar" }));
+    expect(mocks.modalProps).toHaveBeenLastCalledWith(expect.objectContaining({ acao: "aprovar", vendaId: 50 }));
   });
 
   it("Aprovado mostra Marcar entregue e a data da aprovação, sem validade", async () => {
