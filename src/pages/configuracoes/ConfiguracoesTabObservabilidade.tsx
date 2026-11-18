@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,9 +55,6 @@ export function ConfiguracoesTabObservabilidade({
       <Card>
         <CardHeader>
           <CardTitle>Suporte local e observabilidade</CardTitle>
-          <CardDescription>
-            Snapshot operacional mínimo para suporte assistido: diretórios locais, logs recentes, housekeeping e prontidão do bundle Windows.
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {supportLoading && !supportStatus ? (
@@ -155,7 +152,6 @@ export function ConfiguracoesTabObservabilidade({
       <Card>
         <CardHeader>
           <CardTitle>Auditoria recente</CardTitle>
-          <CardDescription>Eventos sensiveis recentes de desbloqueio, troca de PIN e gestao de perfis.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4 mb-4">

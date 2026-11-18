@@ -372,9 +372,6 @@ export function VerificacaoTecnica({
             Adicionar serviço
           </Button>
         </div>
-        <p className="mb-3 text-xs text-muted-foreground">
-          Digite para buscar no catálogo e selecionar o serviço pré-cadastrado com preço automático. Serviço em garantia leva 0,00.
-        </p>
         <div className="space-y-3">
           {servicos.map((s) => (
             <div key={s.id} className="rounded-xl border p-3">
@@ -459,7 +456,6 @@ export function VerificacaoTecnica({
 
       <section aria-label="Custos" className="rounded-2xl border bg-card p-5">
         <h2 className="text-base font-bold">Custos</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Calculado enquanto você digita, com a mesma conta usada ao finalizar.</p>
         <dl className="ml-auto mt-3 grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-sm">
           <dt className="text-muted-foreground">Serviços</dt>
           <dd className="text-right tabular-nums">{formatCurrency(custoServicos)}</dd>

@@ -1,6 +1,6 @@
 import { Controller, type Control, type SubmitHandler, type UseFormHandleSubmit, type UseFormRegister } from "react-hook-form";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,7 +69,6 @@ export function ConfiguracoesTabIntegracoes({
       <Card>
         <CardHeader>
           <CardTitle>SMTP (email real)</CardTitle>
-          <CardDescription>Credenciais e parâmetros de envio protegidos por Comunicação externa.</CardDescription>
         </CardHeader>
         <CardContent>
           {canConfigureSmtp ? (
@@ -162,9 +161,6 @@ export function ConfiguracoesTabIntegracoes({
       <Card>
         <CardHeader>
           <CardTitle>WhatsApp API</CardTitle>
-          <CardDescription>
-            Provedor padrão: Evolution API self-hosted. Configure a URL completa do endpoint de envio e o token da API.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           {canConfigureWhatsapp ? (
@@ -222,9 +218,6 @@ export function ConfiguracoesTabIntegracoes({
       <Card>
         <CardHeader>
           <CardTitle>Fotos pelo celular</CardTitle>
-          <CardDescription>
-            Padrão: cada PC publica um HTTPS temporário sozinho (sem DNS e sem token). Os três computadores podem enviar foto ao mesmo tempo.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           {canConfigurePhotoTunnel ? (

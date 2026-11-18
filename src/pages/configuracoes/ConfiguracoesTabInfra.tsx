@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,9 +62,6 @@ export function ConfiguracoesTabInfra({
       <Card>
         <CardHeader>
           <CardTitle>Banco e schema</CardTitle>
-          <CardDescription>
-            Painel de conferência da versão do schema aplicada no PostgreSQL e das migrações conhecidas pelo AutoOS.
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {schemaLoading && !schemaStatus ? (
@@ -128,9 +125,6 @@ export function ConfiguracoesTabInfra({
       <Card>
         <CardHeader>
           <CardTitle>Atualizações do aplicativo</CardTitle>
-          <CardDescription>
-            Consulta o canal assinado do GitHub Releases. A instalação só começa depois de uma ação explícita.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <UpdateChecker />
@@ -140,9 +134,6 @@ export function ConfiguracoesTabInfra({
       <Card>
         <CardHeader>
           <CardTitle>Backup e restore do banco</CardTitle>
-          <CardDescription>
-            Gera backup .dump, valida pg_dump, pg_restore e psql, e permite restore manual com confirmação explícita.
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {!canManageProfiles ? (

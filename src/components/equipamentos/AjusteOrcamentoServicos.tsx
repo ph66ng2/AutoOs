@@ -65,9 +65,6 @@ export function AjusteOrcamentoServicos({
           Adicionar Serviço
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Digite para buscar no catálogo e selecionar o serviço pré-cadastrado com preço automático.
-      </p>
       <div className="space-y-2">
         {servicos.map((s) => (
           <div key={s.id} className="rounded-md border p-2">

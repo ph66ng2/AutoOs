@@ -365,7 +365,6 @@ export default function VendaDetalhe() {
           <Cartao
             titulo="Itens"
             className={venda.observacoes ? undefined : "flex-1"}
-            acao={<span className="text-xs text-muted-foreground">nome e categoria congelados no orçamento{aberto ? " · saldo é o de agora" : ""}</span>}
           >
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
