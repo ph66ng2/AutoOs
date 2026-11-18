@@ -1,4 +1,5 @@
-import { formatDatePtBr } from "@/lib/date-utils";
+import { Button } from "@/components/ui/button";
+import { formatDatePtBr, parseDbTimestampUtc } from "@/lib/date-utils";
 import { normalizarServicosOrcamento, pecasParaOrcamento } from "@/lib/orcamento-estoque";
 import { formaPagamentoRotulo } from "@/lib/orcamento-insumos";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -11,6 +12,8 @@ interface LinhaOrcamento {
   quantidade: number;
   valor: number;
   reprovado: boolean;
+  /** Chave da peça no consumo do orçamento (serviço + produto), para o selo "baixa pendente". */
+  consumo?: string;
 }
 
 function lerJson<T>(texto?: string): T[] {
@@ -42,6 +45,7 @@ export function linhasDoOrcamento(verificacao: Verificacao | null): LinhaOrcamen
         quantidade: peca.quantidade,
         valor: peca.quantidade * peca.valor_unitario,
         reprovado,
+        consumo: `${servico.id}:${peca.produto_id}`,
       });
     }
   }
@@ -65,7 +69,32 @@ function Condicao({ rotulo, children }: { rotulo: string; children: React.ReactN
  * Condições, como o cartão Itens da venda. O total é o valor do orçamento gravado na OS.
  * Só entram condições que existem (sem custo de verificação inventado).
  */
-export function OrcamentoDaOs({ equipamento, verificacao }: { equipamento: Equipamento; verificacao: Verificacao | null }) {
+/** "09/11 às 14:02", no fuso da operação. */
+function diaEHora(valor: string): string | null {
+  const data = parseDbTimestampUtc(valor);
+  if (!data) return null;
+  const partes = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Bahia", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    .formatToParts(data)
+    .reduce<Record<string, string>>((acc, parte) => ({ ...acc, [parte.type]: parte.value }), {});
+  return `${partes.day}/${partes.month} às ${partes.hour}:${partes.minute}`;
+}
+
+export function OrcamentoDaOs({
+  equipamento,
+  verificacao,
+  enviadoEm,
+  pendentes,
+  onAlterar,
+}: {
+  equipamento: Equipamento;
+  verificacao: Verificacao | null;
+  /** Quando o orçamento saiu para o cliente (última comunicação de orçamento enviada). */
+  enviadoEm?: string | null;
+  /** Peças com baixa pendente, como "servicoId:produtoId". */
+  pendentes?: Set<string>;
+  /** Abre "Alterar Orçamento" (só quando a ação existe para o perfil e o status). */
+  onAlterar?: () => void;
+}) {
   const linhas = linhasDoOrcamento(verificacao);
   if (equipamento.valor_orcamento == null && linhas.length === 0) {
     return <p className="text-sm text-muted-foreground">O orçamento ainda não foi elaborado. Os serviços e peças entram na verificação técnica.</p>;
@@ -75,8 +104,19 @@ export function OrcamentoDaOs({ equipamento, verificacao }: { equipamento: Equip
     : "Definida na aprovação";
   const horas = verificacao?.tempo_estimado ?? 0;
 
+  const enviado = enviadoEm ? diaEHora(enviadoEm) : null;
+
   return (
     <section aria-label="Orçamento">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-bold">{enviado ? `Orçamento enviado em ${enviado}` : "Orçamento"}</h3>
+          {equipamento.prazo_aprovacao && (
+            <p className="text-xs text-muted-foreground">Prazo de aprovação: {formatDatePtBr(equipamento.prazo_aprovacao)}</p>
+          )}
+        </div>
+        {onAlterar && <Button variant="outline" size="sm" onClick={onAlterar}>Alterar Orçamento</Button>}
+      </div>
       {linhas.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -91,7 +131,12 @@ export function OrcamentoDaOs({ equipamento, verificacao }: { equipamento: Equip
             <tbody className="divide-y">
               {linhas.map((linha) => (
                 <tr key={linha.chave} className={cn("h-12", linha.reprovado && "text-muted-foreground line-through")}>
-                  <td className={cn("py-2 pr-3", linha.tipo === "Serviço" ? "font-semibold" : "pl-4")}>{linha.item}</td>
+                  <td className={cn("py-2 pr-3", linha.tipo === "Serviço" ? "font-semibold" : "pl-4")}>
+                    {linha.item}
+                    {linha.consumo && pendentes?.has(linha.consumo) && !linha.reprovado && (
+                      <span className="ml-2 rounded-full bg-status-wait-bg px-2 py-0.5 text-[11px] font-semibold text-status-wait">baixa pendente</span>
+                    )}
+                  </td>
                   <td className="py-2 pr-3 text-muted-foreground">{linha.reprovado ? `${linha.tipo} · reprovado` : linha.tipo}</td>
                   <td className="py-2 pr-3 text-right tabular-nums">{linha.quantidade}</td>
                   <td className="whitespace-nowrap py-2 text-right font-semibold tabular-nums">{formatCurrency(linha.valor)}</td>
@@ -110,7 +155,6 @@ export function OrcamentoDaOs({ equipamento, verificacao }: { equipamento: Equip
       <h3 className="mt-5 text-xs font-semibold text-muted-foreground">Condições</h3>
       <dl className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <Condicao rotulo="Pagamento">{pagamento}</Condicao>
-        <Condicao rotulo="Prazo de aprovação">{equipamento.prazo_aprovacao ? formatDatePtBr(equipamento.prazo_aprovacao) : "—"}</Condicao>
         {horas > 0 && <Condicao rotulo="Prazo de reparo">{horas === 1 ? "1 hora estimada" : `${horas} horas estimadas`}</Condicao>}
         {equipamento.valor_final != null && <Condicao rotulo="Valor final">{formatCurrency(equipamento.valor_final)}</Condicao>}
       </dl>

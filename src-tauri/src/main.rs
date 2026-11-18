@@ -260,6 +260,7 @@ fn main() {
             commands::verificacoes::atualizar_servicos_verificacao,
             commands::equipamentos::aprovar_orcamento,
             commands::orcamento_estoque::listar_consumos_orcamento,
+            commands::orcamento_estoque::listar_pecas_baixa_pendente,
             commands::orcamento_estoque::baixar_pecas_pendentes,
             commands::orcamentos_insumos::listar_orcamentos_insumos,
             commands::orcamentos_insumos::contar_orcamentos_insumos_por_status,

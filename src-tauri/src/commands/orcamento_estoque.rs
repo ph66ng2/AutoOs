@@ -444,6 +444,33 @@ pub async fn listar_consumos_orcamento(
     .map_err(super::operator_errors::mapear_erro_sql)
 }
 
+/// Peças do orçamento com baixa pendente (aprovada maior que a baixada), para o selo
+/// "baixa pendente" na aba Orçamento. Só diz quais são: quantidades e a confirmação
+/// continuam em `listar_consumos_orcamento`, com permissão de estoque.
+#[tauri::command]
+pub async fn listar_pecas_baixa_pendente(equipamento_id: i32) -> Result<Vec<PecaBaixaPendente>, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    sqlx::query_as::<_, PecaBaixaPendente>(
+        "SELECT c.servico_id, c.produto_id
+         FROM orcamento_consumos c
+         JOIN verificacoes v ON v.id = c.verificacao_id AND v.empresa_id = c.empresa_id
+         JOIN equipamentos e ON e.id = v.equipamento_id AND e.empresa_id = c.empresa_id
+         WHERE e.id = $1 AND e.empresa_id = $2 AND c.quantidade_baixada < c.quantidade_aprovada",
+    )
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct PecaBaixaPendente {
+    pub servico_id: String,
+    pub produto_id: i32,
+}
+
 #[tauri::command]
 pub async fn baixar_pecas_pendentes(equipamento_id: i32) -> Result<i32, String> {
     let actor = require_permission(PERMISSION_STOCK_CONTROL)?;

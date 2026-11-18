@@ -24,7 +24,7 @@
  * ║  USADO POR: App.tsx (rota /equipamentos)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -212,6 +212,8 @@ import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
 import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
+import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
+import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
 import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGrande";
 import { OrcamentoDaOs } from "@/components/equipamentos/OrcamentoDaOs";
 import { CartaoCliente } from "@/components/detalhe/CartaoCliente";
@@ -283,6 +285,11 @@ export default function Equipamentos() {
   } | null>(null);
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
+  const [abaDetalhe, setAbaDetalhe] = useState("orcamento");
+  useEffect(() => { setAbaDetalhe("orcamento"); }, [selecionado?.id]);
+  /** Recarrega o selo "baixa pendente" ao fechar Peças da OS (a baixa pode ter sido confirmada lá). */
+  const [recargaPendentes, setRecargaPendentes] = useState(0);
+  const pecasPendentes = usePecasBaixaPendente(selecionado?.id, recargaPendentes);
   const selecionadoIdRef = useRef<number | undefined>();
   selecionadoIdRef.current = selecionado?.id;
   const [salvando, setSalvando] = useState(false);
@@ -307,6 +314,12 @@ export default function Equipamentos() {
   // Dados do drawer de detalhes
   const [verificacaoDetalhes, setVerificacaoDetalhes] = useState<Verificacao | null>(null);
   const [comunicacoes, setComunicacoes] = useState<Comunicacao[]>([]);
+  /** Última vez que o orçamento saiu para o cliente (cabeçalho da aba Orçamento). */
+  const orcamentoEnviadoEm = useMemo(() => {
+    const enviados = comunicacoes.filter((c) => c.tipo === "ORCAMENTO" && c.enviado !== false);
+    const datas = enviados.map((c) => c.data_envio || c.criado_em).filter((d): d is string => Boolean(d)).sort();
+    return datas.at(-1) ?? null;
+  }, [comunicacoes]);
   const [imagensDetalhes, setImagensDetalhes] = useState<EquipamentoImagemDraft[]>([]);
   const [historicoDetalhes, setHistoricoDetalhes] = useState<EquipamentoHistoricoEvento[]>([]);
   const [historicoDetalhesError, setHistoricoDetalhesError] = useState<string | null>(null);
@@ -3355,7 +3368,7 @@ export default function Equipamentos() {
 
             <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
               <Card className="min-w-0 rounded-2xl">
-                <Tabs key={selecionado.id} defaultValue="orcamento">
+                <Tabs key={selecionado.id} value={abaDetalhe} onValueChange={setAbaDetalhe}>
                   <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent px-3 pt-2 [scrollbar-width:none]">
                     {[
                       ["orcamento", "Orçamento"],
@@ -3378,7 +3391,17 @@ export default function Equipamentos() {
                     {carregandoDetalhes ? (
                       <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
                     ) : (
-                      <OrcamentoDaOs equipamento={selecionado} verificacao={verificacaoDetalhes} />
+                      <OrcamentoDaOs
+                        equipamento={selecionado}
+                        verificacao={verificacaoDetalhes}
+                        enviadoEm={orcamentoEnviadoEm}
+                        pendentes={pecasPendentes}
+                        onAlterar={STATUS_COM_ORCAMENTO.includes(selecionado.status)
+                          && (hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS)
+                            || (hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES) && orcamentoEmElaboracao(selecionado.status)))
+                          ? () => void abrirAlterarOrcamento(selecionado)
+                          : undefined}
+                      />
                     )}
                     <DocumentosEquipamento equipamento={selecionado} />
                   </TabsContent>
@@ -3473,6 +3496,9 @@ export default function Equipamentos() {
                       <dt className="text-muted-foreground">Patrimônio</dt><dd className="font-medium">{selecionado.patrimonio || "—"}</dd>
                       <dt className="text-muted-foreground">Entrada</dt><dd className="font-medium">{formatDatePtBr(selecionado.data_entrada)}</dd>
                       {verificacaoDetalhes?.tecnico_nome && (<><dt className="text-muted-foreground">Técnico</dt><dd className="font-medium">{verificacaoDetalhes.tecnico_nome}</dd></>)}
+                      {selecionado.ciclo_serial != null && selecionado.ciclo_serial > 0 && (
+                        <><dt className="text-muted-foreground">Ciclos</dt><dd className="font-medium">{selecionado.ciclo_serial}º atendimento deste serial</dd></>
+                      )}
                     </dl>
                     {selecionado.acessorios && (
                       <div className="flex flex-wrap gap-1.5">
@@ -3492,6 +3518,8 @@ export default function Equipamentos() {
                     )}
                   </CardContent>
                 </Card>
+
+                <ResumoComunicacoes comunicacoes={comunicacoes} onVerTodas={() => setAbaDetalhe("comunicacoes")} />
               </div>
             </div>
           </section>
@@ -3769,7 +3797,7 @@ export default function Equipamentos() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={consumosDialogOpen} onOpenChange={setConsumosDialogOpen}>
+      <Dialog open={consumosDialogOpen} onOpenChange={(aberto) => { setConsumosDialogOpen(aberto); if (!aberto) setRecargaPendentes((n) => n + 1); }}>
         <DialogContent tamanho="m">
           <DialogHeader><DialogTitle>Peças da OS</DialogTitle><DialogDescription>Reposições ficam disponíveis no estoque. Confirme aqui o consumo das peças pendentes.</DialogDescription></DialogHeader>
           <div className="max-h-72 space-y-2 overflow-y-auto">
@@ -3784,7 +3812,7 @@ export default function Equipamentos() {
             ))}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setConsumosDialogOpen(false)}>Fechar</Button>
+            <Button type="button" variant="outline" onClick={() => { setConsumosDialogOpen(false); setRecargaPendentes((n) => n + 1); }}>Fechar</Button>
             <Button type="button" disabled={baixandoPendentes || !consumosDetalhes.some((c) => c.quantidade_baixada < c.quantidade_aprovada)}
               onClick={() => void confirmarBaixaPendente()}>Confirmar baixa pendente</Button>
           </DialogFooter>

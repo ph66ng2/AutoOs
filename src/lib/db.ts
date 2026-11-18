@@ -1019,6 +1019,11 @@ export const db = {
     return invoke<Equipamento>("aprovar_orcamento", { input });
   },
 
+  /** Peças com baixa pendente (só quais são; sem permissão de estoque) → Rust: listar_pecas_baixa_pendente */
+  async listarPecasBaixaPendente(equipamentoId: number): Promise<Array<{ servico_id: string; produto_id: number }>> {
+    return invoke<Array<{ servico_id: string; produto_id: number }>>("listar_pecas_baixa_pendente", { equipamentoId });
+  },
+
   async listarConsumosOrcamento(equipamentoId: number): Promise<ConsumoOrcamento[]> {
     return invoke<ConsumoOrcamento[]>("listar_consumos_orcamento", { equipamentoId });
   },
