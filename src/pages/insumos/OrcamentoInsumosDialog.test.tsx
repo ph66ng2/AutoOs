@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
-  useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensureSensitiveAccess }),
+  useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensureSensitiveAccess, hasPermission: () => true }),
 }));
 vi.mock("@/hooks/useNotification", () => ({
   useNotification: () => ({ success: mocks.success, warning: mocks.warning, error: mocks.showError, info: vi.fn() }),

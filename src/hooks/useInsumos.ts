@@ -220,6 +220,7 @@ export function useInsumos(params?: UseInsumosParams) {
     deletar,
     registrarMovimentacao,
     consultarUsoEmOrcamentos,
+    buscarProduto: (id: number) => db.buscarProduto(id),
     recarregar: carregar,
   };
 }

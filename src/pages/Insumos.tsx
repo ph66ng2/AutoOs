@@ -101,6 +101,7 @@ export default function Insumos() {
     deletar,
     registrarMovimentacao,
     consultarUsoEmOrcamentos,
+    buscarProduto,
     recarregar,
   } = useInsumos({
     busca: busca || undefined,
@@ -121,6 +122,21 @@ export default function Insumos() {
   }, [totalPaginasInsumos]);
   const { error: showError } = useNotification();
   const { resumo, recarregar: recarregarResumo } = useResumoEstoque();
+
+  // "Dar entrada no estoque" de uma venda de insumos chega como /insumos?entrada=<id>&quantidade=<n>:
+  // abre a entrada do item já com a quantidade que falta (o PIN continua sendo pedido).
+  useEffect(() => {
+    const parametros = new URLSearchParams(window.location.search);
+    const produtoId = Number(parametros.get("entrada"));
+    if (!Number.isInteger(produtoId) || produtoId <= 0) return;
+    const quantidade = Math.max(1, Number(parametros.get("quantidade")) || 1);
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    void buscarProduto(produtoId)
+      .then((produto) => abrirMovimentacao(produto, "ENTRADA", quantidade))
+      .catch((causa) => showError("Insumos/Peças", "Abrir entrada no estoque", causa));
+    // Só na abertura da página.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { ensureSensitiveAccess } = useSensitiveAccess();
 
   const form = useForm<ProdutoFormData>({
@@ -194,7 +210,7 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
-  async function abrirMovimentacao(p: Produto, tipo: "ENTRADA" | "SAIDA" = "ENTRADA") {
+  async function abrirMovimentacao(p: Produto, tipo: "ENTRADA" | "SAIDA" = "ENTRADA", quantidade = 1) {
     const liberado = await ensureSensitiveAccess({
       title: "Movimentar estoque",
       description: "Informe o PIN para registrar entradas e saídas de estoque.",
@@ -203,7 +219,7 @@ export default function Insumos() {
     if (!liberado) return;
 
     setMovimentando(p);
-    movForm.reset({ tipo, quantidade: 1, origem: "", referencia: "" });
+    movForm.reset({ tipo, quantidade, origem: "", referencia: "" });
     setMovDialogOpen(true);
   }
 

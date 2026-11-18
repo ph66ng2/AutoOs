@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 
+const buscarProduto = vi.hoisted(() => vi.fn());
+
 vi.mock("@/hooks/useInsumos", () => ({
   useInsumos: () => ({
     produtos: [],
@@ -14,6 +16,7 @@ vi.mock("@/hooks/useInsumos", () => ({
     deletar: vi.fn(),
     registrarMovimentacao: vi.fn(),
     consultarUsoEmOrcamentos: vi.fn().mockResolvedValue(null),
+    buscarProduto: buscarProduto,
     recarregar: vi.fn(),
   }),
 }));
@@ -53,5 +56,17 @@ describe("Insumos: só o estoque", () => {
     render(<Insumos />);
     expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.queryByTestId("aba-orcamentos")).toBeNull();
+  });
+});
+
+describe("Insumos: entrada pedida por uma venda de insumos", () => {
+  it("abre a movimentação de entrada do item já com a quantidade que falta", async () => {
+    buscarProduto.mockResolvedValue({ id: 9, codigo: "RIB-CE", nome: "Ribbon cera 110x74", categoria: "RIBBON", quantidade_estoque: 6, quantidade_minima: 10, preco_custo: 20, preco_venda: 32 });
+    window.history.pushState({}, "", "/insumos?entrada=9&quantidade=4");
+    render(<Insumos />);
+    expect(await screen.findByText("Movimentação de Estoque")).toBeInTheDocument();
+    expect(buscarProduto).toHaveBeenCalledWith(9);
+    expect(screen.getByRole("spinbutton")).toHaveValue(4);
+    expect(window.location.search).toBe("");
   });
 });
