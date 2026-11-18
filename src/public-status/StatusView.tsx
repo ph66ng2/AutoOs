@@ -160,7 +160,6 @@ export function StatusView({ equipamento, titulo, orientacao, statusAlteradoEm, 
               </li>
             )}
           </ol>
-          <p className="timeline-note">A etapa atual pode mudar após uma revisão do atendimento.</p>
         </nav>
       )}
 

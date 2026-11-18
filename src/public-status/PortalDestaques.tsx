@@ -40,8 +40,7 @@ export function DestaqueProntoRetirada({ detalhe }: { detalhe: DetalheAtendiment
   const atualizado = valorAtualizado(detalhe);
   return (
     <section className="portal-destaque is-pronto" aria-labelledby="portal-pronto-titulo">
-      <span className="portal-destaque-pill">Pronto para retirada</span>
-      <h2 id="portal-pronto-titulo">{endereco ? "Retire no endereço abaixo" : "Seu equipamento está pronto"}</h2>
+      <h2 id="portal-pronto-titulo">Pronto para retirada</h2>
       {valor != null && (
         <p className="portal-destaque-valor"><span>Valor do atendimento</span><strong>{money(valor)}</strong></p>
       )}
@@ -104,8 +103,9 @@ export function DocumentosCard({ detalhe, sessao, destaque = false }: { detalhe:
       <ul>
         {docs.map((doc) => (
           <li key={doc.chave}>
-            <button type="button" className={destaque ? "primary-button" : "secondary-button"} disabled={gerando !== null} onClick={() => void baixar(doc)}>
+            <button type="button" className={destaque ? "primary-button" : "secondary-button portal-doc-linha"} disabled={gerando !== null} onClick={() => void baixar(doc)}>
               {gerando === doc.chave ? "Baixando…" : doc.rotulo}
+              {!destaque && <span className="portal-doc-baixar" aria-hidden="true">PDF ↓</span>}
             </button>
           </li>
         ))}

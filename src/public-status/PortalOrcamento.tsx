@@ -410,6 +410,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
 
       {comprovante && (
         <div className={`sent-box portal-receipt${comprovante.decisao === "RECUSAR" ? " is-recusa" : ""}`} role="status">
+          <span className="portal-receipt-ok" aria-hidden="true">✓</span>
           <strong>Resposta registrada no AutoOS</strong>
           <p>
             {ROTULO_DECISAO[comprovante.decisao]} — {comprovante.equipamento}{comprovante.serie ? ` (série ${comprovante.serie})` : ""},
@@ -419,7 +420,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
           {comprovante.ordemCompra && <p>Ordem de compra: <strong>{comprovante.ordemCompra}</strong></p>}
           <p>A equipe já foi avisada; enviar a mensagem abaixo é opcional. Efetivação às {shortTime(comprovante.janelaAte)}.</p>
           {textoComprovante && <MensagemPronta whatsapp={whatsapp} texto={textoComprovante} />}
-          <button className="link-button" type="button" onClick={() => setComprovante(null)}>Fechar comprovante</button>
+          <button className="primary-button portal-full" type="button" onClick={() => setComprovante(null)}>Fechar comprovante</button>
         </div>
       )}
 
@@ -427,14 +428,15 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
         <div className="confirm-box portal-retention" ref={caixaEtapa} role="group" aria-labelledby="portal-retention-title">
           <h2 id="portal-retention-title">Tem certeza que quer recusar?</h2>
           <p>Qualquer dúvida, entre em contato conosco.</p>
+          {whatsapp && (
+            <a className="secondary-button portal-link-button portal-whats-suave" href={whatsappUrl(whatsapp, textoConversa)} target="_blank" rel="noopener noreferrer">
+              Falar com a equipe no WhatsApp
+            </a>
+          )}
           <div className="action-row portal-retention-actions">
-            {whatsapp && (
-              <a className="secondary-button portal-link-button" href={whatsappUrl(whatsapp, textoConversa)} target="_blank" rel="noopener noreferrer">
-                Falar com a equipe no WhatsApp
-              </a>
-            )}
+            <button className="secondary-button" type="button" onClick={() => setEtapa(null)}>Voltar</button>
+            <button className="primary-button portal-perigo" type="button" onClick={() => prosseguir("RECUSAR")}>Recusar mesmo assim</button>
           </div>
-          <button className="link-button portal-refuse-anyway" type="button" onClick={() => prosseguir("RECUSAR")}>Recusar mesmo assim</button>
         </div>
       )}
 
@@ -448,8 +450,8 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
               maxLength={72} value={senha} onChange={(event) => setSenha(event.target.value)} autoFocus />
             {erro && <p className="portal-error" role="alert">{erro}</p>}
             <div className="action-row">
-              <button className="primary-button" type="submit" disabled={busy || !senha}>{busy ? "Conferindo…" : "Confirmar senha"}</button>
               <button className="secondary-button" type="button" disabled={busy} onClick={() => setEtapa(null)}>Cancelar</button>
+              <button className="primary-button" type="submit" disabled={busy || !senha}>{busy ? "Conferindo…" : "Confirmar senha"}</button>
             </div>
           </form>
         </div>
@@ -481,10 +483,10 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
           {etapa.decisao === "DESFEITA" && <p className="answer-hint">O orçamento volta a aguardar resposta.</p>}
           {erro && <p className="portal-error" role="alert">{erro}</p>}
           <div className="action-row">
-            <button className="primary-button" type="button" disabled={busy} onClick={() => void responder()}>
+            <button className="secondary-button" type="button" disabled={busy} onClick={() => setEtapa(null)}>Voltar</button>
+            <button className={`primary-button${etapa.decisao === "RECUSAR" ? " portal-perigo" : ""}`} type="button" disabled={busy} onClick={() => void responder()}>
               {busy ? "Registrando…" : etapa.decisao === "APROVAR" ? "Confirmar aceite" : etapa.decisao === "RECUSAR" ? "Confirmar recusa" : "Cancelar resposta"}
             </button>
-            <button className="secondary-button" type="button" disabled={busy} onClick={() => setEtapa(null)}>Voltar</button>
           </div>
         </div>
       )}
@@ -524,11 +526,11 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
           )}
           {erro && <p className="portal-error" role="alert">{erro}</p>}
           <div className="action-row">
+            <button className="secondary-button" type="button" disabled={busy} onClick={() => setEtapa(null)}>Voltar</button>
             <button className="primary-button" type="button" disabled={busy || mensagem.trim().length === 0}
               onClick={() => void solicitar("MUDANCA")}>
               {busy ? "Registrando…" : "Solicitar correção"}
             </button>
-            <button className="secondary-button" type="button" disabled={busy} onClick={() => setEtapa(null)}>Voltar</button>
           </div>
         </div>
       )}
@@ -560,7 +562,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
             </button>
           )}
           {detalhe.podeDecidir && respostaAtiva?.estado === "EFETIVADA" && (
-            <button className="secondary-button" type="button" onClick={() => abrirSolicitacao("corrigir")}>Solicitar correção</button>
+            <button className="link-button portal-solicitar" type="button" onClick={() => abrirSolicitacao("corrigir")}>Solicitar correção</button>
           )}
         </div>
       )}
