@@ -71,10 +71,21 @@ describe("VendaDetalhe (/vendas/:id)", () => {
     expect(screen.getByText(/Ribbon cera 110x74: precisa de 10, há 6/)).toBeInTheDocument();
 
     await usuario.click(screen.getByRole("button", { name: "Dar entrada no estoque" }));
-    expect(mocks.navigate).toHaveBeenCalledWith("/insumos?entrada=9&quantidade=4");
+    expect(mocks.navigate).toHaveBeenCalledWith("/insumos?entrada=9&quantidade=4&voltar=%2Fvendas%2F34");
 
     await usuario.click(screen.getByRole("button", { name: "Aprovar" }));
     expect(screen.getByTestId("janela")).toHaveTextContent("aprovar");
+  });
+
+  it("com mais de um item faltando, cada um tem o seu Dar entrada com a quantidade dele", async () => {
+    const base = venda();
+    mocks.obter.mockResolvedValue(venda({ itens: [base.itens[0], { ...base.itens[1], saldo_estoque: 5 }] }));
+    const usuario = userEvent.setup();
+    renderPagina();
+    expect(await screen.findByText("Etiqueta térmica 100x50: precisa de 20, há 5")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dar entrada no estoque" })).not.toBeInTheDocument();
+    await usuario.click(screen.getByRole("button", { name: "Dar entrada no estoque: Etiqueta térmica 100x50" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/insumos?entrada=7&quantidade=15&voltar=%2Fvendas%2F34");
   });
 
   it("vencido mostra o aviso e a ação vira Renovar validade", async () => {

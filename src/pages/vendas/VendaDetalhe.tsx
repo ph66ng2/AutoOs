@@ -127,6 +127,12 @@ function etapasDaVenda(venda: OrcamentoInsumosDetalhe, vencido: boolean): Etapa[
   }));
 }
 
+const BOTAO_ENTRADA = "h-9 shrink-0 bg-acc-soft font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground";
+
+function textoFalta(item: OrcamentoInsumosDetalhe["itens"][number]): string {
+  return `${item.descricao}: precisa de ${item.quantidade}, há ${Math.max(item.saldo_estoque ?? 0, 0)}`;
+}
+
 function Cartao({ titulo, acao, children, className }: { titulo?: string; acao?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <section className={cn("rounded-2xl border bg-card p-5", className)}>
@@ -212,6 +218,13 @@ export default function VendaDetalhe() {
   const faltas = aberto
     ? venda.itens.filter((item) => item.saldo_estoque != null && item.saldo_estoque < item.quantidade)
     : [];
+
+  /** Leva à entrada do item em Insumos, já com a quantidade que falta; depois de salvar, volta para cá. */
+  function darEntrada(item: OrcamentoInsumosDetalhe["itens"][number]) {
+    const falta = item.quantidade - Math.max(item.saldo_estoque ?? 0, 0);
+    const voltar = encodeURIComponent(`/vendas/${venda!.id}`);
+    navigate(`/insumos?entrada=${item.produto_id}&quantidade=${falta}&voltar=${voltar}`);
+  }
 
   // Ação principal: a da lista; nos finais, PDF; no cancelado, excluir de vez.
   let principal: { rotulo: string; acao: AcaoInicialOrcamentoInsumos; destrutiva?: boolean; contorno?: boolean };
@@ -319,31 +332,47 @@ export default function VendaDetalhe() {
             </p>
           )}
           {faltas.length > 0 && !vencido && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-status-wait/30 bg-status-wait-bg px-4 py-3 text-sm text-status-wait">
-              <div className="min-w-0">
-                <p className="font-semibold">Falta estoque para aprovar</p>
-                <p>
-                  {faltas.map((item) => `${item.descricao}: precisa de ${item.quantidade}, há ${Math.max(item.saldo_estoque ?? 0, 0)}`).join("; ")}. A aprovação baixa tudo de uma vez e será recusada assim.
-                </p>
-              </div>
-              {podeAgir && (
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 bg-acc-soft font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
-                    onClick={() => {
-                      const item = faltas[0];
-                      const quantidade = item.quantidade - Math.max(item.saldo_estoque ?? 0, 0);
-                      navigate(`/insumos?entrada=${item.produto_id}&quantidade=${quantidade}`);
-                    }}
-                  >
-                    Dar entrada no estoque
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-9 bg-card" onClick={() => abrir("editar")}>
-                    Editar quantidades
-                  </Button>
+            <div className="space-y-3 rounded-xl border border-status-wait/30 bg-status-wait-bg px-4 py-3 text-sm text-status-wait">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">Falta estoque para aprovar</p>
+                  <p>
+                    {faltas.length === 1 ? `${textoFalta(faltas[0])}. ` : ""}
+                    A aprovação baixa tudo de uma vez e será recusada assim.
+                  </p>
                 </div>
+                {podeAgir && (
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {faltas.length === 1 && (
+                      <Button variant="ghost" size="sm" className={BOTAO_ENTRADA} onClick={() => darEntrada(faltas[0])}>
+                        Dar entrada no estoque
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" className="h-9 bg-card" onClick={() => abrir("editar")}>
+                      Editar quantidades
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {faltas.length > 1 && (
+                <ul className="divide-y divide-status-wait/20 border-t border-status-wait/20">
+                  {faltas.map((item) => (
+                    <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                      <span>{textoFalta(item)}</span>
+                      {podeAgir && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={BOTAO_ENTRADA}
+                          aria-label={`Dar entrada no estoque: ${item.descricao}`}
+                          onClick={() => darEntrada(item)}
+                        >
+                          Dar entrada
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           )}
