@@ -12,14 +12,35 @@ export type EtapaEmLote = (typeof ETAPAS_EM_LOTE)[number];
 
 export interface ResultadoLote {
   feitos: number;
-  /** "OS #12: motivo" de cada uma que não deu. */
+  /** WhatsApp aceito na fila central, ainda sem confirmação do provedor. */
+  naFila?: number;
+  /** "OS #12: motivo" de cada uma que não deu (a lista inteira, nunca cortada). */
   falhas: string[];
+  /** As OS das falhas, para continuarem selecionadas e serem tratadas de novo. */
+  idsComFalha: number[];
   /** OS que não se aplicam à ação (ex.: avisar pronto numa OS que não está pronta). */
   ignoradas: number;
 }
 
 const nomeOs = (eq: Equipamento) => `OS #${eq.id}`;
 const motivo = (erro: unknown) => (erro instanceof Error ? erro.message : String(erro ?? "erro desconhecido"));
+
+/**
+ * A versão atual da OS (a seleção pode ter sido feita antes de uma edição ou de outra página):
+ * etapa e token de concorrência frescos. Sem conseguir reler, usa a que veio.
+ */
+async function atual(eq: Equipamento): Promise<Equipamento> {
+  try {
+    return (await db.buscarEquipamento(eq.id!)) ?? eq;
+  } catch {
+    return eq;
+  }
+}
+
+function falhar(resultado: ResultadoLote, eq: Equipamento, motivoFalha: string) {
+  resultado.falhas.push(`${nomeOs(eq)}: ${motivoFalha}`);
+  if (eq.id != null) resultado.idsComFalha.push(eq.id);
+}
 
 /** Pode ir para a etapa pelo fluxo de status (a mesma regra da tela de mudar status). */
 export function podeIrPara(eq: Equipamento, etapa: EtapaEmLote): boolean {
@@ -41,14 +62,15 @@ export function useAcoesEmLote() {
 
   /** Ordem de serviço em PDF de cada OS, na pasta Documentos › AutoOS › Ordens de Servico. */
   const baixarOrdens = useCallback(async (itens: Equipamento[]): Promise<ResultadoLote> => {
-    const resultado: ResultadoLote = { feitos: 0, falhas: [], ignoradas: 0 };
-    for (const eq of itens) {
+    const resultado: ResultadoLote = { feitos: 0, falhas: [], idsComFalha: [], ignoradas: 0 };
+    for (const selecionado of itens) {
+      const eq = await atual(selecionado);
       try {
         const caminho = await PdfService.gerarOrdemServico(eq, nomeArquivoOrdem(eq));
         if (caminho) resultado.feitos += 1;
-        else resultado.falhas.push(`${nomeOs(eq)}: PDF não gerado`);
+        else falhar(resultado, eq, `PDF não gerado`);
       } catch (erro) {
-        resultado.falhas.push(`${nomeOs(eq)}: ${motivo(erro)}`);
+        falhar(resultado, eq, `${motivo(erro)}`);
       }
     }
     return resultado;
@@ -59,16 +81,18 @@ export function useAcoesEmLote() {
    * incerto não é repetido sozinho: entra nas falhas para a equipe conferir.
    */
   const avisarPronto = useCallback(async (itens: Equipamento[]): Promise<ResultadoLote> => {
-    const prontas = itens.filter((eq) => eq.status === "PRONTO");
-    const resultado: ResultadoLote = { feitos: 0, falhas: [], ignoradas: itens.length - prontas.length };
+    const frescas = await Promise.all(itens.map(atual));
+    const prontas = frescas.filter((eq) => eq.status === "PRONTO");
+    const resultado: ResultadoLote = { feitos: 0, naFila: 0, falhas: [], idsComFalha: [], ignoradas: frescas.length - prontas.length };
     for (const eq of prontas) {
       try {
         const envio = await WhatsAppService.solicitarEnvio(eq.id!, "equipamento_pronto", { reenvioManual: true });
-        if (envio.sucesso) resultado.feitos += 1;
-        else if (envio.requerConfirmacao || envio.estado === "INCERTA") resultado.falhas.push(`${nomeOs(eq)}: envio anterior incerto, confira antes de reenviar`);
-        else resultado.falhas.push(`${nomeOs(eq)}: ${envio.erro || "não enviado"}`);
+        if (envio.sucesso && envio.enfileirada) resultado.naFila = (resultado.naFila ?? 0) + 1;
+        else if (envio.sucesso) resultado.feitos += 1;
+        else if (envio.requerConfirmacao || envio.estado === "INCERTA") falhar(resultado, eq, `envio anterior incerto, confira antes de reenviar`);
+        else falhar(resultado, eq, `${envio.erro || "não enviado"}`);
       } catch (erro) {
-        resultado.falhas.push(`${nomeOs(eq)}: ${motivo(erro)}`);
+        falhar(resultado, eq, `${motivo(erro)}`);
       }
     }
     return resultado;
@@ -76,14 +100,15 @@ export function useAcoesEmLote() {
 
   /** Move para a etapa as OS que podem ir para ela; as outras ficam como estão. */
   const moverEtapa = useCallback(async (itens: Equipamento[], etapa: EtapaEmLote): Promise<ResultadoLote> => {
-    const aptas = itens.filter((eq) => podeIrPara(eq, etapa));
-    const resultado: ResultadoLote = { feitos: 0, falhas: [], ignoradas: itens.length - aptas.length };
+    const frescas = await Promise.all(itens.map(atual));
+    const aptas = frescas.filter((eq) => podeIrPara(eq, etapa));
+    const resultado: ResultadoLote = { feitos: 0, falhas: [], idsComFalha: [], ignoradas: frescas.length - aptas.length };
     for (const eq of aptas) {
       try {
         await db.atualizarStatusEquipamento(eq.id!, etapa, undefined, undefined, undefined, eq.atualizado_em);
         resultado.feitos += 1;
       } catch (erro) {
-        resultado.falhas.push(`${nomeOs(eq)}: ${motivo(erro)}`);
+        falhar(resultado, eq, `${motivo(erro)}`);
       }
     }
     return resultado;

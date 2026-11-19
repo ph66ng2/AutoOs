@@ -217,7 +217,7 @@ import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { quandoRascunho, useRascunho } from "@/hooks/useRascunho";
 import { HistoricoDoSerial } from "@/components/equipamentos/HistoricoDoSerial";
 import { BotaoCopiar } from "@/components/ui/botao-copiar";
-import { AcoesEmLote } from "@/components/equipamentos/AcoesEmLote";
+import { AcoesEmLote, type RelatorioLote } from "@/components/equipamentos/AcoesEmLote";
 import { Checkbox } from "@/components/ui/checkbox";
 import { emailDoTecnico } from "@/lib/tecnicos";
 import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
@@ -358,7 +358,10 @@ export default function Equipamentos() {
   const primeiroTecnico = tecnicos[0]?.nome ?? "";
   const nomesFiltroTecnico = useNomesFiltroTecnico();
   // Seleção para ações em lote: guarda a OS inteira, então sobrevive à troca de página.
+  // As ações releem cada OS antes de agir; aqui a seleção só acompanha a lista recarregada.
   const [selecaoLote, setSelecaoLote] = useState<Map<number, Equipamento>>(() => new Map());
+  const [loteOcupado, setLoteOcupado] = useState(false);
+  const [relatorioLote, setRelatorioLote] = useState<RelatorioLote | null>(null);
   const alternarSelecao = (eq: Equipamento, marcar: boolean) => setSelecaoLote((atual) => {
     const proxima = new Map(atual);
     if (marcar && eq.id != null) proxima.set(eq.id, eq);
@@ -428,6 +431,20 @@ export default function Equipamentos() {
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
   const equipamentosExibidos = equipamentos;
+  useEffect(() => {
+    setSelecaoLote((atual) => {
+      if (atual.size === 0) return atual;
+      let mudou = false;
+      const proxima = new Map(atual);
+      for (const eq of equipamentos) {
+        if (eq.id != null && proxima.has(eq.id) && proxima.get(eq.id) !== eq) {
+          proxima.set(eq.id, eq);
+          mudou = true;
+        }
+      }
+      return mudou ? proxima : atual;
+    });
+  }, [equipamentos]);
 
   usePrimeiraPaginaAoFiltrar([busca, statusFiltro, ordenacao, tecnicoFiltro], () => setPaginaEquipamentos(1));
 
@@ -2998,6 +3015,21 @@ export default function Equipamentos() {
             </div>
           </div>
 
+          {/* Fora do bloco de carregamento: recarregar a lista não desmonta a barra no meio de um lote. */}
+          {(selecaoLote.size > 0 || loteOcupado || relatorioLote) && (
+            <AcoesEmLote
+              selecionados={[...selecaoLote.values()]}
+              ocupado={loteOcupado}
+              onOcupadoChange={setLoteOcupado}
+              relatorio={relatorioLote}
+              onRelatorioChange={setRelatorioLote}
+              onLimpar={() => setSelecaoLote(new Map())}
+              onConcluido={async (idsComFalha, recarregarLista) => {
+                setSelecaoLote((atual) => new Map([...atual].filter(([id]) => idsComFalha.includes(id))));
+                if (recarregarLista) await recarregar();
+              }}
+            />
+          )}
           {loading ? (
             <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
           ) : equipamentos.length === 0 ? (
@@ -3008,13 +3040,6 @@ export default function Equipamentos() {
             </div>
           ) : (
             <>
-              {selecaoLote.size > 0 && (
-                <AcoesEmLote
-                  selecionados={[...selecaoLote.values()]}
-                  onLimpar={() => setSelecaoLote(new Map())}
-                  onConcluido={async () => { setSelecaoLote(new Map()); await recarregar(); }}
-                />
-              )}
               {/* Celular: um cartão por equipamento; a tabela larga com a coluna fixa só a partir de md. */}
               {!telaLarga ? (
               <ul className="space-y-3" aria-label="Equipamentos">
