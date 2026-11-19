@@ -24,11 +24,13 @@ describe("useAtalhosGlobais", () => {
     expect(document.activeElement).toBe(campo);
   });
 
-  it("com uma janela aberta as letras não fazem nada", () => {
+  it("com uma janela modal aberta nem as letras nem o Ctrl+K fazem nada", () => {
     const a = acoes();
     renderHook(() => useAtalhosGlobais(a));
     render(<div role="dialog" data-state="open">janela</div>);
     fireEvent.keyDown(document.body, { key: "n" });
     expect(a.novaEntrada).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    expect(a.abrirBusca).not.toHaveBeenCalled();
   });
 });

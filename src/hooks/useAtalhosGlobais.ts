@@ -19,8 +19,9 @@ export function caixaDeBuscaDaTela(raiz: ParentNode = document): HTMLInputElemen
 }
 
 /**
- * Atalhos do app inteiro. Ctrl+K vale sempre; as letras só fora de campos de texto
- * e sem janela modal aberta (o convite do tour não conta), para nunca roubar o que a pessoa está digitando.
+ * Atalhos do app inteiro. Ctrl+K vale também dentro de campos; as letras só fora deles.
+ * Nenhum vale com janela modal aberta (o convite do tour não conta).
+ * Assim nunca roubam o que a pessoa está digitando nem trocam a tela por baixo de uma operação.
  */
 export function useAtalhosGlobais(acoes: AcoesAtalho) {
   const ref = useRef(acoes);
@@ -28,13 +29,17 @@ export function useAtalhosGlobais(acoes: AcoesAtalho) {
   useEffect(() => {
     const aoTeclar = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return;
+      // Com uma janela modal aberta (mudança de status, cadastro…) nada navega por atalho:
+      // trocar de equipamento por baixo dela aplicaria a operação no equipamento errado.
+      const janelaAberta = document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]') != null;
       if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "k") {
+        if (janelaAberta) return;
         event.preventDefault();
         ref.current.abrirBusca();
         return;
       }
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (editavel(event.target) || document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')) return;
+      if (editavel(event.target) || janelaAberta) return;
       if (event.key === "/") {
         const caixa = caixaDeBuscaDaTela();
         if (!caixa) return;
