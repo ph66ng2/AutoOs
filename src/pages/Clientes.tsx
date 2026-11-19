@@ -21,6 +21,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { useNavigate } from "react-router-dom";
 import { formatDatePtBr } from "@/lib/date-utils";
 import {
@@ -93,8 +94,8 @@ export default function Clientes() {
     { valor: "COM_OS_ABERTA", rotulo: "Com OS aberta" },
     { valor: "PORTAL_ATIVO", rotulo: "Portal ativo" },
   ];
-  const [busca, setBusca] = useState("");
-  const [abaAtual, setAbaAtual] = useState(1);
+  const [busca, setBusca] = useEstadoLembrado("clientes:busca", "");
+  const [abaAtual, setAbaAtual] = useEstadoLembrado("clientes:pagina", 1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editando, setEditando] = useState<Cliente | null>(null);
@@ -108,7 +109,7 @@ export default function Clientes() {
   const [, setExpandido] = useState<number | null>(null);
   const expandidoRef = useRef<number | null>(null);
   const equipRequisicaoRef = useRef(0);
-  const [filtro, setFiltro] = useState<FiltroClientes>("TODOS");
+  const [filtro, setFiltro] = useEstadoLembrado<FiltroClientes>("clientes:filtro", "TODOS");
   const [equipamentosCliente, setEquipamentosCliente] = useState<Equipamento[]>([]);
   const aparelhosCliente = useMemo(() => agruparHistoricoEquipamentos(equipamentosCliente), [equipamentosCliente]);
   const [carregandoEquip, setCarregandoEquip] = useState(false);
@@ -136,9 +137,7 @@ export default function Clientes() {
   const abaExibida = Math.min(abaAtual, totalAbas);
   const clientesExibidos = clientes;
 
-  useEffect(() => {
-    setAbaAtual(1);
-  }, [busca, filtro]);
+  usePrimeiraPaginaAoFiltrar([busca, filtro], () => setAbaAtual(1));
 
   useEffect(() => {
     setAbaAtual((aba) => Math.min(aba, totalAbas));

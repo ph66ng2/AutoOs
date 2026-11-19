@@ -106,6 +106,20 @@ fn normalize_status_key(status: &str) -> String {
     .to_string()
 }
 
+/// Status do filtro: aceita um só ou uma lista separada por vírgula; "TODOS" e vazios somem.
+fn status_filtrados(status: Option<&str>) -> Vec<String> {
+    let mut lista: Vec<String> = status
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "TODOS")
+        .map(normalize_status_key)
+        .collect();
+    lista.sort_unstable();
+    lista.dedup();
+    lista
+}
+
 fn add_equipment_filters(
     query: &mut QueryBuilder<Postgres>,
     empresa_id: i32,
@@ -166,11 +180,10 @@ fn add_equipment_filters(
         query.push(")");
     }
 
-    if let Some(status) = status
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "TODOS")
-    {
-        query.push(" AND status = ").push_bind(normalize_status_key(status));
+    // Um status ou vários separados por vírgula ("RECEBIDO,EM_VERIFICACAO"), vindos das pílulas combinadas.
+    let status_lista = status_filtrados(status);
+    if !status_lista.is_empty() {
+        query.push(" AND status = ANY(").push_bind(status_lista).push(")");
     }
 
     // Técnico = quem assinou a verificação mais recente (o mesmo que a lista mostra).
@@ -1572,6 +1585,17 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn filtro_aceita_um_ou_varios_status() {
+        assert!(status_filtrados(None).is_empty());
+        assert!(status_filtrados(Some("TODOS")).is_empty());
+        assert_eq!(status_filtrados(Some("Recebido")), vec!["RECEBIDO"]);
+        assert_eq!(
+            status_filtrados(Some("EM_VERIFICACAO, RECEBIDO,,RECEBIDO")),
+            vec!["EM_VERIFICACAO", "RECEBIDO"]
+        );
+    }
 
     #[test]
     fn motivo_divergencia_vai_para_auditoria_sem_quebrar_os_detalhes() {

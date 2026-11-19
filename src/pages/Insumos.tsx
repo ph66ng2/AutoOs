@@ -23,6 +23,7 @@ import { useEstadoNavegacao } from "@/hooks/useEstadoNavegacao";
 import { PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
 import { EscolherItemDialog } from "@/pages/insumos/EscolherItemDialog";
 import { useEffect, useRef, useState } from "react";
+import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import {
   Package,
   Plus,
@@ -81,10 +82,18 @@ function NumeroEstoque({ titulo, valor, detalhe, alerta = false }: { titulo: str
 export default function Insumos() {
   // Item de "Estoque baixo" do Início: a lista abre já buscando por ele.
   const estadoNavegacao = useEstadoNavegacao<{ busca?: string }>();
-  const [busca, setBusca] = useState(() => estadoNavegacao?.busca ?? "");
-  const [categoriaFiltro, setCategoriaFiltro] = useState("TODOS");
+  const [buscaLembrada, setBusca] = useEstadoLembrado("insumos:busca", "");
+  // Vindo do Início, a busca pedida vale na abertura; depois a tela segue a digitada.
+  const [buscaDoInicio, setBuscaDoInicio] = useState(() => estadoNavegacao?.busca ?? null);
+  const busca = buscaDoInicio ?? buscaLembrada;
+  useEffect(() => {
+    if (buscaDoInicio == null) return;
+    setBusca(buscaDoInicio);
+    setBuscaDoInicio(null);
+  }, [buscaDoInicio, setBusca]);
+  const [categoriaFiltro, setCategoriaFiltro] = useEstadoLembrado("insumos:categoria", "TODOS");
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
-  const [paginaInsumos, setPaginaInsumos] = useState(1);
+  const [paginaInsumos, setPaginaInsumos] = useEstadoLembrado("insumos:pagina", 1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [movDialogOpen, setMovDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -118,9 +127,7 @@ export default function Insumos() {
   const paginaInsumosExibida = Math.min(paginaInsumos, totalPaginasInsumos);
   const produtosExibidos = produtos;
 
-  useEffect(() => {
-    setPaginaInsumos(1);
-  }, [busca, categoriaFiltro, apenasEstoqueBaixo]);
+  usePrimeiraPaginaAoFiltrar([busca, categoriaFiltro, apenasEstoqueBaixo], () => setPaginaInsumos(1));
 
   useEffect(() => {
     setPaginaInsumos((pagina) => Math.min(pagina, totalPaginasInsumos));

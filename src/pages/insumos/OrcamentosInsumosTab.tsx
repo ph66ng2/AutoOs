@@ -3,6 +3,7 @@
  * com busca e filtro de status. Editar é página; cada ação abre o seu modal (AcaoVendaDialog).
  */
 import { useEffect, useState, type ReactNode } from "react";
+import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { Lock, Package, Plus, Search } from "lucide-react";
 import { TracosDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { Button } from "@/components/ui/button";
@@ -78,9 +79,9 @@ function SituacaoComEtapas({ status, vencido }: { status: StatusOrcamentoInsumos
 }
 
 export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, renderCabecalho }: OrcamentosInsumosTabProps = {}) {
-  const [busca, setBusca] = useState("");
-  const [status, setStatus] = useState<StatusOrcamentoInsumos | "TODOS">("TODOS");
-  const [pagina, setPagina] = useState(1);
+  const [busca, setBusca] = useEstadoLembrado("vendas:busca", "");
+  const [status, setStatus] = useEstadoLembrado<StatusOrcamentoInsumos | "TODOS">("vendas:status", "TODOS");
+  const [pagina, setPagina] = useEstadoLembrado("vendas:pagina", 1);
   const [orcamentoId, setOrcamentoId] = useState<number | null>(null);
   const [acaoInicial, setAcaoInicial] = useState<AcaoInicialOrcamentoInsumos | null>(null);
   const { ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
@@ -98,9 +99,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
   const totalGeral = contagemPorStatus?.reduce((soma, c) => soma + c.total, 0);
   const filtrando = Boolean(busca.trim()) || status !== "TODOS";
 
-  useEffect(() => {
-    setPagina(1);
-  }, [busca, status]);
+  usePrimeiraPaginaAoFiltrar([busca, status], () => setPagina(1));
   useEffect(() => {
     setPagina((atual) => Math.min(atual, paginas));
   }, [paginas]);

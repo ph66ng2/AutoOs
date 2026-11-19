@@ -211,6 +211,7 @@ import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
 import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
 import { useNomesFiltroTecnico, useTecnicos } from "@/hooks/useTecnicos";
+import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { emailDoTecnico } from "@/lib/tecnicos";
 import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
 import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
@@ -231,10 +232,11 @@ const EQUIPMENT_ROW_FOCUS_FIRST = `relative ${EQUIPMENT_ROW_FOCUS_RING} group-ha
 const EQUIPMENT_ROW_FOCUS_LAST = `${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-r-[3px]`;
 
 export default function Equipamentos() {
-  const [busca, setBusca] = useState("");
-  const [statusFiltro, setStatusFiltro] = useState("TODOS");
-  const [ordenacao, setOrdenacao] = useState<"ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE">("ATUALIZACAO_RECENTE");
-  const [paginaEquipamentos, setPaginaEquipamentos] = useState(1);
+  // Filtro, busca, ordenação e página voltam como estavam ao reabrir a lista (na mesma sessão).
+  const [busca, setBusca] = useEstadoLembrado("equipamentos:busca", "");
+  const [statusFiltro, setStatusFiltro] = useEstadoLembrado("equipamentos:status", "TODOS");
+  const [ordenacao, setOrdenacao] = useEstadoLembrado<"ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE">("equipamentos:ordenacao", "ATUALIZACAO_RECENTE");
+  const [paginaEquipamentos, setPaginaEquipamentos] = useEstadoLembrado("equipamentos:pagina", 1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   // Detalhes da OS: a rota /equipamentos/:id manda, e o estado local acompanha
@@ -392,7 +394,7 @@ export default function Equipamentos() {
   } | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const [tecnicoFiltro, setTecnicoFiltro] = useState<string>("TODOS");
+  const [tecnicoFiltro, setTecnicoFiltro] = useEstadoLembrado("equipamentos:tecnico", "TODOS");
   const [exportando, setExportando] = useState(false);
   const exportarEquipamentos = useExportarEquipamentos();
   async function baixarCsv() {
@@ -412,9 +414,7 @@ export default function Equipamentos() {
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
   const equipamentosExibidos = equipamentos;
 
-  useEffect(() => {
-    setPaginaEquipamentos(1);
-  }, [busca, statusFiltro, ordenacao, tecnicoFiltro]);
+  usePrimeiraPaginaAoFiltrar([busca, statusFiltro, ordenacao, tecnicoFiltro], () => setPaginaEquipamentos(1));
 
   useEffect(() => {
     setPaginaEquipamentos((pagina) => Math.min(pagina, totalPaginasEquipamentos));
@@ -2820,6 +2820,7 @@ export default function Equipamentos() {
             valor={statusFiltro}
             contagens={contagensStatus}
             onChange={setStatusFiltro}
+            multiplo
           />
           <div className="flex flex-col gap-3 lg:flex-row">
             <div className="relative flex-1">

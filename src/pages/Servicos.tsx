@@ -1,6 +1,7 @@
 import { validarPecas } from "@/lib/orcamento-estoque";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { Plus, Search, RefreshCw, Wrench, AlertTriangle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -40,11 +41,11 @@ import { MODELOS_SERVICO } from "@/pages/servicos/servicos-modelos";
 import { PageHeader } from "@/components/PageHeader";
 
 export default function Servicos() {
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useEstadoLembrado("servicos:busca", "");
   /** O interruptor de cada cartão desativa (com confirmação) ou reativa o serviço. */
   const [mostrar, setMostrar] = useState<SituacaoServico>("ATIVOS");
   const [alternando, setAlternando] = useState<number | null>(null);
-  const [paginaServicos, setPaginaServicos] = useState(1);
+  const [paginaServicos, setPaginaServicos] = useEstadoLembrado("servicos:pagina", 1);
   const [modeloSelecionado, setModeloSelecionado] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -64,9 +65,7 @@ export default function Servicos() {
   const paginaServicosExibida = Math.min(paginaServicos, totalPaginasServicos);
   const servicosExibidos = servicos;
 
-  useEffect(() => {
-    setPaginaServicos(1);
-  }, [busca, mostrar]);
+  usePrimeiraPaginaAoFiltrar([busca, mostrar], () => setPaginaServicos(1));
 
   useEffect(() => {
     setPaginaServicos((pagina) => Math.min(pagina, totalPaginasServicos));
