@@ -163,22 +163,29 @@ describe("PortalAlertasSino", () => {
     window.removeEventListener(EVENTO_ALERTAS_PORTAL, ouvir);
   });
 
-  it("abas Todos / Erros / Portal do Cliente separam erros do app e alertas do portal", async () => {
+  it("abas Avisos / Sistema: erros do app ficam em Sistema e não contam no número do sino", async () => {
     notificarErro("Equipamentos", "Salvar equipamento", new Error("AUTOOS:DB:42P01#ABCD2345\nNão foi possível concluir esta ação."));
     renderSino();
-    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 2 não lida(s)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 1 não lida(s)" }));
     expect(await screen.findByText(alerta.titulo)).toBeInTheDocument();
-    expect(screen.getByText("Equipamentos — Salvar equipamento")).toBeInTheDocument();
+    expect(screen.queryByText("Equipamentos — Salvar equipamento")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: /Erros/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Sistema/ }));
     expect(screen.queryByText(alerta.titulo)).not.toBeInTheDocument();
     expect(screen.getByText("Equipamentos — Salvar equipamento")).toBeInTheDocument();
     expect(screen.getByText(/AUTOOS:DB:42P01/)).toBeInTheDocument();
     expect(screen.getByText(/ref ABCD2345/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: /Portal do Cliente/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Avisos/ }));
     expect(screen.getByText(alerta.titulo)).toBeInTheDocument();
-    expect(screen.queryByText("Equipamentos — Salvar equipamento")).not.toBeInTheDocument();
+  });
+
+  it("só erro do app: o sino não mostra número, só avisa que há erro em Sistema", async () => {
+    notificarErro("Clientes", "Salvar cliente", new Error("falhou"));
+    mocks.contar.mockResolvedValue(0);
+    mocks.listar.mockResolvedValue([]);
+    renderSino();
+    expect(await screen.findByRole("button", { name: "Notificações: erros novos em Sistema" })).toBeInTheDocument();
   });
 
   it("copiar no painel de erros leva código, descrição técnica e referência do log", async () => {
@@ -189,7 +196,7 @@ describe("PortalAlertasSino", () => {
     mocks.listar.mockResolvedValue([]);
     renderSino();
     fireEvent.click(await screen.findByRole("button", { name: /Notificações/ }));
-    fireEvent.click(await screen.findByRole("tab", { name: /Erros/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: /Sistema/ }));
     fireEvent.click(screen.getByRole("button", { name: /Copiar relatório/ }));
     await waitFor(() => expect(escrever).toHaveBeenCalled());
     const texto = escrever.mock.calls[0][0] as string;

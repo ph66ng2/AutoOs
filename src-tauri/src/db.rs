@@ -359,6 +359,8 @@ const REQUIRED_RUNTIME_TABLES: &[&str] = &[
     "orcamentos_insumos_contadores",
     // Perfil e primeiro acesso por código (0041): a tela de perfis lê estas colunas.
     "codigos_primeiro_acesso",
+    // Notificações lidas por perfil (0052): o sino lê e grava aqui.
+    "notificacao_leituras",
 ];
 
 const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
