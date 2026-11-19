@@ -39,6 +39,7 @@ import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { useEmpresaAtiva } from "@/hooks/useEmpresaAtiva";
 import { Suspense, useMemo, useState } from "react";
 import { BuscaGlobal } from "@/components/busca/BuscaGlobal";
+import type { TelaBuscavel } from "@/hooks/useBuscaGlobal";
 import { AjudaAtalhos } from "@/components/busca/AjudaAtalhos";
 import { useAtalhosGlobais } from "@/hooks/useAtalhosGlobais";
 import { cn } from "@/lib/utils";
@@ -70,8 +71,8 @@ interface NavItem {
 }
 
 /**
- * Menu agrupado por área (MenuLateral do DS). Balcão entra como no canvas: o item troca
- * o app para o modo Balcão (CounterLayout), que tem o seu "Modo completo" para voltar.
+ * Menu agrupado por área (MenuLateral do DS). O Modo Balcão não ocupa lugar no menu: fica
+ * num ícone discreto no pé (e no Ctrl+K); o CounterLayout tem o seu "Modo completo" para voltar.
  */
 const navGroups: { titulo?: string; itens: NavItem[] }[] = [
   { itens: [{ label: "Início", path: "/", icon: LayoutGrid }] },
@@ -79,7 +80,6 @@ const navGroups: { titulo?: string; itens: NavItem[] }[] = [
     titulo: "Atendimento",
     itens: [
       { label: "Equipamentos", path: "/equipamentos", icon: Printer },
-      { label: "Balcão", path: "/balcao", icon: Store, modo: "counter" },
       { label: "Clientes", path: "/clientes", icon: Users },
       { label: "Vendas de insumos", path: "/vendas", icon: ShoppingBag },
     ],
@@ -140,14 +140,20 @@ export function Layout() {
     .filter((grupo) => grupo.itens.length > 0);
   const mostrarConfiguracoes = navItemVisible(configuracoesItem, status);
   const navigate = useNavigate();
+  const abrirModoBalcao = () => {
+    setMobileOpen(false);
+    setAppMode("counter");
+    navigate("/balcao");
+  };
   const [buscaAberta, setBuscaAberta] = useState(false);
   const [ajudaAberta, setAjudaAberta] = useState(false);
-  // Telas que o Ctrl+K encontra: as mesmas do menu (Balcão troca o modo do app, fica de fora).
+  // Telas que o Ctrl+K encontra: as mesmas do menu, mais o Modo Balcão.
   const chaveTelas = visibleGroups.flatMap((grupo) => grupo.itens.map((item) => item.path)).join("|") + (mostrarConfiguracoes ? "|cfg" : "");
   const telasBuscaveis = useMemo(
     () => [...visibleGroups.flatMap((grupo) => grupo.itens), ...(mostrarConfiguracoes ? [configuracoesItem] : [])]
       .filter((item) => !item.modo)
-      .map((item) => ({ label: item.label, path: item.path })),
+      .map((item): TelaBuscavel => ({ label: item.label, path: item.path }))
+      .concat({ label: "Modo Balcão", path: "/balcao", aoAbrir: () => setAppMode("counter") }),
     [chaveTelas],
   );
   useAtalhosGlobais({
@@ -252,12 +258,21 @@ export function Layout() {
         {/* Pé: Configurações e o cartão do perfil */}
         <div className="mt-auto space-y-2 px-3 pb-3 pt-2">
           {/* No computador não há barra no topo (canvas): as notificações ficam ao lado de Configurações. */}
-          {(mostrarConfiguracoes || telaLarga) && (
-            <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
-              {mostrarConfiguracoes && <nav aria-label="Sistema" className="min-w-0 flex-1">{renderItem(configuracoesItem)}</nav>}
-              {telaLarga && <PortalAlertasSino />}
-            </div>
-          )}
+          <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
+            {mostrarConfiguracoes ? <nav aria-label="Sistema" className="min-w-0 flex-1">{renderItem(configuracoesItem)}</nav> : <span className="flex-1" />}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Abrir o Modo Balcão"
+              title="Modo Balcão (tela de toque da recepção)"
+              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={() => abrirModoBalcao()}
+            >
+              <Store className="h-[18px] w-[18px]" />
+            </Button>
+            {telaLarga && <PortalAlertasSino />}
+          </div>
           {!collapsed && mostrarAvisoAcesso && <SensitiveAccessBadge />}
           {activeProfile && activeLook && (
             <div
