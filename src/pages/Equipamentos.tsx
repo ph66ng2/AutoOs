@@ -179,6 +179,7 @@ import {
   totalOrcamentoAjusteValido,
   totalOrcamentoAprovacaoValido,
   whatsappNaoConfigurado,
+  entradaTemAlgo,
 } from "@/pages/equipamentos/equipamentos-page-utils";
 import { DateIsoInput } from "@/components/ui/date-iso-input";
 import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
@@ -212,6 +213,8 @@ import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
 import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
 import { useNomesFiltroTecnico, useTecnicos } from "@/hooks/useTecnicos";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+import { quandoRascunho, useRascunho } from "@/hooks/useRascunho";
 import { emailDoTecnico } from "@/lib/tecnicos";
 import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
 import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
@@ -585,6 +588,76 @@ export default function Equipamentos() {
       },
   });
 
+  // Rascunho da Nova entrada: fechar a janela, trocar de tela ou fechar o app não perde o que foi digitado.
+  interface RascunhoEntrada {
+    form: EquipamentoFormData;
+    cliente: Cliente | null;
+    responsavel: ClienteContato | null;
+    tecnico: string;
+    /** Formulário que gravou (sobrevive a sair e voltar da tela): salvar só apaga o próprio rascunho. */
+    dono?: string;
+  }
+  const rascunhoEntrada = useRascunho<RascunhoEntrada>("nova-entrada");
+  /** Cada Nova entrada aberta ganha uma identidade gravada junto com o rascunho. */
+  const donoRascunhoEntrada = useRef("");
+  const [rascunhoRecuperadoEm, setRascunhoRecuperadoEm] = useState<string | null>(null);
+  const [conferindoSerie, setConferindoSerie] = useState(false);
+  /**
+   * Toda consulta de histórico da série (digitada, do rascunho ou de um equipamento anterior)
+   * ganha um número; só a mais recente, e só se a série ainda for a mesma, aplica o resultado.
+   */
+  const consultaSerieSeq = useRef(0);
+  const novaEntradaAberta = dialogOpen && !editando;
+  useEffect(() => {
+    if (!novaEntradaAberta) return;
+    const guardar = () => {
+      const valores = form.getValues();
+      const temAlgo = entradaTemAlgo(valores, clienteVinculado);
+      // Formulário vazio não tem rascunho (e cancela um salvamento antigo pendente, como o
+      // que o reset de "Começar do zero" agenda com o cliente anterior).
+      if (temAlgo) rascunhoEntrada.salvar({ form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento, dono: donoRascunhoEntrada.current });
+      else rascunhoEntrada.limpar();
+    };
+    guardar();
+    const assinatura = form.watch(guardar);
+    return () => assinatura.unsubscribe();
+  }, [novaEntradaAberta, form, clienteVinculado, responsavelVinculado, tecnicoNovoEquipamento, rascunhoEntrada]);
+
+  /**
+   * Cancelar a Nova entrada descarta o rascunho (Esc, o X e trocar de tela guardam).
+   * Com algo preenchido, o aviso oferece desfazer por alguns segundos.
+   */
+  function descartarEntrada() {
+    const valores = form.getValues();
+    const temAlgo = entradaTemAlgo(valores, clienteVinculado);
+    const copia: RascunhoEntrada = { form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento, dono: donoRascunhoEntrada.current };
+    rascunhoEntrada.limpar();
+    setRascunhoRecuperadoEm(null);
+    if (!temAlgo) return;
+    toast("Entrada descartada", {
+      action: {
+        label: "Desfazer",
+        onClick: () => {
+          rascunhoEntrada.salvarAgora(copia);
+          abrirNovo();
+        },
+      },
+    });
+  }
+
+  function comecarEntradaDoZero() {
+    rascunhoEntrada.limpar();
+    setRascunhoRecuperadoEm(null);
+    setClienteVinculado(null);
+    setResponsavelVinculado(null);
+    setTecnicoNovoEquipamento(primeiroTecnico);
+    form.reset({
+      serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
+      defeito_relatado: "", acessorios: [], acessorios_outros: "",
+      observacoes: "",
+    });
+  }
+
   // ─── Handlers ─────────────────────────────────────────
 
   /** Abre dialog para criar novo equipamento. Reseta form e limpa cliente */
@@ -608,6 +681,29 @@ export default function Equipamentos() {
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
       observacoes: "",
     });
+    donoRascunhoEntrada.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    consultaSerieSeq.current += 1; // consulta de um formulário anterior não vale para este
+    setConferindoSerie(false);
+    const rascunho = rascunhoEntrada.ler();
+    setRascunhoRecuperadoEm(rascunho?.salvoEm ?? null);
+    if (rascunho) {
+      form.reset({ ...form.getValues(), ...rascunho.dados.form, status: "RECEBIDO" });
+      setClienteVinculado(rascunho.dados.cliente);
+      setResponsavelVinculado(rascunho.dados.responsavel);
+      if (rascunho.dados.tecnico) setTecnicoNovoEquipamento(rascunho.dados.tecnico);
+      // A série do rascunho passa pela mesma conferência de histórico que a digitada:
+      // sem isso, dava para cadastrar outro ciclo sem a confirmação obrigatória.
+      const serieRascunho = rascunho.dados.form.serial_number?.trim() ?? "";
+      if (serieRascunho.length >= 3) {
+        const seq = ++consultaSerieSeq.current;
+        const vale = () => seq === consultaSerieSeq.current && form.getValues("serial_number")?.trim() === serieRascunho;
+        setConferindoSerie(true);
+        db.buscarEquipamentosPorSerial(serieRascunho)
+          .then((registros) => { if (vale()) setRegistrosAnteriores(registros); })
+          .catch((err) => console.error("Erro ao buscar registros anteriores:", err))
+          .finally(() => { if (seq === consultaSerieSeq.current) setConferindoSerie(false); });
+      }
+    }
     setDialogOpen(true);
   }
 
@@ -776,15 +872,21 @@ export default function Equipamentos() {
   /** Ao perder foco no campo serial, busca registros existentes com mesmo número de série */
   async function handleSerialBlur() {
     const serial = form.getValues("serial_number");
+    // Consulta nova: a do rascunho (se ainda estiver no ar) deixa de valer.
+    const seq = ++consultaSerieSeq.current;
     // Esconde sugestões após blur (delay pra permitir clique)
     setTimeout(() => setMostrarSugestoes(false), 200);
     if (!serial || serial.trim().length < 3) {
+      setConferindoSerie(false);
       setRegistrosAnteriores([]);
       setConfirmouNovoCiclo(false);
       return;
     }
+    // Cadastrar fica travado até a resposta: série repetida exige confirmar o novo ciclo.
+    setConferindoSerie(true);
     try {
       const registros = await db.buscarEquipamentosPorSerial(serial);
+      if (seq !== consultaSerieSeq.current || form.getValues("serial_number") !== serial) return;
       const anteriores = editando
         ? registros.filter((r) => r.id !== editando.id)
         : registros;
@@ -792,6 +894,8 @@ export default function Equipamentos() {
       setConfirmouNovoCiclo(false);
     } catch (err) {
       console.error("Erro ao buscar registros anteriores:", err);
+    } finally {
+      if (seq === consultaSerieSeq.current) setConferindoSerie(false);
     }
   }
 
@@ -800,7 +904,15 @@ export default function Equipamentos() {
    * quando o atendimento já foi encerrado; se ainda está em atendimento, avisa e não preenche.
    */
   async function usarEquipamentoAnterior(anterior: Equipamento) {
-    const resultado = await usarEquipamentoAnteriorNoCadastro(form, anterior, (serial) => db.buscarEquipamentosPorSerial(serial));
+    const seq = ++consultaSerieSeq.current;
+    setConferindoSerie(true);
+    let resultado: Awaited<ReturnType<typeof usarEquipamentoAnteriorNoCadastro>>;
+    try {
+      resultado = await usarEquipamentoAnteriorNoCadastro(form, anterior, (serial) => db.buscarEquipamentosPorSerial(serial));
+    } finally {
+      if (seq === consultaSerieSeq.current) setConferindoSerie(false);
+    }
+    if (seq !== consultaSerieSeq.current) return;
     if (resultado.tipo === "em_atendimento") {
       setAnteriorEmAtendimento(anterior);
       return;
@@ -911,6 +1023,10 @@ export default function Equipamentos() {
       });
   }, [idDetalhesRota, abrirDetalhes, navigate]);
 
+  // Verificação pela metade: menu, Ctrl+K ou voltar perguntam antes. Só Cancelar e
+  // Finalizar (fecharPaginaVerificacao) passam direto.
+  const [verificacaoSuja, setVerificacaoSuja] = useState(false);
+  const avisoVerificacao = useAvisoAoSair(verificacaoDialogOpen && verificacaoSuja);
   const paginaVerificacaoAbertaRef = useRef(false);
   paginaVerificacaoAbertaRef.current = verificacaoDialogOpen;
   /** Abre a página de verificação técnica (VerificacaoTecnica.tsx, /equipamentos/:id/verificacao). */
@@ -938,7 +1054,10 @@ export default function Equipamentos() {
       db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
       return;
     }
-    if (pathnameAtualRef.current !== origem) navigate(origem);
+    if (pathnameAtualRef.current !== origem) {
+      avisoVerificacao.liberarProximaSaida();
+      navigate(origem);
+    }
   }
 
   // Link direto, voltar ou avançar até a verificação: abre a página se a OS está em verificação.
@@ -1228,6 +1347,9 @@ export default function Equipamentos() {
    */
   async function onSubmit(data: EquipamentoFormData) {
     const sequenciaEdicao = fotoEdicaoSeq.current;
+    const meuRascunhoEntrada = donoRascunhoEntrada.current;
+    // Mesma trava do botão, também para o Enter: série repetida exige confirmar o novo ciclo.
+    if (conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)) return;
     const baselineFotos = editando ? baselineFotosRef.current : null;
     if (editando && (carregandoImagensFormulario || !baselineFotos || baselineFotos.equipamentoId !== editando.id)) {
       setErroImagens("As fotos ainda não foram carregadas com segurança. Recarregue as fotos antes de salvar.");
@@ -1295,6 +1417,12 @@ export default function Equipamentos() {
       }
       const equipamentoSalvo = resultado.data;
       const equipamentoIdSalvo = equipamentoSalvo.id!;
+      // Só apaga o rascunho deste formulário (a identidade vai gravada com ele): se outra
+      // Nova entrada já gravou por cima, mesmo depois de sair e voltar da tela, ele fica.
+      if (!editando) {
+        rascunhoEntrada.limparSe((rascunho) => rascunho.dono === meuRascunhoEntrada);
+        if (donoRascunhoEntrada.current === meuRascunhoEntrada) setRascunhoRecuperadoEm(null);
+      }
 
       if (fotosAlteradas) {
         try {
@@ -3020,6 +3148,12 @@ export default function Equipamentos() {
           </DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
             <DialogBody className="space-y-6">
+            {!editando && rascunhoRecuperadoEm && (
+              <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-status-work-bg px-4 py-3 text-sm">
+                <span>Rascunho de {quandoRascunho(rascunhoRecuperadoEm)} recuperado. Fotos não ficam no rascunho.</span>
+                <Button type="button" variant="ghost" size="sm" onClick={comecarEntradaDoZero}>Começar do zero</Button>
+              </div>
+            )}
             {/* ── Cliente ── */}
             <div className="space-y-2">
               <ClienteSelector
@@ -3319,8 +3453,8 @@ export default function Equipamentos() {
             </div>
             </DialogBody>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
-              <Button type="submit" disabled={salvando || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
+              <DialogClose asChild><Button variant="outline" type="button" onClick={editando ? undefined : descartarEntrada}>Cancelar</Button></DialogClose>
+              <Button type="submit" disabled={salvando || conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
                 {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}
               </Button>
             </DialogFooter>
@@ -3344,7 +3478,9 @@ export default function Equipamentos() {
         salvando={salvando || loadingAutomacao}
         tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || primeiroTecnico}
         podeFinalizar={hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS) || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES)}
+        onSujoChange={setVerificacaoSuja}
       />
+      {avisoVerificacao.dialogo}
 
       {/* ═══ Ajuste de orçamento (rota /equipamentos/:id/orcamento, decisão 24) ═══ */}
       {idAjusteRota != null && !paginaAjusteAberta && (
