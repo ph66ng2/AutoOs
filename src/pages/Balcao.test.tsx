@@ -15,6 +15,9 @@ const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({ db }));
 import { PdfService } from "@/lib/pdf-service";
+import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+
+beforeEach(() => semearTecnicosPadrao());
 vi.mock("@/lib/email-service", () => ({ EmailService: emailService }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ status: { active_profile_name: "Atendente", unlocked: true }, ensureSensitiveAccess, lockSensitiveAccess: vi.fn(), openProfileSelector: vi.fn() }),
@@ -143,7 +146,7 @@ describe("Modo Balcão", () => {
 
   it("consulta o estoque e mostra o preço de venda sem permitir alteração", async () => {
     const user = userEvent.setup(); renderCounter();
-    await user.click(screen.getByRole("button", { name: /consultar estoque/i }));
+    await user.click(screen.getByRole("button", { name: /preço e estoque/i }));
     expect(await screen.findByRole("heading", { name: "Ribbon Preto" })).toBeInTheDocument();
     expect(screen.getByText(/R\$\s*45,00/)).toBeInTheDocument();
     expect(db.listarProdutos).toHaveBeenCalledWith(undefined);
@@ -163,14 +166,14 @@ describe("Modo Balcão", () => {
     const user = userEvent.setup(); renderCounter(); await reachReview(user);
     await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Banco indisponível");
-    expect(screen.getByText("Recapitulação")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recapitulação" })).toBeInTheDocument();
   });
 
   it("não entrega quando o PIN é negado e mantém o detalhe aberto", async () => {
     db.listarEquipamentos.mockResolvedValue([{ id: 8, serial_number: "SN-8", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "PRONTO", data_entrada: "2026-09-01", atualizado_em: "token" }]);
     ensureSensitiveAccess.mockResolvedValue(false);
     const user = userEvent.setup(); renderCounter();
-    await user.click(screen.getByRole("button", { name: /buscar equipamento/i }));
+    await user.click(screen.getByRole("button", { name: /entregar ao cliente/i }));
     await user.type(screen.getByRole("textbox"), "SN-8");
     await waitFor(() => expect(screen.getByText(/atendimento #8/i)).toBeInTheDocument());
     await user.click(screen.getByText(/atendimento #8/i));
@@ -183,7 +186,7 @@ describe("Modo Balcão", () => {
   it("bloqueia retirada em transição inválida", async () => {
     db.listarEquipamentos.mockResolvedValue([{ id: 7, serial_number: "SN-7", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01" }]);
     const user = userEvent.setup(); renderCounter();
-    await user.click(screen.getByRole("button", { name: /buscar equipamento/i }));
+    await user.click(screen.getByRole("button", { name: /entregar ao cliente/i }));
     await user.type(screen.getByRole("textbox"), "SN-7");
     await waitFor(() => expect(screen.getByText(/atendimento #7/i)).toBeInTheDocument());
     await user.click(screen.getByText(/atendimento #7/i));

@@ -133,9 +133,9 @@ export function ClienteSelectorBusca({
               >
                 <div className="flex items-center gap-2 min-w-0">
                   {c.tipo_pessoa === "PJ" ? (
-                    <Building2 className="h-4 w-4 text-purple-600 shrink-0" />
+                    <Building2 className="h-4 w-4 text-primary shrink-0" />
                   ) : (
-                    <User className="h-4 w-4 text-blue-600 shrink-0" />
+                    <User className="h-4 w-4 text-primary shrink-0" />
                   )}
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{nomeExibicaoCliente(c)}</p>

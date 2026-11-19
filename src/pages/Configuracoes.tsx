@@ -20,6 +20,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,10 +33,12 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ConfiguracoesTabInfra } from "@/pages/configuracoes/ConfiguracoesTabInfra";
 import { ConfiguracoesTabIntegracoes } from "@/pages/configuracoes/ConfiguracoesTabIntegracoes";
 import { ConfiguracoesTabObservabilidade } from "@/pages/configuracoes/ConfiguracoesTabObservabilidade";
+import { ConfiguracoesTabPortal } from "@/pages/configuracoes/ConfiguracoesTabPortal";
 import { ConfiguracoesTabSeguranca } from "@/pages/configuracoes/ConfiguracoesTabSeguranca";
 import { SMTP_DEFAULTS, type SmtpFormValues, type WhatsappFormValues } from "@/pages/configuracoes/configuracoes-shared";
 import { detectRestoreMode } from "@/pages/configuracoes/detect-restore-mode";
-import { abasConfiguracoes } from "@/pages/configuracoes/abas";
+import { ABAS_CONFIGURACOES, abasConfiguracoes, type AbaConfiguracoesId } from "@/pages/configuracoes/abas";
+import { PageHeader } from "@/components/PageHeader";
 import {
   SENSITIVE_PERMISSIONS,
   type DatabaseSchemaStatus,
@@ -140,7 +143,7 @@ export default function Configuracoes() {
     return matchesSearch && matchesOutcome && matchesProfile;
   });
 
-  const { register, handleSubmit, setValue, control } = useForm<SmtpFormValues>({
+  const { register, handleSubmit, setValue, control, watch } = useForm<SmtpFormValues>({
     defaultValues: {
       ...SMTP_DEFAULTS,
       password: "",
@@ -151,6 +154,7 @@ export default function Configuracoes() {
     register: registerWhatsapp,
     handleSubmit: handleSubmitWhatsapp,
     setValue: setWhatsappValue,
+    watch: watchWhatsapp,
   } = useForm<WhatsappFormValues>({
     defaultValues: {
       provider: "EVOLUTION",
@@ -347,13 +351,21 @@ export default function Configuracoes() {
     void loadPhotoTunnelConfig();
   }, [canConfigurePhotoTunnel, accessStatus?.active_profile_id]);
 
+  // Aba pedida no endereço (/configuracoes?aba=portal), se o perfil puder vê-la.
+  const location = useLocation();
+  const abaPedida = new URLSearchParams(location.search).get("aba") as AbaConfiguracoesId | null;
+  const abaPermitida = (aba: AbaConfiguracoesId | null) =>
+    aba !== null && ABAS_CONFIGURACOES.includes(aba) &&
+    (aba === "smtp" ? abas.integracoes : aba === "portal" ? abas.portal : canManageProfiles);
+
   useEffect(() => {
-    if (!abas.integracoes) {
-      setTab("infra");
-    } else if (!canManageProfiles) {
-      setTab("smtp");
+    if (abaPermitida(abaPedida)) {
+      setTab(abaPedida!);
+      return;
     }
-  }, [abas.integracoes, canManageProfiles]);
+    setTab((atual) => (abaPermitida(atual as AbaConfiguracoesId) ? atual : abas.inicial));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abaPedida, abas.integracoes, abas.portal, abas.inicial, canManageProfiles]);
 
   useEffect(() => {
     if (!accessStatus?.profiles.length) {
@@ -708,24 +720,40 @@ export default function Configuracoes() {
   if ((canConfigureSmtp && loading) || (canConfigureWhatsapp && whatsappLoading) || (canConfigurePhotoTunnel && photoTunnelLoading)) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
-        <p className="text-muted-foreground">Defina parâmetros do sistema e integrações.</p>
-      </div>
+      <PageHeader titulo="Configurações" />
 
-      <Tabs value={tab} onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }} className="space-y-4">
-        <TabsList>
-          {abas.integracoes && <TabsTrigger value="smtp">Integrações</TabsTrigger>}
-          {canManageProfiles && <TabsTrigger value="infra">Banco</TabsTrigger>}
-          {canManageProfiles && <TabsTrigger value="seguranca">Segurança</TabsTrigger>}
-          {canManageProfiles && <TabsTrigger value="observabilidade">Suporte e Logs</TabsTrigger>}
+      <Tabs
+        value={tab}
+        onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }}
+        orientation="vertical"
+        className="grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-2xl border bg-card lg:grid-cols-[260px_minmax(0,1fr)]"
+      >
+        <TabsList className="flex h-auto flex-row items-stretch justify-start gap-1 overflow-x-auto rounded-none border-b bg-muted/40 p-3 lg:flex-col lg:border-b-0 lg:border-r">
+          {([
+            ["smtp", abas.integracoes],
+            ["portal", abas.portal],
+            ["infra", canManageProfiles],
+            ["seguranca", canManageProfiles],
+            ["observabilidade", canManageProfiles],
+          ] as const)
+            .filter(([, visivel]) => visivel)
+            .map(([valor]) => (
+              <TabsTrigger
+                key={valor}
+                value={valor}
+                className="flex min-h-11 shrink-0 flex-col items-start justify-center gap-0 whitespace-nowrap rounded-xl border border-transparent px-3 py-2 text-left font-semibold text-foreground shadow-none data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:shadow-sm lg:w-full lg:data-[state=active]:border-l-2 lg:data-[state=active]:border-l-primary"
+              >
+                <span className="text-sm">{ROTULO_ABA[valor].rotulo}</span>
+                <span className="hidden text-xs font-normal text-muted-foreground lg:block">{ROTULO_ABA[valor].detalhe}</span>
+              </TabsTrigger>
+            ))}
         </TabsList>
 
         <ConfiguracoesTabIntegracoes
@@ -747,7 +775,6 @@ export default function Configuracoes() {
           whatsappStatus={whatsappStatus}
           whatsappHasToken={whatsappHasToken}
           canConfigurePhotoTunnel={canConfigurePhotoTunnel}
-          canManagePortal={canManagePortal}
           photoTunnelToken={photoTunnelToken}
           onPhotoTunnelTokenChange={setPhotoTunnelToken}
           onSubmitPhotoTunnel={onSubmitPhotoTunnel}
@@ -756,7 +783,11 @@ export default function Configuracoes() {
           photoTunnelHasToken={photoTunnelHasToken}
           photoTunnelEnvOverride={photoTunnelEnvOverride}
           photoTunnelPublicHost={photoTunnelPublicHost}
+          resumoSmtp={{ host: watch("host"), port: watch("port"), use_tls: watch("use_tls"), from_email: watch("from_email") }}
+          whatsappUrl={watchWhatsapp("api_url")}
         />
+
+        {abas.portal && <ConfiguracoesTabPortal />}
 
         {canManageProfiles && (
           <ConfiguracoesTabInfra
@@ -832,3 +863,12 @@ export default function Configuracoes() {
     </div>
   );
 }
+
+/** Itens da navegação lateral de Configurações: nome e o que tem dentro. */
+const ROTULO_ABA: Record<AbaConfiguracoesId, { rotulo: string; detalhe: string }> = {
+  smtp: { rotulo: "Integrações", detalhe: "E-mail, WhatsApp, fotos" },
+  portal: { rotulo: "Portal do Cliente", detalhe: "Acesso e respostas" },
+  infra: { rotulo: "Banco de dados", detalhe: "Esquema, atualização e backup" },
+  seguranca: { rotulo: "Segurança", detalhe: "PIN, bloqueio e perfis" },
+  observabilidade: { rotulo: "Suporte e logs", detalhe: "Pacote de suporte e auditoria" },
+};

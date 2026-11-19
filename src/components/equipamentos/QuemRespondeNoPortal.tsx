@@ -37,7 +37,7 @@ export function QuemRespondeNoPortal() {
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       {respondem.length > 0 ? (
         <p className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-status-ok" aria-hidden="true" />
           <span>
             Quem responde no portal:{" "}
             {respondem.map((contato, indice) => (

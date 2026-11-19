@@ -98,7 +98,7 @@ export function PortalFuncionamentoCard() {
                 onClick={() => void alternar(item.chave)}
                 className={cn(
                   "relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
-                  ligado ? "bg-emerald-600" : "bg-muted-foreground/30",
+                  ligado ? "bg-status-ok" : "bg-muted-foreground/30",
                 )}
               >
                 <span className={cn("inline-block h-5 w-5 rounded-full bg-white shadow transition-transform", ligado ? "translate-x-5" : "translate-x-0.5")} />
@@ -107,7 +107,7 @@ export function PortalFuncionamentoCard() {
           );
         })}
         {estado && estado.respostasAtrasadas > 0 && (
-          <p className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+          <p className="flex items-start gap-2 rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait" role="status">
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               {estado.respostasAtrasadas} resposta(s) passaram do prazo de correção e não foram aplicadas.

@@ -19,31 +19,24 @@
  * ║  USADO POR: App.tsx (rota /insumos)                         ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useEffect, useState } from "react";
+import { useEstadoNavegacao } from "@/hooks/useEstadoNavegacao";
+import { PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
+import { EscolherItemDialog } from "@/pages/insumos/EscolherItemDialog";
+import { useEffect, useRef, useState } from "react";
+import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import {
   Package,
   Plus,
   Search,
   Edit,
   Trash2,
-  ArrowUpCircle,
-  Filter,
   RefreshCw,
-  AlertTriangle,
 } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -62,7 +55,6 @@ import { useInsumos } from "@/hooks/useInsumos";
 import { useNotification } from "@/hooks/useNotification";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SENSITIVE_PERMISSIONS, type Produto, type UsoProdutoOrcamentos } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -74,14 +66,34 @@ import {
   InsumosMovimentacaoDialog,
   InsumosProdutoDialog,
 } from "@/pages/insumos/InsumosDialogs";
-import { OrcamentosInsumosTab } from "@/pages/insumos/OrcamentosInsumosTab";
+import { useResumoEstoque } from "@/hooks/useResumoEstoque";
+import { textoUltimaMovimentacao } from "@/lib/estoque-movimentacao";
+
+function NumeroEstoque({ titulo, valor, detalhe, alerta = false }: { titulo: string; valor: string | number; detalhe?: string; alerta?: boolean }) {
+  return (
+    <div className="rounded-xl border p-4">
+      <p className="text-sm text-muted-foreground">{titulo}</p>
+      <p className={`mt-1 text-[28px] font-extrabold leading-tight tabular-nums ${alerta ? "text-status-bad" : ""}`}>{valor}</p>
+      {detalhe && <p className="mt-1 text-xs text-muted-foreground">{detalhe}</p>}
+    </div>
+  );
+}
 
 export default function Insumos() {
-  const [aba, setAba] = useState<"estoque" | "orcamentos">("estoque");
-  const [busca, setBusca] = useState("");
-  const [categoriaFiltro, setCategoriaFiltro] = useState("TODOS");
+  // Item de "Estoque baixo" do Início: a lista abre já buscando por ele.
+  const estadoNavegacao = useEstadoNavegacao<{ busca?: string }>();
+  const [busca, setBusca] = useEstadoLembrado("insumos:busca", estadoNavegacao?.busca ?? "");
+  const [categoriaFiltro, setCategoriaFiltro] = useEstadoLembrado("insumos:categoria", "TODOS");
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
-  const [paginaInsumos, setPaginaInsumos] = useState(1);
+  // Vindo do Início ou do Ctrl+K, a busca pedida vale (também com a tela já aberta) e os
+  // filtros lembrados saem do caminho, senão uma categoria antiga esconderia o item pedido.
+  useEffect(() => {
+    if (!estadoNavegacao?.busca) return;
+    setBusca(estadoNavegacao.busca);
+    setCategoriaFiltro("TODOS");
+    setApenasEstoqueBaixo(false);
+  }, [estadoNavegacao, setBusca, setCategoriaFiltro]);
+  const [paginaInsumos, setPaginaInsumos] = useEstadoLembrado("insumos:pagina", 1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [movDialogOpen, setMovDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -103,6 +115,7 @@ export default function Insumos() {
     deletar,
     registrarMovimentacao,
     consultarUsoEmOrcamentos,
+    buscarProduto,
     recarregar,
   } = useInsumos({
     busca: busca || undefined,
@@ -114,14 +127,33 @@ export default function Insumos() {
   const paginaInsumosExibida = Math.min(paginaInsumos, totalPaginasInsumos);
   const produtosExibidos = produtos;
 
-  useEffect(() => {
-    setPaginaInsumos(1);
-  }, [busca, categoriaFiltro, apenasEstoqueBaixo]);
+  usePrimeiraPaginaAoFiltrar([busca, categoriaFiltro, apenasEstoqueBaixo], () => setPaginaInsumos(1));
 
   useEffect(() => {
+    if (loading) return;
     setPaginaInsumos((pagina) => Math.min(pagina, totalPaginasInsumos));
-  }, [totalPaginasInsumos]);
+  }, [totalPaginasInsumos, loading, setPaginaInsumos]);
   const { error: showError } = useNotification();
+  const { resumo, recarregar: recarregarResumo } = useResumoEstoque();
+  const voltarDepoisDaEntrada = useRef<string | null>(null);
+
+  // "Dar entrada no estoque" de uma venda de insumos chega como /insumos?entrada=<id>&quantidade=<n>:
+  // abre a entrada do item já com a quantidade que falta (o PIN continua sendo pedido).
+  useEffect(() => {
+    const parametros = new URLSearchParams(window.location.search);
+    const produtoId = Number(parametros.get("entrada"));
+    if (!Number.isInteger(produtoId) || produtoId <= 0) return;
+    const quantidade = Math.max(1, Number(parametros.get("quantidade")) || 1);
+    // Só volta para a página de uma venda (nada de endereço arbitrário).
+    const voltar = parametros.get("voltar");
+    voltarDepoisDaEntrada.current = voltar && /^\/vendas\/\d+$/.test(voltar) ? voltar : null;
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    void buscarProduto(produtoId)
+      .then((produto) => abrirMovimentacao(produto, "ENTRADA", quantidade))
+      .catch((causa) => showError("Insumos/Peças", "Abrir entrada no estoque", causa));
+    // Só na abertura da página.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { ensureSensitiveAccess } = useSensitiveAccess();
 
   const form = useForm<ProdutoFormData>({
@@ -195,7 +227,9 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
-  async function abrirMovimentacao(p: Produto) {
+  const [escolherItemAberto, setEscolherItemAberto] = useState(false);
+
+  async function abrirMovimentacao(p: Produto, tipo: "ENTRADA" | "SAIDA" = "ENTRADA", quantidade = 1) {
     const liberado = await ensureSensitiveAccess({
       title: "Movimentar estoque",
       description: "Informe o PIN para registrar entradas e saídas de estoque.",
@@ -204,7 +238,7 @@ export default function Insumos() {
     if (!liberado) return;
 
     setMovimentando(p);
-    movForm.reset({ tipo: "ENTRADA", quantidade: 1, origem: "", referencia: "" });
+    movForm.reset({ tipo, quantidade, origem: "", referencia: "" });
     setMovDialogOpen(true);
   }
 
@@ -234,6 +268,7 @@ export default function Insumos() {
           throw new Error(resultado.erro || "Não foi possível criar o insumo/peça.");
         }
       }
+      void recarregarResumo();
       setDialogOpen(false);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
@@ -257,7 +292,15 @@ export default function Insumos() {
       if (!resultado.sucesso) {
         throw new Error(resultado.erro || "Não foi possível registrar a movimentação.");
       }
+      void recarregarResumo();
       setMovDialogOpen(false);
+      const voltar = voltarDepoisDaEntrada.current;
+      voltarDepoisDaEntrada.current = null;
+      if (voltar) {
+        // Insumos não usa o roteador; o popstate faz o BrowserRouter seguir a URL nova.
+        window.history.pushState(window.history.state, "", voltar);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
     } catch (err: any) {
       console.error("Erro movimentação:", err);
       showError("Insumos/Peças", "Registrar movimentação", err);
@@ -271,6 +314,7 @@ export default function Insumos() {
     setSalvando(true);
     try {
       await deletar(deletando.id!);
+      void recarregarResumo();
       setDeleteDialogOpen(false);
       setDeletando(null);
       setUsoDeletando(null);
@@ -309,43 +353,34 @@ export default function Insumos() {
     }
   }
 
+  const contagemCategoria = (categoria: string) =>
+    resumo?.porCategoria.find((item) => item.categoria === categoria)?.total ?? 0;
+  const mostrarValor = resumo?.valorEstoque != null;
+
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Insumos/Peças & Estoque</h1>
-          <p className="text-muted-foreground">
-            Controle de suprimentos e movimentação de estoque
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {aba === "estoque" && insumosAbaixoMinimo > 0 && (
-            <Badge variant="destructive" className="h-8 px-3 flex items-center gap-1">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {insumosAbaixoMinimo} abaixo do mínimo
-            </Badge>
-          )}
-          {aba === "estoque" && (
-            <Button onClick={() => void abrirNovo()}>
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Insumo/Peça
-            </Button>
-          )}
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-[26px] font-bold leading-tight tracking-tight">Insumos e peças</h1>
+        <div className="flex items-center gap-2">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome, código..."
+              aria-label="Buscar insumos e peças"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="h-10 pl-9"
+            />
+          </div>
+          <Button variant="outline" className="shrink-0" onClick={() => setEscolherItemAberto(true)}>
+            Movimentar estoque
+          </Button>
+          <Button className="shrink-0" onClick={() => void abrirNovo()}>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo item
+          </Button>
         </div>
       </div>
-
-      <Tabs value={aba} onValueChange={(valor) => setAba(valor as "estoque" | "orcamentos")}>
-        <TabsList aria-label="Áreas de Insumos/Peças">
-          <TabsTrigger value="estoque">Estoque</TabsTrigger>
-          <TabsTrigger value="orcamentos">Orçamentos</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {aba === "orcamentos" ? (
-        <OrcamentosInsumosTab onEstoqueAlterado={() => void recarregar()} />
-      ) : (
-        <>
 
       {error && (
         <ErrorAlert
@@ -356,54 +391,60 @@ export default function Insumos() {
         />
       )}
 
-      {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nome, código, marca..."
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <Select value={categoriaFiltro} onValueChange={setCategoriaFiltro}>
-              <SelectTrigger className="w-full sm:w-48">
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORIA_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant={apenasEstoqueBaixo ? "destructive" : "outline"}
-              onClick={() => setApenasEstoqueBaixo(!apenasEstoqueBaixo)}
-              size="sm"
-              className="h-10"
-            >
-              <AlertTriangle className="h-4 w-4 mr-1" />
-              Estoque Baixo
-            </Button>
-            <Button variant="outline" size="icon" onClick={recarregar}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+      <Card className="rounded-2xl">
+        <CardContent className="space-y-5 p-5">
+          <div className={`grid gap-3 sm:grid-cols-2 ${mostrarValor ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
+            <NumeroEstoque titulo="Itens cadastrados" valor={resumo?.totalItens ?? "—"} detalhe={resumo ? `${resumo.porCategoria.length} ${resumo.porCategoria.length === 1 ? "categoria" : "categorias"}` : undefined} />
+            <NumeroEstoque
+              titulo="Abaixo do mínimo"
+              valor={resumo?.abaixoMinimo ?? insumosAbaixoMinimo}
+              alerta={(resumo?.abaixoMinimo ?? insumosAbaixoMinimo) > 0}
+              detalhe={resumo ? `${resumo.aguardandoPeca} ${resumo.aguardandoPeca === 1 ? "OS esperando peça" : "OS esperando peça"}` : undefined}
+            />
+            {mostrarValor && (
+              <NumeroEstoque titulo="Valor em estoque" valor={formatCurrency(resumo!.valorEstoque!).replace(/,00$/, "")} detalhe="pelo preço de custo" />
+            )}
+            <NumeroEstoque titulo="Saídas no mês" valor={resumo?.saidasMes ?? "—"} detalhe={resumo ? `${resumo.saidasMesOs} vinculadas a OS` : undefined} />
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Tabela */}
-      <Card>
-        <CardContent className="pt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div role="group" aria-label="Filtrar por categoria" className="flex flex-wrap gap-2">
+              {CATEGORIA_OPTIONS.map((opt) => {
+                const ativo = categoriaFiltro === opt.value;
+                const contagem = opt.value === "TODOS" ? resumo?.totalItens : contagemCategoria(opt.value);
+                return (
+                  <PilulaFiltro
+                    key={opt.value}
+                    ligado={ativo}
+                    rotulo={opt.value === "TODOS" ? "Todas" : opt.label}
+                    numero={resumo ? contagem : undefined}
+                    onClick={() => setCategoriaFiltro(opt.value)}
+                  />
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={apenasEstoqueBaixo}
+                onClick={() => setApenasEstoqueBaixo(!apenasEstoqueBaixo)}
+                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border bg-card px-3 text-sm font-medium"
+              >
+                <span aria-hidden="true" className={`relative h-4 w-7 rounded-full transition-colors duration-rapida ${apenasEstoqueBaixo ? "bg-primary" : "bg-track"}`}>
+                  <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-card transition-transform duration-rapida ${apenasEstoqueBaixo ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                </span>
+                Só estoque baixo
+              </button>
+              <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Atualizar estoque" onClick={() => { void recarregar(); void recarregarResumo(); }}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
           {loading ? (
             <div className="flex items-center justify-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : produtos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
@@ -412,97 +453,85 @@ export default function Insumos() {
               <p className="text-sm">
                 {busca || categoriaFiltro !== "TODOS" || apenasEstoqueBaixo
                   ? "Tente ajustar os filtros"
-                  : "Clique em 'Novo Insumo/Peça' para cadastrar"}
+                  : "Clique em 'Novo item' para cadastrar"}
               </p>
             </div>
           ) : (
             <>
-              <PaginationControls
-                page={paginaInsumosExibida}
-                totalPages={totalPaginasInsumos}
-                onPageChange={setPaginaInsumos}
-                label="Paginação de estoque"
-              />
-              <div className="rounded-md border">
+              <div className="overflow-x-auto rounded-xl border">
                 <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Código</TableHead>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead>Item</TableHead>
                     <TableHead>Categoria</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead className="text-center">Estoque</TableHead>
-                    <TableHead className="text-center">Mínimo</TableHead>
-                    <TableHead className="text-right">Preço</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    <TableHead className="min-w-[13rem]">Saldo</TableHead>
+                    <TableHead className="text-right">Preço de venda</TableHead>
+                    <TableHead>Última movimentação</TableHead>
+                    <TableHead className="text-right">Movimentar</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {produtosExibidos.map((p) => {
                     const estoqueBaixo = p.quantidade_estoque < p.quantidade_minima;
+                    const proporcao = p.quantidade_minima > 0 ? Math.min(Math.max(p.quantidade_estoque, 0) / p.quantidade_minima, 1) : 1;
+                    const ultima = textoUltimaMovimentacao(p);
                     return (
-                      <TableRow
-                        key={p.id}
-                        className={estoqueBaixo ? "bg-red-50/50" : ""}
-                      >
+                      <TableRow key={p.id} className="h-14">
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{p.nome}</span>
-                            {estoqueBaixo && (
-                              <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
-                            )}
+                          <p className="font-semibold leading-snug">{p.nome}</p>
+                          <p className="font-mono text-xs text-muted-foreground">{p.codigo || "—"}</p>
+                        </TableCell>
+                        <TableCell>
+                          <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">{categoriaProdutoLabel(p.categoria)}</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-baseline justify-between gap-3 text-sm">
+                            <span className={`font-semibold tabular-nums ${estoqueBaixo ? "text-status-bad" : ""}`}>
+                              {p.quantidade_estoque} un
+                              {estoqueBaixo && <span className="sr-only"> (abaixo do mínimo)</span>}
+                            </span>
+                            <span className="text-xs tabular-nums text-muted-foreground">mín. {p.quantidade_minima}</span>
+                          </div>
+                          <div aria-hidden="true" className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-track">
+                            <div className={`h-full rounded-full ${estoqueBaixo ? "bg-status-bad" : "bg-status-ok"}`} style={{ width: `${proporcao * 100}%` }} />
                           </div>
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {p.codigo || "—"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{categoriaProdutoLabel(p.categoria)}</Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {p.descricao || "—"}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span
-                            className={`font-bold ${
-                              estoqueBaixo ? "text-red-600" : "text-green-600"
-                            }`}
-                          >
-                            {p.quantidade_estoque}
-                          </span>
-                          <span className="text-xs text-muted-foreground ml-1">
-                            un.
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center text-muted-foreground">
-                          {p.quantidade_minima}
-                        </TableCell>
-                        <TableCell className="text-right font-medium whitespace-nowrap">
+                        <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
                           {formatCurrency(p.preco_venda)}
                         </TableCell>
+                        <TableCell className="max-w-[16rem] text-sm text-muted-foreground">{ultima ?? "—"}</TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-9 bg-acc-soft font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
+                              aria-label={`Registrar entrada de ${p.nome}`}
+                              onClick={() => void abrirMovimentacao(p, "ENTRADA")}
+                            >
+                              + Entrada
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 font-semibold"
+                              aria-label={`Registrar saída de ${p.nome}`}
+                              onClick={() => void abrirMovimentacao(p, "SAIDA")}
+                            >
+                              − Saída
+                            </Button>
                             <ActionPriorityRow
-                              primary={{
-                                id: `movimentar-${p.id}`,
-                                label: "Movimentar",
-                                icon: <ArrowUpCircle className="h-4 w-4" />,
-                                variant: "default",
-                                onClick: () => void abrirMovimentacao(p),
-                              }}
-                              secondary={{
-                                id: `editar-${p.id}`,
-                                label: "Editar",
-                                icon: <Edit className="h-4 w-4" />,
-                                variant: "outline",
-                                onClick: () => void abrirEditar(p),
-                              }}
+                              acaoDaLinha
+                              semPrincipal
+                              menuTitulo={p.nome}
+                              primary={{ id: `editar-${p.id}`, label: "Editar", onClick: () => void abrirEditar(p) }}
                               overflow={[
+                                { id: `editar-menu-${p.id}`, label: "Editar", icon: <Edit className="h-4 w-4" />, onClick: () => void abrirEditar(p) },
                                 {
                                   id: `excluir-${p.id}`,
                                   label: "Excluir",
                                   icon: <Trash2 className="h-4 w-4" />,
-                                  className: "text-red-600",
+                                  className: "text-destructive",
                                   onClick: () => void solicitarExclusao(p),
                                 },
                               ]}
@@ -515,6 +544,14 @@ export default function Insumos() {
                 </TableBody>
                 </Table>
               </div>
+              <PaginationControls
+                page={paginaInsumosExibida}
+                totalPages={totalPaginasInsumos}
+                onPageChange={setPaginaInsumos}
+                label="Paginação de estoque"
+                totalItems={totalProdutos}
+                className="pb-0"
+              />
             </>
           )}
         </CardContent>
@@ -528,9 +565,21 @@ export default function Insumos() {
         salvando={salvando}
         onSubmit={onSubmit}
       />
+      <EscolherItemDialog
+        open={escolherItemAberto}
+        onOpenChange={setEscolherItemAberto}
+        onEscolher={(produto) => {
+          setEscolherItemAberto(false);
+          void abrirMovimentacao(produto, "ENTRADA");
+        }}
+      />
       <InsumosMovimentacaoDialog
         open={movDialogOpen}
-        onOpenChange={setMovDialogOpen}
+        onOpenChange={(aberto) => {
+          setMovDialogOpen(aberto);
+          // Fechou sem salvar: não volta para a venda numa movimentação futura.
+          if (!aberto) voltarDepoisDaEntrada.current = null;
+        }}
         movimentando={movimentando}
         movForm={movForm}
         salvando={salvando}
@@ -545,8 +594,6 @@ export default function Insumos() {
         uso={usoDeletando}
         carregandoUso={carregandoUso}
       />
-        </>
-      )}
     </div>
   );
 }

@@ -174,17 +174,17 @@ export function ContatoResponsavelSelector({
       )}
 
       <Dialog open={novoOpen} onOpenChange={setNovoOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent tamanho="p">
           <DialogHeader>
             <DialogTitle>Novo contato do cliente</DialogTitle>
-            <DialogDescription>O contato será cadastrado como ativo e selecionado para este equipamento.</DialogDescription>
+            <DialogDescription className="sr-only">Cadastrar contato para este equipamento.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">Cadastre rapidamente um contato para {cliente ? cliente.nome || cliente.nome_fantasia || cliente.razao_social : "o cliente"}.</p>
             <div className="space-y-2"><Label htmlFor="responsavel-novo-nome">Nome *</Label><Input id="responsavel-novo-nome" value={novo.nome} onChange={(event) => atualizarNovo("nome", event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="responsavel-novo-email">E-mail</Label><Input id="responsavel-novo-email" type="email" value={novo.email} onChange={(event) => atualizarNovo("email", event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="responsavel-novo-telefone">Telefone</Label><Input id="responsavel-novo-telefone" value={novo.telefone} onChange={(event) => atualizarNovo("telefone", event.target.value)} /></div>
-            {erroNovo && <p className="text-xs text-red-600" role="alert">{erroNovo}</p>}
+            {erroNovo && <p className="text-xs text-destructive" role="alert">{erroNovo}</p>}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setNovoOpen(false)}>Cancelar</Button>

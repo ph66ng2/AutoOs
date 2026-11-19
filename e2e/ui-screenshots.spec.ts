@@ -20,7 +20,7 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   mkdirSync(outDir, { recursive: true });
 
   await page.goto("/");
-  const entry = page.getByRole("dialog").filter({ hasText: "Quem está usando o AutoOS?" });
+  const entry = page.getByRole("dialog").filter({ hasText: "Quem está usando?" });
   await expect(entry).toBeVisible();
   await entry.getByRole("button", { name: /CI Admin Screenshot/ }).click();
   await page.screenshot({ path: `${outDir}/08-selecao-perfil.png`, animations: "disabled" });
@@ -33,7 +33,7 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   const highlights = page.getByRole("button", { name: "Começar a usar" });
   if (await highlights.isVisible()) await highlights.click();
 
-  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Início", exact: true })).toBeVisible();
   await expect(page.getByText("Zebra ZD620").first()).toBeVisible();
   await expect(page.getByText("Ribbon sintético CI").first()).toBeVisible();
   await page.screenshot({ path: `${outDir}/01-home.png`, fullPage: true, animations: "disabled" });
@@ -53,26 +53,31 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   await page.screenshot({ path: `${outDir}/03-equipamentos.png`, fullPage: true, animations: "disabled" });
 
   await page.getByRole("button", { name: "Abrir detalhes de Zebra ZD620" }).click();
-  const detalhes = page.getByRole("dialog").filter({ hasText: "Detalhes do Equipamento" });
+  // Detalhes da OS é página (/equipamentos/:id); as fotos ficam na aba Fotos.
+  const detalhes = page.getByRole("region", { name: "Detalhes do Equipamento" });
   await expect(detalhes).toBeVisible();
+  await expect(page).toHaveURL(/\/equipamentos\/\d+$/);
   await expect(detalhes.getByText("CI-UI-ZD620").first()).toBeVisible();
-  await expect(detalhes.getByText("Nenhuma foto de entrada foi registrada para este equipamento.")).toBeVisible();
   await page.screenshot({ path: `${outDir}/04-atendimento-os.png`, animations: "disabled" });
-  await page.keyboard.press("Escape");
+  await detalhes.getByRole("tab", { name: /Fotos/ }).click();
+  await expect(detalhes.getByText("Nenhuma foto de entrada foi registrada para este equipamento.")).toBeVisible();
+  await page.getByRole("button", { name: "Equipamentos", exact: true }).click();
   await expect(detalhes).toBeHidden();
 
-  await openScreen("Insumos/Peças");
-  await expect(page.locator("h1", { hasText: "Insumos/Peças & Estoque" })).toBeVisible();
+  await openScreen("Insumos e peças");
+  await expect(page.locator("h1", { hasText: "Insumos e peças" })).toBeVisible();
   await expect(page.getByText("Etiqueta sintética CI").first()).toBeVisible();
   await expect(page.getByText("Ribbon sintético CI").first()).toBeVisible();
   await page.screenshot({ path: `${outDir}/05-insumos-estoque.png`, fullPage: true, animations: "disabled" });
 
-  await openScreen("Perfil");
+  // Equipe e acessos é página própria; o perfil pessoal abre pelo cartão do rodapé do menu.
+  await page.goto("/perfil");
   await expect(page.locator("h1", { hasText: "CI Admin Screenshot" })).toBeVisible();
   await expect(page.getByText("O que você pode fazer")).toBeVisible();
   await page.screenshot({ path: `${outDir}/09-perfil-visao-geral.png`, fullPage: true, animations: "disabled" });
 
-  await page.getByRole("tab", { name: "Equipe" }).click();
+  await openScreen("Equipe e acessos");
+  await expect(page.locator("h1", { hasText: "Equipe e acessos" })).toBeVisible();
   await expect(page.getByText("CI Admin Screenshot").first()).toBeVisible();
   await expect(page.getByText("CI Tecnico Screenshot").first()).toBeVisible();
   await expect(page.getByText("CI Atendente Screenshot").first()).toBeVisible();
@@ -80,6 +85,8 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
 
   await openScreen("Configurações");
   await expect(page.locator("h1", { hasText: "Configurações" })).toBeVisible();
+  // O portal tem aba própria em Configurações.
+  await page.getByRole("tab", { name: "Portal do Cliente" }).click();
   const portal = page.getByText("Portal do Cliente: funcionamento", { exact: true });
   await expect(portal).toBeVisible();
   await expect(page.getByRole("switch", { name: "Portal ligado" })).toHaveAttribute("aria-checked", "true");

@@ -244,7 +244,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
                 <Button type="button" size="sm" variant="outline" onClick={() => abrirEdicao(contato)}>
                   <Edit className="mr-1 h-3.5 w-3.5" /> Editar
                 </Button>
-                <Button type="button" size="sm" variant="ghost" className="text-red-600" onClick={() => setInativando(contato)}>
+                <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => setInativando(contato)}>
                   <UserX className="mr-1 h-3.5 w-3.5" /> Inativar
                 </Button>
               </div>
@@ -254,7 +254,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent tamanho="m">
           <DialogHeader>
             <DialogTitle>{editando ? "Editar contato" : "Novo contato"}</DialogTitle>
             <DialogDescription>
@@ -268,12 +268,12 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
             <div className="space-y-2">
               <Label htmlFor="contato-nome">Nome *</Label>
               <Input id="contato-nome" {...form.register("nome")} placeholder="Nome do contato" />
-              {form.formState.errors.nome && <p className="text-xs text-red-600">{form.formState.errors.nome.message}</p>}
+              {form.formState.errors.nome && <p className="text-xs text-destructive">{form.formState.errors.nome.message}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="contato-email">E-mail</Label>
               <Input id="contato-email" type="email" {...form.register("email")} placeholder="email@empresa.com" />
-              {form.formState.errors.email && <p className="text-xs text-red-600">{form.formState.errors.email.message}</p>}
+              {form.formState.errors.email && <p className="text-xs text-destructive">{form.formState.errors.email.message}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="contato-telefone">Telefone</Label>
@@ -284,7 +284,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
                 })}
                 placeholder="(00) 00000-0000"
               />
-              {form.formState.errors.telefone && <p className="text-xs text-red-600">{form.formState.errors.telefone.message}</p>}
+              {form.formState.errors.telefone && <p className="text-xs text-destructive">{form.formState.errors.telefone.message}</p>}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>

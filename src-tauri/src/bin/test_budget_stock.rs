@@ -413,7 +413,7 @@ async fn main() -> Result<()> {
         .bind(empresa).bind(cliente_busca).bind(format!("Inativo{suffix}")).execute(&pool).await?;
     let achados = clientes::listar_clientes(None, Some(nome_contato.clone())).await.map_err(|e| anyhow!("busca contato: {e}"))?;
     assert_eq!(achados.iter().map(|c| (c.id, c.contato_encontrado.clone())).collect::<Vec<_>>(), vec![(cliente_busca, Some(nome_contato.clone()))]);
-    let pagina = clientes::listar_clientes_paginados(None, Some(nome_contato.clone())).await.map_err(|e| anyhow!("busca paginada: {e}"))?;
+    let pagina = clientes::listar_clientes_paginados(None, Some(nome_contato.clone()), None).await.map_err(|e| anyhow!("busca paginada: {e}"))?;
     assert_eq!(pagina.total, 1);
     let pelo_telefone = clientes::listar_clientes(None, Some("(71) 98765-4321".into())).await.map_err(|e| anyhow!("busca telefone: {e}"))?;
     assert!(pelo_telefone.iter().any(|c| c.id == cliente_busca), "busca pelo celular do contato");

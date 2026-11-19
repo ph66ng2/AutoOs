@@ -91,7 +91,7 @@ describe("PhotoUploadDialog — sucesso", () => {
 
     expect(screen.getByText("Fotos recebidas")).toBeInTheDocument();
     expect(screen.getByText("1 foto no equipamento")).toBeInTheDocument();
-    const checkIcon = document.querySelector(".text-green-600");
+    const checkIcon = document.querySelector(".text-status-ok");
     expect(checkIcon).toBeInTheDocument();
   });
 

@@ -1,0 +1,407 @@
+# Referência visual
+
+Imagens das pranchetas do canvas, exportadas em 13/11/2026 com dados de exemplo. Cada tela tem versão clara e escura. Leia `../ALVO.md` antes: ele diz o que nas imagens é desenho sem dado no app.
+
+`design-system/` tem os tokens, as classes de referência e o guia de cada componente. `design-system/tokens.css` é referência: no app, os valores entram nas variáveis do shadcn em `src/index.css` (plano, fase 1).
+
+## Fundamentos
+
+### Cores
+
+Cores e o significado de cada família (claro e escuro na mesma imagem).
+
+![cores, tema claro](telas/01-fundamentos/01-cores-claro.webp)
+
+### Fluxo de status
+
+Os status, o botão principal de cada um e as outras ações. Bate com o código de hoje.
+
+![fluxo de status, tema claro](telas/01-fundamentos/02-fluxo-de-status-claro.webp)
+
+Tema escuro: [02-fluxo-de-status-escuro.webp](telas/01-fundamentos/02-fluxo-de-status-escuro.webp)
+
+### Formatos de modal
+
+Os 7 formatos de modal e as 3 larguras.
+
+![formatos de modal, tema claro](telas/01-fundamentos/03-formatos-de-modal-claro.webp)
+
+Tema escuro: [03-formatos-de-modal-escuro.webp](telas/01-fundamentos/03-formatos-de-modal-escuro.webp)
+
+### Menu lateral
+
+Menu lateral com o perfil no pé.
+
+![menu lateral, tema claro](telas/01-fundamentos/04-menu-lateral-claro.webp)
+
+Tema escuro: [04-menu-lateral-escuro.webp](telas/01-fundamentos/04-menu-lateral-escuro.webp)
+
+### Notificações
+
+Sino na barra do topo, painel com abas Todos, Erros e Portal do Cliente, histórico, estado vazio e avisos rápidos. Mesmos textos e regras de hoje (`PortalAlertas.tsx`, `useNotification.ts`). A cor fica só no ícone: sem faixa lateral no item e sem fundo colorido no aviso.
+
+![notificacoes, tema claro](telas/01-fundamentos/05-notificacoes-claro.webp)
+
+Tema escuro: [05-notificacoes-escuro.webp](telas/01-fundamentos/05-notificacoes-escuro.webp)
+
+## Entrada (PIN e primeiro acesso)
+
+### Entrar com pin
+
+![entrar com pin, tema claro](telas/02-entrada/01-entrar-com-pin-claro.webp)
+
+Tema escuro: [01-entrar-com-pin-escuro.webp](telas/02-entrada/01-entrar-com-pin-escuro.webp)
+
+### Primeiro acesso 1 codigo
+
+Mantém o cadeado de roletes com animação.
+
+![primeiro acesso 1 codigo, tema claro](telas/02-entrada/02-primeiro-acesso-1-codigo-claro.webp)
+
+Tema escuro: [02-primeiro-acesso-1-codigo-escuro.webp](telas/02-entrada/02-primeiro-acesso-1-codigo-escuro.webp)
+
+### Primeiro acesso 2 voce
+
+![primeiro acesso 2 voce, tema claro](telas/02-entrada/03-primeiro-acesso-2-voce-claro.webp)
+
+Tema escuro: [03-primeiro-acesso-2-voce-escuro.webp](telas/02-entrada/03-primeiro-acesso-2-voce-escuro.webp)
+
+### Primeiro acesso 3 pronto
+
+![primeiro acesso 3 pronto, tema claro](telas/02-entrada/04-primeiro-acesso-3-pronto-claro.webp)
+
+Tema escuro: [04-primeiro-acesso-3-pronto-escuro.webp](telas/02-entrada/04-primeiro-acesso-3-pronto-escuro.webp)
+
+### Modais acesso e sistema
+
+![modais acesso e sistema, tema claro](telas/02-entrada/05-modais-acesso-e-sistema-claro.webp)
+
+Tema escuro: [05-modais-acesso-e-sistema-escuro.webp](telas/02-entrada/05-modais-acesso-e-sistema-escuro.webp)
+
+## Início
+
+### Inicio
+
+Sem valores em R$. Alguns números são desenho sem dado (ver ALVO.md).
+
+![inicio, tema claro](telas/03-inicio/01-inicio-claro.webp)
+
+Tema escuro: [01-inicio-escuro.webp](telas/03-inicio/01-inicio-escuro.webp)
+
+## Atendimento (equipamentos, OS, clientes)
+
+### Equipamentos lista
+
+Ação fixa de 176px e ⋯. Paginação como hoje.
+
+![equipamentos lista, tema claro](telas/04-atendimento/01-equipamentos-lista-claro.webp)
+
+Tema escuro: [01-equipamentos-lista-escuro.webp](telas/04-atendimento/01-equipamentos-lista-escuro.webp)
+
+### Detalhes da os
+
+Vira página (hoje é modal).
+
+![detalhes da os, tema claro](telas/04-atendimento/02-detalhes-da-os-claro.webp)
+
+Tema escuro: [02-detalhes-da-os-escuro.webp](telas/04-atendimento/02-detalhes-da-os-escuro.webp)
+
+### Modal forma de pagamento
+
+![modal forma de pagamento, tema claro](telas/04-atendimento/03-modal-forma-de-pagamento-claro.webp)
+
+Tema escuro: [03-modal-forma-de-pagamento-escuro.webp](telas/04-atendimento/03-modal-forma-de-pagamento-escuro.webp)
+
+### Modal decisao do cliente
+
+![modal decisao do cliente, tema claro](telas/04-atendimento/04-modal-decisao-do-cliente-claro.webp)
+
+Tema escuro: [04-modal-decisao-do-cliente-escuro.webp](telas/04-atendimento/04-modal-decisao-do-cliente-escuro.webp)
+
+### Modal escolha de ajuste
+
+![modal escolha de ajuste, tema claro](telas/04-atendimento/05-modal-escolha-de-ajuste-claro.webp)
+
+Tema escuro: [05-modal-escolha-de-ajuste-escuro.webp](telas/04-atendimento/05-modal-escolha-de-ajuste-escuro.webp)
+
+### Modais equipamento
+
+Folha com todos os modais de equipamento, com campos de hoje.
+
+![modais equipamento, tema claro](telas/04-atendimento/06-modais-equipamento-claro.webp)
+
+Tema escuro: [06-modais-equipamento-escuro.webp](telas/04-atendimento/06-modais-equipamento-escuro.webp)
+
+### Modais orcamento e envio
+
+Prévia do PDF mostra o modelo de hoje.
+
+![modais orcamento e envio, tema claro](telas/04-atendimento/07-modais-orcamento-e-envio-claro.webp)
+
+Tema escuro: [07-modais-orcamento-e-envio-escuro.webp](telas/04-atendimento/07-modais-orcamento-e-envio-escuro.webp)
+
+### Modais portal do cliente
+
+![modais portal do cliente, tema claro](telas/04-atendimento/08-modais-portal-do-cliente-claro.webp)
+
+Tema escuro: [08-modais-portal-do-cliente-escuro.webp](telas/04-atendimento/08-modais-portal-do-cliente-escuro.webp)
+
+### Clientes
+
+![clientes, tema claro](telas/04-atendimento/09-clientes-claro.webp)
+
+Tema escuro: [09-clientes-escuro.webp](telas/04-atendimento/09-clientes-escuro.webp)
+
+### Modal novo cliente
+
+![modal novo cliente, tema claro](telas/04-atendimento/10-modal-novo-cliente-claro.webp)
+
+Tema escuro: [10-modal-novo-cliente-escuro.webp](telas/04-atendimento/10-modal-novo-cliente-escuro.webp)
+
+### Modais clientes
+
+![modais clientes, tema claro](telas/04-atendimento/11-modais-clientes-claro.webp)
+
+Tema escuro: [11-modais-clientes-escuro.webp](telas/04-atendimento/11-modais-clientes-escuro.webp)
+
+## Vendas de insumos (/vendas)
+
+Orçamentos OI-n de etiquetas, ribbons e peças sem equipamento em manutenção. Item próprio no menu (Atendimento, abaixo de Clientes). Substitui as pranchetas antigas de orçamento de insumos em "Estoque e serviços". Regras: `docs/ORCAMENTOS_INSUMOS.md` e decisão 23 do `ALVO.md`.
+
+### Lista
+
+Uma ação principal por situação (Enviar, Aprovar, Renovar validade, Marcar entregue, Ver) e ⋯ com Enviar, Decidir e Orçamento. Coluna "Prazo ou data" muda conforme a situação.
+
+![lista, tema claro](telas/10-vendas/01-lista-claro.webp)
+
+Tema escuro: [01-lista-escuro.webp](telas/10-vendas/01-lista-escuro.webp)
+
+### Orçamento como página
+
+Barra de 4 etapas com datas, itens com saldo de agora e aviso de falta, cliente com canais, condições e registro só com datas.
+
+![orçamento como página, tema claro](telas/10-vendas/02-orcamento-pagina-claro.webp)
+
+Tema escuro: [02-orcamento-pagina-escuro.webp](telas/10-vendas/02-orcamento-pagina-escuro.webp)
+
+### Editar e criar como página
+
+Mesmo desenho do orçamento, editável, com barra fixa no rodapé. Editar um Enviado avisa que volta para Rascunho.
+
+![editar e criar como página, tema claro](telas/10-vendas/03-editar-e-criar-claro.webp)
+
+Tema escuro: [03-editar-e-criar-escuro.webp](telas/10-vendas/03-editar-e-criar-escuro.webp)
+
+### Modais
+
+Enviar, Aprovar (forma de pagamento), aprovação recusada por falta de estoque, cancelar aprovado (confirma devolução), reprovar, entregar, cancelar, excluir e o PIN com sessão bloqueada.
+
+![modais, tema claro](telas/10-vendas/04-modais-claro.webp)
+
+Tema escuro: [04-modais-escuro.webp](telas/10-vendas/04-modais-escuro.webp)
+
+### Estados da lista e celular
+
+Vazia, filtro sem resultado, carregando, erro, sem permissão e 390 px.
+
+![estados da lista e celular, tema claro](telas/10-vendas/05-estados-lista-e-celular-claro.webp)
+
+Tema escuro: [05-estados-lista-e-celular-escuro.webp](telas/10-vendas/05-estados-lista-e-celular-escuro.webp)
+
+### Estados do orçamento
+
+Vencido, aprovado, cancelado, cliente sem WhatsApp e sem permissão.
+
+![estados do orçamento, tema claro](telas/10-vendas/06-estados-orcamento-claro.webp)
+
+Tema escuro: [06-estados-orcamento-escuro.webp](telas/10-vendas/06-estados-orcamento-escuro.webp)
+
+## Balcão
+
+### Balcao inicio
+
+Modo de toque: quatro blocos, busca grande. A fila do dia é desenho sem dado.
+
+![balcao inicio, tema claro](telas/05-balcao/01-balcao-inicio-claro.webp)
+
+Tema escuro: [01-balcao-inicio-escuro.webp](telas/05-balcao/01-balcao-inicio-escuro.webp)
+
+### Balcao nova entrada
+
+![balcao nova entrada, tema claro](telas/05-balcao/02-balcao-nova-entrada-claro.webp)
+
+Tema escuro: [02-balcao-nova-entrada-escuro.webp](telas/05-balcao/02-balcao-nova-entrada-escuro.webp)
+
+### Modais balcao
+
+![modais balcao, tema claro](telas/05-balcao/03-modais-balcao-claro.webp)
+
+Tema escuro: [03-modais-balcao-escuro.webp](telas/05-balcao/03-modais-balcao-escuro.webp)
+
+### Entregar ao cliente
+
+O bloco "Entregar equipamento" vira "Entregar ao cliente": equipamentos prontos e vendas de insumos aprovadas na mesma fila, com etiqueta Equipamento ou Insumos. Entregar uma venda chama o mesmo "marcar entregue" de Vendas de insumos, com o PIN e a permissão de hoje.
+
+![entregar ao cliente, tema claro](telas/05-balcao/04-entregar-ao-cliente-claro.webp)
+
+Tema escuro: [04-entregar-ao-cliente-escuro.webp](telas/05-balcao/04-entregar-ao-cliente-escuro.webp)
+
+## Estoque e serviços
+
+### Insumos estoque
+
+![insumos estoque, tema claro](telas/06-estoque/01-insumos-estoque-claro.webp)
+
+Tema escuro: [01-insumos-estoque-escuro.webp](telas/06-estoque/01-insumos-estoque-escuro.webp)
+
+### Modal movimentacao de estoque
+
+![modal movimentacao de estoque, tema claro](telas/06-estoque/02-modal-movimentacao-de-estoque-claro.webp)
+
+Tema escuro: [02-modal-movimentacao-de-estoque-escuro.webp](telas/06-estoque/02-modal-movimentacao-de-estoque-escuro.webp)
+
+### Orcamentos de insumos
+
+![orcamentos de insumos, tema claro](telas/06-estoque/03-orcamentos-de-insumos-claro.webp)
+
+Tema escuro: [03-orcamentos-de-insumos-escuro.webp](telas/06-estoque/03-orcamentos-de-insumos-escuro.webp)
+
+### Orcamento de insumos pagina
+
+Orçamento de insumos vira página, igual ao de equipamento.
+
+![orcamento de insumos pagina, tema claro](telas/06-estoque/04-orcamento-de-insumos-pagina-claro.webp)
+
+Tema escuro: [04-orcamento-de-insumos-pagina-escuro.webp](telas/06-estoque/04-orcamento-de-insumos-pagina-escuro.webp)
+
+### Modal previa pdf
+
+![modal previa pdf, tema claro](telas/06-estoque/05-modal-previa-pdf-claro.webp)
+
+Tema escuro: [05-modal-previa-pdf-escuro.webp](telas/06-estoque/05-modal-previa-pdf-escuro.webp)
+
+### Servicos
+
+![servicos, tema claro](telas/06-estoque/06-servicos-claro.webp)
+
+Tema escuro: [06-servicos-escuro.webp](telas/06-estoque/06-servicos-escuro.webp)
+
+### Modais estoque e servicos
+
+![modais estoque e servicos, tema claro](telas/06-estoque/07-modais-estoque-e-servicos-claro.webp)
+
+Tema escuro: [07-modais-estoque-e-servicos-escuro.webp](telas/06-estoque/07-modais-estoque-e-servicos-escuro.webp)
+
+## Finanças
+
+### Financas
+
+Novo nome de Gastos. Vários números são desenho sem dado (ver ALVO.md).
+
+![financas, tema claro](telas/07-financas/01-financas-claro.webp)
+
+Tema escuro: [01-financas-escuro.webp](telas/07-financas/01-financas-escuro.webp)
+
+### Modal gasto variavel
+
+![modal gasto variavel, tema claro](telas/07-financas/02-modal-gasto-variavel-claro.webp)
+
+Tema escuro: [02-modal-gasto-variavel-escuro.webp](telas/07-financas/02-modal-gasto-variavel-escuro.webp)
+
+### Modais financas
+
+![modais financas, tema claro](telas/07-financas/03-modais-financas-claro.webp)
+
+Tema escuro: [03-modais-financas-escuro.webp](telas/07-financas/03-modais-financas-escuro.webp)
+
+## Administração
+
+### Equipe e acessos
+
+![equipe e acessos, tema claro](telas/08-administracao/01-equipe-e-acessos-claro.webp)
+
+Tema escuro: [01-equipe-e-acessos-escuro.webp](telas/08-administracao/01-equipe-e-acessos-escuro.webp)
+
+### Modal codigo de acesso
+
+![modal codigo de acesso, tema claro](telas/08-administracao/02-modal-codigo-de-acesso-claro.webp)
+
+Tema escuro: [02-modal-codigo-de-acesso-escuro.webp](telas/08-administracao/02-modal-codigo-de-acesso-escuro.webp)
+
+### Configuracoes
+
+![configuracoes, tema claro](telas/08-administracao/03-configuracoes-claro.webp)
+
+Tema escuro: [03-configuracoes-escuro.webp](telas/08-administracao/03-configuracoes-escuro.webp)
+
+## Portal do Cliente
+
+### Portal entrar
+
+![portal entrar, tema claro](telas/09-portal/01-portal-entrar-claro.webp)
+
+Tema escuro: [01-portal-entrar-escuro.webp](telas/09-portal/01-portal-entrar-escuro.webp)
+
+### Portal atendimentos
+
+![portal atendimentos, tema claro](telas/09-portal/02-portal-atendimentos-claro.webp)
+
+Tema escuro: [02-portal-atendimentos-escuro.webp](telas/09-portal/02-portal-atendimentos-escuro.webp)
+
+### Portal atendimento
+
+![portal atendimento, tema claro](telas/09-portal/03-portal-atendimento-claro.webp)
+
+Tema escuro: [03-portal-atendimento-escuro.webp](telas/09-portal/03-portal-atendimento-escuro.webp)
+
+### Portal celular
+
+O cliente usa no celular; é a forma principal.
+
+![portal celular, tema claro](telas/09-portal/04-portal-celular-claro.webp)
+
+Tema escuro: [04-portal-celular-escuro.webp](telas/09-portal/04-portal-celular-escuro.webp)
+
+### Portal responder orcamento
+
+Respostas ao orçamento em painel que sobe do rodapé.
+
+![portal responder orcamento, tema claro](telas/09-portal/05-portal-responder-orcamento-claro.webp)
+
+Tema escuro: [05-portal-responder-orcamento-escuro.webp](telas/09-portal/05-portal-responder-orcamento-escuro.webp)
+
+## Páginas de orçamento da OS e família de Detalhes
+
+Decisões 24 e 25 do `ALVO.md`: formulários que montam ou editam orçamento são páginas; confirmações continuam janelas.
+
+### Ajuste de orçamento da OS (/equipamentos/:id/orcamento)
+
+Era a janela "Ajuste de Orçamento". Valores (original, antes do ajuste, novo calculado), serviços e peças, valor, prazo, observações e aviso da forma de pagamento. Barra fixa: Cancelar e Confirmar. O status da OS não muda.
+
+![ajuste de orçamento da os (/equipamentos/:id/orcamento), tema claro](telas/11-paginas-de-orcamento/01-ajuste-de-orcamento-pagina-claro.webp)
+
+Tema escuro: [01-ajuste-de-orcamento-pagina-escuro.webp](telas/11-paginas-de-orcamento/01-ajuste-de-orcamento-pagina-escuro.webp)
+
+### Verificação técnica (/equipamentos/:id/verificacao)
+
+Era a janela grande. Técnico, diagnóstico, serviços com peças do estoque, observações e foto. Checklist e custos ao vivo estão marcados PROPOSTA. Barra fixa: Cancelar e Finalizar verificação.
+
+![verificação técnica (/equipamentos/:id/verificacao), tema claro](telas/11-paginas-de-orcamento/02-verificacao-tecnica-pagina-claro.webp)
+
+Tema escuro: [02-verificacao-tecnica-pagina-escuro.webp](telas/11-paginas-de-orcamento/02-verificacao-tecnica-pagina-escuro.webp)
+
+### Ajuste e verificação: estados, janelas e celular
+
+Peça sem saldo, peça inválida, sem permissão, orçamento já aprovado, total zero sem garantia; as janelas que continuam (escolha do ajuste, cliente já respondeu, OS só de garantia, PIN) e as duas páginas no celular.
+
+![ajuste e verificação: estados, janelas e celular, tema claro](telas/11-paginas-de-orcamento/03-estados-janelas-e-celular-claro.webp)
+
+Tema escuro: [03-estados-janelas-e-celular-escuro.webp](telas/11-paginas-de-orcamento/03-estados-janelas-e-celular-escuro.webp)
+
+### Detalhes da OS e venda: família única
+
+Barra de etapas com data (e pessoa na OS), selo único, cartão Cliente único, linha do tempo nos dois, Condições e total dentro do cartão do orçamento.
+
+![detalhes da os e venda: família única, tema claro](telas/11-paginas-de-orcamento/04-detalhes-familia-unica-claro.webp)
+
+Tema escuro: [04-detalhes-familia-unica-escuro.webp](telas/11-paginas-de-orcamento/04-detalhes-familia-unica-escuro.webp)

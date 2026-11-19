@@ -1,14 +1,11 @@
+import { useState, type ReactNode } from "react";
 import { Controller, type Control, type SubmitHandler, type UseFormHandleSubmit, type UseFormRegister } from "react-hook-form";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TabsContent } from "@/components/ui/tabs";
-import { PortalFuncionamentoCard } from "@/components/configuracoes/PortalFuncionamentoCard";
-import { PortalContatoEmpresaCard } from "@/components/configuracoes/PortalContatoEmpresaCard";
-import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
-import { SENSITIVE_PERMISSIONS } from "@/types";
 import type { SmtpFormValues, WhatsappFormValues } from "./configuracoes-shared";
 
 export type ConfiguracoesTabIntegracoesProps = {
@@ -30,7 +27,6 @@ export type ConfiguracoesTabIntegracoesProps = {
   whatsappStatus: string | null;
   whatsappHasToken: boolean;
   canConfigurePhotoTunnel: boolean;
-  canManagePortal: boolean;
   photoTunnelToken: string;
   onPhotoTunnelTokenChange: (value: string) => void;
   onSubmitPhotoTunnel: () => void | Promise<void>;
@@ -39,7 +35,52 @@ export type ConfiguracoesTabIntegracoesProps = {
   photoTunnelHasToken: boolean;
   photoTunnelEnvOverride: boolean;
   photoTunnelPublicHost: string;
+  /** Valores atuais do SMTP, para o resumo do cartão. */
+  resumoSmtp: { host: string; port: number; use_tls: boolean; from_email: string };
+  whatsappUrl: string;
 };
+
+/** Selo de situação do cartão: configurado ou não (não há registro de envio para dizer "conectado"). */
+function Situacao({ ok, rotuloOk = "Configurado" }: { ok: boolean; rotuloOk?: string }) {
+  return (
+    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${ok ? "bg-status-ok-bg text-status-ok" : "bg-status-wait-bg text-status-wait"}`}>
+      {ok ? rotuloOk : "Não configurado"}
+    </span>
+  );
+}
+
+function LinhaResumo({ rotulo, detalhe, valor }: { rotulo: string; detalhe?: string; valor: ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-t py-3 first:border-t-0">
+      <div>
+        <p className="text-sm font-semibold">{rotulo}</p>
+        {detalhe && <p className="text-xs text-muted-foreground">{detalhe}</p>}
+      </div>
+      <div className="text-right font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{valor}</div>
+    </div>
+  );
+}
+
+/** Cabeçalho do cartão de integração: nome, o que faz e a situação. */
+function TopoIntegracao({ titulo, descricao, situacao }: { titulo: string; descricao: string; situacao: ReactNode }) {
+  return (
+    <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
+      <div className="space-y-1">
+        <CardTitle className="text-base">{titulo}</CardTitle>
+        <p className="text-sm text-muted-foreground">{descricao}</p>
+      </div>
+      {situacao}
+    </CardHeader>
+  );
+}
+
+function hostDe(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
 
 export function ConfiguracoesTabIntegracoes({
   canConfigureSmtp,
@@ -60,7 +101,6 @@ export function ConfiguracoesTabIntegracoes({
   whatsappStatus,
   whatsappHasToken,
   canConfigurePhotoTunnel,
-  canManagePortal,
   photoTunnelToken,
   onPhotoTunnelTokenChange,
   onSubmitPhotoTunnel,
@@ -69,35 +109,37 @@ export function ConfiguracoesTabIntegracoes({
   photoTunnelHasToken,
   photoTunnelEnvOverride,
   photoTunnelPublicHost,
+  resumoSmtp,
+  whatsappUrl,
 }: ConfiguracoesTabIntegracoesProps) {
-  const { hasPermission } = useSensitiveAccess();
+  const [editandoSmtp, setEditandoSmtp] = useState(false);
+  const [editandoWhatsapp, setEditandoWhatsapp] = useState(false);
+  const [editandoFotos, setEditandoFotos] = useState(false);
+  const fecharSmtp = () => { setEditandoSmtp(false); void handleSmtpEditToggle(false); };
   return (
-    <TabsContent value="smtp" className="space-y-4">
+    <TabsContent value="smtp" className="mt-0 space-y-4 p-5 md:p-6">
+      <h2 className="text-xl font-bold">Integrações</h2>
       <Card>
-        <CardHeader>
-          <CardTitle>SMTP (email real)</CardTitle>
-          <CardDescription>Credenciais e parâmetros de envio protegidos por Comunicação externa.</CardDescription>
-        </CardHeader>
+        <TopoIntegracao
+          titulo="E-mail (SMTP)"
+          descricao="Envio de orçamentos e avisos. A senha fica no cofre do sistema, nunca no banco."
+          situacao={<Situacao ok={hasPassword} />}
+        />
         <CardContent>
-          {canConfigureSmtp ? (
+          {canConfigureSmtp && !editandoSmtp && (
+            <>
+              <LinhaResumo
+                rotulo="Servidor"
+                detalhe={`Porta ${resumoSmtp.port}${resumoSmtp.use_tls ? (resumoSmtp.port === 465 ? " com TLS" : " com STARTTLS") : " sem TLS"}`}
+                valor={resumoSmtp.host || "—"}
+              />
+              <LinhaResumo rotulo="Remetente" valor={resumoSmtp.from_email || "—"} />
+              {status && <p className="pb-2 text-sm text-muted-foreground">{status}</p>}
+              <Button variant="outline" size="sm" onClick={() => { setEditandoSmtp(true); void handleSmtpEditToggle(true); }}>Editar</Button>
+            </>
+          )}
+          {canConfigureSmtp && editandoSmtp ? (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-                Configuração padrão aplicada no sistema: smtp.gmail.com, porta 465, TLS/SSL habilitado, remetente BMI Tag. Para usar Gmail, gere uma Senha de App em https://myaccount.google.com/apppasswords e cole-a no campo de senha abaixo.
-              </div>
-
-              <div className="flex items-center gap-2 rounded-md border p-3">
-                <Checkbox
-                  checked={smtpEditUnlocked}
-                  onCheckedChange={(value) => void handleSmtpEditToggle(!!value)}
-                  disabled={saving}
-                />
-                <div className="space-y-1">
-                  <Label>Liberar edição SMTP (requer PIN/Admin)</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Por padrão os campos ficam bloqueados para evitar alterações acidentais.
-                  </p>
-                </div>
-              </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -132,7 +174,7 @@ export function ConfiguracoesTabIntegracoes({
                     <p className="text-xs text-muted-foreground">Deixe em branco para manter a senha atual.</p>
                   )}
                   {!hasPassword && (
-                    <p className="text-xs text-amber-600">⚠️ Para Gmail, use uma Senha de App (não sua senha normal). Gere em: myaccount.google.com/apppasswords</p>
+                    <p className="text-xs text-status-wait">⚠️ Para Gmail, use uma Senha de App (não sua senha normal). Gere em: myaccount.google.com/apppasswords</p>
                   )}
                 </div>
               </div>
@@ -152,14 +194,15 @@ export function ConfiguracoesTabIntegracoes({
                 <p className="text-sm text-muted-foreground">{status}</p>
               )}
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={fecharSmtp} disabled={saving}>Cancelar</Button>
                 <Button type="submit" disabled={saving || !smtpEditUnlocked}>
                   {saving ? "Salvando..." : "Salvar configuração"}
                 </Button>
               </div>
             </form>
-          ) : (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          ) : !canConfigureSmtp && (
+            <div className="rounded-lg border border-status-wait/30 bg-status-wait-bg p-4 text-sm text-status-wait">
               O perfil ativo não possui permissão para configurar SMTP. Troque para um perfil com essa permissão para editar este bloco.
             </div>
           )}
@@ -167,14 +210,20 @@ export function ConfiguracoesTabIntegracoes({
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>WhatsApp API</CardTitle>
-          <CardDescription>
-            Provedor padrão: Evolution API self-hosted. Configure a URL completa do endpoint de envio e o token da API.
-          </CardDescription>
-        </CardHeader>
+        <TopoIntegracao
+          titulo="WhatsApp"
+          descricao="Envio pela API configurada. O token fica no cofre do sistema."
+          situacao={<Situacao ok={whatsappHasToken && Boolean(whatsappUrl)} />}
+        />
         <CardContent>
-          {canConfigureWhatsapp ? (
+          {canConfigureWhatsapp && !editandoWhatsapp && (
+            <>
+              <LinhaResumo rotulo="Endereço da API" detalhe="Evolution" valor={whatsappUrl ? hostDe(whatsappUrl) : "—"} />
+              {whatsappStatus && <p className="pb-2 text-sm text-muted-foreground">{whatsappStatus}</p>}
+              <Button variant="outline" size="sm" onClick={() => setEditandoWhatsapp(true)}>Editar</Button>
+            </>
+          )}
+          {canConfigureWhatsapp && editandoWhatsapp ? (
             <form onSubmit={handleSubmitWhatsapp(onSubmitWhatsapp)} className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -212,14 +261,15 @@ export function ConfiguracoesTabIntegracoes({
                 <p className="text-sm text-muted-foreground">{whatsappStatus}</p>
               )}
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setEditandoWhatsapp(false)} disabled={savingWhatsapp}>Fechar</Button>
                 <Button type="submit" disabled={savingWhatsapp}>
                   {savingWhatsapp ? "Salvando..." : "Salvar configuração"}
                 </Button>
               </div>
             </form>
-          ) : (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          ) : !canConfigureWhatsapp && (
+            <div className="rounded-lg border border-status-wait/30 bg-status-wait-bg p-4 text-sm text-status-wait">
               O perfil ativo não possui permissão para configurar a API de WhatsApp. Troque para um perfil com essa permissão para editar este bloco.
             </div>
           )}
@@ -227,14 +277,24 @@ export function ConfiguracoesTabIntegracoes({
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Fotos pelo celular</CardTitle>
-          <CardDescription>
-            Padrão: cada PC publica um HTTPS temporário sozinho (sem DNS e sem token). Os três computadores podem enviar foto ao mesmo tempo.
-          </CardDescription>
-        </CardHeader>
+        <TopoIntegracao
+          titulo="Fotos pelo celular"
+          descricao="O celular manda fotos para este PC enquanto o QR estiver aberto."
+          situacao={<Situacao ok rotuloOk="Pronto" />}
+        />
         <CardContent>
-          {canConfigurePhotoTunnel ? (
+          {canConfigurePhotoTunnel && !editandoFotos && (
+            <>
+              <LinhaResumo
+                rotulo="Túnel"
+                detalhe={photoTunnelEnvOverride ? "Definido por variável de ambiente" : undefined}
+                valor={photoTunnelHasToken || photoTunnelEnvOverride ? `Fixo: ${photoTunnelPublicHost}` : "Automático por PC"}
+              />
+              {photoTunnelStatus && <p className="pb-2 text-sm text-muted-foreground">{photoTunnelStatus}</p>}
+              <Button variant="outline" size="sm" onClick={() => setEditandoFotos(true)}>Editar</Button>
+            </>
+          )}
+          {canConfigurePhotoTunnel && editandoFotos ? (
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -242,7 +302,7 @@ export function ConfiguracoesTabIntegracoes({
               }}
               className="space-y-4"
             >
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 space-y-2">
+              <div className="rounded-lg border border-status-work/30 bg-status-work-bg p-4 text-sm text-status-work space-y-2">
                 <p>
                   Coloque o <code>cloudflared</code> no PATH ou na pasta AutoOS de cada PC que for gerar QR. Não precisa criar DNS nem colar token.
                 </p>
@@ -278,25 +338,20 @@ export function ConfiguracoesTabIntegracoes({
                 <p className="text-sm text-muted-foreground">{photoTunnelStatus}</p>
               )}
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setEditandoFotos(false)} disabled={savingPhotoTunnel}>Fechar</Button>
                 <Button type="submit" disabled={savingPhotoTunnel}>
                   {savingPhotoTunnel ? "Salvando..." : "Salvar token do túnel"}
                 </Button>
               </div>
             </form>
-          ) : (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          ) : !canConfigurePhotoTunnel && (
+            <div className="rounded-lg border border-status-wait/30 bg-status-wait-bg p-4 text-sm text-status-wait">
               O perfil ativo não possui permissão para configurar o túnel de fotos. Use um perfil com Comunicação externa.
             </div>
           )}
         </CardContent>
       </Card>
-      {canManagePortal && (
-        <>
-          <PortalFuncionamentoCard />
-          {hasPermission(SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS) && <PortalContatoEmpresaCard />}
-        </>
-      )}
     </TabsContent>
   );
 }

@@ -65,7 +65,7 @@ export function PinCreateFields({
         <LockIcon
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors duration-300",
+            "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors duration-rapida",
             pronto ? "text-[#22c55e]" : "text-muted-foreground",
           )}
         />
@@ -89,7 +89,7 @@ export function PinCreateFields({
               {PIN_RULES.map((regra) => {
                 const ok = regras[regra.id];
                 return (
-                  <li key={regra.id} className={cn("flex items-center gap-2 text-sm transition-colors duration-200", ok ? "text-[#22c55e]" : "text-muted-foreground")}>
+                  <li key={regra.id} className={cn("flex items-center gap-2 text-sm transition-colors duration-rapida", ok ? "text-status-ok" : "text-muted-foreground")}>
                     <span className={cn("pin-rules__dot", ok && "pin-rules__dot--ok")}>
                       {ok && <Check className="h-3 w-3" strokeWidth={3.5} />}
                     </span>

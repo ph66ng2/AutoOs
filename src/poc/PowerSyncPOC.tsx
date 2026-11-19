@@ -136,7 +136,7 @@ export default function PowerSyncPOC() {
     setStatus("Disconnected");
   };
 
-  const statusColor = connected ? "bg-green-500" : status.includes("Error") ? "bg-red-500" : "bg-yellow-500";
+  const statusColor = connected ? "bg-status-ok" : status.includes("Error") ? "bg-destructive" : "bg-warning";
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">

@@ -191,7 +191,7 @@ export function PublicStatusLinkDialog({ equipamento, open, onOpenChange }: Prop
 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent tamanho="m" className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Link2 className="h-5 w-5" /> Link de acompanhamento sem login</DialogTitle>
           <DialogDescription>
@@ -214,7 +214,7 @@ export function PublicStatusLinkDialog({ equipamento, open, onOpenChange }: Prop
                 <p className="mt-1 text-muted-foreground">Criado em {formatDate(linkInfo.createdAt)}{linkInfo.expiresAt && ` · válido até ${formatDate(linkInfo.expiresAt)}`}</p>
                 {linkInfo.lastAccessAt && <p className="mt-1 text-muted-foreground">Último acesso em {formatDate(linkInfo.lastAccessAt)}</p>}
                 {hasActiveLink && !linkUrl && (
-                  <p className="mt-2 text-amber-800">
+                  <p className="mt-2 text-status-wait">
                     O token não pode ser recuperado porque o banco guarda apenas o hash. Gere outro link para copiar ou reenviar; isso revoga o atual.
                   </p>
                 )}
@@ -231,7 +231,7 @@ export function PublicStatusLinkDialog({ equipamento, open, onOpenChange }: Prop
             )}
 
             {needsRotationConfirmation && (
-              <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+              <div className="space-y-3 rounded-lg border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait">
                 <p>O link atual deixará de funcionar assim que o novo for criado. Gere outro somente se precisar reenviar ou substituir o link.</p>
                 <div className="flex gap-2">
                   <Button disabled={busy} onClick={() => void createLink()}><RefreshCw className="mr-2 h-4 w-4" /> Confirmar e gerar</Button>

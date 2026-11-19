@@ -970,7 +970,7 @@ mod tests {
             id: 1, nome: "Ana".into(), role: "OPERADOR".into(), permissions: vec![],
             pin_configured: true, pin_required: true, is_default: false, ativo: true,
             avatar_icone: None, avatar_cor: None, tema: None, onboarding_pendente: false,
-            tour_permissoes_vistas: None,
+            tour_permissoes_vistas: None, email_profissional: None, atende_tecnico: false,
         };
         assert!(!pode_publicar_no_portal(&perfil));
         perfil.permissions.push(PERMISSION_MANAGE_STATUS_LINKS.to_string());
@@ -1007,7 +1007,7 @@ mod tests {
             permissions: vec![PERMISSION_PREPARE_QUOTES.to_string()],
             pin_configured: true, pin_required: true, is_default: false, ativo: true,
             avatar_icone: None, avatar_cor: None, tema: None, onboarding_pendente: false,
-            tour_permissoes_vistas: None,
+            tour_permissoes_vistas: None, email_profissional: None, atende_tecnico: false,
         };
         assert!(check_prepare_quotes_status(Some(&perfil), "VERIFICADO").is_ok());
         assert!(check_prepare_quotes_status(Some(&perfil), "ORCAMENTO_VENCIDO").is_ok());

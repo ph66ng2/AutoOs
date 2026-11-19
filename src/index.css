@@ -4,60 +4,109 @@
 
 @layer base {
   :root, .light {
-    --background: 220 20% 97%;
-    --foreground: 222 25% 11%;
+    --background: 210 10% 96%;
+    --foreground: 212 21% 14%;
     --card: 0 0% 100%;
-    --card-foreground: 220 20% 10%;
+    --card-foreground: 212 21% 14%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 10%;
-    --primary: 221 72% 48%;
+    --popover-foreground: 212 21% 14%;
+    --primary: 192 56% 28%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 16% 93%;
-    --secondary-foreground: 220 20% 15%;
-    --muted: 220 16% 94.5%;
-    --muted-foreground: 220 9% 42%;
-    --accent: 220 16% 93%;
-    --accent-foreground: 220 20% 15%;
-    --destructive: 0 72% 51%;
+    --secondary: 216 20% 95%;
+    --secondary-foreground: 212 21% 14%;
+    --muted: 210 22% 96%;
+    --muted-foreground: 215 11% 41%;
+    --accent: 192 25% 92%;
+    --accent-foreground: 192 56% 23%;
+    --destructive: 3 45% 45%;
     --destructive-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
+    --warning: 38 62% 33%;
     --warning-foreground: 0 0% 100%;
-    --info: 199 89% 48%;
+    --info: 214 37% 39%;
     --info-foreground: 0 0% 100%;
-    --border: 220 14% 89%;
-    --input: 220 14% 86%;
-    --ring: 221 72% 48%;
+    --border: 213 18% 90%;
+    --input: 214 15% 56%;
+    --ring: 192 56% 28%;
     --radius: 0.5rem;
-    --sidebar: 220 30% 15%;
-    --sidebar-border: 220 20% 22%;
+    --sidebar: 210 10% 96%;
+    --sidebar-foreground: 213 13% 32%;
+    --sidebar-border: 213 18% 90%;
+    --acc-soft: 192 25% 92%;
+    --acc-soft-foreground: 192 56% 23%;
+    --track: 213 19% 91%;
+    --ctl: 212 16% 84%;
+    --nav-active: 192 25% 92%;
+    --nav-active-foreground: 192 56% 23%;
+    --st-neutral: 215 9% 41%;
+    --st-neutral-bg: 216 15% 94%;
+    --st-work: 214 37% 39%;
+    --st-work-bg: 215 35% 93%;
+    --st-wait: 38 62% 33%;
+    --st-wait-bg: 41 56% 91%;
+    --st-ok: 144 33% 33%;
+    --st-ok-bg: 142 26% 92%;
+    --st-bad: 3 45% 45%;
+    --st-bad-bg: 7 47% 93%;
+    --chart-1: 192 56% 28%;
+    --chart-2: 215 27% 65%;
+    --chart-3: 36 38% 50%;
+    --scrollbar-thumb: #c9d0d8;
+    --scrollbar-thumb-hover: #9ba5b1;
+    /* Movimento (Acabamento do DS): hover 150, menus e avisos 220, expandir e modal 300. */
+    --dur-rapida: 150ms;
+    --dur-padrao: 220ms;
+    --dur-lenta: 300ms;
+    --ease-saida: cubic-bezier(0.2, 0, 0, 1);
   }
 
   .dark {
-    --background: 222 22% 7%;
-    --foreground: 210 20% 96%;
-    --card: 222 20% 10%;
-    --card-foreground: 210 20% 95%;
-    --popover: 222 20% 12%;
-    --popover-foreground: 210 20% 95%;
-    --primary: 217 91% 62%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 222 16% 15%;
-    --secondary-foreground: 210 20% 95%;
-    --muted: 222 16% 15%;
-    --muted-foreground: 218 12% 64%;
-    --accent: 222 16% 15%;
-    --accent-foreground: 210 20% 95%;
-    --destructive: 0 65% 48%;
-    --destructive-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-    --info: 199 89% 48%;
-    --info-foreground: 0 0% 100%;
-    --border: 222 16% 16%;
-    --input: 222 14% 22%;
-    --ring: 217 91% 62%;
-    --sidebar: 222 24% 5%;
-    --sidebar-border: 222 18% 12%;
+    --background: 220 23% 5%;
+    --foreground: 218 19% 92%;
+    --card: 216 22% 9%;
+    --card-foreground: 218 19% 92%;
+    --popover: 216 22% 9%;
+    --popover-foreground: 218 19% 92%;
+    --primary: 192 29% 59%;
+    --primary-foreground: 192 29% 7%;
+    --secondary: 214 19% 17%;
+    --secondary-foreground: 218 19% 92%;
+    --muted: 220 23% 5%;
+    --muted-foreground: 213 11% 64%;
+    --accent: 196 29% 13%;
+    --accent-foreground: 192 30% 74%;
+    --destructive: 4 49% 68%;
+    --destructive-foreground: 4 41% 8%;
+    --warning: 38 50% 62%;
+    --warning-foreground: 36 62% 6%;
+    --info: 215 35% 67%;
+    --info-foreground: 218 22% 7%;
+    --border: 214 19% 17%;
+    --input: 212 17% 41%;
+    --ring: 192 29% 59%;
+    --sidebar: 220 23% 5%;
+    --sidebar-foreground: 213 11% 64%;
+    --sidebar-border: 214 19% 17%;
+    --acc-soft: 196 29% 13%;
+    --acc-soft-foreground: 192 30% 74%;
+    --track: 213 18% 20%;
+    --ctl: 213 19% 21%;
+    --nav-active: 196 29% 13%;
+    --nav-active-foreground: 192 30% 74%;
+    --st-neutral: 213 11% 64%;
+    --st-neutral-bg: 215 18% 13%;
+    --st-work: 215 35% 67%;
+    --st-work-bg: 215 28% 13%;
+    --st-wait: 38 50% 62%;
+    --st-wait-bg: 37 27% 13%;
+    --st-ok: 140 24% 59%;
+    --st-ok-bg: 143 22% 12%;
+    --st-bad: 4 49% 68%;
+    --st-bad-bg: 3 26% 14%;
+    --chart-1: 192 29% 59%;
+    --chart-2: 212 21% 47%;
+    --chart-3: 37 47% 60%;
+    --scrollbar-thumb: #283039;
+    --scrollbar-thumb-hover: #3a4552;
   }
 }
 
@@ -67,8 +116,34 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-family: 'Manrope Variable', 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
   }
+}
+
+/* Movimento reduzido: as mudanças acontecem na hora. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-rapida: 0ms; --dur-padrao: 0ms; --dur-lenta: 0ms; }
+}
+
+/* Barra de rolagem fina, trilho transparente (redesign, fase 1). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
+
+/* Avisos rápidos (sonner): movimento dos tokens, não os 400ms da biblioteca. */
+[data-sonner-toast] {
+  transition-duration: var(--dur-padrao) !important;
+  transition-timing-function: var(--ease-saida) !important;
 }
 
 /* Janela modal aberta deixa o <body> com pointer-events: none. Os avisos (Sonner) ficam acima

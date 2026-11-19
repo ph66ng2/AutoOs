@@ -22,7 +22,10 @@ const status = {
   active_role: "ATENDENTE",
   permissions: ["FINANCIAL_ACTIONS", "VIEW_EXPENSES", "STOCK_CONTROL"],
   can_manage_profiles: false,
-  profiles: [],
+  profiles: [
+    { id: 1, nome: "Atendente BMITAG", role: "ATENDENTE", permissions: [], pin_configured: true, pin_required: true, is_default: true, ativo: true, email_profissional: "atendimento@empresa.test", atende_tecnico: false },
+    { id: 2, nome: "Ivan Santos", role: "TECNICO", permissions: [], pin_configured: true, pin_required: true, is_default: false, ativo: true, email_profissional: "ivan@empresa.test", atende_tecnico: true },
+  ],
 };
 
 const cliente = {
@@ -198,10 +201,24 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return verificacao as T;
     case "listar_servicos_catalogo_ativos":
       return catalogo as T;
+    case "contar_equipamentos_por_status":
+      return [{ status: equipamento.status, total: 1 }] as T;
+    case "contar_servicos":
+      return { ativos: catalogo.filter((item) => item.ativo !== false).length, inativos: catalogo.filter((item) => item.ativo === false).length } as T;
+    case "obter_empresa_ativa":
+      return "Sua empresa" as T;
+    case "listar_pecas_baixa_pendente":
+      return [] as T;
+    case "listar_alertas_portal":
+      return [] as T;
+    case "contar_alertas_portal_nao_lidos":
+      return 0 as T;
     case "listar_servicos_paginados": {
       const page = Math.max(0, Number(args?.page ?? 0));
       const busca = String(args?.busca ?? "").toLowerCase();
-      const items = catalogo.filter((item) => !busca || item.nome.toLowerCase().includes(busca));
+      const items = catalogo
+        .filter((item) => !busca || item.nome.toLowerCase().includes(busca))
+        .filter((item) => (args?.apenasInativos ? item.ativo === false : args?.apenasAtivos === false || item.ativo !== false));
       return { items: items.slice(page * 10, (page + 1) * 10), total: items.length } as T;
     }
     case "atualizar_servicos_verificacao": {

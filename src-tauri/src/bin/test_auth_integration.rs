@@ -160,6 +160,8 @@ async fn test_operator_no_pin_dropdown_login(pool: &sqlx::PgPool) -> Result<()> 
         nome: "Test Auth Integration Operator".to_string(),
         role: "CUSTOM".to_string(),
         permissions: vec![auth::PERMISSION_STOCK_CONTROL.to_string()],
+        email_profissional: Some("operador@teste.local".to_string()),
+        ..Default::default()
     };
     let status = tauri_result(
         auth::create_security_profile(input, "".to_string()).await,
@@ -194,6 +196,8 @@ async fn test_admin_with_pin_dropdown_not_available(pool: &sqlx::PgPool) -> Resu
         nome: "Test Auth Integration Switch Target".to_string(),
         role: "CUSTOM".to_string(),
         permissions: vec![auth::PERMISSION_STOCK_CONTROL.to_string()],
+        email_profissional: Some("troca@teste.local".to_string()),
+        ..Default::default()
     }, "2468".to_string()).await, "Falha ao criar perfil de teste para troca")?;
     let target_id = switch_status.profiles.iter().find(|profile| profile.nome == "Test Auth Integration Switch Target")
         .context("Perfil de teste para troca não encontrado")?.id;

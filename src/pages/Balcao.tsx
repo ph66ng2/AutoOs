@@ -5,12 +5,25 @@ import {
   ChevronRight,
   FileText,
   Loader2,
-  PackageSearch,
+  Box,
   Plus,
   RefreshCw,
   Search,
+  Tag,
   UserSearch,
 } from "lucide-react";
+import { useBuscaRetirada } from "@/hooks/useBuscaRetirada";
+import { useFilaBalcao } from "@/hooks/useFilaBalcao";
+import {
+  clienteDoItem,
+  descricaoDoItem,
+  podeEntregar,
+  valorDoItem,
+  type ItemRetirada,
+} from "@/lib/retirada-balcao";
+import { STATUS_ORCAMENTO_INSUMOS_LABEL } from "@/lib/orcamento-insumos";
+import { VendaRetirada } from "@/pages/balcao/VendaRetirada";
+import { cn } from "@/lib/utils";
 import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,9 +61,7 @@ import { afterCounterRegistration } from "@/lib/counter-registration";
 import { EmailService } from "@/lib/email-service";
 import { equipamentoSchema } from "@/lib/validations";
 import {
-  EMAIL_POR_TECNICO,
   MARCA_EQUIPAMENTO_OPTIONS,
-  TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
 } from "@/pages/equipamentos/equipamentos-page-constants";
 import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
@@ -58,6 +69,7 @@ import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolv
 import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
 import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "@/lib/logo-monochrome-base64";
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
+import { useTecnicos } from "@/hooks/useTecnicos";
 import { todayLocalIsoDate } from "@/lib/date-utils";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
 import {
@@ -117,9 +129,14 @@ export default function Balcao() {
   const [counterEquipment, setCounterEquipment] = useState<Equipamento | null>(
     null,
   );
+  const [termoBusca, setTermoBusca] = useState("");
+  const [vendaAbertaId, setVendaAbertaId] = useState<number | null>(null);
+  const { openProfileSelector } = useSensitiveAccess();
   useEffect(() => {
     setView("home");
     setCounterEquipment(null);
+    setTermoBusca("");
+    setVendaAbertaId(null);
   }, [resetKey]);
   useEffect(() => {
     if (location.pathname === "/balcao/painel") setView("panel");
@@ -134,6 +151,26 @@ export default function Balcao() {
       .then(setCounterEquipment)
       .catch(() => setCounterEquipment(null));
   }, [location.state]);
+  function abrirItem(item: ItemRetirada) {
+    if (item.tipo === "EQUIPAMENTO") setCounterEquipment(item.equipamento);
+    else setVendaAbertaId(item.venda.id);
+  }
+  if (vendaAbertaId != null)
+    return (
+      <VendaRetirada
+        vendaId={vendaAbertaId}
+        onVoltar={() => {
+          setVendaAbertaId(null);
+          setView("equipment");
+        }}
+        onInicio={() => {
+          setVendaAbertaId(null);
+          setTermoBusca("");
+          setView("home");
+        }}
+        onTrocarPerfil={() => void openProfileSelector()}
+      />
+    );
   if (counterEquipment)
     return (
       <section>
@@ -143,88 +180,219 @@ export default function Balcao() {
     );
   if (view === "entry") return <QuickEntry onBack={() => setView("home")} />;
   if (view === "equipment")
-    return <EquipmentSearch onBack={() => setView("home")} />;
+    return (
+      <RetiradaBusca
+        termoInicial={termoBusca}
+        onTermoChange={setTermoBusca}
+        onBack={() => { setTermoBusca(""); setView("home"); }}
+        onAbrirItem={abrirItem}
+      />
+    );
   if (view === "client") return <ClientSearch onBack={() => setView("home")} />;
   if (view === "panel")
     return <OperationalPanel onBack={() => setView("home")} />;
   if (view === "stock") return <CounterStock onBack={() => setView("home")} />;
   return (
-    <div className="mx-auto max-w-6xl py-8">
-      <h1 className="text-3xl font-bold">Atendimento de balcão</h1>
-      <p className="mt-2 text-lg text-muted-foreground">
-        Escolha a próxima ação.
-      </p>
-      <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        <Action
-          icon={<Plus className="h-14 w-14" />}
-          title="Nova entrada"
-          description="Registrar cliente e equipamento"
-          onClick={() => setView("entry")}
-        />
-        <Action
-          icon={<PackageSearch className="h-14 w-14" />}
-          title="Buscar equipamento"
-          description="Localizar atendimento ou retirada"
-          onClick={() => setView("equipment")}
-        />
-        <Action
-          icon={<UserSearch className="h-14 w-14" />}
-          title="Buscar cliente"
-          description="Ver dados e ciclos vinculados"
-          onClick={() => setView("client")}
-        />
-        <Action
-          icon={<PackageSearch className="h-14 w-14" />}
-          title="Consultar estoque"
-          description="Ver insumos, saldo e preço"
-          onClick={() => setView("stock")}
-        />
-      </div>
-      <Button
-        className="mt-8 min-h-12 text-base"
-        variant="outline"
-        onClick={() => setView("panel")}
-      >
-        Abrir painel operacional
-      </Button>
+    <BalcaoInicio
+      onReceber={() => setView("entry")}
+      onEntregar={() => setView("equipment")}
+      onConsultarCliente={() => setView("client")}
+      onPrecoEstoque={() => setView("stock")}
+      onPainel={() => setView("panel")}
+      onBuscar={(termo) => {
+        setTermoBusca(termo);
+        setView("equipment");
+      }}
+      onAbrirEquipamento={setCounterEquipment}
+      onAbrirItem={abrirItem}
+    />
+  );
+}
+
+/** Início do Balcão: busca grande, quatro blocos de toque e a fila do dia. */
+function BalcaoInicio({
+  onReceber,
+  onEntregar,
+  onConsultarCliente,
+  onPrecoEstoque,
+  onPainel,
+  onBuscar,
+  onAbrirEquipamento,
+  onAbrirItem,
+}: {
+  onReceber: () => void;
+  onEntregar: () => void;
+  onConsultarCliente: () => void;
+  onPrecoEstoque: () => void;
+  onPainel: () => void;
+  onBuscar: (termo: string) => void;
+  onAbrirEquipamento: (equipamento: Equipamento) => void;
+  onAbrirItem: (item: ItemRetirada) => void;
+}) {
+  const fila = useFilaBalcao();
+  return (
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="min-w-0 space-y-4">
+        <h1 className="text-2xl font-bold tracking-tight">Quem está no balcão?</h1>
+        <div className="relative">
+          <Search className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            aria-label="Buscar equipamento ou cliente"
+            className="h-16 rounded-xl border-2 border-primary/70 bg-card pl-14 text-lg"
+            placeholder="Série, nome do cliente, CPF/CNPJ ou telefone"
+            onChange={(e) => onBuscar(e.target.value)}
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <BlocoBalcao destaque icon={<Plus className="h-7 w-7" />} title="Receber equipamento" description="Nova entrada em 4 passos" onClick={onReceber} />
+          <BlocoBalcao
+            icon={<Box className="h-7 w-7" />}
+            title="Entregar ao cliente"
+            description="Equipamentos prontos e insumos aprovados"
+            contador={fila.totalProntos > 0 ? fila.totalProntos : undefined}
+            onClick={onEntregar}
+          />
+          <BlocoBalcao icon={<UserSearch className="h-7 w-7" />} title="Consultar cliente" description="Dados, contatos e histórico" onClick={onConsultarCliente} />
+          <BlocoBalcao icon={<Tag className="h-7 w-7" />} title="Preço e estoque" description="Insumos, saldo e valor de venda" onClick={onPrecoEstoque} />
+        </div>
+      </section>
+
+      <aside className="space-y-4" aria-label="Fila do dia">
+        <FilaCard titulo="Prontos para retirada" contagem={fila.loading ? undefined : fila.totalProntos}>
+          {fila.loading ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">Carregando...</p>
+          ) : fila.error ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">Não foi possível carregar a fila.</p>
+          ) : fila.prontos.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">Nada pronto para retirada.</p>
+          ) : (
+            <ul className="divide-y">
+              {fila.prontos.slice(0, 5).map((item) => (
+                <li key={item.chave} className="flex items-center gap-3 px-5 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold">{clienteDoItem(item)}</p>
+                    <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                      <EtiquetaRetirada tipo={item.tipo} />
+                      <span className="truncate">{descricaoDoItem(item)}</span>
+                    </p>
+                    {valorDoItem(item) && <p className="text-xs font-semibold tabular-nums">{valorDoItem(item)}</p>}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    className="min-h-12 shrink-0 bg-acc-soft px-4 font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
+                    onClick={() => onAbrirItem(item)}
+                  >
+                    Registrar Entrega
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </FilaCard>
+        <FilaCard
+          titulo="Chegaram hoje"
+          contagem={fila.loading ? undefined : fila.chegaramHojeMais ? `${fila.chegaramHoje.length}+` : fila.chegaramHoje.length}
+        >
+          {fila.loading ? null : fila.chegaramHoje.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">Nenhuma entrada hoje.</p>
+          ) : (
+            <ul className="divide-y">
+              {fila.chegaramHoje.map((eq) => (
+                <li key={eq.id}>
+                  <button
+                    type="button"
+                    className="flex min-h-14 w-full items-start gap-3 px-5 py-3 text-left transition-colors duration-rapida hover:bg-muted/60"
+                    onClick={() => onAbrirEquipamento(eq)}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{eq.cliente_nome || "Cliente não informado"}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {equipmentTitle(eq)} · {(STATUS_LABELS[eq.status as keyof typeof STATUS_LABELS] || eq.status).toLowerCase()}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{horaDaEntrada(eq.criado_em)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </FilaCard>
+        <Button variant="ghost" className="min-h-12 w-full text-base text-muted-foreground" onClick={onPainel}>
+          Painel operacional
+        </Button>
+      </aside>
     </div>
   );
 }
 
-function Action({
+/** criado_em vem do PostgreSQL como texto; só a hora, no fuso de Salvador. */
+function horaDaEntrada(criadoEm?: string): string {
+  if (!criadoEm) return "";
+  const instante = new Date(criadoEm.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"));
+  return Number.isNaN(instante.getTime())
+    ? ""
+    : instante.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bahia" });
+}
+
+function FilaCard({ titulo, contagem, children }: { titulo: string; contagem?: number | string; children: React.ReactNode }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border bg-card">
+      <header className="flex items-center justify-between border-b px-5 py-4">
+        <h2 className="font-bold">{titulo}</h2>
+        {contagem !== undefined && <span className="text-sm font-semibold tabular-nums text-muted-foreground">{contagem}</span>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function BlocoBalcao({
   icon,
   title,
   description,
+  destaque = false,
+  contador,
   onClick,
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
+  destaque?: boolean;
+  contador?: number;
   onClick: () => void;
 }) {
   return (
-    <Button
+    <button
       type="button"
-      variant="outline"
-      className="h-64 flex-col gap-5 rounded-2xl border-2 text-xl hover:border-cyan-600 hover:bg-cyan-50"
       onClick={onClick}
+      className={cn(
+        "relative flex min-h-40 flex-col justify-between gap-6 rounded-2xl border p-6 text-left transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        destaque ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90" : "bg-card hover:border-ctl",
+      )}
     >
-      {icon}
-      <span>{title}</span>
-      <span className="text-base font-normal text-muted-foreground">
-        {description}
+      <span aria-hidden="true">{icon}</span>
+      <span>
+        <span className="block text-xl font-bold">{title}</span>
+        <span className={cn("mt-1 block text-sm", destaque ? "text-primary-foreground/80" : "text-muted-foreground")}>{description}</span>
       </span>
-    </Button>
+      {contador !== undefined && (
+        <span className="absolute right-6 top-6 inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-acc-soft px-2 text-sm font-bold tabular-nums text-acc-soft-foreground">
+          {contador}
+          <span className="sr-only"> prontos para retirada</span>
+        </span>
+      )}
+    </button>
   );
 }
-function Back({ onBack }: { onBack: () => void }) {
+
+function Back({ onBack, rotulo = "Voltar" }: { onBack: () => void; rotulo?: string }) {
   return (
     <Button
       variant="ghost"
       className="min-h-12 gap-2 text-base"
       onClick={onBack}
     >
-      <ChevronLeft /> Voltar
+      <ChevronLeft /> {rotulo}
     </Button>
   );
 }
@@ -302,7 +470,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
         </Button>
       </form>
 
-      {erro && <p role="alert" className="mt-4 text-red-700">{erro}</p>}
+      {erro && <p role="alert" className="mt-4 text-destructive">{erro}</p>}
       {carregando ? (
         <div className="mt-8 flex min-h-40 items-center justify-center gap-3 text-lg text-muted-foreground">
           <Loader2 className="animate-spin" /> Carregando estoque...
@@ -332,9 +500,9 @@ function CounterStock({ onBack }: { onBack: () => void }) {
                       <p className="text-sm text-muted-foreground">Disponível</p>
                       <p className="mt-1 text-2xl font-bold">{produto.quantidade_estoque}</p>
                     </div>
-                    <div className="rounded-lg bg-cyan-50 p-3">
+                    <div className="rounded-lg bg-acc-soft p-3">
                       <p className="text-sm text-muted-foreground">Preço de venda</p>
-                      <p className="mt-1 text-2xl font-bold text-cyan-800">{formatarPreco(produto.preco_venda)}</p>
+                      <p className="mt-1 text-2xl font-bold text-acc-soft-foreground">{formatarPreco(produto.preco_venda)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -353,6 +521,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
   const [client, setClient] = useState<Cliente | null>(null);
   const [responsavel, setResponsavel] = useState<ClienteContato | null>(null);
   const [history, setHistory] = useState<Equipamento[]>([]);
+  const [mostrarOutros, setMostrarOutros] = useState(false);
   const [confirmedCycle, setConfirmedCycle] = useState(false);
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<Equipamento | null>(null);
@@ -370,7 +539,13 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     laudo_tecnico: "",
     observacoes: "",
   });
-  const [tecnico, setTecnico] = useState<TecnicoDisponivel>("Ivan");
+  const tecnicos = useTecnicos();
+  const [tecnico, setTecnico] = useState<TecnicoDisponivel>("");
+  // Sem escolha ainda: o primeiro técnico da lista (perfis com "faz atendimento técnico").
+  useEffect(() => {
+    if (!tecnico && tecnicos.length > 0) setTecnico(tecnicos[0].nome);
+  }, [tecnico, tecnicos]);
+  const emailDoTecnicoEscolhido = tecnicos.find((t) => t.nome === tecnico)?.email ?? "";
   const [emailPromptOpen, setEmailPromptOpen] = useState(false);
   const [emailRecipient, setEmailRecipient] = useState<ResolvedRecipient | null>(null);
   const [emailFeedback, setEmailFeedback] = useState<string | null>(null);
@@ -522,10 +697,11 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       );
     if (history.length && !confirmedCycle)
       return setError("Confirme a criação de um novo ciclo para este serial.");
+    if (!tecnico) return setError("Escolha o técnico que está operando.");
     setSaving(true);
     setError(null);
     try {
-      const emailTecnico = EMAIL_POR_TECNICO[tecnico] || "";
+      const emailTecnico = emailDoTecnicoEscolhido;
       const observacoes = [
         `Técnico inicial: ${tecnico}${emailTecnico ? ` (${emailTecnico})` : ""}`,
         data.observacoes.trim(),
@@ -626,7 +802,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
           </Button>
         </div>
         {error && (
-          <p role="alert" className="mt-4 text-red-700">
+          <p role="alert" className="mt-4 text-destructive">
             {error}
           </p>
         )}
@@ -691,22 +867,46 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     }
     setData((current) => ({ ...current, [field]: value }));
   };
+  const nomeCliente = client?.nome || client?.nome_fantasia || client?.razao_social || "";
   return (
-    <section className="mx-auto max-w-4xl">
-      <Back onBack={onBack} />
-      <h1 className="mt-3 text-3xl font-bold">Nova entrada</h1>
-      <ol className="my-6 flex gap-2 text-base">
-        {["Cliente", "Equipamento", "Laudo imediato", "Recapitulação"].map((name, index) => (
-          <li
-            key={name}
-            className={`rounded-full px-4 py-2 ${step === index + 1 ? "bg-cyan-600 text-white" : "bg-muted"}`}
-          >
-            {index + 1}. {name}
-          </li>
-        ))}
-      </ol>
+    <section className="-m-4 flex min-h-[calc(100vh-72px)] flex-col lg:-m-8">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b bg-card px-4 py-2 lg:px-8">
+        <Button variant="ghost" className="-ml-3 min-h-12 gap-1 text-base" onClick={onBack}>
+          <ChevronLeft /> Cancelar entrada
+        </Button>
+        <ol className="flex flex-1 flex-wrap justify-center gap-2" aria-label="Passos da entrada">
+          {["Cliente", "Equipamento", "Laudo imediato", "Recapitulação"].map((name, index) => {
+            const numero = index + 1;
+            const feito = numero < step;
+            const atual = numero === step;
+            return (
+              <li
+                key={name}
+                aria-current={atual ? "step" : undefined}
+                className={cn(
+                  "flex min-h-10 items-center gap-2 rounded-full py-1 pl-1 pr-4 text-sm font-semibold",
+                  atual ? "bg-primary text-primary-foreground" : feito ? "bg-acc-soft text-acc-soft-foreground" : "bg-muted text-muted-foreground",
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "inline-flex h-8 w-8 items-center justify-center rounded-full text-xs",
+                    atual ? "bg-primary-foreground text-primary" : "bg-card",
+                  )}
+                >
+                  {feito ? <Check className="h-4 w-4" /> : numero}
+                </span>
+                {name}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+      <div className="flex-1 px-4 py-6 lg:px-8">
       {step === 1 && (
-        <div className="rounded-xl border bg-card p-6 [&_button]:min-h-12 [&_button]:text-base [&_input]:min-h-12 [&_input]:text-base">
+        <div className="mx-auto max-w-4xl space-y-2 [&_button]:min-h-12 [&_button]:text-base [&_input]:min-h-12 [&_input]:text-base">
+          <h2 className="mb-4 text-2xl font-bold tracking-tight">Quem está trazendo o equipamento?</h2>
           <ClienteSelector
             onClienteSelecionado={(selectedClient) => {
               setClient(selectedClient);
@@ -726,19 +926,21 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
                 onChange={setResponsavel}
                 preSelecionar
               />
-              <Button
-                className="mt-6 min-h-12 text-base"
-                onClick={() => setStep(2)}
-              >
-                Continuar <ChevronRight />
-              </Button>
             </>
           )}
         </div>
       )}
       {step === 2 && (
-        <div className="space-y-5 rounded-xl border bg-card p-6">
-          <h2 className="text-xl font-semibold">Dados do equipamento</h2>
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-bold tracking-tight">Dados do equipamento</h2>
+            {client && (
+              <span className="rounded-full bg-acc-soft px-4 py-2 text-sm font-semibold text-acc-soft-foreground">
+                Cliente: {nomeCliente}{responsavel ? ` · ${responsavel.nome}` : ""}
+              </span>
+            )}
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Field
               label="Serial *"
@@ -801,59 +1003,78 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TECNICOS_DISPONIVEIS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
+                  {tecnicos.map((option) => (
+                    <SelectItem key={option.id} value={option.nome}>
+                      {option.nome}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">
-                E-mail do técnico: {EMAIL_POR_TECNICO[tecnico]}
+                {tecnicos.length === 0
+                  ? "Nenhum perfil marcado como técnico. Marque em Equipe e acessos."
+                  : `E-mail do técnico: ${emailDoTecnicoEscolhido || "não informado"}`}
               </p>
             </div>
           </div>
-          <Label className="text-base">Defeito relatado *</Label>
-          <Textarea
-            className={inputClass}
-            value={data.defeito_relatado}
-            onChange={update("defeito_relatado")}
-          />
-          <div>
-            <Label className="text-base">Acessórios</Label>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {ACESSORIOS_OPTIONS.map((item) => (
-                <label
-                  key={item}
-                  className="flex min-h-12 items-center gap-3 rounded-lg border px-3 text-base"
-                >
-                  <Checkbox
-                    className="h-5 w-5"
-                    checked={data.acessorios.includes(item)}
-                    onCheckedChange={(checked) =>
-                      setData((current) => ({
-                        ...current,
-                        acessorios: checked
-                          ? [...current.acessorios, item]
-                          : current.acessorios.filter(
-                              (value) => value !== item,
-                            ),
-                      }))
-                    }
-                  />
-                  {item}
-                </label>
-              ))}
-            </div>
-          </div>
           <div className="space-y-2">
-            <Label className="text-base">Outros acessórios</Label>
+            <Label htmlFor="balcao-defeito" className="text-base">Defeito relatado pelo cliente *</Label>
             <Textarea
-              className={inputClass}
-              value={data.acessorios_outros}
-              onChange={update("acessorios_outros")}
+              id="balcao-defeito"
+              className={cn(inputClass, "min-h-24")}
+              value={data.defeito_relatado}
+              onChange={update("defeito_relatado")}
             />
           </div>
+          <div>
+            <p className="text-base font-medium" id="balcao-acessorios">Acessórios que vieram junto</p>
+            <div className="mt-2 flex flex-wrap gap-2" role="group" aria-labelledby="balcao-acessorios">
+              {ACESSORIOS_OPTIONS.map((item) => {
+                const marcado = data.acessorios.includes(item);
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    aria-pressed={marcado}
+                    onClick={() =>
+                      setData((current) => ({
+                        ...current,
+                        acessorios: marcado
+                          ? current.acessorios.filter((value) => value !== item)
+                          : [...current.acessorios, item],
+                      }))
+                    }
+                    className={cn(
+                      "inline-flex min-h-12 items-center gap-1.5 rounded-xl border px-4 text-base font-medium transition-colors duration-rapida",
+                      marcado ? "border-2 border-primary bg-acc-soft text-acc-soft-foreground" : "bg-card hover:border-ctl",
+                    )}
+                  >
+                    {marcado ? <Check className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+                    {item}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                aria-expanded={mostrarOutros}
+                onClick={() => setMostrarOutros((atual) => !atual)}
+                className="inline-flex min-h-12 items-center gap-1.5 rounded-xl border border-dashed px-4 text-base font-medium text-muted-foreground transition-colors duration-rapida hover:border-ctl"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" /> Outro
+              </button>
+            </div>
+          </div>
+          {(mostrarOutros || data.acessorios_outros) && (
+            <div className="space-y-2">
+              <Label htmlFor="balcao-outros-acessorios" className="text-base">Outros acessórios</Label>
+              <Textarea
+                id="balcao-outros-acessorios"
+                className={inputClass}
+                value={data.acessorios_outros}
+                onChange={update("acessorios_outros")}
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <Label className="text-base">Observações complementares</Label>
             <Textarea
@@ -862,41 +1083,43 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               onChange={update("observacoes")}
             />
           </div>
+        </div>
           {history.length > 0 && (
-            <div className="rounded-lg border border-amber-400 bg-amber-50 p-4">
-              <strong>Serial já possui {history.length} ciclo(s).</strong>
-              <p className="mt-1">
-                Foi reaproveitada a marca, o modelo e o tipo somente quando
-                estavam vazios. Os acessórios e o laudo são sempre conferidos
-                nesta nova entrada.
+            <aside className="rounded-2xl border bg-card p-5" aria-label="Este serial já passou por aqui">
+              <h3 className="font-bold">Este serial já passou por aqui</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Marca, modelo e tipo foram preenchidos do último ciclo quando
+                estavam vazios. Acessórios e defeito são sempre conferidos de novo.
               </p>
-              <label className="mt-3 flex min-h-12 items-center gap-3 text-base">
+              <ul className="mt-3 divide-y border-y text-sm">
+                {history.slice(0, 4).map((ciclo) => (
+                  <li key={ciclo.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <span className="min-w-0 truncate">
+                      {mesAno(ciclo.data_entrada)}
+                      {ciclo.defeito_relatado ? ` · ${ciclo.defeito_relatado}` : ""}
+                    </span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {STATUS_LABELS[ciclo.status as keyof typeof STATUS_LABELS] || ciclo.status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {history.length > 4 && <p className="mt-2 text-xs text-muted-foreground">e mais {history.length - 4} ciclos</p>}
+              <label className="mt-4 flex min-h-12 items-center gap-3 rounded-xl bg-acc-soft px-4 py-2 text-base font-semibold text-acc-soft-foreground">
                 <Checkbox
                   className="h-6 w-6"
                   checked={confirmedCycle}
                   onCheckedChange={setConfirmedCycle}
-                />{" "}
-                Confirmo criar um novo ciclo
+                />
+                Confirmo abrir um novo ciclo
               </label>
-            </div>
+            </aside>
           )}
-          <div className="flex gap-3">
-            <Button
-              className="min-h-12 text-base"
-              variant="outline"
-              onClick={() => setStep(1)}
-            >
-              Voltar
-            </Button>
-            <Button className="min-h-12 text-base" onClick={() => setStep(3)}>
-              Continuar para o laudo <ChevronRight />
-            </Button>
-          </div>
         </div>
       )}
       {step === 3 && (
-        <div className="space-y-5 rounded-xl border bg-card p-6">
-          <h2 className="text-xl font-semibold">Laudo imediato</h2>
+        <div className="mx-auto max-w-4xl space-y-5">
+          <h2 className="text-2xl font-bold tracking-tight">Laudo imediato</h2>
           <p className="text-base text-muted-foreground">
             Registre o teste feito no recebimento. O texto será salvo na
             verificação técnica e exibido na ordem de serviço.
@@ -965,7 +1188,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               Imprimir teste BMITAG
             </Button>
             {testeEnviado && (
-              <p role="status" className="text-sm text-emerald-700">
+              <p role="status" className="text-sm text-status-ok">
                 Teste enviado à fila de impressão. Confira a impressão física e
                 registre o resultado abaixo.
               </p>
@@ -998,20 +1221,12 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               placeholder="Descreva o resultado do teste e o que foi constatado no recebimento."
             />
           </div>
-          {error && <p role="alert" className="text-red-700">{error}</p>}
-          <div className="flex gap-3">
-            <Button className="min-h-12 text-base" variant="outline" onClick={() => setStep(2)}>
-              Voltar
-            </Button>
-            <Button className="min-h-12 text-base" onClick={() => setStep(4)}>
-              Recapitular <ChevronRight />
-            </Button>
-          </div>
+          {error && <p role="alert" className="text-destructive">{error}</p>}
         </div>
       )}
       {step === 4 && (
-        <div className="rounded-xl border bg-card p-6">
-          <h2 className="text-xl font-semibold">Recapitulação</h2>
+        <div className="mx-auto max-w-4xl rounded-2xl border bg-card p-6">
+          <h2 className="text-2xl font-bold tracking-tight">Recapitulação</h2>
           <dl className="mt-5 grid gap-3 text-base md:grid-cols-2">
             <Info
               label="Cliente"
@@ -1024,7 +1239,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
             />
             <Info
               label="Técnico"
-              value={`${tecnico} — ${EMAIL_POR_TECNICO[tecnico] || "—"}`}
+              value={`${tecnico || "—"} — ${emailDoTecnicoEscolhido || "—"}`}
             />
             <Info
               label="Teste de impressão"
@@ -1045,34 +1260,49 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               ))}
           </dl>
           {error && (
-            <p role="alert" className="mt-4 text-red-700">
+            <p role="alert" className="mt-4 text-destructive">
               {error}
             </p>
           )}
-          <div className="mt-6 flex gap-3">
-            <Button
-              className="min-h-12 text-base"
-              variant="outline"
-              onClick={() => setStep(3)}
-            >
-              Corrigir
-            </Button>
-            <Button
-              className="min-h-12 text-base"
-              disabled={saving}
-              onClick={() => void save()}
-            >
-              {saving && <Loader2 className="animate-spin" />} Salvar como
-              Recebido
-            </Button>
-          </div>
         </div>
       )}
+      </div>
+      <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 border-t bg-card px-4 py-4 lg:px-8">
+        {step === 1 ? <span /> : (
+          <Button
+            className="min-h-14 px-6 text-base"
+            variant="outline"
+            onClick={() => setStep(step - 1)}
+          >
+            {step === 2 ? "Voltar para cliente" : step === 3 ? "Voltar para equipamento" : "Corrigir"}
+          </Button>
+        )}
+        {step === 1 && (
+          <Button className="min-h-14 px-6 text-base" disabled={!client} onClick={() => setStep(2)}>
+            Continuar <ChevronRight />
+          </Button>
+        )}
+        {step === 2 && (
+          <Button className="min-h-14 px-6 text-base" onClick={() => setStep(3)}>
+            Continuar para o laudo <ChevronRight />
+          </Button>
+        )}
+        {step === 3 && (
+          <Button className="min-h-14 px-6 text-base" onClick={() => setStep(4)}>
+            Recapitular <ChevronRight />
+          </Button>
+        )}
+        {step === 4 && (
+          <Button className="min-h-14 px-6 text-base" disabled={saving} onClick={() => void save()}>
+            {saving && <Loader2 className="animate-spin" />} Salvar como Recebido
+          </Button>
+        )}
+      </div>
       <Dialog
         open={Boolean(otherField)}
         onOpenChange={(open) => !open && setOtherField(null)}
       >
-        <DialogContent>
+        <DialogContent tamanho="m">
           <DialogHeader>
             <DialogTitle>
               Informar outro{" "}
@@ -1107,6 +1337,14 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     </section>
   );
 }
+/** "Mar 2026" a partir de uma data ISO (AAAA-MM-DD). */
+function mesAno(data?: string): string {
+  const partes = data?.match(/^(\d{4})-(\d{2})/);
+  if (!partes) return "Data desconhecida";
+  const mes = new Date(Number(partes[1]), Number(partes[2]) - 1, 1).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+  return `${mes.charAt(0).toUpperCase()}${mes.slice(1)} ${partes[1]}`;
+}
+
 function Field({
   label,
   value,
@@ -1135,93 +1373,141 @@ function labelFor(key: string) {
   return key.replace(/_/g, " ");
 }
 
-function EquipmentSearch({ onBack }: { onBack: () => void }) {
-  const [term, setTerm] = useState("");
-  const [rows, setRows] = useState<Equipamento[]>([]);
-  const [selected, setSelected] = useState<Equipamento | null>(null);
-  const [loading, setLoading] = useState(false);
-  useEffect(() => {
-    const query = term.trim();
-    if (query.length < 2) {
-      setRows([]);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      void db
-        .listarEquipamentos(query)
-        .then((items) =>
-          setRows(
-            items.sort((a, b) =>
-              String(b.criado_em || b.data_entrada).localeCompare(
-                String(a.criado_em || a.data_entrada),
-              ),
-            ),
-          ),
-        )
-        .catch(() => setRows([]))
-        .finally(() => setLoading(false));
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [term]);
-  if (selected)
-    return (
-      <section>
-        <Back onBack={() => setSelected(null)} />
-        <EquipmentDetail equipamento={selected} />
-      </section>
-    );
+/** Etiqueta da fila de retirada: diz se é um equipamento ou uma venda de insumos. */
+function EtiquetaRetirada({ tipo }: { tipo: ItemRetirada["tipo"] }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 rounded-full px-2 py-px text-[11px] font-semibold",
+        tipo === "INSUMOS" ? "bg-acc-soft text-acc-soft-foreground" : "bg-muted text-foreground/80",
+      )}
+    >
+      {tipo === "INSUMOS" ? "Insumos" : "Equipamento"}
+    </span>
+  );
+}
+
+type FiltroRetirada = "TUDO" | "EQUIPAMENTO" | "INSUMOS";
+
+/**
+ * Entregar ao cliente: sem busca, mostra a fila (equipamentos prontos e vendas de
+ * insumos aprovadas); com busca, procura equipamentos e vendas (também por OI-n).
+ * Venda ainda não aprovada aparece sem botão, com o motivo.
+ */
+function RetiradaBusca({
+  onBack,
+  termoInicial = "",
+  onTermoChange,
+  onAbrirItem,
+}: {
+  onBack: () => void;
+  termoInicial?: string;
+  /** Guarda a busca no Balcão: abrir um item e voltar mantém o que foi digitado. */
+  onTermoChange?: (termo: string) => void;
+  onAbrirItem: (item: ItemRetirada) => void;
+}) {
+  const fila = useFilaBalcao();
+  const [term, setTerm] = useState(termoInicial);
+  const { buscando, data: encontrados, loading } = useBuscaRetirada(term);
+  const [filtro, setFiltro] = useState<FiltroRetirada>("TUDO");
+
+  const itens = buscando ? encontrados : fila.prontos;
+  const contagem = {
+    TUDO: itens.length,
+    EQUIPAMENTO: itens.filter((item) => item.tipo === "EQUIPAMENTO").length,
+    INSUMOS: itens.filter((item) => item.tipo === "INSUMOS").length,
+  };
+  const visiveis = filtro === "TUDO" ? itens : itens.filter((item) => item.tipo === filtro);
+  const carregando = buscando ? loading : fila.loading;
+
   return (
     <section>
-      <Back onBack={onBack} />
-      <h1 className="mt-3 text-3xl font-bold">Buscar equipamento</h1>
-      <p className="mt-2 text-base text-muted-foreground">
-        Serial, patrimônio, marca, modelo, defeito ou dados do cliente.
-      </p>
-      <div className="relative mt-6 max-w-3xl">
+      <Back onBack={onBack} rotulo="Início" />
+      <h1 className="mt-3 text-3xl font-bold">Entregar ao cliente</h1>
+      <label htmlFor="busca-retirada" className="mt-5 block text-base font-semibold">
+        Quem veio buscar?
+      </label>
+      <div className="relative mt-2 max-w-3xl">
         <Search className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-muted-foreground" />
         <Input
+          id="busca-retirada"
           autoFocus
-          className="min-h-14 pl-12 text-lg"
+          className="min-h-14 border-2 border-primary/70 bg-card pl-12 text-lg"
           value={term}
-          onChange={(e) => setTerm(e.target.value)}
-          placeholder="Digite para buscar"
+          onChange={(e) => {
+            setTerm(e.target.value);
+            onTermoChange?.(e.target.value);
+          }}
+          placeholder="Nome do cliente, CPF/CNPJ, série ou OI-n"
         />
-        {loading && (
+        {carregando && (
           <Loader2 className="absolute right-4 top-1/2 h-6 w-6 -translate-y-1/2 animate-spin" />
         )}
       </div>
-      <div className="mt-6 grid gap-4">
-        {rows.map((eq) => (
+      <div role="group" aria-label="Filtrar o que entregar" className="mt-4 inline-flex rounded-xl border bg-card p-1">
+        {([
+          ["TUDO", "Tudo"],
+          ["EQUIPAMENTO", "Equipamentos"],
+          ["INSUMOS", "Insumos"],
+        ] as const).map(([valor, rotulo]) => (
           <button
+            key={valor}
             type="button"
-            key={eq.id}
-            className="min-h-28 rounded-xl border bg-card p-5 text-left shadow-sm hover:border-cyan-600"
-            onClick={() => setSelected(eq)}
+            aria-pressed={filtro === valor}
+            onClick={() => setFiltro(valor)}
+            className={cn(
+              "min-h-11 rounded-lg px-4 text-base font-semibold transition-colors duration-rapida",
+              filtro === valor ? "bg-acc-soft text-acc-soft-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
           >
-            <div className="flex flex-wrap items-center gap-3">
-              <strong className="text-xl">{equipmentTitle(eq)}</strong>
-              <Badge>
-                {STATUS_LABELS[eq.status as keyof typeof STATUS_LABELS] ||
-                  eq.status}
-              </Badge>
-            </div>
-            <p className="mt-2 text-base">
-              Atendimento #{eq.id} · Serial: {eq.serial_number}{" "}
-              {eq.patrimonio ? `· Patrimônio: ${eq.patrimonio}` : ""}
-            </p>
-            <p className="text-base text-muted-foreground">
-              {eq.cliente_nome || "Cliente não informado"} · Entrada:{" "}
-              {eq.data_entrada}
-            </p>
+            {rotulo} <span className="tabular-nums">{contagem[valor]}</span>
           </button>
         ))}
-        {term.length >= 2 && !loading && rows.length === 0 && (
-          <p className="text-lg text-muted-foreground">
-            Nenhum equipamento encontrado.
-          </p>
-        )}
       </div>
+      <ul className="mt-4 max-w-4xl divide-y rounded-2xl border bg-card">
+        {visiveis.map((item) => {
+          const entregavel = podeEntregar(item);
+          const titulo = item.tipo === "EQUIPAMENTO" ? `Atendimento #${item.equipamento.id}` : null;
+          return (
+            <li key={item.chave} className="flex flex-wrap items-center gap-4 px-5 py-4">
+              <button type="button" onClick={() => onAbrirItem(item)} className="min-w-0 flex-1 text-left">
+                <span className="flex flex-wrap items-center gap-2">
+                  <strong className="text-lg">{clienteDoItem(item)}</strong>
+                  <EtiquetaRetirada tipo={item.tipo} />
+                </span>
+                <span className="mt-0.5 block text-base text-muted-foreground">
+                  {[titulo, descricaoDoItem(item), item.tipo === "INSUMOS" && !entregavel ? STATUS_ORCAMENTO_INSUMOS_LABEL[item.venda.status] : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+                {valorDoItem(item) && <span className="block text-base font-semibold tabular-nums">{valorDoItem(item)}</span>}
+              </button>
+              {entregavel ? (
+                <Button
+                  variant="ghost"
+                  className="min-h-12 shrink-0 bg-acc-soft px-5 text-base font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
+                  onClick={() => onAbrirItem(item)}
+                >
+                  Registrar Entrega
+                </Button>
+              ) : item.tipo === "INSUMOS" ? (
+                <span className="max-w-[16rem] text-right text-sm text-muted-foreground">
+                  Ainda não dá para entregar: o cliente não aprovou este orçamento.
+                </span>
+              ) : (
+                <Badge variant="outline">
+                  {STATUS_LABELS[item.equipamento.status as keyof typeof STATUS_LABELS] || item.equipamento.status}
+                </Badge>
+              )}
+            </li>
+          );
+        })}
+        {!carregando && visiveis.length === 0 && (
+          <li className="px-5 py-8 text-center text-lg text-muted-foreground">
+            {buscando ? "Nada encontrado para essa busca." : "Nada pronto para retirada."}
+          </li>
+        )}
+      </ul>
     </section>
   );
 }
@@ -1274,7 +1560,7 @@ function ClientSearch({ onBack }: { onBack: () => void }) {
           <button
             key={client.id}
             type="button"
-            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-primary"
             onClick={() => setSelected(client)}
           >
             <strong className="text-lg">
@@ -1332,7 +1618,7 @@ function ClientCycles({
           <button
             type="button"
             key={eq.id}
-            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-primary"
             onClick={() => onSelectEquipment(eq)}
           >
             <strong>{equipmentTitle(eq)}</strong>
@@ -1408,7 +1694,7 @@ function EquipmentDetail({ equipamento }: { equipamento: Equipamento }) {
         </dl>
         <DocumentosEquipamento equipamento={current} />
         {error && (
-          <p role="alert" className="text-red-700">
+          <p role="alert" className="text-destructive">
             {error}
           </p>
         )}
@@ -1547,7 +1833,7 @@ function OperationalPanel({ onBack }: { onBack: () => void }) {
           <button
             type="button"
             key={eq.id}
-            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-primary"
             onClick={() => setSelected(eq)}
           >
             <strong>{equipmentTitle(eq)}</strong>

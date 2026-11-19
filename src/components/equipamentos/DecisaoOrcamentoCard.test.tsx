@@ -242,7 +242,7 @@ describe("DecisaoOrcamentoCard", () => {
   });
 
   describe("negociação e pedidos de ajuste", () => {
-    it("NEGOCIAR em aberto aparece em violeta com a mensagem, o contato informado e os botões", async () => {
+    it("NEGOCIAR em aberto aparece no tom de destaque com a mensagem, o contato informado e os botões", async () => {
       mocks.obter.mockResolvedValue(info({
         solicitacoes: [solicitacao({ contatoTelefone: "(71) 98888-7777", contatoEmail: "ana@cliente.com" })],
       }));
@@ -252,7 +252,7 @@ describe("DecisaoOrcamentoCard", () => {
       expect(within(pedido).getByText("Pedido de negociação")).toBeInTheDocument();
       expect(within(pedido).getByText("Consegue fazer por 200?")).toBeInTheDocument();
       expect(within(pedido).getByText(/\(71\) 98888-7777 · ana@cliente.com/)).toBeInTheDocument();
-      expect(pedido.className).toContain("violet");
+      expect(pedido.className).toContain("acc-soft");
       expect(within(pedido).getByRole("button", { name: /WhatsApp/ })).toBeInTheDocument();
       expect(within(pedido).getByRole("button", { name: /E-mail/ })).toBeInTheDocument();
     });
@@ -310,7 +310,7 @@ describe("DecisaoOrcamentoCard", () => {
 
       const pedido = await screen.findByRole("group", { name: "Pedido do cliente" });
       expect(within(pedido).getByText("Pedido de ajuste")).toBeInTheDocument();
-      expect(pedido.className).toContain("amber");
+      expect(pedido.className).toContain("status-wait");
       const ver = within(pedido).getByRole("button", { name: "ver mais" });
       expect(pedido.querySelector("p.line-clamp-2")).not.toBeNull();
       fireEvent.click(ver);

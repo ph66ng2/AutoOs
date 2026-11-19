@@ -21,6 +21,8 @@ import type { Equipamento } from "@/types";
 interface UseEquipamentosParams {
   busca?: string;
   status?: string;
+  /** Técnico da verificação mais recente. */
+  tecnico?: string;
   ordenacao?: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE";
   /** Página apresentada pela interface, iniciando em 1. */
   page?: number;
@@ -48,6 +50,8 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [avisoAtualizacao, setAvisoAtualizacao] = useState<string | null>(null);
+  /** Total por status (pílulas do filtro); null enquanto não chega ou se a contagem falhar. */
+  const [contagens, setContagens] = useState<Record<string, number> | null>(null);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
@@ -65,7 +69,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     // Invalidate the previous filter request as soon as the new params commit,
     // before a resolved promise can publish its stale result.
     requestIdRef.current += 1;
-  }, [params?.busca, params?.status, params?.page, params?.ordenacao]);
+  }, [params?.busca, params?.status, params?.page, params?.ordenacao, params?.tecnico]);
 
   /**
    * Carrega a lista de equipamentos do banco de dados.
@@ -85,13 +89,19 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     setAvisoAtualizacao(null);
     try {
       const params = paramsRef.current;
+      const tecnico = params?.tecnico || undefined;
+      // A contagem é só enfeite das pílulas: se falhar, a lista continua.
+      const contagem = Promise.resolve().then(() => db.contarEquipamentosPorStatus(params?.busca, tecnico)).catch(() => null);
       const data = await db.listarEquipamentosPaginados(
         params?.busca,
         params?.status === "TODOS" ? undefined : params?.status,
         Math.max((params?.page ?? 1) - 1, 0),
         params?.ordenacao ?? "ATUALIZACAO_RECENTE",
+        tecnico,
       );
+      const numeros = await contagem;
       if (!atual()) return { status: "obsoleto" };
+      setContagens(numeros);
       setEquipamentos(data.items);
       setTotal(data.total);
       return { status: "atualizado" };
@@ -112,7 +122,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     return () => {
       requestIdRef.current += 1;
     };
-  }, [carregar, params?.busca, params?.status, params?.page, params?.ordenacao]);
+  }, [carregar, params?.busca, params?.status, params?.page, params?.ordenacao, params?.tecnico]);
 
   const recarregar = useCallback(() => carregar(), [carregar]);
   const atualizarEmSegundoPlano = useCallback(() => carregar({ silencioso: true }), [carregar]);
@@ -213,6 +223,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   return {
     equipamentos,
     total,
+    contagens,
     loading,
     error,
     avisoAtualizacao,

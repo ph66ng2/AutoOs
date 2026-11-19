@@ -95,18 +95,18 @@ describe("Clientes: ordem de compra e preferências", () => {
     });
   });
 
-  it("o botão Contatos expande a lista de contatos do cliente na linha", async () => {
+  it("abrir o cliente pelo nome mostra os contatos no painel e clicar de novo fecha", async () => {
     mocks.clientes = [clienteSalvo({ empresa_id: 3, contato_encontrado: "Carlos Mendes" })];
     dbMocks.listarClienteContatos.mockResolvedValue([
       { id: 1, empresa_id: 3, cliente_id: 7, nome: "Carlos Mendes", telefone: "71988887777", email: "carlos@x.com", ativo: true },
       { id: 2, empresa_id: 3, cliente_id: 7, nome: "Bruno Lima", ativo: true },
     ]);
     renderPagina();
-    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     expect(await screen.findByText("carlos@x.com")).toBeInTheDocument();
     expect(screen.getByText("Bruno Lima")).toBeInTheDocument();
     expect(dbMocks.listarClienteContatos).toHaveBeenCalledWith(7, 3);
-    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     expect(screen.queryByText("carlos@x.com")).not.toBeInTheDocument();
   });
 
@@ -121,9 +121,9 @@ describe("Clientes: ordem de compra e preferências", () => {
         { id: 20, empresa_id: 3, cliente_id: 8, nome: "Contato do B", ativo: true },
       ]));
     renderPagina();
-    const botoes = screen.getAllByRole("button", { name: "Contatos" });
-    fireEvent.click(botoes[0]!);
-    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[1]!);
+    // Abrir o cliente no painel é clicar no nome dele na lista.
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bruno Lima" }));
     expect(await screen.findByText("Contato do B")).toBeInTheDocument();
     resolverA([{ id: 10, empresa_id: 3, cliente_id: 7, nome: "Contato do A", ativo: true }]);
     await new Promise(r => setTimeout(r, 0));
@@ -140,9 +140,9 @@ describe("Clientes: ordem de compra e preferências", () => {
     dbMocks.listarClienteContatos.mockImplementation((id: number) =>
       id === 7 ? new Promise(r => { resolvers.push(r); }) : new Promise(() => {}));
     renderPagina();
-    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[0]!);
-    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[1]!);
-    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bruno Lima" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     await waitFor(() => expect(resolvers).toHaveLength(2));
     resolvers[0]!([{ id: 10, empresa_id: 3, cliente_id: 7, nome: "A antigo", ativo: true }]);
     await new Promise(r => setTimeout(r, 0));
@@ -155,7 +155,7 @@ describe("Clientes: ordem de compra e preferências", () => {
   it("cliente legado sem empresa_id mostra mensagem distinta e não busca contatos", async () => {
     mocks.clientes = [clienteSalvo({ empresa_id: null })];
     renderPagina();
-    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     expect(await screen.findByText(/sem empresa vinculada/i)).toBeInTheDocument();
     expect(screen.queryByText("Nenhum contato cadastrado")).not.toBeInTheDocument();
     expect(dbMocks.listarClienteContatos).not.toHaveBeenCalled();
@@ -167,9 +167,9 @@ describe("Clientes: ordem de compra e preferências", () => {
       { id: 1, empresa_id: 3, cliente_id: 7, nome: "Nome antigo", ativo: true },
     ]);
     renderPagina();
-    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     expect(await screen.findByText("Nome antigo")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /gerenciar contatos e portal/i }));
+    fireEvent.click(screen.getByRole("button", { name: /gerenciar acesso ao portal/i }));
     dbMocks.listarClienteContatos.mockResolvedValueOnce([
       { id: 1, empresa_id: 3, cliente_id: 7, nome: "Nome novo", ativo: true },
     ]);
@@ -184,7 +184,7 @@ describe("Clientes: ordem de compra e preferências", () => {
       { id: 1, empresa_id: 3, cliente_id: 7, nome: "Carlos Mendes", email: "carlos@x.com", ativo: true },
     ]);
     renderPagina();
-    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     fireEvent.click(await screen.findByRole("button", { name: /Carlos Mendes/ }));
     expect(await screen.findByRole("button", { name: "Fechar modal de contatos" })).toBeInTheDocument();
   });

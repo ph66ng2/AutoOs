@@ -54,19 +54,19 @@ describe('ErrorAlert', () => {
   it('aplica estilo da variante warning', () => {
     render(<ErrorAlert variant="warning" message="Aviso" />);
     const alert = screen.getByText('Aviso').closest('div.rounded-lg')!;
-    expect(alert).toHaveClass('border-amber-200');
+    expect(alert).toHaveClass('border-status-wait/30');
   });
 
   it('aplica estilo da variante info', () => {
     render(<ErrorAlert variant="info" message="Informação" />);
     const alert = screen.getByText('Informação').closest('div.rounded-lg')!;
-    expect(alert).toHaveClass('border-blue-200');
+    expect(alert).toHaveClass('border-status-work/30');
   });
 
   it('aplica estilo da variante success', () => {
     render(<ErrorAlert variant="success" message="Sucesso" />);
     const alert = screen.getByText('Sucesso').closest('div.rounded-lg')!;
-    expect(alert).toHaveClass('border-emerald-200');
+    expect(alert).toHaveClass('border-status-ok/30');
   });
 
   // ─── Contexto e ação ─────────────────────────────────────

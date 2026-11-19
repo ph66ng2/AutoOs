@@ -122,7 +122,7 @@ export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConc
   return (
     <>
       <Dialog open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next); }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent tamanho="m">
           <DialogHeader>
             <DialogTitle>Prazo de aprovação vencido</DialogTitle>
             <DialogDescription>

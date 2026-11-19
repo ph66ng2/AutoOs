@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TeamAccessManager } from "../TeamAccessManager";
-const service = vi.hoisted(() => ({ listProfiles: vi.fn(), updateProfile: vi.fn(), issueAccessCode: vi.fn(), deactivateProfile: vi.fn(), reactivateProfile: vi.fn() }));
+const service = vi.hoisted(() => ({ listProfiles: vi.fn(), updateProfile: vi.fn(), issueAccessCode: vi.fn(), deactivateProfile: vi.fn(), reactivateProfile: vi.fn(), createProfileWithCode: vi.fn() }));
 vi.mock("@/lib/sensitive-access", () => ({ SensitiveAccessService: service }));
 const profiles = [
   { id: 1, nome: "Paulo", role: "ADMIN", permissions: ["MANAGE_PROFILES"], pin_configured: true, pin_required: true, ativo: true },
-  { id: 2, nome: "Ivan", role: "TECNICO", permissions: ["STOCK_CONTROL"], pin_configured: false, pin_required: true, ativo: true, onboarding_pendente: true },
+  { id: 2, nome: "Ivan", role: "TECNICO", permissions: ["STOCK_CONTROL"], pin_configured: false, pin_required: true, ativo: true, onboarding_pendente: true, email_profissional: "ivan@empresa.test", atende_tecnico: true },
   { id: 3, nome: "Maria", role: "ATENDENTE", permissions: [], pin_configured: true, pin_required: true, ativo: false },
 ];
 describe("gestão da equipe", () => {
@@ -32,8 +32,28 @@ describe("gestão da equipe", () => {
     expect(service.updateProfile).not.toHaveBeenCalled();
     await user.type(screen.getByLabelText("Seu PIN de administrador"), "1234");
     await user.click(screen.getByRole("button", { name: "Confirmar alteração" }));
-    await waitFor(() => expect(service.updateProfile).toHaveBeenCalledWith(2, { nome: "Ivan", role: "TECNICO", permissions: ["STOCK_CONTROL"] }, "1234"));
+    await waitFor(() => expect(service.updateProfile).toHaveBeenCalledWith(2, { nome: "Ivan", role: "TECNICO", permissions: ["STOCK_CONTROL"], email_profissional: "ivan@empresa.test", atende_tecnico: true }, "1234"));
     expect(changed).toHaveBeenCalledOnce();
+  });
+  it("editar exige o e-mail profissional e grava a marca de técnico", async () => {
+    const user = userEvent.setup();
+    service.updateProfile.mockResolvedValue(undefined);
+    render(<TeamAccessManager activeProfileId={1} onChanged={vi.fn().mockResolvedValue(undefined)} />);
+    await screen.findByText("Paulo");
+    expect(screen.getByText("Sem e-mail profissional: edite para completar")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Editar", exact: true })[0]);
+    await user.type(screen.getByLabelText("Seu PIN de administrador"), "1234");
+    await user.click(screen.getByRole("button", { name: "Confirmar alteração" }));
+    expect(await screen.findByText("Informe o e-mail profissional.")).toBeInTheDocument();
+    expect(service.updateProfile).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText("E-mail profissional"), "paulo@empresa.test");
+    await user.click(screen.getByLabelText(/Faz atendimento técnico/));
+    await user.click(screen.getByRole("button", { name: "Confirmar alteração" }));
+    await waitFor(() => expect(service.updateProfile).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ email_profissional: "paulo@empresa.test", atende_tecnico: true }),
+      "1234",
+    ));
   });
   it("sem a trava 0.5.6, reativa perfil sem permissões", async () => {
     const user = userEvent.setup();
@@ -65,5 +85,35 @@ describe("gestão da equipe", () => {
     await user.click(screen.getByRole("button", { name: "Gerar código" }));
     await waitFor(() => expect(service.issueAccessCode).toHaveBeenCalledWith(2, "1234"));
     expect(await screen.findByText("ABC-234")).toBeInTheDocument();
+  });
+
+  it("o cadastro de perfil rola no corpo do diálogo", async () => {
+    const user = userEvent.setup();
+    render(<TeamAccessManager activeProfileId={1} onChanged={vi.fn()} />);
+    await screen.findByText("Ivan");
+    await user.click(screen.getByRole("button", { name: /Novo perfil/ }));
+    expect(screen.getByRole("dialog").querySelector("[data-slot=dialog-body]")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continuar" })).toBeInTheDocument();
+  });
+
+  it("não fecha o cadastro de perfil enquanto a criação está em andamento", async () => {
+    const user = userEvent.setup();
+    let concluir!: (valor: { profile_id: number; nome: string; codigo: string; expira_em: string }) => void;
+    service.createProfileWithCode.mockReturnValue(new Promise((resolve) => { concluir = resolve; }));
+    render(<TeamAccessManager activeProfileId={1} onChanged={vi.fn().mockResolvedValue(undefined)} />);
+    await screen.findByText("Ivan");
+    await user.click(screen.getByRole("button", { name: /Novo perfil/ }));
+    await user.type(screen.getByLabelText("Nome provisório"), "Nova pessoa");
+    await user.type(screen.getByLabelText("E-mail profissional"), "nova@empresa.test");
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    await user.type(screen.getByLabelText("Seu PIN de administrador"), "1234");
+    await user.click(screen.getByRole("button", { name: "Criar e gerar código" }));
+    expect(await screen.findByRole("button", { name: "Criando..." })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Criando...")).toBeInTheDocument();
+    concluir({ profile_id: 9, nome: "Nova pessoa", codigo: "AAA-111", expira_em: "2026-12-01T00:00:00Z" });
+    expect(await screen.findByText("AAA-111")).toBeInTheDocument();
   });
 });

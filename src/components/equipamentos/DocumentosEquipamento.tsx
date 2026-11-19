@@ -92,21 +92,21 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
 
   return (
     <>
-    <Card>
-      <CardHeader className="py-3">
+    <Card className="border-0 bg-transparent shadow-none">
+      <CardHeader className="px-0 pb-3 pt-0">
         <CardTitle className="text-sm flex items-center gap-1">
           <FileText className="h-4 w-4" />
           Documentos
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="space-y-2 p-0">
         {documentos.map((doc) => {
           const estaGerando = gerando === doc.id;
 
           return (
             <div
               key={doc.id}
-              className="flex items-center justify-between rounded-md border px-3 py-2"
+              className="flex items-center justify-between rounded-lg border px-3 py-2"
             >
               <div className="flex items-center gap-2">
                 <FileDown className="h-4 w-4 text-muted-foreground" />
@@ -115,7 +115,7 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1 h-7 text-xs"
+                className="h-8 min-w-[8.5rem] justify-center gap-1"
                 disabled={estaGerando}
                 onClick={() => void handleAcaoDocumento(doc)}
               >

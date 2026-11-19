@@ -30,6 +30,9 @@ vi.mock("@/lib/pdf-service", () => ({
 }));
 
 import { EmailService } from "@/lib/email-service";
+import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+
+beforeEach(() => semearTecnicosPadrao());
 
 const equipamentoBase: Equipamento = {
   id: 10,

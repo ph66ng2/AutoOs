@@ -99,7 +99,7 @@ export function GastosFormFixo({ open, onOpenChange, gasto, onSave, saving }: Ga
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle>{gasto ? "Editar Gasto Fixo" : "Novo Gasto Fixo"}</DialogTitle>
         </DialogHeader>

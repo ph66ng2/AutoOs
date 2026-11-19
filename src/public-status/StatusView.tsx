@@ -91,13 +91,14 @@ export function StatusView({ equipamento, titulo, orientacao, statusAlteradoEm, 
   const datas = datasDasEtapas(etapas);
   return (
     <>
-      <p className="equipment-name" title={equipamento}>{equipamento}</p>
-      {identificacao}
+      {/* A situação fica no selo do topo (é o título da página para leitor de tela); o nome do equipamento vem logo abaixo, grande. */}
       <div className={`current-status tone-${concluido ? "green" : stage?.tone ?? "blue"}${concluido ? " is-concluido" : ""}`}>
         <span className="status-pulse" aria-hidden="true" />
         <h1>{concluido ? "Atendimento concluído" : titulo}</h1>
       </div>
       {concluido && <p className="concluido-sub">{titulo}</p>}
+      <p className="equipment-name" title={equipamento}>{equipamento}</p>
+      {identificacao}
       <p className="orientation">{orientacao}</p>
 
       {stage && (
@@ -159,7 +160,6 @@ export function StatusView({ equipamento, titulo, orientacao, statusAlteradoEm, 
               </li>
             )}
           </ol>
-          <p className="timeline-note">A etapa atual pode mudar após uma revisão do atendimento.</p>
         </nav>
       )}
 

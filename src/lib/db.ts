@@ -40,6 +40,10 @@ import type {
   AprovarOrcamentoInput,
   ConsumoOrcamento,
   Cliente,
+  ContagemClientes,
+  FiltroClientes,
+  ResumoCliente,
+  ResumoEstoque,
   ClienteContato,
   ClienteContatoInput,
   ContatoInicialInput,
@@ -90,6 +94,7 @@ import type {
   EmailSendRequest,
   ResultadoVerificacaoCredenciais,
   ServicoCatalogo,
+  SituacaoServico,
   SupabaseStorageConfig,
   Verificacao,
 } from "@/types";
@@ -159,8 +164,24 @@ export const db = {
     return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes });
   },
 
-  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE"): Promise<PaginatedResult<Equipamento>> {
-    return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao });
+  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE", tecnico?: string): Promise<PaginatedResult<Equipamento>> {
+    return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao, tecnico: tecnico ?? null });
+  },
+
+  /** Nome da empresa da sessão (topo do menu) → Rust: obter_empresa_ativa */
+  async obterEmpresaAtiva(): Promise<string> {
+    return invoke<string>("obter_empresa_ativa");
+  },
+
+  /** Total por status com a mesma busca/técnico da lista (números das pílulas) → Rust: contar_equipamentos_por_status */
+  async contarEquipamentosPorStatus(busca?: string, tecnico?: string): Promise<Record<string, number>> {
+    const linhas = await invoke<Array<{ status: string; total: number }>>("contar_equipamentos_por_status", { busca: busca ?? null, tecnico: tecnico ?? null });
+    return Object.fromEntries(linhas.map((linha) => [linha.status, Number(linha.total)]));
+  },
+
+  /** Nomes de técnico já gravados nas verificações (filtro de técnico) → Rust: listar_nomes_tecnicos_verificacoes */
+  async listarNomesTecnicosVerificacoes(): Promise<string[]> {
+    return invoke<string[]>("listar_nomes_tecnicos_verificacoes");
   },
 
   /** Busca equipamento por ID → Rust: buscar_equipamento */
@@ -219,8 +240,22 @@ export const db = {
     return invoke<Cliente[]>("listar_clientes", { busca: busca ?? null });
   },
 
-  async listarClientesPaginados(busca: string | undefined, page: number): Promise<PaginatedResult<Cliente>> {
-    return invoke<PaginatedResult<Cliente>>("listar_clientes_paginados", { busca: busca ?? null, page });
+  async listarClientesPaginados(busca: string | undefined, page: number, filtro?: FiltroClientes): Promise<PaginatedResult<Cliente>> {
+    return invoke<PaginatedResult<Cliente>>("listar_clientes_paginados", {
+      busca: busca ?? null,
+      page,
+      filtro: filtro && filtro !== "TODOS" ? filtro : null,
+    });
+  },
+
+  /** Contagem de cada filtro da lista de clientes → Rust: contar_clientes_por_filtro */
+  async contarClientesPorFiltro(busca?: string): Promise<ContagemClientes> {
+    return invoke<ContagemClientes>("contar_clientes_por_filtro", { busca: busca ?? null });
+  },
+
+  /** Números do painel do cliente → Rust: resumo_cliente (faturado só com permissão de Finanças) */
+  async resumoCliente(clienteId: number): Promise<ResumoCliente> {
+    return invoke<ResumoCliente>("resumo_cliente", { clienteId });
   },
 
   /** Busca cliente por ID → Rust: buscar_cliente */
@@ -505,6 +540,11 @@ export const db = {
     });
   },
 
+  /** Números do topo de Insumos e peças → Rust: resumo_estoque */
+  async resumoEstoque(): Promise<ResumoEstoque> {
+    return invoke<ResumoEstoque>("resumo_estoque");
+  },
+
   async listarProdutosPaginados(
     busca: string | undefined,
     categoria: string | undefined,
@@ -520,6 +560,11 @@ export const db = {
   },
 
   /** Cria novo produto → Rust: criar_produto */
+  /** Busca um produto do estoque → Rust: buscar_produto */
+  async buscarProduto(id: number): Promise<Produto> {
+    return invoke<Produto>("buscar_produto", { id });
+  },
+
   async criarProduto(produto: Omit<Produto, "id">): Promise<Produto> {
     return invoke<Produto>("criar_produto", { input: produto });
   },
@@ -573,6 +618,14 @@ export const db = {
         page: filtros.page ?? 0,
       },
     });
+  },
+
+  /** Total por situação com a mesma busca da lista (números das pílulas) → Rust: contar_orcamentos_insumos_por_status */
+  async contarOrcamentosInsumosPorStatus(busca?: string): Promise<Record<string, number>> {
+    const linhas = await invoke<Array<{ status: string; total: number }>>("contar_orcamentos_insumos_por_status", {
+      filtros: { status: null, cliente_id: null, busca: busca?.trim() || null, page: 0 },
+    });
+    return Object.fromEntries(linhas.map((linha) => [linha.status, Number(linha.total)]));
   },
 
   async obterOrcamentoInsumos(id: number): Promise<OrcamentoInsumosDetalhe> {
@@ -659,10 +712,12 @@ export const db = {
     });
   },
 
-  async listarServicosPaginados(busca: string | undefined, apenasAtivos: boolean, page: number): Promise<PaginatedResult<ServicoCatalogo>> {
+  /** Lista o catálogo por situação: ativos, só os inativos (para reativar) ou todos. */
+  async listarServicosPaginados(busca: string | undefined, situacao: SituacaoServico, page: number): Promise<PaginatedResult<ServicoCatalogo>> {
     return invoke<PaginatedResult<ServicoCatalogo>>("listar_servicos_paginados", {
       busca: busca ?? null,
-      apenasAtivos,
+      apenasAtivos: situacao === "ATIVOS",
+      apenasInativos: situacao === "INATIVOS",
       page,
     });
   },
@@ -685,6 +740,17 @@ export const db = {
   /** Desativa serviço de catálogo. */
   async deletarServico(id: number): Promise<void> {
     return invoke<void>("deletar_servico", { id });
+  },
+
+  /** Números dos filtros de Serviços → Rust: contar_servicos. */
+  async contarServicos(busca?: string): Promise<{ ativos: number; inativos: number }> {
+    const contagem = await invoke<{ ativos: number; inativos: number }>("contar_servicos", { busca: busca ?? null });
+    return { ativos: Number(contagem.ativos), inativos: Number(contagem.inativos) };
+  },
+
+  /** Reativa serviço desativado → Rust: reativar_servico. */
+  async reativarServico(id: number): Promise<ServicoCatalogo> {
+    return invoke<ServicoCatalogo>("reativar_servico", { id });
   },
 
   // ─── Gastos Fixos e Variáveis ───────────────────────────
@@ -972,6 +1038,11 @@ export const db = {
   /** Aprova orçamento, pagamento e status APROVADO atomicamente no backend. */
   async aprovarOrcamento(input: AprovarOrcamentoInput): Promise<Equipamento> {
     return invoke<Equipamento>("aprovar_orcamento", { input });
+  },
+
+  /** Peças com baixa pendente (só quais são; sem permissão de estoque) → Rust: listar_pecas_baixa_pendente */
+  async listarPecasBaixaPendente(equipamentoId: number): Promise<Array<{ servico_id: string; produto_id: number }>> {
+    return invoke<Array<{ servico_id: string; produto_id: number }>>("listar_pecas_baixa_pendente", { equipamentoId });
   },
 
   async listarConsumosOrcamento(equipamentoId: number): Promise<ConsumoOrcamento[]> {

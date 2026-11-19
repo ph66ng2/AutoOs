@@ -1,3 +1,4 @@
+import { erroEmailProfissional } from "@/lib/email-profissional";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -8,9 +9,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EVENT_LABELS } from "@/lib/eventos-auditoria";
 import { AppearancePicker } from "@/components/perfil/AppearancePicker";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
-import { TeamAccessManager } from "@/components/TeamAccessManager";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { getAppMode, setAppMode } from "@/lib/app-mode";
 import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
@@ -64,7 +65,7 @@ export default function Perfil() {
           type="button"
           variant="outline"
           onClick={() => void openProfileSelector({
-            title: "Quem está usando o AutoOS?",
+            title: "Quem está usando?",
             description: "Escolha o perfil e informe o PIN para entrar.",
           })}
         >
@@ -79,7 +80,7 @@ export default function Perfil() {
               <Lock className="mt-0.5 h-5 w-5 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Informe seu PIN para ver e editar o seu perfil.</p>
             </div>
-            <Button type="button" onClick={() => void openProfileSelector({ title: "Quem está usando o AutoOS?", description: "Escolha o perfil e informe o PIN para entrar." })}>
+            <Button type="button" onClick={() => void openProfileSelector({ title: "Quem está usando?", description: "Escolha o perfil e informe o PIN para entrar." })}>
               Desbloquear
             </Button>
           </CardContent>
@@ -96,9 +97,6 @@ export default function Perfil() {
             ].map(([value, label]) => (
               <TabsTrigger key={value} value={value} className={TAB_CLASS}>{label}</TabsTrigger>
             ))}
-            {status?.can_manage_profiles && (
-              <TabsTrigger value="equipe" data-tour="perfil-tab-equipe" className={TAB_CLASS}>Equipe</TabsTrigger>
-            )}
           </TabsList>
 
           <TabsContent value="visao" className="mt-0">
@@ -116,11 +114,6 @@ export default function Perfil() {
           <TabsContent value="tutorial" className="mt-0">
             <Tutorial profile={profile} permissions={status?.permissions ?? []} />
           </TabsContent>
-          {status?.can_manage_profiles && (
-            <TabsContent value="equipe" className="mt-0">
-              <TeamAccessManager activeProfileId={status.active_profile_id} onChanged={refreshStatus} />
-            </TabsContent>
-          )}
         </Tabs>
       )}
     </div>
@@ -130,18 +123,6 @@ export default function Perfil() {
 const TAB_CLASS =
   "rounded-none border-b-2 border-transparent px-3.5 py-2.5 text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
 
-const EVENT_LABELS: Record<string, string> = {
-  PROFILE_SWITCH: "Entrou no perfil",
-  UNLOCK_SUCCESS: "Desbloqueou a sessão",
-  SESSION_UNLOCKED_NO_PIN: "Desbloqueou a sessão",
-  LOCK: "Bloqueou a sessão",
-  PIN_CHANGED: "Trocou o PIN",
-  ACCESS_CODE_REDEEMED: "Ativou o perfil em um computador",
-  PROFILE_RENAMED: "Mudou o nome do perfil",
-  PROFILE_CREATED: "Criou um perfil",
-  PROFILE_UPDATED: "Alterou um perfil",
-  ACCESS_CODE_ISSUED: "Gerou um código de acesso",
-};
 
 function formatWhen(value?: string | null) {
   return formatDateTimeSalvador(parseDbTimestampUtc(value), "");
@@ -172,7 +153,6 @@ function VisaoGeral({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">O que você pode fazer</CardTitle>
-          <CardDescription>Precisa de algo bloqueado? Fale com o administrador da equipe.</CardDescription>
         </CardHeader>
         <CardContent>
           <ul className="grid gap-2.5 sm:grid-cols-2">
@@ -247,9 +227,9 @@ function VisaoGeral({
 
 function CapabilityItem({ title, note, allowed }: { title: string; note: string; allowed: boolean }) {
   return (
-    <li className={cn("flex items-start gap-2.5 rounded-lg p-3", allowed ? "bg-emerald-500/10" : "bg-muted")}>
+    <li className={cn("flex items-start gap-2.5 rounded-lg p-3", allowed ? "bg-status-ok/10" : "bg-muted")}>
       {allowed ? (
-        <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
+        <Check className="mt-0.5 h-4 w-4 shrink-0 text-status-ok" strokeWidth={2.5} />
       ) : (
         <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
       )}
@@ -264,6 +244,7 @@ function CapabilityItem({ title, note, allowed }: { title: string; note: string;
 function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved: () => Promise<void> }) {
   const look = profileAppearance(profile);
   const [nome, setNome] = useState(profile.nome);
+  const [email, setEmail] = useState(profile.email_profissional ?? "");
   const [color, setColor] = useState(look.color);
   const [icon, setIcon] = useState(look.icon);
   const [theme, setTheme] = useState<ProfileTheme>(look.theme);
@@ -273,11 +254,14 @@ function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved:
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (nome.trim().length < 3) return setError("O nome deve ter pelo menos 3 caracteres.");
+    const erroEmail = erroEmailProfissional(email);
+    if (erroEmail) return setError(erroEmail);
     setBusy(true);
     setError(null);
     try {
       await SensitiveAccessService.savePersonalization({
         nome: nome.trim(),
+        email_profissional: email.trim(),
         avatar_icone: icon,
         avatar_cor: color,
         tema: theme,
@@ -295,12 +279,15 @@ function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved:
   return (
     <Card className="max-w-3xl">
       <CardContent className="p-6">
-        <form onSubmit={(event) => void save(event)} className="space-y-7">
+        <form noValidate onSubmit={(event) => void save(event)} className="space-y-7">
           <div className="flex items-center gap-4">
             <ProfileAvatar icon={icon} color={color} size="lg" />
             <div className="max-w-sm flex-1 space-y-2">
               <Label htmlFor="perfil-nome">Nome de exibição</Label>
               <Input id="perfil-nome" value={nome} onChange={(event) => setNome(event.target.value)} maxLength={40} disabled={busy} />
+              <Label htmlFor="perfil-email" className="block pt-2">E-mail profissional</Label>
+              <Input id="perfil-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} disabled={busy} placeholder="nome@empresa.com.br" />
+              {!profile.email_profissional && <p className="text-xs font-semibold text-status-wait">Seu perfil ainda não tem e-mail profissional.</p>}
             </div>
           </div>
           <AppearancePicker
@@ -338,7 +325,6 @@ function SonsDaInterface() {
       />
       <div className="space-y-1">
         <Label htmlFor="perfil-sons">Sons da interface</Label>
-        <p className="text-sm text-muted-foreground">Cliques e avisos curtos nas animações do primeiro acesso. Vale para este computador.</p>
       </div>
     </div>
   );
@@ -427,7 +413,6 @@ function Tutorial({ profile, permissions }: { profile: SecurityProfile; permissi
         <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-semibold">Tour completo</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Passa pelas telas liberadas para o seu perfil. Cerca de 2 minutos.</p>
           </div>
           <Button type="button" onClick={() => openTour("completo")}>
             <Sparkles className="mr-2 h-4 w-4" /> Ver tour
@@ -454,7 +439,7 @@ function Tutorial({ profile, permissions }: { profile: SecurityProfile; permissi
                 <li key={permission} className="flex items-center justify-between gap-3 py-3">
                   <span className="text-sm font-medium">{PERMISSION_DETAILS[permission].title}</span>
                   {pending.includes(permission) && seen !== null ? (
-                    <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">Novo</span>
+                    <span className="rounded-full bg-warning/15 px-2.5 py-0.5 text-xs font-medium text-status-wait">Novo</span>
                   ) : (
                     <span className="text-xs text-muted-foreground">{seen === null ? "Ainda não visto" : "Visto no tour"}</span>
                   )}

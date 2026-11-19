@@ -113,7 +113,7 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
   return (
     <>
       <Dialog open={envio !== null} onOpenChange={(aberto) => !aberto && tentarFechar()}>
-        <DialogContent className="gap-5 sm:max-w-xl">
+        <DialogContent tamanho="m" className="gap-5">
           <DialogHeader className="space-y-1.5 pr-6">
             <DialogTitle>Enviar manualmente</DialogTitle>
             <DialogDescription>
@@ -144,7 +144,7 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
               />
 
               {atual.temSenha && !usou && (
-                <p className="flex items-start gap-2 text-xs text-amber-700">
+                <p className="flex items-start gap-2 text-xs text-status-wait">
                   <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   Esta mensagem contém a senha do portal, que não será exibida de novo depois que você fechar.
                 </p>
@@ -164,7 +164,7 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
             </div>
           )}
 
-          <DialogFooter className="items-center gap-3 border-t pt-4 sm:justify-between sm:space-x-0">
+          <DialogFooter className="items-center gap-3 sm:justify-between">
             {atual ? (
               <div role="group" aria-label="Enviar" className="inline-flex divide-x overflow-hidden rounded-md border bg-background">
                 <Button
@@ -189,13 +189,13 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
                   <span className="relative mr-2 h-4 w-4" aria-hidden>
                     <Copy
                       className={cn(
-                        "absolute inset-0 h-4 w-4 transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)]",
+                        "absolute inset-0 h-4 w-4 transition-[opacity,scale,filter] duration-rapida ease-saida",
                         copiado ? "scale-[0.25] opacity-0 blur-[4px]" : "scale-100 opacity-100 blur-0",
                       )}
                     />
                     <Check
                       className={cn(
-                        "absolute inset-0 h-4 w-4 text-emerald-600 transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)]",
+                        "absolute inset-0 h-4 w-4 text-status-ok transition-[opacity,scale,filter] duration-rapida ease-saida",
                         copiado ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]",
                       )}
                     />
@@ -212,7 +212,7 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
       </Dialog>
 
       <AlertDialog open={confirmarFechar} onOpenChange={setConfirmarFechar}>
-        <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>A senha não aparece de novo.</AlertDialogTitle>
             <AlertDialogDescription>

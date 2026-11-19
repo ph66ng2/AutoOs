@@ -18,11 +18,27 @@ describe("GastosTable", () => {
         gastosFixos={[]}
         gastosVariaveis={[gasto]}
         loading={false}
+        ocultar={false}
         onEditFixo={vi.fn()}
         onEditVariavel={vi.fn()}
       />,
     );
     expect(screen.getByText("27/10/2026")).toBeInTheDocument();
     expect(screen.queryByText("26/10/2026")).not.toBeInTheDocument();
+  });
+
+  it("mascara o valor quando os números estão ocultos", () => {
+    render(
+      <GastosTable
+        gastosFixos={[]}
+        gastosVariaveis={[gasto]}
+        loading={false}
+        ocultar
+        onEditFixo={vi.fn()}
+        onEditVariavel={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("R$ •••••")).toBeInTheDocument();
+    expect(screen.queryByText(/80,00/)).not.toBeInTheDocument();
   });
 });

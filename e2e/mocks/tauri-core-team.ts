@@ -10,6 +10,9 @@ const profiles: SecurityProfile[] = [
   { id: 4, nome: "Recepção 2", role: "FINANCEIRO", permissions: ["FINANCIAL_ACTIONS", "VIEW_EXPENSES"], pin_configured: false, pin_required: true, is_default: false, ativo: true, onboarding_pendente: true },
 ];
 // Visual e tour já escolhidos pelos perfis ativos da demonstração.
+Object.assign(profiles[0], { email_profissional: "paulo@empresa.test" });
+Object.assign(profiles[1], { email_profissional: "ivan@empresa.test", atende_tecnico: true });
+Object.assign(profiles[2], { email_profissional: "maria@empresa.test" });
 Object.assign(profiles[0], { avatar_icone: "star", avatar_cor: "#7C3AED", tour_permissoes_vistas: all });
 Object.assign(profiles[1], { avatar_icone: "wrench", avatar_cor: "#0F766E", tour_permissoes_vistas: [] });
 Object.assign(profiles[2], { avatar_icone: "coffee", avatar_cor: "#EA580C", tour_permissoes_vistas: [] });

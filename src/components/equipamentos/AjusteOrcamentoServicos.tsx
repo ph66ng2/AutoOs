@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,8 @@ import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { formatCurrency, formatCurrencyOrMissing } from "@/lib/utils";
 import type { ServicoCatalogo, ServicoNecessario } from "@/types";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
+import { LinhaServicoCelular } from "@/components/equipamentos/LinhaServicoCelular";
+import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 
 interface AjusteOrcamentoServicosProps {
   servicos: ServicoNecessario[];
@@ -23,6 +25,9 @@ export function AjusteOrcamentoServicos({
   onRemoverTodos,
 }: AjusteOrcamentoServicosProps) {
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
+  const telaLarga = useLarguraMinima(768);
+  /** No celular, só o serviço tocado (ou o recém-adicionado) fica aberto para edição. */
+  const [servicoAberto, setServicoAberto] = useState<string | null>(null);
 
   function adicionarServico() {
     const novo: ServicoNecessario = {
@@ -31,6 +36,7 @@ export function AjusteOrcamentoServicos({
       valor: 0,
     };
     onChange([...servicos, novo]);
+    setServicoAberto(novo.id);
   }
 
   function removerServico(id: string) {
@@ -65,14 +71,16 @@ export function AjusteOrcamentoServicos({
           Adicionar Serviço
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Digite para buscar no catálogo e selecionar o serviço pré-cadastrado com preço automático.
-      </p>
       <div className="space-y-2">
-        {servicos.map((s) => (
-          <div key={s.id} className="rounded-md border p-2">
-          <div className="flex gap-2 items-start">
-            <div className="relative flex-1">
+        {servicos.map((s) => {
+          // No celular o serviço fechado vira linha; a edição continua montada (escondida) para não perder valor nem erro.
+          const recolhido = !telaLarga && servicoAberto !== s.id;
+          return (
+          <Fragment key={s.id}>
+          {recolhido && <LinhaServicoCelular servico={s} onAbrir={() => setServicoAberto(s.id)} />}
+          <div hidden={recolhido} className="rounded-md border p-2">
+          <div className="flex flex-wrap items-start gap-2 md:flex-nowrap">
+            <div className="relative min-w-full flex-1 md:min-w-0">
               <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Nome do serviço"
@@ -133,12 +141,14 @@ export function AjusteOrcamentoServicos({
               onClick={() => removerServico(s.id)}
               aria-label="Remover serviço"
             >
-              <Trash2 className="h-4 w-4 text-red-500" />
+              <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
           </div>
           <PecasDoServico pecas={s.pecas ?? []} onChange={(pecas) => atualizarServico(s.id, { pecas })} />
           </div>
-        ))}
+          </Fragment>
+          );
+        })}
         {servicos.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-3">
             Nenhum serviço adicionado.

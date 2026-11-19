@@ -39,7 +39,7 @@ export function AppearancePicker({
                 aria-pressed={selected}
                 onClick={() => onColorChange(item.hex)}
                 className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-full ring-offset-2 ring-offset-background transition-[box-shadow,transform] duration-150 ease-out active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex h-8 w-8 items-center justify-center rounded-full ring-offset-2 ring-offset-background transition-[box-shadow,transform] duration-rapida ease-out active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   selected && "ring-2",
                 )}
                 style={{ backgroundColor: item.hex, ["--tw-ring-color" as string]: item.hex }}
@@ -64,7 +64,7 @@ export function AppearancePicker({
                 aria-pressed={selected}
                 onClick={() => onIconChange(id)}
                 className={cn(
-                  "h-10 w-10 overflow-hidden rounded-xl ring-offset-2 ring-offset-background transition-[box-shadow,transform] duration-150 ease-out active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "h-10 w-10 overflow-hidden rounded-xl ring-offset-2 ring-offset-background transition-[box-shadow,transform] duration-rapida ease-out active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   selected && "ring-2",
                 )}
                 style={selected ? { ["--tw-ring-color" as string]: color } : undefined}
@@ -103,16 +103,16 @@ function ThemeOption({
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
-      className="group flex h-12 items-center gap-3 rounded-xl text-left transition-[box-shadow,transform] duration-150 ease-out active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none"
+      className="group flex h-12 items-center gap-3 rounded-xl text-left transition-[box-shadow,transform] duration-rapida ease-out active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none"
     >
       <span aria-hidden="true" className={scope}>
         <span
           className={cn(
-            "flex h-7 w-10 overflow-hidden rounded-md bg-background p-0.5 ring-offset-2 ring-offset-background transition-[box-shadow] duration-150 ease-out group-focus-visible:ring-2 group-focus-visible:ring-ring",
+            "flex h-7 w-10 overflow-hidden rounded-md bg-background p-0.5 ring-offset-2 ring-offset-background transition-[box-shadow] duration-rapida ease-out group-focus-visible:ring-2 group-focus-visible:ring-ring",
             selected ? "ring-2 ring-primary" : "ring-1 ring-border",
           )}
         >
-          <span className="w-2.5 rounded-sm bg-sidebar" />
+          <span className="w-2.5 rounded-sm border border-sidebar-border bg-sidebar" />
           <span className="flex flex-1 items-start p-0.5 pl-1">
             <span className="h-full w-full rounded-sm bg-card" />
           </span>

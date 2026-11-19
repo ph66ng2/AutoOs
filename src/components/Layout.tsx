@@ -4,6 +4,7 @@
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  Componente de layout que envolve todas as páginas.          ║
  * ║  Sidebar com navegação: Dashboard, Equipamentos, Clientes,  ║
+ * ║  Vendas de insumos,                                         ║
  * ║  Insumos/Peças. Suporta collapse (16px / 60px).            ║
  * ║  Usa React Router <Outlet /> para renderizar a página ativa.║
  * ║                                                              ║
@@ -12,22 +13,34 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard,
+  LayoutGrid,
   Printer,
   Package,
-  Receipt,
+  DollarSign,
+  Shield,
   Wrench,
   Users,
+  ShoppingBag,
   Menu,
   X,
+  Search,
   Lock,
   Settings,
-  ShieldCheck,
-  UserRound,
+  BadgeCheck,
+  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Store,
 } from "lucide-react";
-import { Suspense, useState } from "react";
+import { setAppMode, type AppMode } from "@/lib/app-mode";
+import { useLarguraMinima } from "@/hooks/useLarguraMinima";
+import { useEmpresaAtiva } from "@/hooks/useEmpresaAtiva";
+import { Suspense, useMemo, useState } from "react";
+import { BuscaGlobal } from "@/components/busca/BuscaGlobal";
+import { AjudaAtalhos } from "@/components/busca/AjudaAtalhos";
+import { useAtalhosGlobais } from "@/hooks/useAtalhosGlobais";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -46,107 +59,254 @@ const CONFIGURACOES_PERMISSIONS: SensitivePermission[] = [
   SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
 ];
 
-/** Itens de navegação da sidebar. Cada item mapeia para uma rota do React Router */
-const navItems: {
+interface NavItem {
   label: string;
   path: string;
   icon: React.ComponentType<{ className?: string }>;
   permission?: SensitivePermission | SensitivePermission[];
   showWhenLocked?: boolean;
-}[] = [
-  { label: "Perfil", path: "/perfil", icon: UserRound },
-  { label: "Dashboard", path: "/", icon: LayoutDashboard },
-  { label: "Equipamentos", path: "/equipamentos", icon: Printer },
-  { label: "Clientes", path: "/clientes", icon: Users },
-  { label: "Insumos/Peças", path: "/insumos", icon: Package },
-  { label: "Serviços", path: "/servicos", icon: Wrench },
-  { label: "Gastos", path: "/gastos", icon: Receipt, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES },
-  { label: "Configurações", path: "/configuracoes", icon: Settings, permission: CONFIGURACOES_PERMISSIONS, showWhenLocked: true },
+  /** Item que troca o modo do app (Balcão) em vez de só navegar. */
+  modo?: AppMode;
+}
+
+/**
+ * Menu agrupado por área (MenuLateral do DS). Balcão entra como no canvas: o item troca
+ * o app para o modo Balcão (CounterLayout), que tem o seu "Modo completo" para voltar.
+ */
+const navGroups: { titulo?: string; itens: NavItem[] }[] = [
+  { itens: [{ label: "Início", path: "/", icon: LayoutGrid }] },
+  {
+    titulo: "Atendimento",
+    itens: [
+      { label: "Equipamentos", path: "/equipamentos", icon: Printer },
+      { label: "Balcão", path: "/balcao", icon: Store, modo: "counter" },
+      { label: "Clientes", path: "/clientes", icon: Users },
+      { label: "Vendas de insumos", path: "/vendas", icon: ShoppingBag },
+    ],
+  },
+  {
+    titulo: "Estoque",
+    itens: [
+      { label: "Insumos e peças", path: "/insumos", icon: Package },
+      { label: "Serviços", path: "/servicos", icon: Wrench },
+    ],
+  },
+  {
+    titulo: "Financeiro",
+    itens: [{ label: "Finanças", path: "/gastos", icon: DollarSign, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES }],
+  },
+  { titulo: "Administração", itens: [{ label: "Equipe e acessos", path: "/equipe", icon: Shield }] },
 ];
+
+const configuracoesItem: NavItem = {
+  label: "Configurações",
+  path: "/configuracoes",
+  icon: Settings,
+  permission: CONFIGURACOES_PERMISSIONS,
+  showWhenLocked: true,
+};
+
+function navLinkClass(collapsed: boolean) {
+  return ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "relative flex h-[42px] items-center gap-3 rounded-lg border px-3 text-sm font-medium transition-colors duration-rapida",
+      collapsed && "justify-center px-0",
+      isActive
+        ? "border-sidebar-border bg-card font-semibold text-foreground shadow-sm before:absolute before:-left-3 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-primary"
+        : "border-transparent text-foreground/80 hover:bg-card/60 hover:text-foreground",
+    );
+}
 
 export function Layout() {
   const [desktopCollapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const collapsed = desktopCollapsed && !mobileOpen;
-  const { status, lockSensitiveAccess } = useSensitiveAccess();
-  const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
+  const { status, lockSensitiveAccess, connectionUnavailable } = useSensitiveAccess();
+  // A lista de perfis pode não trazer o perfil da sessão; o nome da sessão basta para o cartão.
+  const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id)
+    ?? (status?.active_profile_id != null
+      ? { id: status.active_profile_id, nome: status.active_profile_name || "Perfil ativo", avatar_icone: null, avatar_cor: null, tema: null }
+      : null);
   const activeLook = activeProfile ? profileAppearance(activeProfile) : null;
+  const sessaoAtiva = Boolean(status?.pin_configured && status.unlocked);
+  const telaLarga = useLarguraMinima(768);
+  const empresa = useEmpresaAtiva(`${status?.active_profile_id ?? ""}-${status?.unlocked ?? ""}`);
+  // O selo só aparece quando há algo fora do normal (sem banco, sem perfil, sem PIN).
+  // Desbloqueado vira o ✓ ao lado do nome; bloqueado aparece na linha de baixo do cartão.
+  const mostrarAvisoAcesso = connectionUnavailable || !status?.active_profile_id || !status.pin_configured;
 
-  const visibleNavItems = navItems.filter(item => navItemVisible(item, status));
+  const visibleGroups = navGroups
+    .map((grupo) => ({ ...grupo, itens: grupo.itens.filter((item) => navItemVisible(item, status)) }))
+    .filter((grupo) => grupo.itens.length > 0);
+  const mostrarConfiguracoes = navItemVisible(configuracoesItem, status);
+  const navigate = useNavigate();
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [ajudaAberta, setAjudaAberta] = useState(false);
+  // Telas que o Ctrl+K encontra: as mesmas do menu (Balcão troca o modo do app, fica de fora).
+  const chaveTelas = visibleGroups.flatMap((grupo) => grupo.itens.map((item) => item.path)).join("|") + (mostrarConfiguracoes ? "|cfg" : "");
+  const telasBuscaveis = useMemo(
+    () => [...visibleGroups.flatMap((grupo) => grupo.itens), ...(mostrarConfiguracoes ? [configuracoesItem] : [])]
+      .filter((item) => !item.modo)
+      .map((item) => ({ label: item.label, path: item.path })),
+    [chaveTelas],
+  );
+  useAtalhosGlobais({
+    abrirBusca: () => setBuscaAberta(true),
+    abrirAjuda: () => setAjudaAberta(true),
+    novaEntrada: () => navigate("/equipamentos", { state: { novaEntrada: true } }),
+  });
+  const renderItem = (item: NavItem) => (
+    <NavLink
+      key={item.path}
+      to={item.path}
+      end={item.path === "/"}
+      aria-label={item.label}
+      title={collapsed ? item.label : undefined}
+      data-tour={`nav-${item.path}`}
+      onClick={() => {
+        setMobileOpen(false);
+        if (item.modo) setAppMode(item.modo);
+      }}
+      className={navLinkClass(collapsed)}
+    >
+      {({ isActive }) => (
+        <>
+          <item.icon className="h-[18px] w-[18px] shrink-0" />
+          {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+          {!collapsed && isActive && <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />}
+        </>
+      )}
+    </NavLink>
+  );
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {mobileOpen && <button type="button" aria-label="Fechar menu" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-40 bg-black/60 md:hidden" /> }
       {/* Sidebar */}
       {/* z-50 só vale na gaveta do celular (acima do fundo z-40). Em md+ a sidebar é item de flex: com z-50 ela vencia o splash de abertura (z-40). */}
-      <aside id="main-sidebar" aria-label="Menu principal" className={cn("fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col bg-sidebar transition-all duration-300 md:static md:z-auto md:visible md:translate-x-0", mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full", collapsed ? "md:w-16" : "md:w-60")}>
-        <Button type="button" variant="ghost" aria-label="Fechar menu lateral" className="absolute right-2 top-2 text-white md:hidden" onClick={() => setMobileOpen(false)}><X className="h-5 w-5" /></Button>
-        {/* Logo */}
-        <div className="flex h-[150px] items-center justify-center border-b border-sidebar-border px-4">
-          {!collapsed ? (
-            <img src="/logo-tag-trasparente.svg" alt="BMITAG" className="h-[110px] w-auto" />
-          ) : (
-            <div className="h-8 w-8" aria-hidden="true" />
+      <aside id="main-sidebar" aria-label="Menu principal" className={cn("fixed inset-y-0 left-0 z-50 flex w-[264px] shrink-0 flex-col overflow-y-auto bg-sidebar transition-[width,transform,visibility] ease-saida md:overflow-visible duration-lenta md:static md:z-auto md:visible md:translate-x-0", mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full", collapsed ? "md:w-16" : "md:w-[264px]")}>
+        {/* Marca */}
+        <div className={cn("flex h-[88px] shrink-0 items-center gap-3 px-5", collapsed && "justify-center px-0")}>
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-sidebar-border bg-card shadow-sm" aria-hidden="true">
+            <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-md bg-primary text-[9px] font-extrabold text-primary-foreground">OS</span>
+          </span>
+          {!collapsed && (
+            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+              <span className="truncate text-[15px] font-bold text-foreground">{empresa ?? "AutoOS"}</span>
+              {empresa && <span className="truncate text-xs text-muted-foreground">AutoOS</span>}
+            </span>
           )}
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn("hidden h-8 w-8 text-muted-foreground hover:text-foreground md:inline-flex", collapsed && "md:hidden")}
+            aria-label="Recolher menu"
+            onClick={() => setCollapsed(true)}
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
+          <Button type="button" variant="ghost" size="icon" aria-label="Fechar menu lateral" className="h-8 w-8 text-muted-foreground md:hidden" onClick={() => setMobileOpen(false)}><X className="h-5 w-5" /></Button>
+        </div>
+        {collapsed && (
+          <div className="hidden flex-col items-center gap-1 pb-2 md:flex">
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label="Expandir menu" onClick={() => setCollapsed(false)}>
+              <PanelLeftOpen className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Busca global (Ctrl+K) */}
+        <div className={cn("shrink-0 px-3 pb-1", collapsed && "flex justify-center px-0")}>
+          <button
+            type="button"
+            onClick={() => setBuscaAberta(true)}
+            aria-label="Buscar (Ctrl+K)"
+            title={collapsed ? "Buscar (Ctrl+K)" : undefined}
+            className={cn(
+              "flex h-10 w-full items-center gap-3 rounded-lg border border-sidebar-border bg-card/60 px-3 text-sm text-muted-foreground transition-colors duration-rapida hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              collapsed && "h-9 w-9 justify-center px-0",
+            )}
+          >
+            <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {!collapsed && <span className="flex-1 text-left">Buscar</span>}
+            {!collapsed && <kbd className="rounded border bg-muted px-1.5 text-[11px] font-medium">Ctrl K</kbd>}
+          </button>
         </div>
 
         {/* Navigation */}
-        <nav data-tour="nav" className="flex-1 space-y-1 p-3">
-          {visibleNavItems.map(item => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === "/"}
-              aria-label={item.label}
-              data-tour={`nav-${item.path}`}
-              onClick={() => setMobileOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                  isActive
-                    ? "bg-white/15 text-white shadow-sm"
-                    : "text-white/60 hover:bg-white/10 hover:text-white/90"
-                )
-              }
-            >
-              <item.icon className="h-5 w-5 shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </NavLink>
+        {/* No celular o menu inteiro rola (nada some atrás da rolagem da lista); no computador só a lista rola. */}
+        <nav data-tour="nav" className="shrink-0 px-3 pb-3 md:flex-1 md:shrink md:overflow-y-auto">
+          {visibleGroups.map((grupo) => (
+            <div key={grupo.titulo ?? "inicio"} className="space-y-0.5">
+              {grupo.titulo && !collapsed && (
+                <h4 className="mx-3 mb-1.5 mt-5 text-[13px] font-medium text-muted-foreground">{grupo.titulo}</h4>
+              )}
+              {grupo.titulo && collapsed && <div className="mx-2 my-3 border-t border-sidebar-border" aria-hidden="true" />}
+              {grupo.itens.map(renderItem)}
+            </div>
           ))}
         </nav>
 
-        {/* Segurança */}
-        <div className="border-t border-sidebar-border p-3 space-y-3">
-          {activeProfile && activeLook && (
-            <Link
-              to="/perfil"
-              data-tour="profile-card"
-              onClick={() => setMobileOpen(false)}
-              aria-label={`Perfil de ${activeProfile.nome}`}
-              className={cn("flex items-center gap-2.5 rounded-xl bg-white/5 p-2 transition-colors hover:bg-white/10", collapsed && "justify-center bg-transparent p-0")}
-            >
-              <ProfileAvatar icon={activeLook.icon} color={activeLook.color} size={collapsed ? "sm" : "md"} />
-              {!collapsed && (
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate text-sm font-semibold text-white">{activeProfile.nome}</span>
-                  <span className="truncate text-xs text-white/55">{status?.active_role ? securityRoleLabel(status.active_role) : "Sessão bloqueada"}</span>
-                </span>
-              )}
-            </Link>
-          )}
-          {!collapsed && <SensitiveAccessBadge />}
-          {collapsed && status?.pin_configured && status.unlocked && (
-            <div className="flex justify-center">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700">
-                <ShieldCheck className="h-4 w-4" />
-              </span>
+        {/* Pé: Configurações e o cartão do perfil */}
+        <div className="mt-auto space-y-2 px-3 pb-3 pt-2">
+          {/* No computador não há barra no topo (canvas): as notificações ficam ao lado de Configurações. */}
+          {(mostrarConfiguracoes || telaLarga) && (
+            <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
+              {mostrarConfiguracoes && <nav aria-label="Sistema" className="min-w-0 flex-1">{renderItem(configuracoesItem)}</nav>}
+              {telaLarga && <PortalAlertasSino />}
             </div>
           )}
-          {status?.pin_configured && status.unlocked && (
+          {!collapsed && mostrarAvisoAcesso && <SensitiveAccessBadge />}
+          {activeProfile && activeLook && (
+            <div
+              className={cn(
+                "flex items-center gap-1 rounded-xl border border-sidebar-border bg-card p-1.5 shadow-sm",
+                collapsed && "flex-col border-transparent bg-transparent p-0 shadow-none",
+              )}
+            >
+              <Link
+                to="/perfil"
+                data-tour="profile-card"
+                onClick={() => setMobileOpen(false)}
+                aria-label={`Perfil de ${activeProfile.nome}`}
+                title="Trocar perfil"
+                className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 transition-colors hover:bg-muted", collapsed && "justify-center p-0")}
+              >
+                <ProfileAvatar icon={activeLook.icon} color={activeLook.color} size={collapsed ? "sm" : "md"} />
+                {!collapsed && (
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    {/* Nome em até duas linhas: nomes compostos não somem atrás de reticências. */}
+                    <span className="line-clamp-2 break-words text-sm font-semibold leading-tight text-foreground [overflow-wrap:anywhere]">
+                      {activeProfile.nome}
+                      {sessaoAtiva && <BadgeCheck className="ml-1 inline h-3.5 w-3.5 align-[-2px] text-primary" aria-label="Acesso ativo" />}
+                    </span>
+                    <span className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">
+                      {status?.active_role ? securityRoleLabel(status.active_role) : "Sessão bloqueada"}
+                    </span>
+                  </span>
+                )}
+              </Link>
+              {sessaoAtiva && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+                  aria-label="Bloquear acesso sensível"
+                  title="Bloquear acesso sensível"
+                  onClick={() => void lockSensitiveAccess()}
+                >
+                  <Lock className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          )}
+          {!activeProfile && sessaoAtiva && (
             <Button
               variant="ghost"
               size="sm"
-              className="w-full justify-center text-white/70 hover:text-white hover:bg-white/10"
+              className="w-full justify-center text-muted-foreground hover:text-foreground"
               onClick={() => void lockSensitiveAccess()}
             >
               <Lock className="h-4 w-4 shrink-0" />
@@ -154,32 +314,23 @@ export function Layout() {
             </Button>
           )}
         </div>
-
-        {/* Toggle */}
-        <div className="hidden border-t border-sidebar-border p-3 md:block">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-center text-white/50 hover:text-white hover:bg-white/10"
-            aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-            onClick={() => setCollapsed(!desktopCollapsed)}
-          >
-            <Menu className="h-4 w-4" />
-            {!collapsed && <span className="ml-2">Recolher</span>}
-          </Button>
-        </div>
       </aside>
 
       {/* Main Content */}
+      <BuscaGlobal aberta={buscaAberta} onAbertaChange={setBuscaAberta} telas={telasBuscaveis} />
+      <AjudaAtalhos aberta={ajudaAberta} onAbertaChange={setAjudaAberta} />
       <main className="min-w-0 flex-1 overflow-auto bg-background">
         {/* Faixa superior: menu no celular e, à direita, as notificações (logo acima dos avisos). */}
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
-          <Button type="button" variant="outline" size="icon" className="md:hidden" aria-label="Abrir menu" aria-expanded={mobileOpen} aria-controls="main-sidebar" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></Button>
-          <span className="font-semibold md:hidden">AutoOS</span>
-          <div className="ml-auto flex items-center gap-2">
-            <PortalAlertasSino />
-          </div>
-        </header>
+        {/* Só no celular: abrir o menu e as notificações. No computador a página começa no título. */}
+        {!telaLarga && (
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <Button type="button" variant="outline" size="icon" aria-label="Abrir menu" aria-expanded={mobileOpen} aria-controls="main-sidebar" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></Button>
+            <span className="font-semibold">{empresa ?? "AutoOS"}</span>
+            <div className="ml-auto flex items-center gap-2">
+              <PortalAlertasSino />
+            </div>
+          </header>
+        )}
         <div className="mx-auto max-w-7xl p-4 md:p-6">
           <Suspense fallback={<div role="status" aria-live="polite">Carregando página</div>}>
             <Outlet />

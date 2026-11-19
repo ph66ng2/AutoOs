@@ -462,6 +462,22 @@ pub struct EquipamentoRow {
     pub resposta_cliente_situacao: Option<String>,
     pub criado_em: Option<String>,
     pub atualizado_em: Option<String>,
+    /// Técnico da verificação mais recente (vem do EQUIPAMENTO_SELECT; ausente em SELECTs próprios).
+    #[sqlx(default)]
+    pub tecnico_nome: Option<String>,
+    /// Ordem deste atendimento entre os registros com o mesmo número de série (1 = primeiro).
+    #[sqlx(default)]
+    pub ciclo_serial: Option<i32>,
+    /// Forma de pagamento combinada na verificação mais recente (mostrada no Balcão).
+    #[sqlx(default)]
+    pub forma_pagamento_codigo: Option<String>,
+}
+
+/// Quantos equipamentos há em cada status, já com busca e técnico aplicados.
+#[derive(Debug, Serialize, FromRow)]
+pub struct ContagemStatusRow {
+    pub status: String,
+    pub total: i64,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -515,6 +531,35 @@ pub struct ClienteRow {
     /// `listar_clientes_paginados` com busca. `default` é obrigatório: sem ele, `buscar_cliente` quebra.
     #[sqlx(default)]
     pub contato_encontrado: Option<String>,
+    /// Contato da OS mais recente (ou o primeiro ativo). Só na lista.
+    #[sqlx(default)]
+    pub contato_principal: Option<String>,
+    /// OS não entregues nem abandonadas. Só na lista.
+    #[sqlx(default)]
+    pub os_abertas: Option<i64>,
+    /// Data de entrada da OS mais recente. Só na lista.
+    #[sqlx(default)]
+    pub ultimo_atendimento: Option<String>,
+}
+
+/// Quantos clientes cada filtro da lista mostra, já com a busca aplicada.
+#[derive(Debug, Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct ContagemClientes {
+    pub todos: i64,
+    pub empresas: i64,
+    pub pessoas: i64,
+    pub com_os_aberta: i64,
+    pub portal_ativo: i64,
+}
+
+/// Números do painel do cliente. `faturado` só vem para quem tem VIEW_EXPENSES.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumoCliente {
+    pub os_abertas: i64,
+    pub no_ano: i64,
+    pub faturado: Option<f64>,
 }
 
 /// Produto completo retornado ao frontend.
@@ -543,6 +588,48 @@ pub struct ProdutoRow {
     pub ativo: Option<bool>,
     pub criado_em: Option<String>,
     pub atualizado_em: Option<String>,
+    /// Última movimentação do item: preenchida só na listagem paginada, por uma segunda consulta.
+    #[sqlx(default)]
+    pub ultima_mov_tipo: Option<String>,
+    #[sqlx(default)]
+    pub ultima_mov_origem: Option<String>,
+    #[sqlx(default)]
+    pub ultima_mov_referencia: Option<String>,
+    #[sqlx(default)]
+    pub ultima_mov_data: Option<String>,
+}
+
+/// Quantos itens ativos há em uma categoria de estoque.
+#[derive(Debug, Serialize, FromRow)]
+pub struct ContagemCategoriaEstoque {
+    pub categoria: String,
+    pub total: i64,
+}
+
+/// Números do topo de Insumos e peças.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumoEstoque {
+    pub total_itens: i64,
+    pub por_categoria: Vec<ContagemCategoriaEstoque>,
+    pub abaixo_minimo: i64,
+    /// OS paradas em "Aguardando peça".
+    pub aguardando_peca: i64,
+    /// Soma de saldo × preço de custo; só para quem pode consultar despesas.
+    pub valor_estoque: Option<f64>,
+    pub saidas_mes: i64,
+    /// Saídas do mês feitas pela manutenção de uma OS.
+    pub saidas_mes_os: i64,
+    /// Orçamentos de insumos em rascunho, enviados ou aprovados (ainda não entregues).
+    pub orcamentos_abertos: i64,
+    pub orcamentos_por_status: Vec<ContagemStatusOrcamento>,
+}
+
+/// Quantos orçamentos de insumos há em cada situação.
+#[derive(Debug, Serialize, FromRow)]
+pub struct ContagemStatusOrcamento {
+    pub status: String,
+    pub total: i64,
 }
 
 /// Serviço padrão retornado ao frontend para seleção na verificação técnica.
@@ -696,7 +783,28 @@ pub const EQUIPAMENTO_SELECT: &str = "
                 ORDER BY r.id DESC
                 LIMIT 1
            ) END AS resposta_cliente_situacao,
-           criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
+           criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em,
+           (
+               SELECT NULLIF(TRIM(v.tecnico_nome), '')
+                 FROM verificacoes v
+                WHERE v.equipamento_id = equipamentos.id
+                ORDER BY v.id DESC
+                LIMIT 1
+           ) AS tecnico_nome,
+           (
+               SELECT COUNT(*)::INT4
+                 FROM equipamentos ciclo
+                WHERE ciclo.empresa_id IS NOT DISTINCT FROM equipamentos.empresa_id
+                  AND LOWER(ciclo.serial_number) = LOWER(equipamentos.serial_number)
+                  AND ciclo.id <= equipamentos.id
+           ) AS ciclo_serial,
+           (
+               SELECT v.forma_pagamento_codigo
+                 FROM verificacoes v
+                WHERE v.equipamento_id = equipamentos.id
+                ORDER BY v.id DESC
+                LIMIT 1
+           ) AS forma_pagamento_codigo
     FROM equipamentos";
 
     pub const EQUIPAMENTO_IMAGEM_SELECT: &str = "

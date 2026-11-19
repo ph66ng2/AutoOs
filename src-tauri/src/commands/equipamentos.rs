@@ -11,7 +11,7 @@
 
 use crate::commands::types::{
     normalize_forma_pagamento, AprovarOrcamentoInput, EquipamentoHistoricoEvento,
-    EquipamentoInput, EquipamentoRow, PaginatedResult, EQUIPAMENTO_SELECT,
+    ContagemStatusRow, EquipamentoInput, EquipamentoRow, PaginatedResult, EQUIPAMENTO_SELECT,
 };
 use crate::commands::auth::{
     current_session_profile, record_security_event, require_active_session_company_id,
@@ -106,11 +106,26 @@ fn normalize_status_key(status: &str) -> String {
     .to_string()
 }
 
+/// Status do filtro: aceita um só ou uma lista separada por vírgula; "TODOS" e vazios somem.
+fn status_filtrados(status: Option<&str>) -> Vec<String> {
+    let mut lista: Vec<String> = status
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "TODOS")
+        .map(normalize_status_key)
+        .collect();
+    lista.sort_unstable();
+    lista.dedup();
+    lista
+}
+
 fn add_equipment_filters(
     query: &mut QueryBuilder<Postgres>,
     empresa_id: i32,
     busca: Option<&str>,
     status: Option<&str>,
+    tecnico: Option<&str>,
 ) {
     query.push(" WHERE empresa_id = ").push_bind(empresa_id);
 
@@ -151,14 +166,34 @@ fn add_equipment_filters(
                 .push_bind(format!("%{}%", document_digits));
         }
         query.push("))");
+        // Contato: o responsável da OS (mesmo inativo, porque continua ligado a ela) e
+        // qualquer contato ativo do cliente, como na busca de clientes.
+        query.push(
+            " OR EXISTS (SELECT 1 FROM cliente_contatos ct
+               WHERE ct.empresa_id = equipamentos.empresa_id
+                 AND (ct.id = equipamentos.responsavel_contato_id
+                      OR (ct.cliente_id = equipamentos.cliente_id AND ct.ativo = true))
+                 AND ",
+        );
+        super::clientes::push_busca_no_contato(query, busca);
+        query.push(")");
         query.push(")");
     }
 
-    if let Some(status) = status
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "TODOS")
-    {
-        query.push(" AND status = ").push_bind(normalize_status_key(status));
+    // Um status ou vários separados por vírgula ("RECEBIDO,EM_VERIFICACAO"), vindos das pílulas combinadas.
+    let status_lista = status_filtrados(status);
+    if !status_lista.is_empty() {
+        query.push(" AND status = ANY(").push_bind(status_lista).push(")");
+    }
+
+    // Técnico = quem assinou a verificação mais recente (o mesmo que a lista mostra).
+    if let Some(tecnico) = tecnico.map(str::trim).filter(|value| !value.is_empty()) {
+        query
+            .push(
+                " AND (SELECT NULLIF(TRIM(v.tecnico_nome), '') FROM verificacoes v
+                        WHERE v.equipamento_id = equipamentos.id ORDER BY v.id DESC LIMIT 1) = ",
+            )
+            .push_bind(tecnico.to_string());
     }
 }
 
@@ -180,8 +215,22 @@ pub(crate) async fn query_equipment_page_on_connection(
     ordenacao: Option<&str>,
     page_size: i32,
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
+    query_equipment_page_filtered(connection, empresa_id, page, busca, status, None, ordenacao, page_size).await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn query_equipment_page_filtered(
+    connection: &mut PgConnection,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    status: Option<&str>,
+    tecnico: Option<&str>,
+    ordenacao: Option<&str>,
+    page_size: i32,
+) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM equipamentos");
-    add_equipment_filters(&mut count_query, empresa_id, busca, status);
+    add_equipment_filters(&mut count_query, empresa_id, busca, status, tecnico);
     let total = count_query
         .build_query_scalar::<i64>()
         .fetch_one(&mut *connection)
@@ -190,7 +239,7 @@ pub(crate) async fn query_equipment_page_on_connection(
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
     let mut items_query = QueryBuilder::<Postgres>::new(EQUIPAMENTO_SELECT);
-    add_equipment_filters(&mut items_query, empresa_id, busca, status);
+    add_equipment_filters(&mut items_query, empresa_id, busca, status, tecnico);
     items_query
         .push(equipment_order_clause(ordenacao))
         .push(" LIMIT ")
@@ -645,20 +694,59 @@ pub async fn listar_equipamentos_paginados(
     busca: Option<String>,
     status: Option<String>,
     ordenacao: Option<String>,
+    tecnico: Option<String>,
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
     let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
-    query_equipment_page_on_connection(
+    query_equipment_page_filtered(
         &mut connection,
         empresa_id,
         page,
         busca.as_deref(),
         status.as_deref(),
+        tecnico.as_deref(),
         ordenacao.as_deref(),
         UI_PAGE_SIZE,
     )
     .await
+}
+
+/// Quantos equipamentos cada status tem, com a mesma busca e técnico da lista (para os filtros).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn contar_equipamentos_por_status(
+    busca: Option<String>,
+    tecnico: Option<String>,
+) -> Result<Vec<ContagemStatusRow>, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let mut query = QueryBuilder::<Postgres>::new("SELECT COALESCE(status, '') AS status, COUNT(*) AS total FROM equipamentos");
+    add_equipment_filters(&mut query, empresa_id, busca.as_deref(), None, tecnico.as_deref());
+    query.push(" GROUP BY status");
+    query
+        .build_query_as::<ContagemStatusRow>()
+        .fetch_all(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+/// Nomes de técnico já gravados nas verificações (o filtro inclui quem não é mais perfil técnico).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn listar_nomes_tecnicos_verificacoes() -> Result<Vec<String>, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT TRIM(v.tecnico_nome) FROM verificacoes v
+         JOIN equipamentos e ON e.id = v.equipamento_id
+         WHERE e.empresa_id = $1 AND NULLIF(TRIM(v.tecnico_nome), '') IS NOT NULL
+         ORDER BY 1",
+    )
+    .bind(empresa_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)
 }
 
 /// Buscar equipamento por ID.
@@ -1497,6 +1585,17 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn filtro_aceita_um_ou_varios_status() {
+        assert!(status_filtrados(None).is_empty());
+        assert!(status_filtrados(Some("TODOS")).is_empty());
+        assert_eq!(status_filtrados(Some("Recebido")), vec!["RECEBIDO"]);
+        assert_eq!(
+            status_filtrados(Some("EM_VERIFICACAO, RECEBIDO,,RECEBIDO")),
+            vec!["EM_VERIFICACAO", "RECEBIDO"]
+        );
+    }
 
     #[test]
     fn motivo_divergencia_vai_para_auditoria_sem_quebrar_os_detalhes() {

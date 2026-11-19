@@ -98,7 +98,7 @@ describe('ConfirmDialog', () => {
     render(<ConfirmDialog {...defaultProps} cancelVariant="destructive" />);
 
     const cancelButton = screen.getByRole('button', { name: 'Não' });
-    expect(cancelButton).toHaveClass('bg-red-600');
-    expect(cancelButton).toHaveClass('text-white');
+    expect(cancelButton).toHaveClass('bg-destructive');
+    expect(cancelButton).toHaveClass('text-destructive-foreground');
   });
 });

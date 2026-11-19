@@ -1,7 +1,8 @@
 import { validarPecas } from "@/lib/orcamento-estoque";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { useEffect, useState } from "react";
-import { Plus, Search, Edit, Trash2, RefreshCw, Wrench } from "lucide-react";
+import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
+import { Plus, Search, RefreshCw, Wrench, AlertTriangle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -17,14 +18,6 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { servicoCatalogoSchema, type ServicoCatalogoFormData } from "@/lib/validations";
 import { useServicos } from "@/hooks/useServicos";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -32,9 +25,9 @@ import { useNotification } from "@/hooks/useNotification";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
-import { SENSITIVE_PERMISSIONS, type ServicoCatalogo, type PecaVinculada } from "@/types";
+import { SENSITIVE_PERMISSIONS, type ServicoCatalogo, type PecaVinculada, type SituacaoServico } from "@/types";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
-import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import {
   Select,
@@ -45,10 +38,14 @@ import {
 } from "@/components/ui/select";
 import { totalPages } from "@/lib/pagination";
 import { MODELOS_SERVICO } from "@/pages/servicos/servicos-modelos";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function Servicos() {
-  const [busca, setBusca] = useState("");
-  const [paginaServicos, setPaginaServicos] = useState(1);
+  const [busca, setBusca] = useEstadoLembrado("servicos:busca", "");
+  /** O interruptor de cada cartão desativa (com confirmação) ou reativa o serviço. */
+  const [mostrar, setMostrar] = useState<SituacaoServico>("ATIVOS");
+  const [alternando, setAlternando] = useState<number | null>(null);
+  const [paginaServicos, setPaginaServicos] = useEstadoLembrado("servicos:pagina", 1);
   const [modeloSelecionado, setModeloSelecionado] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -59,22 +56,21 @@ export default function Servicos() {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const { error: showError } = useNotification();
 
-  const { servicos, total: totalServicos, loading, error, criar, atualizar, deletar, recarregar } = useServicos({
+  const { servicos, total: totalServicos, contagem, loading, error, criar, atualizar, deletar, reativar, recarregar } = useServicos({
     busca: busca || undefined,
-    apenasAtivos: true,
+    situacao: mostrar,
     page: paginaServicos,
   });
   const totalPaginasServicos = totalPages(totalServicos);
   const paginaServicosExibida = Math.min(paginaServicos, totalPaginasServicos);
   const servicosExibidos = servicos;
 
-  useEffect(() => {
-    setPaginaServicos(1);
-  }, [busca]);
+  usePrimeiraPaginaAoFiltrar([busca, mostrar], () => setPaginaServicos(1));
 
   useEffect(() => {
+    if (loading) return;
     setPaginaServicos((pagina) => Math.min(pagina, totalPaginasServicos));
-  }, [totalPaginasServicos]);
+  }, [totalPaginasServicos, loading, setPaginaServicos]);
 
   const form = useForm<ServicoCatalogoFormData>({
     resolver: zodResolver(servicoCatalogoSchema),
@@ -158,7 +154,7 @@ export default function Servicos() {
 
   async function solicitarExclusao(servico: ServicoCatalogo) {
     const liberado = await ensureSensitiveAccess({
-      title: "Excluir serviço",
+      title: "Desativar serviço",
       description: "Informe o PIN para desativar um serviço padrão do catálogo.",
       permission: SENSITIVE_PERMISSIONS.DELETE_RECORDS,
     });
@@ -174,130 +170,173 @@ export default function Servicos() {
     try {
       const resultado = await deletar(deletando.id!);
       if (!resultado.sucesso) {
-        throw new Error(resultado.erro || "Não foi possível excluir o serviço.");
+        throw new Error(resultado.erro || "Não foi possível desativar o serviço.");
       }
       setDeleteDialogOpen(false);
       setDeletando(null);
     } catch (err: any) {
-      console.error("Erro ao excluir serviço:", err);
-      showError("Serviços", "Excluir serviço", err);
+      console.error("Erro ao desativar serviço:", err);
+      showError("Serviços", "Desativar serviço", err);
     } finally {
       setSalvando(false);
     }
   }
 
+  async function reativarServico(servico: ServicoCatalogo) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Reativar serviço",
+      description: "Informe o PIN para o serviço voltar à verificação técnica.",
+      permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
+    });
+    if (!liberado) return;
+
+    setAlternando(servico.id!);
+    try {
+      const resultado = await reativar(servico.id!);
+      if (!resultado.sucesso) {
+        throw new Error(resultado.erro || "Não foi possível reativar o serviço.");
+      }
+    } catch (err: any) {
+      console.error("Erro ao reativar serviço:", err);
+      showError("Serviços", "Reativar serviço", err);
+    } finally {
+      setAlternando(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Serviços</h1>
-          <p className="text-muted-foreground">
-            Catálogo de serviços padrão com preço para a verificação técnica
-          </p>
-        </div>
+      <PageHeader
+        titulo="Serviços"
+        descricao={contagem && !busca ? `${contagem.ativos} ${contagem.ativos === 1 ? "ativo" : "ativos"}` : undefined}
+      >
         <Button onClick={() => void abrirNovo()}>
           <Plus className="h-4 w-4 mr-2" />
           Novo Serviço
         </Button>
-      </div>
+      </PageHeader>
 
       {error && <ErrorAlert variant="error" context="Serviços" message={error} action="Carregar" />}
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <Card className="rounded-2xl">
+        <CardContent className="space-y-4 p-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative min-w-[16rem] flex-1">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nome ou descrição..."
+                aria-label="Buscar serviço"
+                placeholder="Buscar serviço"
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
-                className="pl-9"
+                className="h-11 border-transparent bg-muted pl-10"
               />
             </div>
-            <Button variant="outline" size="icon" onClick={recarregar}>
+            <div role="group" aria-label="Mostrar serviços" className="flex flex-wrap gap-2">
+              {(["ATIVOS", "INATIVOS", "TODOS"] as const).map((opcao) => (
+                <PilulaFiltro
+                  key={opcao}
+                  ligado={mostrar === opcao}
+                  rotulo={opcao === "ATIVOS" ? "Ativos" : opcao === "INATIVOS" ? "Inativos" : "Todos"}
+                  numero={contagem ? (opcao === "ATIVOS" ? contagem.ativos : opcao === "INATIVOS" ? contagem.inativos : contagem.ativos + contagem.inativos) : undefined}
+                  onClick={() => setMostrar(opcao)}
+                />
+              ))}
+            </div>
+            <Button variant="outline" size="icon" className="h-11 w-11 md:h-9 md:w-9" aria-label="Recarregar serviços" onClick={recarregar}>
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardContent className="pt-6">
           {loading ? (
-            <div className="flex items-center justify-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            </div>
+            <ul aria-busy="true" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }, (_, indice) => (
+                <li key={indice} aria-hidden="true" className="space-y-3 rounded-2xl border p-4">
+                  <span className="block h-2.5 w-40 rounded-full bg-muted" />
+                  <span className="block h-2.5 w-24 rounded-full bg-muted" />
+                  <span className="block h-6 w-28 rounded-full bg-muted" />
+                </li>
+              ))}
+            </ul>
           ) : servicos.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Wrench className="h-16 w-16 mx-auto mb-4 opacity-20" />
-              <p className="text-lg font-medium mb-1">Nenhum serviço encontrado</p>
-              <p className="text-sm">
-                {busca ? "Tente ajustar a busca." : "Cadastre serviços para usar na verificação técnica."}
-              </p>
+            <div className="py-12 text-center">
+              <span aria-hidden="true" className="mx-auto mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-acc-soft text-acc-soft-foreground">
+                <Wrench className="h-5 w-5" />
+              </span>
+              <p className="font-semibold">{busca ? `Nenhum serviço com "${busca}".` : "Nenhum serviço cadastrado."}</p>
+              {busca && (
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => setBusca("")}>
+                  Limpar busca
+                </Button>
+              )}
             </div>
           ) : (
             <>
+              <ul aria-label="Serviços" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {servicosExibidos.map((servico) => {
+                  const inativo = servico.ativo === false;
+                  return (
+                    <li key={servico.id} className="relative flex flex-col gap-3 rounded-2xl border bg-card p-4 transition-colors duration-rapida hover:border-ctl">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className={cn("min-w-0", inativo && "opacity-55")}>
+                          {/* O cartão inteiro abre a edição (o botão se estica sobre ele); o interruptor fica por cima. */}
+                          <button
+                            type="button"
+                            aria-label={`Editar ${servico.nome}`}
+                            onClick={() => void abrirEditar(servico)}
+                            className="text-left font-semibold [overflow-wrap:anywhere] after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
+                          >
+                            {servico.nome}
+                          </button>
+                          {servico.descricao && <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{servico.descricao}</p>}
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={!inativo}
+                          aria-label={`Serviço ativo: ${servico.nome}`}
+                          disabled={alternando === servico.id}
+                          onClick={() => void (inativo ? reativarServico(servico) : solicitarExclusao(servico))}
+                          className={cn(
+                            "relative z-10 mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                            inativo ? "bg-track" : "bg-primary",
+                          )}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "inline-block h-5 w-5 rounded-full bg-card shadow-sm transition-transform duration-rapida ease-saida",
+                              inativo ? "translate-x-0.5" : "translate-x-5",
+                            )}
+                          />
+                        </button>
+                      </div>
+                      <div className="mt-auto border-t pt-3">
+                        <div className={cn(inativo && "opacity-55")}>
+                          <p className="text-xs text-muted-foreground">Preço base</p>
+                          <p className="text-lg font-bold tabular-nums">
+                            {Number(servico.preco_padrao || 0) === 0 ? "Garantia" : formatCurrency(Number(servico.preco_padrao || 0))}
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
               <PaginationControls
                 page={paginaServicosExibida}
                 totalPages={totalPaginasServicos}
                 onPageChange={setPaginaServicos}
                 label="Paginação de serviços"
+                totalItems={totalServicos}
+                className="pb-0"
               />
-              <div className="rounded-md border">
-                <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Serviço</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead className="text-right">Preço Padrão</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {servicosExibidos.map((servico) => (
-                    <TableRow key={servico.id}>
-                      <TableCell className="font-medium">{servico.nome}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {servico.descricao || "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {formatCurrency(Number(servico.preco_padrao || 0))}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <ActionPriorityRow
-                            primary={{
-                              id: `editar-${servico.id}`,
-                              label: "Editar",
-                              icon: <Edit className="h-4 w-4" />,
-                              variant: "default",
-                              onClick: () => void abrirEditar(servico),
-                            }}
-                            overflow={[
-                              {
-                                id: `excluir-${servico.id}`,
-                                label: "Excluir",
-                                icon: <Trash2 className="h-4 w-4" />,
-                                className: "text-red-600",
-                                onClick: () => void solicitarExclusao(servico),
-                              },
-                            ]}
-                          />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-                </Table>
-              </div>
             </>
           )}
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent tamanho="m">
           <DialogHeader>
             <DialogTitle>{editando ? "Editar Serviço" : "Novo Serviço"}</DialogTitle>
           </DialogHeader>
@@ -356,20 +395,22 @@ export default function Servicos() {
       </Dialog>
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent tamanho="p">
           <DialogHeader>
-            <DialogTitle>Confirmar Exclusão</DialogTitle>
+            <span aria-hidden="true" className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-status-bad-bg text-status-bad">
+              <AlertTriangle className="h-5 w-5" />
+            </span>
+            <DialogTitle>Desativar o serviço?</DialogTitle>
           </DialogHeader>
-          <p className="text-muted-foreground">
-            Desativar o serviço <strong>{deletando?.nome}</strong>?
+          <p className="text-sm text-muted-foreground">
+            "{deletando?.nome}" deixará de aparecer na verificação técnica.
           </p>
-          <p className="text-sm text-red-500">Ele deixará de aparecer na verificação técnica.</p>
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline">Cancelar</Button>
             </DialogClose>
             <Button variant="destructive" onClick={() => void onDelete()} disabled={salvando}>
-              {salvando ? "Excluindo..." : "Excluir"}
+              {salvando ? "Desativando..." : "Desativar o serviço"}
             </Button>
           </DialogFooter>
         </DialogContent>

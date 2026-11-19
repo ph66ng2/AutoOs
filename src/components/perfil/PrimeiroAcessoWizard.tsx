@@ -23,7 +23,7 @@ import type { SecurityProfile, SensitiveAccessStatus } from "@/types";
 
 type Step = "acesso" | "voce" | "pronto";
 
-const PRESS = "active:scale-[0.96] transition-[transform,background-color] duration-150 ease-out motion-reduce:active:scale-100";
+const PRESS = "active:scale-[0.96] transition-[transform,background-color] duration-rapida ease-saida motion-reduce:active:scale-100";
 
 function errorMessage(cause: unknown) {
   const message = cause instanceof Error ? cause.message : String(cause);
@@ -294,7 +294,7 @@ export function PrimeiroAcessoWizard({
               {/* A barra se preenche deslizando ao avançar e se esvazia ao voltar. */}
               <span className="h-1 overflow-hidden rounded-full bg-muted">
                 <span
-                  className="block h-full origin-left rounded-full bg-primary transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                  className="block h-full origin-left rounded-full bg-primary transition-transform duration-lenta ease-saida motion-reduce:transition-none"
                   style={{ transform: `scaleX(${index <= stepIndex ? 1 : 0})` }}
                 />
               </span>
@@ -540,10 +540,10 @@ function ShellPreview({ name, role, icon, color }: { name: string; role: string;
     <div aria-hidden="true" data-first-access-piece="" className="hidden lg:flex items-center justify-center bg-muted p-10">
       <div className="w-full max-w-[460px] rounded-2xl bg-card p-2 shadow-xl">
         <div className="flex aspect-[16/10] overflow-hidden rounded-lg bg-background">
-          <div className="flex w-[38%] flex-col bg-sidebar p-3">
+          <div className="flex w-[38%] flex-col border-r border-sidebar-border bg-sidebar p-3">
             <div className="flex items-center gap-1.5">
               <img src="/logo-tag-trasparente.svg" alt="" className="h-5 w-auto" />
-              <span className="text-xs font-semibold text-white">AutoOS</span>
+              <span className="text-xs font-semibold text-foreground">AutoOS</span>
             </div>
             <div className="mt-3 flex flex-col gap-1">
               {items.map(({ label, Icon, active }) => (
@@ -551,7 +551,7 @@ function ShellPreview({ name, role, icon, color }: { name: string; role: string;
                   key={label}
                   className={cn(
                     "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs",
-                    active ? "bg-white/15 text-white shadow-sm" : "text-white/60",
+                    active ? "bg-nav-active font-semibold text-nav-active-foreground" : "text-sidebar-foreground",
                   )}
                 >
                   <Icon className="h-4 w-4" />

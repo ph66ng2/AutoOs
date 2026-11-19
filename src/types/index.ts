@@ -80,19 +80,20 @@ export const STATUS_LABELS: Record<StatusEquipamento, string> = {
 };
 
 /** Classes CSS Tailwind de cor para cada status. Usado em StatusBadge (Equipamentos.tsx, Clientes.tsx) */
+// Uma família de cor por status (src/lib/status-familia.ts); o teste de lá garante que batem.
 export const STATUS_COLORS: Record<StatusEquipamento, string> = {
-  RECEBIDO: "bg-blue-100 text-blue-800",
-  EM_VERIFICACAO: "bg-yellow-100 text-yellow-800",
-  VERIFICADO: "bg-purple-100 text-purple-800",
-  AGUARDANDO_APROVACAO: "bg-orange-100 text-orange-800",
-  APROVADO: "bg-green-100 text-green-800",
-  REPROVADO: "bg-red-100 text-red-800",
-  EM_MANUTENCAO: "bg-indigo-100 text-indigo-800",
-  AGUARDANDO_PECA: "bg-amber-100 text-amber-800",
-  PRONTO: "bg-emerald-100 text-emerald-800",
-  ENTREGUE: "bg-gray-100 text-gray-800",
-  ORCAMENTO_VENCIDO: "bg-rose-100 text-rose-800",
-  ABANDONADO: "bg-stone-100 text-stone-800",
+  RECEBIDO: "bg-status-neutral-bg text-status-neutral",
+  EM_VERIFICACAO: "bg-status-work-bg text-status-work",
+  VERIFICADO: "bg-status-work-bg text-status-work",
+  AGUARDANDO_APROVACAO: "bg-status-wait-bg text-status-wait",
+  APROVADO: "bg-status-work-bg text-status-work",
+  REPROVADO: "bg-status-bad-bg text-status-bad",
+  EM_MANUTENCAO: "bg-status-work-bg text-status-work",
+  AGUARDANDO_PECA: "bg-status-wait-bg text-status-wait",
+  PRONTO: "bg-status-ok-bg text-status-ok",
+  ENTREGUE: "bg-status-neutral-bg text-status-neutral",
+  ORCAMENTO_VENCIDO: "bg-status-bad-bg text-status-bad",
+  ABANDONADO: "bg-status-neutral-bg text-status-neutral",
 };
 
 // ─── Interfaces ─────────────────────────────────────────
@@ -150,6 +151,12 @@ export interface Equipamento {
   // Auditoria
   criado_em?: string;
   atualizado_em?: string;
+  /** Técnico da verificação mais recente (só leitura, vem da lista). */
+  tecnico_nome?: string | null;
+  /** Ordem deste atendimento entre os registros com a mesma série (1 = primeiro). */
+  ciclo_serial?: number | null;
+  /** Forma de pagamento da verificação mais recente (só leitura). */
+  forma_pagamento_codigo?: FormaPagamentoCodigo | null;
 }
 
 /** Evento cronológico exibido no histórico operacional do equipamento. */
@@ -387,7 +394,7 @@ export interface DecisaoOrcamentoInfo {
   efetivacaoAutomatica?: boolean;
 }
 
-/** Liga/desliga do Portal do Cliente (Configurações → Integrações). */
+/** Liga/desliga do Portal do Cliente (Configurações → Portal do Cliente). */
 export interface EstadoPortal {
   portalAtivo: boolean;
   respostasAtivas: boolean;
@@ -510,6 +517,12 @@ export interface Cliente {
   atualizado_em?: string;
   /** Busca: nome do contato que trouxe o cliente, quando os dados do próprio cliente não bateram. */
   contato_encontrado?: string | null;
+  /** Só na lista: contato da OS mais recente (ou o primeiro ativo). */
+  contato_principal?: string | null;
+  /** Só na lista: OS não entregues nem abandonadas. */
+  os_abertas?: number | null;
+  /** Só na lista: data de entrada da OS mais recente. */
+  ultimo_atendimento?: string | null;
 }
 
 /**
@@ -532,9 +545,31 @@ export interface Produto {
   ativo?: boolean;
   criado_em?: string;
   atualizado_em?: string;
+  /** Última movimentação (só na listagem paginada). */
+  ultima_mov_tipo?: "ENTRADA" | "SAIDA" | string | null;
+  ultima_mov_origem?: string | null;
+  ultima_mov_referencia?: string | null;
+  ultima_mov_data?: string | null;
+}
+
+/** Números do topo de Insumos e peças (Rust: resumo_estoque). */
+export interface ResumoEstoque {
+  totalItens: number;
+  porCategoria: { categoria: string; total: number }[];
+  abaixoMinimo: number;
+  aguardandoPeca: number;
+  /** Só para quem pode consultar despesas; senão null. */
+  valorEstoque: number | null;
+  saidasMes: number;
+  saidasMesOs: number;
+  orcamentosAbertos: number;
+  orcamentosPorStatus: { status: StatusOrcamentoInsumos; total: number }[];
 }
 
 /** Serviço padrão do catálogo para orçamento/verificação técnica. */
+/** Filtro da lista de serviços do catálogo. */
+export type SituacaoServico = "ATIVOS" | "INATIVOS" | "TODOS";
+
 export interface ServicoCatalogo {
   id?: number;
   nome: string;
@@ -865,6 +900,10 @@ export interface SecurityProfile {
   onboarding_pendente?: boolean;
   /** Permissões que o tour já apresentou; `null` = nunca viu o tour. */
   tour_permissoes_vistas?: SensitivePermission[] | null;
+  /** E-mail profissional (cópia dos e-mails da OS, PDF). Vazio em perfis antigos até alguém preencher. */
+  email_profissional?: string | null;
+  /** Aparece na lista de técnicos da OS. */
+  atende_tecnico?: boolean;
 }
 
 export interface CodigoPrimeiroAcesso {
@@ -877,6 +916,8 @@ export interface CodigoPrimeiroAcesso {
 
 export interface PersonalizacaoPerfilInput {
   nome: string;
+  /** O próprio dono preenche ou troca; omitido mantém o atual. */
+  email_profissional?: string;
   avatar_icone: string | null;
   avatar_cor: string | null;
   tema: "light" | "dark" | null;
@@ -887,6 +928,9 @@ export interface SecurityProfileInput {
   nome: string;
   role: string;
   permissions: SensitivePermission[];
+  /** Obrigatório ao criar e ao editar pela Equipe. */
+  email_profissional: string;
+  atende_tecnico: boolean;
 }
 
 export interface SecurityAuditEvent {
@@ -1226,6 +1270,8 @@ export interface OrcamentoInsumos {
   numero: number;
   /** "OI-12" */
   numero_exibicao: string;
+  /** Categorias dos itens, em minúsculas ("etiqueta, ribbon"). */
+  categorias_itens?: string | null;
   cliente_id: number;
   cliente_nome?: string | null;
   cliente_documento?: string | null;
@@ -1308,4 +1354,23 @@ export interface FalhaPublicacaoPortal {
 export interface PublicacaoLotePortal {
   publicados: number[];
   falhas: FalhaPublicacaoPortal[];
+}
+
+/** Filtros da lista de clientes. */
+export type FiltroClientes = "TODOS" | "EMPRESAS" | "PESSOAS" | "COM_OS_ABERTA" | "PORTAL_ATIVO";
+
+/** Quantos clientes cada filtro mostra, com a busca aplicada. */
+export interface ContagemClientes {
+  todos: number;
+  empresas: number;
+  pessoas: number;
+  comOsAberta: number;
+  portalAtivo: number;
+}
+
+/** Números do painel do cliente. `faturado` só vem para quem tem a permissão de Finanças. */
+export interface ResumoCliente {
+  osAbertas: number;
+  noAno: number;
+  faturado?: number | null;
 }

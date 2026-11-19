@@ -32,21 +32,21 @@ const VARIANT_STYLES: Record<
     icon: AlertCircle,
   },
   warning: {
-    border: "border-amber-200 dark:border-amber-800/30",
-    bg: "bg-amber-50 dark:bg-amber-950/20",
-    text: "text-amber-700 dark:text-amber-400",
+    border: "border-status-wait/30",
+    bg: "bg-status-wait-bg",
+    text: "text-status-wait",
     icon: AlertTriangle,
   },
   info: {
-    border: "border-blue-200 dark:border-blue-800/30",
-    bg: "bg-blue-50 dark:bg-blue-950/20",
-    text: "text-blue-700 dark:text-blue-400",
+    border: "border-status-work/30",
+    bg: "bg-status-work-bg",
+    text: "text-status-work",
     icon: Info,
   },
   success: {
-    border: "border-emerald-200 dark:border-emerald-800/30",
-    bg: "bg-emerald-50 dark:bg-emerald-950/20",
-    text: "text-emerald-700 dark:text-emerald-400",
+    border: "border-status-ok/30",
+    bg: "bg-status-ok-bg",
+    text: "text-status-ok",
     icon: CheckCircle,
   },
 };
@@ -111,7 +111,7 @@ export function ErrorAlert({
             className={cn(
               "shrink-0 rounded-md p-1.5 transition-colors",
               "hover:bg-background/50",
-              copied ? "text-emerald-500" : styles.text,
+              copied ? "text-status-ok" : styles.text,
             )}
             title="Copiar detalhes"
           >
@@ -144,7 +144,7 @@ export function ErrorAlert({
       )}
 
       {copied && (
-        <p className="mt-2 text-xs text-emerald-500">
+        <p className="mt-2 text-xs text-status-ok">
           Detalhes copiados para a área de transferência.
         </p>
       )}

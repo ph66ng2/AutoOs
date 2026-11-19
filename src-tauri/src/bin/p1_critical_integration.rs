@@ -190,6 +190,107 @@ async fn main() -> Result<()> {
     .await
     .map_err(|error| anyhow!(error))?;
 
+    // A busca de equipamentos alcança os contatos: o responsável da OS (por e-mail,
+    // que não fica copiado na OS) e qualquer outro contato ativo do cliente.
+    let outro_contato = contatos::criar_cliente_contato(ClienteContatoInput {
+        empresa_id,
+        cliente_id: cliente.id,
+        nome: format!("{} Contato Financeiro", prefix),
+        email: None,
+        telefone: Some("21 97654-3210".to_string()),
+        atualizado_em: None,
+        preservar_identidade_portal: false,
+    })
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let mut busca_connection = pool.acquire().await?;
+    for busca in [
+        format!("{} Contato Financeiro", prefix),
+        format!("{}-contato@example.test", prefix.to_lowercase()),
+        "97654-3210".to_string(),
+    ] {
+        let encontrados = equipamentos::query_equipment_page_on_connection(
+            &mut busca_connection,
+            empresa_id,
+            Some(0),
+            Some(&busca),
+            None,
+            None,
+            equipamentos::UI_PAGE_SIZE,
+        )
+        .await
+        .map_err(|error| anyhow!(error))?;
+        if !encontrados.items.iter().any(|item| item.id == equipamento.id) {
+            return Err(anyhow!("busca de equipamentos por contato não encontrou a OS: {busca}"));
+        }
+    }
+    // Lista e painel de Clientes: contato principal, OS abertas, filtros com contagem e resumo.
+    let busca_cliente = cliente.nome.clone().unwrap_or_default();
+    let com_os = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("COM_OS_ABERTA".to_string()))
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let linha = com_os
+        .items
+        .iter()
+        .find(|row| row.id == cliente.id)
+        .ok_or_else(|| anyhow!("filtro COM_OS_ABERTA não trouxe o cliente com OS recebida"))?;
+    if linha.os_abertas != Some(1) || linha.contato_principal.as_deref() != Some(format!("{} Responsável Original", prefix).as_str()) {
+        return Err(anyhow!("lista de clientes com os_abertas/contato_principal errados: {:?} {:?}", linha.os_abertas, linha.contato_principal));
+    }
+    let portal = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("PORTAL_ATIVO".to_string()))
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if portal.items.iter().any(|row| row.id == cliente.id) {
+        return Err(anyhow!("cliente sem senha de portal apareceu em PORTAL_ATIVO"));
+    }
+    let contagem = clientes::contar_clientes_por_filtro_on_pool(&pool, empresa_id, Some(&busca_cliente))
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if contagem.todos < 1 || contagem.com_os_aberta < 1 || contagem.empresas + contagem.pessoas > contagem.todos {
+        return Err(anyhow!("contagem dos filtros de clientes inconsistente"));
+    }
+    let sem_financeiro = clientes::resumo_cliente_on_pool(&pool, empresa_id, cliente.id, false)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let com_financeiro = clientes::resumo_cliente_on_pool(&pool, empresa_id, cliente.id, true)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if sem_financeiro.faturado.is_some() || com_financeiro.faturado.is_none() || sem_financeiro.os_abertas != 1 || sem_financeiro.no_ano != 1 {
+        return Err(anyhow!("resumo do cliente errado: {:?} / {:?}", sem_financeiro, com_financeiro));
+    }
+    let estoque_sem_valor = produtos::resumo_estoque_on_pool(&pool, empresa_id, false)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let estoque_com_valor = produtos::resumo_estoque_on_pool(&pool, empresa_id, true)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if estoque_sem_valor.valor_estoque.is_some()
+        || estoque_com_valor.valor_estoque.is_none()
+        || estoque_sem_valor.total_itens != estoque_sem_valor.por_categoria.iter().map(|c| c.total).sum::<i64>()
+        || estoque_sem_valor.saidas_mes_os > estoque_sem_valor.saidas_mes
+    {
+        return Err(anyhow!("resumo do estoque errado: {:?}", estoque_sem_valor));
+    }
+
+    contatos::inativar_cliente_contato(outro_contato.id, empresa_id)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let sem_inativo = equipamentos::query_equipment_page_on_connection(
+        &mut busca_connection,
+        empresa_id,
+        Some(0),
+        Some(&format!("{} Contato Financeiro", prefix)),
+        None,
+        None,
+        equipamentos::UI_PAGE_SIZE,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    if sem_inativo.items.iter().any(|item| item.id == equipamento.id) {
+        return Err(anyhow!("contato inativo que não é o responsável não deveria achar a OS"));
+    }
+    drop(busca_connection);
+
     // A substituição usa os IDs carregados como compare-and-swap: uma edição
     // desatualizada não deve apagar as fotos gravadas desde o snapshot.
     let seed_image = equipamento_imagens::adicionar_imagem_equipamento_raw(
@@ -373,7 +474,7 @@ async fn main() -> Result<()> {
         .bind(equipamento.id).fetch_one(&pool).await?;
 
     let recent_page = equipamentos::listar_equipamentos_paginados(
-        Some(0), None, Some("AGUARDANDO_APROVACAO".to_string()), Some("CADASTRO_RECENTE".to_string()),
+        Some(0), None, Some("AGUARDANDO_APROVACAO".to_string()), Some("CADASTRO_RECENTE".to_string()), None,
     ).await.map_err(|error| anyhow!(error))?;
     if !recent_page.items.iter().any(|item| item.id == equipamento.id) {
         return Err(anyhow!("recent equipment order omitted the expected record"));
@@ -1126,7 +1227,7 @@ async fn assert_lista_tolera_telefone_nulo(
             return Err(anyhow!("search did not return the client with NULL telefone"));
         }
 
-        let pagina = clientes::listar_clientes_paginados(Some(0), Some(nome))
+        let pagina = clientes::listar_clientes_paginados(Some(0), Some(nome), None)
             .await
             .map_err(|error| anyhow!("paginated search failed with a NULL telefone row: {error}"))?;
         if !pagina.items.iter().any(|row| row.id == id) {

@@ -20,7 +20,7 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 
 ## Fluxo de trabalho da equipe
 
-**Uma vez (ativação):** aplicar as migrations, publicar `portal-cliente`, agendar a efetivação e ligar `portal_enabled` + `online_enabled` (ver Ativação). Em Configurações → Integrações, preencher o cartão “Fale com a equipe”.
+**Uma vez (ativação):** aplicar as migrations, publicar `portal-cliente`, agendar a efetivação e ligar `portal_enabled` + `online_enabled` (ver Ativação). Em Configurações → Portal do Cliente, preencher o cartão “Fale com a equipe”.
 
 **Uma vez por contato do cliente (direto do equipamento):** o quadro do orçamento mostra “Quem responde no portal”. Nos detalhes do equipamento, a aba do portal tem o bloco **Acesso ao portal**: o login (CPF/CNPJ do cliente, com **Copiar**), os contatos com nível (“Aprovar e recusar” ou “Só acompanhar”) e se têm senha (“Senha criada” ou “Sem senha”). Nenhuma senha é exibida ali; **Gerenciar em Contatos** abre a janela já na tela de contatos. Sem ninguém, **Dar acesso a um contato** abre uma janela: escolher o contato (o responsável vem marcado), “pode responder orçamentos”, **Liberar acesso e criar senha**. Falta o contato? **Cadastrar ou editar contatos** abre os contatos na mesma janela e volta com o novo já marcado. A senha sai com **Enviar por WhatsApp** (link `wa.me` aberto no navegador; não passa pelo servidor nem fica no histórico) ou **Copiar**. O mesmo continua em Clientes → Contatos e Portal.
 
@@ -112,7 +112,7 @@ Se o envio falha por qualquer motivo (WhatsApp ou e-mail), abre **Enviar manualm
 
 ### Orçamentos pendentes de publicação
 
-OS em `AGUARDANDO_APROVACAO` sem versão aberta no portal (casos antigos, de antes do envio publicar sozinho) aparecem em Configurações → Integrações, no card do Portal, como **Enviar orçamentos pendentes ao portal (N)**. O botão some com N = 0, pede PIN (`MANAGE_STATUS_LINKS` ou `PREPARE_QUOTES`) e publica uma OS por vez pelo mesmo caminho de "Publicar no Portal do Cliente" (um `BUDGET_PUBLISHED_TO_PORTAL` por OS). Uma falha, como prazo vencido, não interrompe as outras: entra no resumo exibido no fim e no evento `BUDGET_PORTAL_BULK_PUBLISH`. O card do portal continua visível só para quem tem `MANAGE_STATUS_LINKS`.
+OS em `AGUARDANDO_APROVACAO` sem versão aberta no portal (casos antigos, de antes do envio publicar sozinho) aparecem em Configurações → Portal do Cliente, no card do Portal, como **Enviar orçamentos pendentes ao portal (N)**. O botão some com N = 0, pede PIN (`MANAGE_STATUS_LINKS` ou `PREPARE_QUOTES`) e publica uma OS por vez pelo mesmo caminho de "Publicar no Portal do Cliente" (um `BUDGET_PUBLISHED_TO_PORTAL` por OS). Uma falha, como prazo vencido, não interrompe as outras: entra no resumo exibido no fim e no evento `BUDGET_PORTAL_BULK_PUBLISH`. O card do portal continua visível só para quem tem `MANAGE_STATUS_LINKS`.
 
 ### Prazo e prorrogação
 
@@ -170,7 +170,7 @@ Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em 
 | `cliente_contatos.portal_acesso` + trigger | Acesso por contato; inativar ou mudar de cliente zera o acesso |
 | `portal_config_empresa` (0038) | Chaves por empresa: `portal_enabled` (login e consulta) e `respostas_enabled` (aceitar/recusar; exige o portal ligado). Sem linha = desligado |
 | `portal_cliente_config` | Reverificação e duração da sessão (globais do produto). `portal_enabled` daqui não é mais lido |
-| `portal_contato_empresa` | Cartão “Fale com a equipe” (Configurações → Integrações); `endereco` (até 300) e `maps_url` (só https, até 500) vieram na 0039 |
+| `portal_contato_empresa` | Cartão “Fale com a equipe” (Configurações → Portal do Cliente); `endereco` (até 300) e `maps_url` (só https, até 500) vieram na 0039 |
 | `portal_codigos` | Histórico do login por código (removido na 0038) |
 | `portal_sessoes` | Hash do token de sessão, `verificada_em`, expiração; só sessões `metodo = SENHA` valem |
 | `orcamento_respostas` (+colunas) | `PORTAL_CLIENTE`, contato, sessão, efetivação automática e falha; `ordem_compra` (1 a 60 caracteres, 0039) |
@@ -230,8 +230,8 @@ select cron.schedule('portal-efetivar-respostas', '* * * * *',
 4. Publicar a página pelo workflow `deploy-portal-site.yml` (aprovação em `production-portal-site`), que envia `dist-public-status/` com o `.htaccess`. A URL da função pode ser trocada com `VITE_PORTAL_CLIENTE_API_URL`.
 
 As Edge Functions são publicadas pelo workflow `deploy-edge-functions.yml`, após aprovação em `production-edge-functions`. Aplique primeiro as migrations necessárias pelo `production-sqlx-migrations.yml` e só então aprove o deploy das funções. No disparo manual, o input `funcoes` aceita nomes separados por vírgula (`portal-cliente`, `public-status`, `envio-whatsapp`); `todas` ou vazio publicam `portal-cliente` e `public-status`. Num push, o workflow também publica as duas, mesmo que só uma tenha mudado: um deploy pendente pode ser cancelado por um push seguinte, e republicar código igual não tem efeito. A `envio-whatsapp` (fila central, ainda não ativada em produção) fica fora da seleção automática e de `todas`: só sobe quando o nome dela é digitado. O workflow usa o secret `SUPABASE_ACCESS_TOKEN` e não aplica migrations.
-5. No AutoOS: Configurações → Integrações → cartão “Fale com a equipe”; nos detalhes do equipamento, dar acesso ao contato e **Publicar no Portal do Cliente**.
-6. Ligar para um piloto em Configurações → Integrações → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0038): ligar numa empresa não liga nas outras. Ligar/desligar exige **Comunicação externa** (`COMMUNICATION_SETTINGS`); alterar respostas também exige `FINANCIAL_ACTIONS`. Não exige Gerenciar perfis.
+5. No AutoOS: Configurações → Portal do Cliente → cartão “Fale com a equipe”; nos detalhes do equipamento, dar acesso ao contato e **Publicar no Portal do Cliente**.
+6. Ligar para um piloto em Configurações → Portal do Cliente → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0038): ligar numa empresa não liga nas outras. Ligar/desligar exige **Comunicação externa** (`COMMUNICATION_SETTINGS`); alterar respostas também exige `FINANCIAL_ACTIONS`. Não exige Gerenciar perfis.
 
 Pausar: desligar “Portal ligado” derruba login e sessões na hora; nada é apagado. Desligar só as respostas mantém o acompanhamento. O cartão avisa quando respostas vencidas não estão sendo aplicadas (agendamento do passo 3 parado).
 
@@ -248,7 +248,7 @@ Pré-requisitos: passos 1–4 da Ativação concluídos; build do AutoOS a parti
 
 3. No equipamento de teste em **Aguardando aprovação** com orçamento: **Portal do Cliente** → **Dar acesso** → escolher um contato → “pode responder orçamentos” → criar a senha (anotar; aparece uma vez).
 4. Entrar no portal com o CPF/CNPJ + essa senha → “O portal está temporariamente indisponível” (`PORTAL_PAUSADO`). A pausa só é conferida depois de uma senha válida; com senha errada a resposta é `SENHA_INVALIDA`.
-5. Configurações → Integrações → **Portal do Cliente: funcionamento**: ligar “Portal ligado” e “Clientes podem responder orçamentos” (pede PIN). Conferir na auditoria o evento `PORTAL_CONFIG_CHANGED`.
+5. Configurações → Portal do Cliente → **Portal do Cliente: funcionamento**: ligar “Portal ligado” e “Clientes podem responder orçamentos” (pede PIN). Conferir na auditoria o evento `PORTAL_CONFIG_CHANGED`.
 6. **Publicar no Portal do Cliente**. A faixa do orçamento passa a “Aguardando resposta do cliente”.
 
 **Portal (status.bmitag.com.br, celular e computador)**

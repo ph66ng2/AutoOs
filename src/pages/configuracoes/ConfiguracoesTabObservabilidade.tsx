@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,18 +51,16 @@ export function ConfiguracoesTabObservabilidade({
   exportarAuditoriaCsv,
 }: ConfiguracoesTabObservabilidadeProps) {
   return (
-    <TabsContent value="observabilidade" className="space-y-4">
+    <TabsContent value="observabilidade" className="mt-0 space-y-4 p-5 md:p-6">
+      <h2 className="text-xl font-bold">Suporte e logs</h2>
       <Card>
         <CardHeader>
           <CardTitle>Suporte local e observabilidade</CardTitle>
-          <CardDescription>
-            Snapshot operacional mínimo para suporte assistido: diretórios locais, logs recentes, housekeeping e prontidão do bundle Windows.
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {supportLoading && !supportStatus ? (
             <div className="flex items-center justify-center h-24">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
             </div>
           ) : supportStatus ? (
             <>
@@ -155,7 +153,6 @@ export function ConfiguracoesTabObservabilidade({
       <Card>
         <CardHeader>
           <CardTitle>Auditoria recente</CardTitle>
-          <CardDescription>Eventos sensiveis recentes de desbloqueio, troca de PIN e gestao de perfis.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4 mb-4">
@@ -212,7 +209,7 @@ export function ConfiguracoesTabObservabilidade({
               <div key={event.id} className="rounded-lg border p-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div className="font-medium">{event.event_type}</div>
-                  <span className={event.success ? "text-emerald-600" : "text-red-600"}>
+                  <span className={event.success ? "text-status-ok" : "text-destructive"}>
                     {event.success ? "sucesso" : "falha"}
                   </span>
                 </div>

@@ -20,7 +20,8 @@
  * ║  USADO POR: App.tsx (rota /clientes)                        ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { useNavigate } from "react-router-dom";
 import { formatDatePtBr } from "@/lib/date-utils";
 import {
@@ -29,12 +30,7 @@ import {
   Edit,
   Trash2,
   RefreshCw,
-  Printer,
-  ChevronDown,
-  ChevronRight,
   Plus,
-  Building2,
-  User,
   ContactRound,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -58,6 +54,9 @@ import { db } from "@/lib/db";
 import { mensagemCadastroDuplicado } from "@/lib/operator-errors";
 import {
   SENSITIVE_PERMISSIONS,
+  STATUS_LABELS,
+  type StatusEquipamento,
+  type FiltroClientes,
   type Cliente,
   type ClienteContato,
   type Equipamento,
@@ -68,26 +67,35 @@ import {
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { PaginationControls } from "@/components/ui/pagination-controls";
-import { nomeExibicaoCliente, documentoExibicaoCliente, telefoneExibicaoCliente } from "@/components/clientes/cliente-display-utils";
-import { ClientesStatusBadge } from "@/pages/clientes/ClientesStatusBadge";
+import { nomeExibicaoCliente, documentoExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import {
   totalAbasClientes,
 } from "@/pages/clientes/clientes-pagination";
 import {
   ClientesDeleteDialog,
   ClientesContatosModal,
-  ClientesEquipamentosModal,
   ClientesFormDialog,
 } from "@/pages/clientes/ClientesDialogs";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { RegularizacaoLegadosDialog } from "@/components/clientes/RegularizacaoLegadosDialog";
 import { VinculoEmpresaPerfilDialog } from "@/components/clientes/VinculoEmpresaPerfilDialog";
+import { PageHeader } from "@/components/PageHeader";
+import { useContagemClientes, useResumoCliente } from "@/hooks/usePainelClientes";
+import { useLarguraMinima } from "@/hooks/useLarguraMinima";
+import { agruparHistoricoEquipamentos } from "@/lib/historico-equipamentos";
 
 export default function Clientes() {
   const navigate = useNavigate();
-  const LIMITE_EQUIPAMENTOS_EXPANDIDOS = 5;
-  const [busca, setBusca] = useState("");
-  const [abaAtual, setAbaAtual] = useState(1);
+  const LIMITE_EQUIPAMENTOS_EXPANDIDOS = 3;
+  const FILTROS_CLIENTES: Array<{ valor: FiltroClientes; rotulo: string }> = [
+    { valor: "TODOS", rotulo: "Todos" },
+    { valor: "EMPRESAS", rotulo: "Empresas" },
+    { valor: "PESSOAS", rotulo: "Pessoas" },
+    { valor: "COM_OS_ABERTA", rotulo: "Com OS aberta" },
+    { valor: "PORTAL_ATIVO", rotulo: "Portal ativo" },
+  ];
+  const [busca, setBusca] = useEstadoLembrado("clientes:busca", "");
+  const [abaAtual, setAbaAtual] = useEstadoLembrado("clientes:pagina", 1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editando, setEditando] = useState<Cliente | null>(null);
@@ -98,11 +106,13 @@ export default function Clientes() {
   const [buscandoCep, setBuscandoCep] = useState(false);
 
   // Equipamentos vinculados
-  const [expandido, setExpandido] = useState<number | null>(null);
+  const [, setExpandido] = useState<number | null>(null);
+  const expandidoRef = useRef<number | null>(null);
+  const equipRequisicaoRef = useRef(0);
+  const [filtro, setFiltro] = useEstadoLembrado<FiltroClientes>("clientes:filtro", "TODOS");
   const [equipamentosCliente, setEquipamentosCliente] = useState<Equipamento[]>([]);
+  const aparelhosCliente = useMemo(() => agruparHistoricoEquipamentos(equipamentosCliente), [equipamentosCliente]);
   const [carregandoEquip, setCarregandoEquip] = useState(false);
-  const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
-  const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
   const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
   const [contatosExpandido, setContatosExpandido] = useState<number | null>(null);
   const contatosExpandidoRef = useRef<number | null>(null);
@@ -114,20 +124,25 @@ export default function Clientes() {
   const [regularizando, setRegularizando] = useState(false);
 
   const { clientes, total: totalClientes, loading, error, criar, atualizar, deletar, recarregar } =
-    useClientes({ busca: busca || undefined, page: abaAtual });
+    useClientes({ busca: busca || undefined, page: abaAtual, filtro });
+  const { data: contagem, recarregar: recarregarContagem } = useContagemClientes(busca || undefined);
+  const { data: resumo } = useResumoCliente(contatosExpandido);
+  // Em tela larga o painel cabe ao lado: abre o primeiro cliente, como no desenho. Sem como
+  // medir a tela, não abre sozinho; se a pessoa fechar o painel, ele não reabre.
+  const painelAoLado = useLarguraMinima(1280, false);
+  const painelFechadoPeloUsuario = useRef(false);
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const { error: showError, success } = useNotification();
   const totalAbas = totalAbasClientes(totalClientes);
   const abaExibida = Math.min(abaAtual, totalAbas);
   const clientesExibidos = clientes;
 
-  useEffect(() => {
-    setAbaAtual(1);
-  }, [busca]);
+  usePrimeiraPaginaAoFiltrar([busca, filtro], () => setAbaAtual(1));
 
   useEffect(() => {
+    if (loading) return;
     setAbaAtual((aba) => Math.min(aba, totalAbas));
-  }, [totalAbas]);
+  }, [totalAbas, loading, setAbaAtual]);
 
   const form = useForm<ClienteFormData>({
     resolver: zodResolver(clienteSchema),
@@ -246,30 +261,38 @@ export default function Clientes() {
    * Conecta-se a: db.listarEquipamentosCliente → Rust listar_equipamentos_cliente
    */
   async function toggleExpandir(clienteId: number) {
-    if (expandido === clienteId) {
+    const token = ++equipRequisicaoRef.current;
+    if (expandidoRef.current === clienteId) {
+      expandidoRef.current = null;
       setExpandido(null);
       setEquipamentosCliente([]);
+      setCarregandoEquip(false);
       return;
     }
+    expandidoRef.current = clienteId;
     setExpandido(clienteId);
+    setEquipamentosCliente([]);
     setCarregandoEquip(true);
+    const vigente = () => token === equipRequisicaoRef.current;
     try {
       const cliente = clientes.find(c => c.id === clienteId);
       if (cliente) {
         const doCliente = await db.listarEquipamentosCliente(clienteId, [nomeExibicaoCliente(cliente), cliente.nome ?? ""]);
-        setEquipamentosCliente(doCliente);
+        if (vigente()) setEquipamentosCliente(doCliente);
       }
     } catch (err) {
       console.error("Erro ao buscar equipamentos:", err);
-      setEquipamentosCliente([]);
+      if (vigente()) setEquipamentosCliente([]);
     } finally {
-      setCarregandoEquip(false);
+      if (vigente()) setCarregandoEquip(false);
     }
   }
 
-  function abrirModalTodosEquipamentos(cliente: Cliente) {
-    setClienteEquipamentosSelecionado(cliente);
-    setModalEquipamentosOpen(true);
+  /** Abre (ou fecha, se já aberto) o cliente no painel: contatos e equipamentos juntos. */
+  async function selecionarCliente(cliente: Cliente) {
+    if (contatosExpandidoRef.current === cliente.id) painelFechadoPeloUsuario.current = true;
+    void toggleExpandir(cliente.id!);
+    await toggleContatos(cliente);
   }
 
   /** Abre dialog para criar novo cliente. Reseta form e tipo de pessoa */
@@ -475,263 +498,306 @@ export default function Clientes() {
     }
   }
 
+  const primeiroCliente = clientesExibidos[0];
+  useEffect(() => {
+    if (!painelAoLado || painelFechadoPeloUsuario.current || contatosExpandidoRef.current != null || !primeiroCliente) return;
+    void selecionarCliente(primeiroCliente);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [painelAoLado, primeiroCliente?.id]);
+  const clienteAberto = clientesExibidos.find((c) => c.id === contatosExpandido) ?? null;
+  const cadastrados = (n: number) => `${n} ${n === 1 ? "cadastrado" : "cadastrados"}`;
+  const contagemFiltro = (valor: FiltroClientes) => {
+    if (!contagem) return undefined;
+    const porFiltro: Record<FiltroClientes, number> = { TODOS: contagem.todos, EMPRESAS: contagem.empresas, PESSOAS: contagem.pessoas, COM_OS_ABERTA: contagem.comOsAberta, PORTAL_ATIVO: contagem.portalAtivo };
+    return porFiltro[valor];
+  };
+  const moedaCompacta = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 1 });
+  const situacaoPortal = (ct: ClienteContato) =>
+    ct.portal_acesso === "NENHUM" || !ct.portal_acesso ? "sem portal" : ct.portal_senha_definida_em ? "portal ativo" : "sem senha";
+  const canaisContato = (ct: ClienteContato) => [ct.telefone ? "WhatsApp" : null, ct.email ? "e-mail" : null].filter(Boolean).join(" · ") || "sem canal";
+  const iniciais = (nome: string) => nome.trim().split(/\s+/).slice(0, 2).map((parte) => parte[0]?.toUpperCase() ?? "").join("");
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Clientes</h1>
-          <p className="text-muted-foreground">Gerencie clientes PF e PJ e seus equipamentos vinculados</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => void abrirRegularizacaoLegados()}>
-            Regularizar antigos
-          </Button>
-          <Button onClick={abrirNovo}>
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Cliente
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        titulo="Clientes"
+        descricao={contagem ? `${cadastrados(contagem.todos)} · ${contagem.comOsAberta} com OS aberta` : loading ? "Carregando…" : cadastrados(totalClientes)}
+      >
+        <Button variant="outline" onClick={() => void abrirRegularizacaoLegados()}>
+          Regularizar cadastros
+        </Button>
+        <Button onClick={abrirNovo}>
+          <Plus className="h-4 w-4 mr-1" />
+          Novo cliente
+        </Button>
+      </PageHeader>
 
-      {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar por nome, razão social, CPF/CNPJ, telefone, email..." value={busca} onChange={e => setBusca(e.target.value)} className="pl-9" />
-            </div>
-            <Button variant="outline" size="icon" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Lista */}
-      <Card>
-        <CardContent className="pt-6">
-          {error && (
-            <ErrorAlert variant="error" context="Clientes" message={error} action="Carregar" />
-          )}
-          {loading ? (
-            <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
-          ) : clientes.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Users className="h-16 w-16 mx-auto mb-4 opacity-20" />
-              <p className="text-lg font-medium mb-1">Nenhum cliente encontrado</p>
-              <p className="text-sm">{busca ? "Tente ajustar a busca" : "Clique em \"Novo Cliente\" para cadastrar"}</p>
-            </div>
-          ) : (
-            <>
-              <PaginationControls
-                page={abaExibida}
-                totalPages={totalAbas}
-                onPageChange={setAbaAtual}
-                label="Paginação de clientes"
-              />
-              <div className="divide-y rounded-md border" role="list" aria-label="Clientes">
-                {clientesExibidos.map(c => (
-                  <div key={c.id} role="listitem" className="min-w-0">
-                    <div className="grid min-w-0 gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_auto]">
-                      <div className="min-w-0 space-y-3">
-                        <div className="flex min-w-0 items-start gap-3">
-                          {c.tipo_pessoa === "PJ" ? (
-                            <Badge variant="outline" className="shrink-0 border-purple-200 bg-purple-50 text-purple-700">
-                              <Building2 className="mr-1 h-3 w-3" />PJ
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="shrink-0 border-blue-200 bg-blue-50 text-blue-700">
-                              <User className="mr-1 h-3 w-3" />PF
-                            </Badge>
-                          )}
-                          <div className="min-w-0">
-                            <div className="break-words font-medium">
-                              {nomeExibicaoCliente(c)}
-                              {c.exige_ordem_compra && (
-                                <Badge
-                                  variant="outline"
-                                  className="ml-2 align-middle border-amber-200 bg-amber-50 text-[10px] font-normal text-amber-800"
-                                  title="O Portal do Cliente exige o número da ordem de compra para aceitar orçamentos"
-                                >
-                                  Exige OC
-                                </Badge>
-                              )}
-                            </div>
-                            {c.tipo_pessoa === "PJ" && c.razao_social && c.nome_fantasia && (
-                              <p className="break-words text-xs text-muted-foreground">{c.razao_social}</p>
-                            )}
-                            {c.contato_encontrado && (
-                              <p className="break-words text-xs text-muted-foreground">Contato: {c.contato_encontrado}</p>
-                            )}
-                          </div>
-                        </div>
-                        <dl className="grid min-w-0 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 2xl:grid-cols-4">
-                          <div className="min-w-0">
-                            <dt className="text-xs text-muted-foreground">CPF / CNPJ</dt>
-                            <dd className="break-all font-mono">{documentoExibicaoCliente(c)}</dd>
-                          </div>
-                          <div className="min-w-0">
-                            <dt className="text-xs text-muted-foreground">Telefone</dt>
-                            <dd className="break-all">{telefoneExibicaoCliente(c.telefone)}</dd>
-                            {c.telefone_secundario && (
-                              <dd className="break-all text-xs text-muted-foreground">{formatarTelefone(c.telefone_secundario)}</dd>
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <dt className="text-xs text-muted-foreground">Email</dt>
-                            <dd className="break-all">{c.email || "—"}</dd>
-                          </div>
-                          <div className="min-w-0">
-                            <dt className="text-xs text-muted-foreground">Cidade/UF</dt>
-                            <dd className="break-words">{c.cidade && c.uf ? `${c.cidade}/${c.uf}` : c.cidade || c.uf || "—"}</dd>
-                          </div>
-                        </dl>
-                      </div>
-                      <div className="flex min-w-0 items-start justify-end">
-                        <ActionPriorityRow
-                          wrap
-                          primary={{
-                            id: `equipamentos-${c.id}`,
-                            label: "Equipamentos",
-                            icon: expandido === c.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />,
-                            variant: "default",
-                            ariaExpanded: expandido === c.id,
-                            onClick: () => void toggleExpandir(c.id!),
-                          }}
-                          secondary={{
-                            id: `contatos-${c.id}`,
-                            label: "Contatos",
-                            icon: contatosExpandido === c.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />,
-                            variant: "outline",
-                            className: "border-primary bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary",
-                            ariaExpanded: contatosExpandido === c.id,
-                            onClick: () => void toggleContatos(c),
-                          }}
-                          overflow={[
-                            {
-                              id: `editar-${c.id}`,
-                              label: "Editar",
-                              icon: <Edit className="h-4 w-4" />,
-                              onClick: () => void abrirEditar(c),
-                            },
-                            {
-                              id: `gerenciar-contatos-${c.id}`,
-                              label: "Contatos e Portal",
-                              icon: <ContactRound className="h-4 w-4" />,
-                              onClick: () => setContatosClienteSelecionado(c),
-                            },
-                            {
-                              id: `excluir-${c.id}`,
-                              label: "Excluir",
-                              icon: <Trash2 className="h-4 w-4" />,
-                              className: "text-red-600",
-                              onClick: () => void solicitarExclusao(c),
-                            },
-                          ]}
-                        />
-                      </div>
-                    </div>
-                    {contatosExpandido === c.id && (
-                      <div id={`contatos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
-                        {!c.empresa_id ? (
-                          <span className="text-sm italic text-amber-700 dark:text-amber-400">
-                            Cliente sem empresa vinculada — contatos indisponíveis
-                          </span>
-                        ) : carregandoContatos ? (
-                          <span className="text-sm text-muted-foreground">Carregando contatos...</span>
-                        ) : contatosLista.length === 0 ? (
-                          <span className="text-sm text-muted-foreground">Nenhum contato cadastrado</span>
-                        ) : (
-                          <div className="space-y-2">
-                            <p className="text-xs font-medium text-muted-foreground">
-                              {contatosLista.length} contato(s) cadastrado(s)
-                            </p>
-                            {contatosLista.map(ct => (
-                              <button
-                                key={ct.id}
-                                type="button"
-                                onClick={() => setContatosClienteSelecionado(c)}
-                                title="Abrir contatos e portal"
-                                className={`grid w-full min-w-0 gap-2 rounded border bg-background p-3 text-left hover:border-cyan-600 hover:bg-cyan-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${
-                                  c.contato_encontrado && ct.nome === c.contato_encontrado ? "border-primary" : ""
-                                }`}
-                              >
-                                <span className="flex min-w-0 items-start gap-3">
-                                  <ContactRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                                  <span className="min-w-0">
-                                    <span className="block break-words text-sm font-medium">{ct.nome}</span>
-                                    <span className="block break-all text-xs text-muted-foreground">{ct.email || "Sem e-mail"}</span>
-                                  </span>
-                                </span>
-                                <span className="text-xs text-muted-foreground sm:text-right">
-                                  {ct.telefone ? formatarTelefone(ct.telefone) : "Sem telefone"}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex justify-end pt-2">
-                          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setContatosClienteSelecionado(c)}>
-                            Gerenciar contatos e portal
-                          </Button>
-                        </div>
-                      </div>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+        {/* Lista: filtros, busca, tabela e paginação */}
+        <Card className="flex min-w-0 flex-col rounded-2xl">
+          <CardContent className="flex flex-1 flex-col gap-4 p-5">
+            <div role="group" aria-label="Filtrar clientes" className="flex flex-wrap gap-2">
+              {FILTROS_CLIENTES.map((opcao) => {
+                const ligado = filtro === opcao.valor;
+                const numero = contagemFiltro(opcao.valor);
+                return (
+                  <button
+                    key={opcao.valor}
+                    type="button"
+                    aria-pressed={ligado}
+                    onClick={() => setFiltro(opcao.valor)}
+                    className={`inline-flex h-8 items-center gap-2 rounded-full pl-3 pr-2 text-[13px] font-semibold transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ligado ? "bg-foreground text-background" : "bg-card text-foreground shadow-[inset_0_0_0_1px_hsl(var(--ctl))] hover:bg-muted"}`}
+                  >
+                    {opcao.rotulo}
+                    {numero != null && (
+                      <span className={`rounded-full px-2 text-xs font-semibold tabular-nums ${ligado ? "bg-background/20" : "bg-secondary text-muted-foreground"}`}>{numero}</span>
                     )}
-                    {expandido === c.id && (
-                      <div id={`equipamentos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
-                        {carregandoEquip ? (
-                          <div className="flex items-center gap-2 py-2">
-                            <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-blue-600" />
-                            <span className="text-sm text-muted-foreground">Carregando equipamentos...</span>
-                          </div>
-                        ) : equipamentosCliente.length === 0 ? (
-                          <div className="flex items-center gap-2 py-2 text-muted-foreground">
-                            <Printer className="h-4 w-4 opacity-40" />
-                            <span className="text-sm">Nenhum equipamento vinculado</span>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <p className="text-xs font-medium text-muted-foreground">
-                              {equipamentosCliente.length} equipamento(s) vinculado(s)
-                            </p>
-                            {equipamentosCliente.slice(0, LIMITE_EQUIPAMENTOS_EXPANDIDOS).map(eq => (
-                              <button
-                                key={eq.id}
-                                type="button"
-                                onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
-                                className="grid w-full min-w-0 gap-2 rounded border bg-background p-3 text-left hover:border-cyan-600 hover:bg-cyan-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                              >
-                                <span className="flex min-w-0 items-start gap-3">
-                                  <Printer className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                                  <span className="min-w-0">
-                                    <span className="block break-words text-sm font-medium">{eq.marca} {eq.modelo}</span>
-                                    <span className="block break-all font-mono text-xs text-muted-foreground">{eq.serial_number}</span>
-                                  </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Nome, CPF/CNPJ, contato ou telefone" aria-label="Buscar clientes" value={busca} onChange={e => setBusca(e.target.value)} className="h-10 bg-muted pl-9" />
+              </div>
+              <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" aria-label="Atualizar clientes" onClick={() => { void recarregar(); void recarregarContagem(); }}><RefreshCw className="h-4 w-4" /></Button>
+            </div>
+            {error && (
+              <ErrorAlert variant="error" context="Clientes" message={error} action="Carregar" />
+            )}
+            {loading ? (
+              <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
+            ) : clientes.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Users className="h-16 w-16 mx-auto mb-4 opacity-20" />
+                <p className="text-lg font-medium mb-1">Nenhum cliente encontrado</p>
+                <p className="text-sm">{busca || filtro !== "TODOS" ? "Tente ajustar a busca ou o filtro" : "Clique em \"Novo cliente\" para cadastrar"}</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto rounded-xl border">
+                  <table className="w-full min-w-[46rem] text-sm" aria-label="Clientes">
+                    <thead className="bg-muted text-left text-xs font-semibold text-muted-foreground">
+                      <tr className="[&>th]:h-11 [&>th]:px-3 [&>th]:align-middle">
+                        <th>Cliente</th>
+                        <th>Contato principal</th>
+                        <th>Cidade</th>
+                        <th className="text-right">OS abertas</th>
+                        <th>Último atendimento</th>
+                        <th className="w-12"><span className="sr-only">Ações</span></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {clientesExibidos.map(c => {
+                        const aberto = contatosExpandido === c.id;
+                        return (
+                          <tr
+                            key={c.id}
+                            className={`cursor-pointer transition-colors duration-rapida [&>td]:px-3 [&>td]:py-2.5 [&>td]:align-middle ${aberto ? "bg-muted shadow-[inset_3px_0_0_hsl(var(--primary))]" : "hover:bg-muted/50"}`}
+                            onClick={() => void selecionarCliente(c)}
+                          >
+                            <td className="min-w-0">
+                              <div className="flex min-w-0 items-center gap-3">
+                                <span
+                                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-secondary text-[11px] font-extrabold text-muted-foreground"
+                                  title={c.tipo_pessoa === "PJ" ? "Pessoa jurídica" : "Pessoa física"}
+                                >
+                                  {c.tipo_pessoa === "PJ" ? "PJ" : "PF"}
                                 </span>
-                                <span className="flex flex-wrap items-center gap-2 sm:justify-end">
-                                  <ClientesStatusBadge status={eq.status} />
-                                  <span className="text-xs text-muted-foreground">{formatDatePtBr(eq.data_entrada, "")}</span>
-                                </span>
-                              </button>
-                            ))}
-                            {equipamentosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS && (
-                              <div className="flex justify-end pt-1">
-                                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => abrirModalTodosEquipamentos(c)}>
-                                  Mostrar mais ({equipamentosCliente.length - LIMITE_EQUIPAMENTOS_EXPANDIDOS})
-                                </Button>
+                                <div className="min-w-0">
+                                  <button
+                                    type="button"
+                                    aria-pressed={aberto}
+                                    className="block max-w-full truncate text-left font-semibold hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                                    onClick={(event) => { event.stopPropagation(); void selecionarCliente(c); }}
+                                  >
+                                    {nomeExibicaoCliente(c)}
+                                  </button>
+                                  <span className="block truncate font-mono text-xs text-muted-foreground">{documentoExibicaoCliente(c)}</span>
+                                  {c.exige_ordem_compra && (
+                                    <Badge
+                                      variant="outline"
+                                      className="mt-0.5 border-status-wait/30 bg-status-wait-bg text-[10px] font-normal text-status-wait"
+                                      title="O Portal do Cliente exige o número da ordem de compra para aceitar orçamentos"
+                                    >
+                                      Exige OC
+                                    </Badge>
+                                  )}
+                                  {c.contato_encontrado && (
+                                    <p className="truncate text-xs text-muted-foreground">Contato: {c.contato_encontrado}</p>
+                                  )}
+                                </div>
                               </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                            </td>
+                            <td className="max-w-[12rem] truncate">{c.contato_principal || <span className="text-muted-foreground">—</span>}</td>
+                            <td className="max-w-[10rem] truncate text-muted-foreground">{c.cidade || "—"}</td>
+                            <td className="text-right font-semibold tabular-nums">{c.os_abertas ?? "—"}</td>
+                            <td className="tabular-nums text-muted-foreground">{c.ultimo_atendimento ? formatDatePtBr(c.ultimo_atendimento).slice(0, 5) : "—"}</td>
+                            <td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                              <ActionPriorityRow
+                                acaoDaLinha
+                                semPrincipal
+                                menuTitulo={nomeExibicaoCliente(c)}
+                                primary={{ id: `abrir-${c.id}`, label: "Abrir cliente", onClick: () => void selecionarCliente(c) }}
+                                overflow={[
+                                  { id: `editar-${c.id}`, label: "Editar", icon: <Edit className="h-4 w-4" />, onClick: () => void abrirEditar(c) },
+                                  { id: `gerenciar-contatos-${c.id}`, label: "Contatos e Portal", icon: <ContactRound className="h-4 w-4" />, onClick: () => setContatosClienteSelecionado(c) },
+                                  { id: `excluir-${c.id}`, label: "Excluir", icon: <Trash2 className="h-4 w-4" />, className: "text-destructive", onClick: () => void solicitarExclusao(c) },
+                                ]}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <PaginationControls
+                  page={abaExibida}
+                  totalPages={totalAbas}
+                  onPageChange={setAbaAtual}
+                  label="Paginação de clientes"
+                  totalItems={totalClientes}
+                  className="mt-auto pb-0"
+                />
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Painel do cliente aberto */}
+        <Card className="rounded-2xl">
+          <CardContent className="space-y-5 p-5">
+            {!clienteAberto ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">Selecione um cliente para ver contatos e equipamentos.</p>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">{clienteAberto.tipo_pessoa === "PJ" ? "Empresa" : "Pessoa"}</p>
+                    <h2 className="break-words text-xl font-extrabold leading-7">{nomeExibicaoCliente(clienteAberto)}</h2>
+                    <p className="font-mono text-xs text-muted-foreground">{documentoExibicaoCliente(clienteAberto)}</p>
+                  </div>
+                  <Button variant="outline" size="sm" className="shrink-0" onClick={() => void abrirEditar(clienteAberto)}>Editar</Button>
+                </div>
+
+                <div className={`grid gap-2 ${resumo?.faturado != null ? "grid-cols-3" : "grid-cols-2"}`}>
+                  <div className="flex flex-col justify-between gap-1 rounded-xl bg-muted p-3">
+                    <p className="text-xs text-muted-foreground">OS abertas</p>
+                    <p className="text-lg font-extrabold tabular-nums">{resumo?.osAbertas ?? clienteAberto.os_abertas ?? "—"}</p>
+                  </div>
+                  <div className="flex flex-col justify-between gap-1 rounded-xl bg-muted p-3">
+                    <p className="text-xs text-muted-foreground" title="OS que entraram neste ano, abertas ou já fechadas">No ano</p>
+                    <p className="text-lg font-extrabold tabular-nums">{resumo?.noAno ?? "—"}</p>
+                  </div>
+                  {resumo?.faturado != null && (
+                    <div className="flex flex-col justify-between gap-1 rounded-xl bg-muted p-3" title="Entregues no ano: valor final ou orçado. Só para quem vê Finanças.">
+                      <p className="text-xs text-muted-foreground">Faturado</p>
+                      <p className="whitespace-nowrap text-lg font-extrabold tabular-nums">{moedaCompacta.format(resumo.faturado)}</p>
+                    </div>
+                  )}
+                </div>
+
+                <section id={`contatos-cliente-${clienteAberto.id}`} aria-label="Contatos" className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base font-bold">Contatos</h3>
+                    {clienteAberto.empresa_id && (
+                      <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => setContatosClienteSelecionado(clienteAberto)}>
+                        + Contato
+                      </button>
                     )}
                   </div>
-                ))}
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+                  {!clienteAberto.empresa_id ? (
+                    <p className="text-sm italic text-status-wait">Cliente sem empresa vinculada — contatos indisponíveis</p>
+                  ) : carregandoContatos ? (
+                    <p className="text-sm text-muted-foreground">Carregando contatos...</p>
+                  ) : contatosLista.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum contato cadastrado</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {contatosLista.map(ct => (
+                        <li key={ct.id}>
+                          <button
+                            type="button"
+                            onClick={() => setContatosClienteSelecionado(clienteAberto)}
+                            title="Abrir contatos e portal"
+                            className="flex w-full items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors duration-rapida hover:border-ctl"
+                          >
+                            <span aria-hidden="true" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold">{iniciais(ct.nome)}</span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-2">
+                                <span className="truncate text-sm font-semibold">{ct.nome}</span>
+                                {ct.nome === clienteAberto.contato_principal && (
+                                  <span className="shrink-0 rounded-full bg-acc-soft px-2 text-[10px] font-semibold text-acc-soft-foreground">responsável</span>
+                                )}
+                              </span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {canaisContato(ct)}
+                                {ct.email && <> · <span>{ct.email}</span></>}
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground">{situacaoPortal(ct)}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+
+                <section id={`equipamentos-cliente-${clienteAberto.id}`} aria-label="Equipamentos deste cliente" className="space-y-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-base font-bold">Equipamentos deste cliente</h3>
+                    {aparelhosCliente.length > 0 && (
+                      <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => navigate(`/clientes/${clienteAberto.id}/equipamentos`)}>
+                        {aparelhosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS ? `Ver todos (${aparelhosCliente.length})` : "Histórico"}
+                      </button>
+                    )}
+                  </div>
+                  {carregandoEquip ? (
+                    <p className="py-2 text-sm text-muted-foreground">Carregando equipamentos...</p>
+                  ) : equipamentosCliente.length === 0 ? (
+                    <p className="py-2 text-sm text-muted-foreground">Nenhum equipamento vinculado</p>
+                  ) : (
+                    <ul className="divide-y">
+                      {aparelhosCliente.slice(0, LIMITE_EQUIPAMENTOS_EXPANDIDOS).map(aparelho => (
+                        <li key={aparelho.chave}>
+                          <button
+                            type="button"
+                            onClick={() => navigate("/equipamentos", { state: { equipamentoId: aparelho.passagens[0].id } })}
+                            className="flex w-full items-start justify-between gap-3 py-2.5 text-left hover:text-primary"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold">{aparelho.marca} {aparelho.modelo}</span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                <span className="font-mono">{aparelho.serial}</span>
+                                {aparelho.passagens.length > 1 && <> · {aparelho.passagens.length} passagens</>}
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground">{STATUS_LABELS[aparelho.statusAtual as StatusEquipamento] ?? aparelho.statusAtual}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+
+                {clienteAberto.empresa_id && (
+                  <Button
+                    variant="ghost"
+                    className="h-11 w-full bg-acc-soft font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
+                    onClick={() => setContatosClienteSelecionado(clienteAberto)}
+                  >
+                    Gerenciar acesso ao portal
+                  </Button>
+                )}
+
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <ClientesFormDialog
         open={dialogOpen}
@@ -762,13 +828,6 @@ export default function Clientes() {
         deletando={deletando}
         salvando={salvando}
         onDelete={onDelete}
-      />
-
-      <ClientesEquipamentosModal
-        open={modalEquipamentosOpen}
-        onOpenChange={setModalEquipamentosOpen}
-        cliente={clienteEquipamentosSelecionado}
-        equipamentos={equipamentosCliente}
       />
 
       <ClientesContatosModal

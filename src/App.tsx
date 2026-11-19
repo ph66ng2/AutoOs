@@ -37,14 +37,38 @@ import { ReleaseHighlightsDialog } from "@/components/ReleaseHighlightsDialog";
 import { UpdateNotice } from "@/components/UpdateNotice";
 import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
 
+/**
+ * AvisoRapido do DS: fundo de cartão, borda e sombra de menu, sem cor de fundo por tipo
+ * (sem as cores ricas do sonner). A cor da família fica só no ícone.
+ */
+const AVISO_RAPIDO_OPCOES = {
+  classNames: {
+    toast: "!rounded-[14px] !border-border !bg-card !text-card-foreground !shadow-[0_12px_32px_rgba(0,0,0,0.18)]",
+    title: "!text-sm !font-bold",
+    description: "!text-[13px] !text-muted-foreground",
+    actionButton: "!bg-acc-soft !font-semibold !text-acc-soft-foreground",
+    cancelButton: "!bg-muted !text-muted-foreground",
+    closeButton: "!border-border !bg-card !text-muted-foreground",
+    success: "[&_[data-icon]]:!text-status-ok",
+    info: "[&_[data-icon]]:!text-status-work",
+    warning: "[&_[data-icon]]:!text-status-wait",
+    error: "[&_[data-icon]]:!text-status-bad",
+  },
+};
+
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Equipamentos = lazy(() => import("@/pages/Equipamentos"));
 const Clientes = lazy(() => import("@/pages/Clientes"));
+const ClienteEquipamentos = lazy(() => import("@/pages/ClienteEquipamentos"));
 const Insumos = lazy(() => import("@/pages/Insumos"));
+const VendasInsumos = lazy(() => import("@/pages/VendasInsumos"));
+const VendaDetalhe = lazy(() => import("@/pages/vendas/VendaDetalhe"));
+const VendaFormulario = lazy(() => import("@/pages/vendas/VendaFormulario"));
 const Servicos = lazy(() => import("@/pages/Servicos"));
 const Gastos = lazy(() => import("@/pages/Gastos"));
 const Configuracoes = lazy(() => import("@/pages/Configuracoes"));
 const Perfil = lazy(() => import("@/pages/Perfil"));
+const Equipe = lazy(() => import("@/pages/Equipe"));
 const PowerSyncPOC = lazy(() => import("@/poc/PowerSyncPOC"));
 const Balcao = lazy(() => import("@/pages/Balcao"));
 
@@ -90,7 +114,7 @@ function AppContent() {
       {showEntryGate ? (
         <SessionPinGate
           onEnter={() => void openProfileSelector({
-            title: "Quem está usando o AutoOS?",
+            title: "Quem está usando?",
             description: "Escolha o perfil e informe o PIN. Sem o PIN, o atendimento continua bloqueado.",
           })}
         />
@@ -110,9 +134,18 @@ function AppContent() {
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/perfil" element={<Perfil />} />
-            <Route path="/equipamentos" element={<Equipamentos />} />
+            <Route path="/equipe" element={<Equipe />} />
+            {/* Mesmo elemento com e sem :id: filtros e página da lista sobrevivem aos Detalhes da OS. */}
+            <Route path="/equipamentos/:id?" element={<Equipamentos />} />
+            <Route path="/equipamentos/:id/orcamento" element={<Equipamentos />} />
+            <Route path="/equipamentos/:id/verificacao" element={<Equipamentos />} />
             <Route path="/clientes" element={<Clientes />} />
+            <Route path="/clientes/:id/equipamentos" element={<ClienteEquipamentos />} />
             <Route path="/insumos" element={<Insumos />} />
+            <Route path="/vendas" element={<VendasInsumos />} />
+            <Route path="/vendas/novo" element={<VendaFormulario />} />
+            <Route path="/vendas/:id" element={<VendaDetalhe />} />
+            <Route path="/vendas/:id/editar" element={<VendaFormulario />} />
             <Route path="/servicos" element={<Servicos />} />
             <Route path="/poc" element={<PowerSyncPOC />} />
             <Route
@@ -167,7 +200,7 @@ function SessionPinGate({ onEnter }: { onEnter: () => void }) {
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-[#050608] px-6 text-white">
       <div className="w-full max-w-md space-y-4 text-center">
         <h1 className="text-2xl font-semibold">Informe o PIN para entrar</h1>
-        <p className="text-sm text-slate-300">
+        <p className="text-sm text-muted-foreground">
           O AutoOS continua bloqueado. Sem o PIN do perfil, o atendimento não abre.
         </p>
         <Button type="button" onClick={onEnter}>Entrar com PIN</Button>
@@ -213,7 +246,7 @@ function App() {
   if (dbReady === null) {
     return (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050608]">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-cyan-400" />
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     );
   }
@@ -221,7 +254,7 @@ function App() {
   if (!dbReady) {
     return (
       <>
-        <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
+        <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} closeButton duration={5000} toastOptions={AVISO_RAPIDO_OPCOES} />
         <ErrorBoundary>
           <DatabaseFallback onConnected={() => setDbReady(true)} />
         </ErrorBoundary>
@@ -231,7 +264,7 @@ function App() {
 
   return (
     <>
-      <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
+      <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} closeButton duration={5000} toastOptions={AVISO_RAPIDO_OPCOES} />
       <ErrorBoundary>
         <AppContent />
       </ErrorBoundary>

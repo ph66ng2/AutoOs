@@ -92,7 +92,7 @@ export function UpdateNotice() {
       ) : null}
 
       <Dialog open={open} onOpenChange={(next) => { if (next || !installing) setOpen(next); }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent tamanho="m">
           <DialogHeader>
             <DialogTitle>Atualizar o AutoOS</DialogTitle>
             <DialogDescription>

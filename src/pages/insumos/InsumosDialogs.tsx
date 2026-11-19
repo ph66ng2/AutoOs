@@ -48,7 +48,7 @@ export function InsumosProdutoDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent tamanho="m" className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {editando ? "Editar Insumo/Peça" : "Novo Insumo/Peça"}
@@ -193,7 +193,7 @@ export function InsumosMovimentacaoDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle>Movimentação de Estoque</DialogTitle>
         </DialogHeader>
@@ -222,13 +222,13 @@ export function InsumosMovimentacaoDialog({
                     <SelectContent>
                       <SelectItem value="ENTRADA">
                         <div className="flex items-center gap-2">
-                          <ArrowUpCircle className="h-4 w-4 text-green-600" />
+                          <ArrowUpCircle className="h-4 w-4 text-status-ok" />
                           Entrada
                         </div>
                       </SelectItem>
                       <SelectItem value="SAIDA">
                         <div className="flex items-center gap-2">
-                          <ArrowDownCircle className="h-4 w-4 text-red-500" />
+                          <ArrowDownCircle className="h-4 w-4 text-destructive" />
                           Saída
                         </div>
                       </SelectItem>
@@ -324,7 +324,7 @@ export function InsumosDeleteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="p">
         <DialogHeader>
           <DialogTitle>Confirmar Exclusão</DialogTitle>
         </DialogHeader>
@@ -333,7 +333,7 @@ export function InsumosDeleteDialog({
           <strong>{deletando?.nome}</strong>?
         </p>
         {gruposComItens.length > 0 && uso && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait">
             <p className="font-medium">Esta peça está em orçamentos em andamento</p>
             {gruposComItens.map((grupo) => (
               <div key={grupo.chave} className="mt-2">
@@ -351,7 +351,7 @@ export function InsumosDeleteDialog({
             </p>
           </div>
         )}
-        <p className="text-sm text-red-500">Esta ação não pode ser desfeita.</p>
+        <p className="text-sm text-destructive">Esta ação não pode ser desfeita.</p>
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outline">Cancelar</Button>

@@ -24,16 +24,20 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Total por situação (pílulas do filtro); null se a contagem falhar. */
+  const [contagens, setContagens] = useState<Record<string, number> | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const contagem = Promise.resolve().then(() => db.contarOrcamentosInsumosPorStatus(params.busca)).catch(() => null);
       const resultado = await db.listarOrcamentosInsumos({
         busca: params.busca,
         status: params.status,
         page: Math.max((params.page ?? 1) - 1, 0),
       });
+      setContagens(await contagem);
       setOrcamentos(resultado.items);
       setTotal(resultado.total);
     } catch (err: unknown) {
@@ -48,5 +52,5 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
     void carregar();
   }, [carregar]);
 
-  return { orcamentos, total, loading, error, recarregar: carregar };
+  return { orcamentos, total, contagens, loading, error, recarregar: carregar };
 }

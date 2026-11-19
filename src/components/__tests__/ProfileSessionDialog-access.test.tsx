@@ -85,7 +85,7 @@ describe("cofre de senhas indisponível", () => {
     expect(screen.queryByText("Ativar neste computador", { exact: false })).not.toBeInTheDocument();
     expect(screen.queryByText("PIN não configurado neste PC")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /tenho um código do administrador/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Entrar com este perfil|Continuar|Selecione/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Entrar$|Continuar|Selecione/ })).toBeDisabled();
     // O administrador também não cai no fluxo de "Novo PIN" quando o cofre não respondeu.
     expect(screen.queryByLabelText("Novo PIN")).not.toBeInTheDocument();
 

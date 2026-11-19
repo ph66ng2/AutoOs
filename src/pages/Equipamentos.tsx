@@ -24,7 +24,7 @@
  * ║  USADO POR: App.tsx (rota /equipamentos)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -36,12 +36,10 @@ import {
   X,
   Edit,
   Trash2,
-  Filter,
   RefreshCw,
   RotateCcw,
   MessageSquare,
   ClipboardCheck,
-  Users,
   Play,
   CheckCircle,
   XCircle,
@@ -49,13 +47,13 @@ import {
   PackageCheck,
   History,
   Send,
-  FileText,
   FileDown,
   ImagePlus,
   Eye,
   Download,
   Smartphone,
   DollarSign,
+  ChevronLeft,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -63,7 +61,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +70,7 @@ import {
   DialogTitle,
   DialogFooter,
   DialogClose,
+  DialogBody,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -98,7 +97,7 @@ import { EmailService } from "@/lib/email-service";
 import { PdfService, PRAZO_EXECUCAO_PADRAO, type PdfArtifact } from "@/lib/pdf-service";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { db } from "@/lib/db";
-import { formatDatePtBr, formatDateTimeSalvador, todayLocalIsoDate } from "@/lib/date-utils";
+import { formatDatePtBr, todayLocalIsoDate } from "@/lib/date-utils";
 import {
   STATUS_LABELS,
   SENSITIVE_PERMISSIONS,
@@ -152,11 +151,10 @@ import {
   type EquipamentoImagemDraft,
 } from "@/lib/equipamento-imagem-utils";
 import {
-  EMAIL_POR_TECNICO,
   MARCA_EQUIPAMENTO_OPTIONS,
   STATUS_COM_ORCAMENTO,
-  STATUS_OPTIONS,
-  TECNICOS_DISPONIVEIS,
+  FILTRO_STATUS_OUTROS,
+  FILTRO_STATUS_PRINCIPAIS,
   TIPO_OPTIONS,
 } from "@/pages/equipamentos/equipamentos-page-constants";
 import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
@@ -206,6 +204,21 @@ import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFi
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
 import { totalPages } from "@/lib/pagination";
+import { acoesPorStatus, type AcaoStatus } from "@/lib/acoes-por-status";
+import { PageHeader } from "@/components/PageHeader";
+import { useLarguraMinima } from "@/hooks/useLarguraMinima";
+import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
+import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
+import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
+import { useNomesFiltroTecnico, useTecnicos } from "@/hooks/useTecnicos";
+import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
+import { emailDoTecnico } from "@/lib/tecnicos";
+import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
+import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
+import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGrande";
+import { OrcamentoDaOs } from "@/components/equipamentos/OrcamentoDaOs";
+import { CartaoCliente } from "@/components/detalhe/CartaoCliente";
+import { HistoricoOs } from "@/components/equipamentos/HistoricoOs";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
 // do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
@@ -213,19 +226,23 @@ import { totalPages } from "@/lib/pagination";
 // :focus-visible do botão .equipment-row-open, então o clique do mouse não
 // acende e os botões de Ações continuam fora de um role=button.
 const EQUIPMENT_ROW_FOCUS_RING =
-  "border-b group-has-[.equipment-row-open:focus-visible]:z-[30] group-has-[.equipment-row-open:focus-visible]:bg-sky-100 group-has-[.equipment-row-open:focus-visible]:after:pointer-events-none group-has-[.equipment-row-open:focus-visible]:after:absolute group-has-[.equipment-row-open:focus-visible]:after:inset-0 group-has-[.equipment-row-open:focus-visible]:after:z-[1] group-has-[.equipment-row-open:focus-visible]:after:border-y-[3px] group-has-[.equipment-row-open:focus-visible]:after:border-[#1d4ed8] group-has-[.equipment-row-open:focus-visible]:after:content-['']";
+  "border-b group-has-[.equipment-row-open:focus-visible]:z-[30] group-has-[.equipment-row-open:focus-visible]:bg-status-work-bg group-has-[.equipment-row-open:focus-visible]:after:pointer-events-none group-has-[.equipment-row-open:focus-visible]:after:absolute group-has-[.equipment-row-open:focus-visible]:after:inset-0 group-has-[.equipment-row-open:focus-visible]:after:z-[1] group-has-[.equipment-row-open:focus-visible]:after:border-y-[3px] group-has-[.equipment-row-open:focus-visible]:after:border-ring group-has-[.equipment-row-open:focus-visible]:after:content-['']";
 const EQUIPMENT_ROW_FOCUS_EDGE = `relative ${EQUIPMENT_ROW_FOCUS_RING}`;
 const EQUIPMENT_ROW_FOCUS_FIRST = `relative ${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]`;
 const EQUIPMENT_ROW_FOCUS_LAST = `${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-r-[3px]`;
 
 export default function Equipamentos() {
-  const [busca, setBusca] = useState("");
-  const [statusFiltro, setStatusFiltro] = useState("TODOS");
-  const [ordenacao, setOrdenacao] = useState<"ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE">("ATUALIZACAO_RECENTE");
-  const [paginaEquipamentos, setPaginaEquipamentos] = useState(1);
+  // Filtro, busca, ordenação e página voltam como estavam ao reabrir a lista (na mesma sessão).
+  const [busca, setBusca] = useEstadoLembrado("equipamentos:busca", "");
+  const [statusFiltro, setStatusFiltro] = useEstadoLembrado("equipamentos:status", "TODOS");
+  const [ordenacao, setOrdenacao] = useEstadoLembrado<"ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE">("equipamentos:ordenacao", "ATUALIZACAO_RECENTE");
+  const [paginaEquipamentos, setPaginaEquipamentos] = useEstadoLembrado("equipamentos:pagina", 1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
+  // Detalhes da OS: a rota /equipamentos/:id manda, e o estado local acompanha
+  // (o mesmo componente atende a lista e os detalhes; ver idDetalhesRota abaixo).
+  const [idDetalhesAberto, setIdDetalhesAberto] = useState<number | null>(null);
+  const detalhesDialogOpen = idDetalhesAberto != null;
   const detalhesAbertoRef = useRef(false);
   const [sinalPortal, setSinalPortal] = useState(0);
   detalhesAbertoRef.current = detalhesDialogOpen;
@@ -270,6 +287,11 @@ export default function Equipamentos() {
   } | null>(null);
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
+  const [abaDetalhe, setAbaDetalhe] = useState("orcamento");
+  useEffect(() => { setAbaDetalhe("orcamento"); }, [selecionado?.id]);
+  /** Recarrega o selo "baixa pendente" ao fechar Peças da OS (a baixa pode ter sido confirmada lá). */
+  const [recargaPendentes, setRecargaPendentes] = useState(0);
+  const pecasPendentes = usePecasBaixaPendente(selecionado?.id, recargaPendentes);
   const selecionadoIdRef = useRef<number | undefined>();
   selecionadoIdRef.current = selecionado?.id;
   const [salvando, setSalvando] = useState(false);
@@ -294,6 +316,12 @@ export default function Equipamentos() {
   // Dados do drawer de detalhes
   const [verificacaoDetalhes, setVerificacaoDetalhes] = useState<Verificacao | null>(null);
   const [comunicacoes, setComunicacoes] = useState<Comunicacao[]>([]);
+  /** Última vez que o orçamento saiu para o cliente (cabeçalho da aba Orçamento). */
+  const orcamentoEnviadoEm = useMemo(() => {
+    const enviados = comunicacoes.filter((c) => c.tipo === "ORCAMENTO" && c.enviado !== false);
+    const datas = enviados.map((c) => c.data_envio || c.criado_em).filter((d): d is string => Boolean(d)).sort();
+    return datas.at(-1) ?? null;
+  }, [comunicacoes]);
   const [imagensDetalhes, setImagensDetalhes] = useState<EquipamentoImagemDraft[]>([]);
   const [historicoDetalhes, setHistoricoDetalhes] = useState<EquipamentoHistoricoEvento[]>([]);
   const [historicoDetalhesError, setHistoricoDetalhesError] = useState<string | null>(null);
@@ -319,7 +347,10 @@ export default function Equipamentos() {
   const [valorFinal, setValorFinal] = useState<number>(0);
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
-  const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("Ivan");
+  const tecnicos = useTecnicos();
+  const primeiroTecnico = tecnicos[0]?.nome ?? "";
+  const nomesFiltroTecnico = useNomesFiltroTecnico();
+  const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("");
   const [marcaOutroOpen, setMarcaOutroOpen] = useState(false);
   const [tipoOutroOpen, setTipoOutroOpen] = useState(false);
   const [imagensSaidaEntrega, setImagensSaidaEntrega] = useState<EquipamentoImagemDraft[]>([]);
@@ -363,19 +394,33 @@ export default function Equipamentos() {
   } | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const { equipamentos, total: totalEquipamentos, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
-    useEquipamentos({ busca: busca || undefined, status: statusFiltro, ordenacao, page: paginaEquipamentos });
+  const [tecnicoFiltro, setTecnicoFiltro] = useEstadoLembrado("equipamentos:tecnico", "TODOS");
+  const [exportando, setExportando] = useState(false);
+  const exportarEquipamentos = useExportarEquipamentos();
+  async function baixarCsv() {
+    setExportando(true);
+    try {
+      const nome = await exportarEquipamentos({ busca: busca || undefined, status: statusFiltro, tecnico: tecnicoFiltro === "TODOS" ? undefined : tecnicoFiltro, ordenacao });
+      success("Equipamentos", `Lista salva em ${nome}, na pasta temporária do app.`);
+    } catch (err) {
+      showError("Equipamentos", "Exportar lista", err);
+    } finally {
+      setExportando(false);
+    }
+  }
+  const { equipamentos, total: totalEquipamentos, contagens: contagensStatus, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
+    useEquipamentos({ busca: busca || undefined, status: statusFiltro, tecnico: tecnicoFiltro === "TODOS" ? undefined : tecnicoFiltro, ordenacao, page: paginaEquipamentos });
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
   const equipamentosExibidos = equipamentos;
 
-  useEffect(() => {
-    setPaginaEquipamentos(1);
-  }, [busca, statusFiltro, ordenacao]);
+  usePrimeiraPaginaAoFiltrar([busca, statusFiltro, ordenacao, tecnicoFiltro], () => setPaginaEquipamentos(1));
 
+  // Só limita a página depois de o total chegar: antes dele, a página lembrada valeria 1.
   useEffect(() => {
+    if (loading) return;
     setPaginaEquipamentos((pagina) => Math.min(pagina, totalPaginasEquipamentos));
-  }, [totalPaginasEquipamentos]);
+  }, [totalPaginasEquipamentos, loading, setPaginaEquipamentos]);
 
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
@@ -383,6 +428,32 @@ export default function Equipamentos() {
   const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess();
   const location = useLocation();
   const navigate = useNavigate();
+  const telaLarga = useLarguraMinima(768);
+  const irParaConfiguracoesPortal = useCallback(() => navigate("/configuracoes?aba=portal"), [navigate]);
+  const pathnameAtualRef = useRef(location.pathname);
+  pathnameAtualRef.current = location.pathname;
+  const idDetalhesRota = (() => {
+    const encontrado = /^\/equipamentos\/(\d+)\/?$/.exec(location.pathname);
+    return encontrado ? Number(encontrado[1]) : null;
+  })();
+  // Voltar/avançar do navegador ou link direto: o endereço abre ou fecha os detalhes.
+  useEffect(() => {
+    setIdDetalhesAberto(idDetalhesRota);
+  }, [idDetalhesRota]);
+  // Ajuste de orçamento em página (decisão 24): /equipamentos/:id/orcamento.
+  const idAjusteRota = (() => {
+    const encontrado = /^\/equipamentos\/(\d+)\/orcamento\/?$/.exec(location.pathname);
+    return encontrado ? Number(encontrado[1]) : null;
+  })();
+  // Verificação técnica em página (decisão 24): /equipamentos/:id/verificacao.
+  const idVerificacaoRota = (() => {
+    const encontrado = /^\/equipamentos\/(\d+)\/verificacao\/?$/.exec(location.pathname);
+    return encontrado ? Number(encontrado[1]) : null;
+  })();
+  /** De onde a pessoa abriu a verificação: Cancelar e finalizar voltam para lá. */
+  const origemVerificacaoRef = useRef<string>("/equipamentos");
+  /** De onde a pessoa abriu o ajuste: Cancelar e salvar voltam para lá. */
+  const origemAjusteRef = useRef<string>("/equipamentos");
 
   // Diálogo com algo sendo preenchido: abrir outro atendimento por cima perderia o que foi digitado.
   const edicaoEmAndamento =
@@ -402,7 +473,22 @@ export default function Equipamentos() {
   // Vindo de um alerta/atalho: abre o atendimento pedido. Se outra janela de detalhes estiver
   // aberta, troca na hora; só espera quando há um formulário em preenchimento.
   useEffect(() => {
-    const state = location.state as { equipamentoId?: number } | null;
+    const state = location.state as { equipamentoId?: number; novaEntrada?: boolean; statusFiltro?: string } | null;
+    // Cartão ou etapa do Início: abre a lista já filtrada por aquele status.
+    if (state?.statusFiltro) {
+      navigate(location.pathname, { replace: true, state: {} });
+      // Pedido explícito: a lista mostra a etapa inteira, sem a busca ou o técnico lembrados.
+      setStatusFiltro(state.statusFiltro);
+      setBusca("");
+      setTecnicoFiltro("TODOS");
+      return;
+    }
+    // "+ Nova entrada" do Início: abre o cadastro direto.
+    if (state?.novaEntrada) {
+      navigate(location.pathname, { replace: true, state: {} });
+      void abrirNovo();
+      return;
+    }
     if (!state?.equipamentoId) return;
     if (edicaoEmAndamento) {
       if (avisoEdicaoPendente.current !== state) {
@@ -513,7 +599,7 @@ export default function Equipamentos() {
     setErroImagens(null);
     setImagensFormulario([]);
     setCarregandoImagensFormulario(false);
-    setTecnicoNovoEquipamento("Ivan");
+    setTecnicoNovoEquipamento(primeiroTecnico);
     setRegistrosAnteriores([]);
     setConfirmouNovoCiclo(false);
     setAnteriorEmAtendimento(null);
@@ -576,7 +662,7 @@ export default function Equipamentos() {
     setErroImagens(null);
     setImagensFormulario([]);
     setCarregandoImagensFormulario(true);
-    setTecnicoNovoEquipamento(extrairTecnicoInicialDeObservacoes(eq.observacoes) || "Ivan");
+    setTecnicoNovoEquipamento(extrairTecnicoInicialDeObservacoes(eq.observacoes) || primeiroTecnico);
     if (eq.id) void carregarFotosDaEdicao(eq.id, sequencia);
     else setCarregandoImagensFormulario(false);
     // Se o equipamento tem cliente_id, carregar do banco; senão, montar objeto parcial
@@ -781,7 +867,9 @@ export default function Equipamentos() {
     // Trocar de atendimento com a janela aberta: só a última abertura grava os dados.
     const seq = ++detalhesSeq.current;
     setSelecionado(eq);
-    setDetalhesDialogOpen(true);
+    setIdDetalhesAberto(eq.id ?? null);
+    const destino = `/equipamentos/${eq.id}`;
+    if (pathnameAtualRef.current !== destino) navigate(destino);
     setCarregandoDetalhes(true);
     setVerificacaoDetalhes(null);
     setComunicacoes([]);
@@ -810,13 +898,78 @@ export default function Equipamentos() {
     } finally {
       if (seq === detalhesSeq.current) setCarregandoDetalhes(false);
     }
-  }, [carregarImagensComPreview]);
+  }, [carregarImagensComPreview, navigate]);
 
-  /** Abre dialog de verificação técnica (VerificacaoTecnica.tsx) */
-  function abrirVerificacao(eq: Equipamento) {
+  // Rota aberta direto (voltar/avançar do navegador, link): carrega a OS do endereço.
+  useEffect(() => {
+    if (idDetalhesRota == null || selecionadoIdRef.current === idDetalhesRota) return;
+    db.buscarEquipamento(idDetalhesRota)
+      .then((eq) => abrirDetalhes(eq))
+      .catch((err) => {
+        showError("Equipamentos", "Abrir atendimento", err);
+        navigate("/equipamentos", { replace: true });
+      });
+  }, [idDetalhesRota, abrirDetalhes, navigate]);
+
+  const paginaVerificacaoAbertaRef = useRef(false);
+  paginaVerificacaoAbertaRef.current = verificacaoDialogOpen;
+  /** Abre a página de verificação técnica (VerificacaoTecnica.tsx, /equipamentos/:id/verificacao). */
+  function abrirVerificacao(eq: Equipamento, origem?: string) {
     setSelecionado(eq);
     setVerificacaoDialogOpen(true);
+    paginaVerificacaoAbertaRef.current = true;
+    origemVerificacaoRef.current = origem ?? pathnameAtualRef.current;
+    const destino = `/equipamentos/${eq.id}/verificacao`;
+    if (pathnameAtualRef.current !== destino) navigate(destino);
   }
+
+  /**
+   * Sai da página da verificação e volta para onde a pessoa estava. Voltando aos detalhes, eles
+   * são carregados de novo: depois de finalizar mudaram, e num link direto nunca foram carregados.
+   */
+  function fecharPaginaVerificacao() {
+    // Finalizar já fecha; o "fechar" que a página manda logo depois não navega de novo.
+    if (!paginaVerificacaoAbertaRef.current) return;
+    paginaVerificacaoAbertaRef.current = false;
+    const alvo = selecionado;
+    setVerificacaoDialogOpen(false);
+    const origem = origemVerificacaoRef.current;
+    if (alvo?.id && origem === `/equipamentos/${alvo.id}`) {
+      db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
+      return;
+    }
+    if (pathnameAtualRef.current !== origem) navigate(origem);
+  }
+
+  // Link direto, voltar ou avançar até a verificação: abre a página se a OS está em verificação.
+  const idVerificacaoRotaAnterior = useRef<number | null>(null);
+  useEffect(() => {
+    const anterior = idVerificacaoRotaAnterior.current;
+    idVerificacaoRotaAnterior.current = idVerificacaoRota;
+    // A resposta só vale enquanto a pessoa continua nesta rota.
+    let ativo = true;
+    if (idVerificacaoRota != null && !paginaVerificacaoAbertaRef.current) {
+      const origem = `/equipamentos/${idVerificacaoRota}`;
+      db.buscarEquipamento(idVerificacaoRota)
+        .then((eq) => {
+          if (!ativo) return;
+          if (eq.status === "EM_VERIFICACAO") abrirVerificacao(eq, origem);
+          else navigate(origem, { replace: true });
+        })
+        .catch((err) => {
+          if (!ativo) return;
+          showError("Equipamentos", "Abrir verificação", err);
+          navigate("/equipamentos", { replace: true });
+        });
+    } else if (idVerificacaoRota == null && anterior != null && paginaVerificacaoAbertaRef.current) {
+      // Saiu da página pelo navegador: a verificação não finalizada é descartada.
+      setVerificacaoDialogOpen(false);
+    }
+    return () => {
+      ativo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idVerificacaoRota]);
 
   /** Abre dialog de mudança manual de status com opção de pré-selecionar o status */
   async function prepararValorEntregaPadrao(eq: Equipamento) {
@@ -961,7 +1114,8 @@ export default function Equipamentos() {
     setStatusDialogOpen(true);
   }
 
-  async function abrirAlterarOrcamento(eq: Equipamento) {
+  /** `aindaValido`: num link direto, para de abrir se a pessoa saiu da rota enquanto o PIN ou a carga esperavam. */
+  async function abrirAlterarOrcamento(eq: Equipamento, origem?: string, aindaValido: () => boolean = () => true): Promise<boolean> {
     const liberado = await ensureSensitiveAccess({
       title: "Alterar orçamento",
       description: "Informe o PIN para editar serviços e valor sem alterar o status do equipamento.",
@@ -969,7 +1123,7 @@ export default function Equipamentos() {
         ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
         : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
     });
-    if (!liberado) return;
+    if (!liberado || !aindaValido()) return false;
 
     setSelecionado(eq);
     setNovoStatus("");
@@ -981,8 +1135,66 @@ export default function Equipamentos() {
     setValorFinalSugerido(null);
     setAcordoExcecaoEntrega(false);
     await prepararAjusteOrcamentoPadrao(eq);
+    if (!aindaValido()) {
+      setAjusteOrcamentoSemMudancaStatus(false);
+      return false;
+    }
     setStatusDialogOpen(true);
+    origemAjusteRef.current = origem ?? pathnameAtualRef.current;
+    const destino = `/equipamentos/${eq.id}/orcamento`;
+    if (pathnameAtualRef.current !== destino) navigate(destino);
+    return true;
   }
+
+  /**
+   * Fecha a página do ajuste e volta para onde a pessoa estava. Voltando aos detalhes, eles são
+   * carregados de novo: depois de salvar mudaram, e num link direto nunca foram carregados.
+   */
+  function fecharPaginaAjuste() {
+    const alvo = selecionado;
+    setStatusDialogOpen(false);
+    setAjusteOrcamentoSemMudancaStatus(false);
+    const origem = origemAjusteRef.current;
+    if (alvo?.id && origem === `/equipamentos/${alvo.id}`) {
+      db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
+      return;
+    }
+    if (pathnameAtualRef.current !== origem) navigate(origem);
+  }
+
+  // Link direto, voltar ou avançar até a página do ajuste: abre o ajuste dessa OS (com o PIN de sempre).
+  const paginaAjusteAberta = statusDialogOpen && ajusteOrcamentoSemMudancaStatus;
+  const paginaAjusteAbertaRef = useRef(false);
+  paginaAjusteAbertaRef.current = paginaAjusteAberta;
+  const idAjusteRotaAnterior = useRef<number | null>(null);
+  useEffect(() => {
+    const anterior = idAjusteRotaAnterior.current;
+    idAjusteRotaAnterior.current = idAjusteRota;
+    // A resposta (e o PIN pedido no meio) só vale enquanto a pessoa continua nesta rota.
+    let ativo = true;
+    if (idAjusteRota != null && !paginaAjusteAbertaRef.current) {
+      const origem = `/equipamentos/${idAjusteRota}`;
+      db.buscarEquipamento(idAjusteRota)
+        .then(async (eq) => {
+          if (!ativo) return;
+          const aberto = await abrirAlterarOrcamento(eq, origem, () => ativo);
+          if (!aberto && ativo) navigate(origem, { replace: true });
+        })
+        .catch((err) => {
+          if (!ativo) return;
+          showError("Equipamentos", "Abrir ajuste de orçamento", err);
+          navigate("/equipamentos", { replace: true });
+        });
+    } else if (idAjusteRota == null && anterior != null && paginaAjusteAbertaRef.current) {
+      // Saiu da página pelo navegador: o ajuste não salvo é descartado.
+      setStatusDialogOpen(false);
+      setAjusteOrcamentoSemMudancaStatus(false);
+    }
+    return () => {
+      ativo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idAjusteRota]);
 
   async function abrirConsumosOrcamento(eq: Equipamento) {
     const liberado = await ensureSensitiveAccess({
@@ -1028,6 +1240,10 @@ export default function Equipamentos() {
       return;
     }
     setErroCliente(null);
+    if (!tecnicoNovoEquipamento) {
+      showError("Equipamentos", "Salvar equipamento", new Error("Escolha o técnico da verificação inicial. Marque os técnicos em Equipe e acessos."));
+      return;
+    }
     setSalvando(true);
     try {
       // Nome de exibição do cliente
@@ -1038,7 +1254,7 @@ export default function Equipamentos() {
       const acessoriosTexto = (data.acessorios || []).filter(Boolean).join(", ");
 
       const observacoesSemTecnico = removerTecnicoInicialDasObservacoes(data.observacoes || "");
-      const emailTecnicoInicial = EMAIL_POR_TECNICO[tecnicoNovoEquipamento] || "";
+      const emailTecnicoInicial = emailDoTecnico(tecnicoNovoEquipamento);
       const linhaTecnicoInicial = `Técnico inicial: ${tecnicoNovoEquipamento}${emailTecnicoInicial ? ` (${emailTecnicoInicial})` : ""}`;
       const observacoesComTecnico = [linhaTecnicoInicial, observacoesSemTecnico]
         .filter(Boolean)
@@ -1229,8 +1445,8 @@ export default function Equipamentos() {
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
-        setVerificacaoDialogOpen(false);
         await recarregar();
+        fecharPaginaVerificacao();
         const resumoCanais = mensagemResultadoCanais(resultado);
         if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Finalizar verificação");
@@ -1768,8 +1984,7 @@ export default function Equipamentos() {
           }
         }
         await recarregar();
-        setStatusDialogOpen(false);
-        setAjusteOrcamentoSemMudancaStatus(false);
+        fecharPaginaAjuste();
         success(
           "Equipamentos",
           ["Orçamento atualizado.", portalAjuste?.mensagem, portalProrrogacao?.mensagem].filter(Boolean).join(" "),
@@ -2122,10 +2337,7 @@ export default function Equipamentos() {
    * Cada status tem ações específicas (ex: RECEBIDO → "Iniciar Verificação").
    * Conecta-se a: acaoRapida, abrirVerificacao, abrirMudarStatus, handleMarcarPronto, WhatsApp
    */
-  function renderAcoes(eq: Equipamento) {
-    let primary: PriorityAction | null = null;
-    let secondary: PriorityAction | undefined;
-    const overflow: PriorityAction[] = [];
+  function renderAcoes(eq: Equipamento, naPagina = false) {
     const classeAcaoPrincipal = "min-w-[170px] justify-center";
 
     const acaoStatus: PriorityAction = {
@@ -2182,7 +2394,7 @@ export default function Equipamentos() {
       label: "Excluir",
       icon: <Trash2 className="h-3.5 w-3.5" />,
       variant: "ghost",
-      className: "text-red-600",
+      className: "text-destructive",
       onClick: () => void solicitarExclusao(eq),
     };
     const podeFinanceiro = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
@@ -2192,218 +2404,63 @@ export default function Equipamentos() {
       || (hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES) && orcamentoEmElaboracao(eq.status));
     const podeExcluir = hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS);
 
-    switch (eq.status) {
-      case "RECEBIDO":
-        primary = {
-          id: "iniciar_verificacao",
-          label: "Iniciar Verificação",
-          icon: <Play className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void acaoRapida(eq, "EM_VERIFICACAO"),
-          disabled: salvando,
-        };
-        secondary = acaoStatus;
-        overflow.push(
-          {
-            id: "os_pdf",
-            label: "OS PDF",
-            icon: <FileDown className="h-3.5 w-3.5" />,
-            onClick: () => void gerarOrdemServicoPdf(eq),
-            disabled: salvando,
-          },
-          acaoEditar,
-          ...(podeExcluir ? [acaoExcluir] : []),
-        );
-        break;
-      case "EM_VERIFICACAO":
-        primary = {
-          id: "abrir_verificacao",
-          label: "Abrir Verificação",
-          icon: <ClipboardCheck className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => abrirVerificacao(eq),
-        };
-        secondary = acaoStatus;
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "VERIFICADO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "enviar_orcamento",
-            label: "Enviar Orçamento",
-            icon: <Send className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: classeAcaoPrincipal,
-            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-          };
-          secondary = acaoStatus;
-        } else {
-          primary = acaoStatus;
-        }
-        if (eq.cliente_telefone) {
-          overflow.push({
-            id: "whatsapp_orcamento",
-            label: "WhatsApp",
-            icon: <MessageSquare className="h-3.5 w-3.5" />,
-            onClick: () => void enviarWhatsAppOrcamento(eq),
-          });
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "AGUARDANDO_APROVACAO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "aprovar",
-            label: "Aprovar",
-            icon: <CheckCircle className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: "bg-green-600 hover:bg-green-700 text-white",
-            onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
-            disabled: salvando,
-          };
-          secondary = {
-            id: "reprovar",
-            label: "Reprovar",
-            icon: <XCircle className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: "bg-red-600 text-white hover:bg-red-700",
-            onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
-            disabled: salvando,
-          };
-          overflow.push(acaoStatus);
-        } else {
-          primary = acaoStatus;
-        }
-        if (eq.cliente_telefone) {
-          overflow.push({
-            id: "whatsapp_orcamento",
-            label: "WhatsApp",
-            icon: <MessageSquare className="h-3.5 w-3.5" />,
-            onClick: () => void enviarWhatsAppOrcamento(eq),
-          });
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "APROVADO":
-        primary = {
-          id: "iniciar_manutencao",
-          label: "Iniciar Manutenção",
-          icon: <Wrench className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
-          disabled: salvando,
-        };
-        secondary = acaoStatus;
-        overflow.push(
-          ...(podeFinanceiro ? [{ ...acaoCorrigirDecisao, id: "desfazer_aprovacao", label: "Desfazer aprovação" }] : []),
-          acaoEditar,
-          ...(podeExcluir ? [acaoExcluir] : []),
-        );
-        break;
-      case "EM_MANUTENCAO":
-        primary = {
-          id: "marcar_pronto",
-          label: "Marcar Pronto",
-          icon: <PackageCheck className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void handleMarcarPronto(eq),
-          disabled: salvando || loadingAutomacao,
-        };
-        secondary = acaoStatus;
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "AGUARDANDO_PECA":
-        primary = {
-          id: "retomar_manutencao",
-          label: "Retomar Manutenção",
-          icon: <Wrench className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
-          disabled: salvando,
-        };
-        secondary = acaoStatus;
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "PRONTO":
-        primary = {
-          id: "registrar_entrega",
-          label: "Registrar Entrega",
-          icon: <PackageCheck className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "ENTREGUE"),
-        };
-        secondary = acaoStatus;
-        if (eq.cliente_telefone) {
-          overflow.push({
-            id: "whatsapp_pronto",
-            label: "WhatsApp",
-            icon: <MessageSquare className="h-3.5 w-3.5" />,
-            onClick: () => void enviarWhatsAppPronto(eq),
-          });
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "REPROVADO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "reabrir_orcamento",
-            label: "Reabrir Orçamento",
-            icon: <RotateCcw className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: classeAcaoPrincipal,
-            onClick: () => setReabrirAlvo(eq),
-            disabled: salvando,
-          };
-          overflow.push({
-            id: "mudar_status",
-            label: "Mudar Status",
-            icon: <ArrowDownUp className="h-3.5 w-3.5" />,
-            variant: "outline",
-            onClick: () => void abrirMudarStatus(eq),
-            disabled: salvando,
-          });
-        } else {
-          primary = acaoStatus;
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "ORCAMENTO_VENCIDO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "renovar_orcamento",
-            label: "Renovar orçamento",
-            icon: <RefreshCw className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: classeAcaoPrincipal,
-            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-          };
-          secondary = acaoStatus;
-        } else {
-          primary = acaoStatus;
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      default:
-        primary = acaoStatus;
-        secondary = undefined;
-        if (getProximosStatus(eq.status).length > 0) {
-          secondary = {
-            id: "mudar_status",
-            label: "Mudar Status",
-            icon: <ArrowDownUp className="h-3.5 w-3.5" />,
-            variant: "outline",
-            onClick: () => void abrirMudarStatus(eq),
-          };
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-    }
+    const acoes = acoesPorStatus(eq.status, {
+      podeOrcamentoValores,
+      podeFinanceiro,
+      temTelefone: Boolean(eq.cliente_telefone),
+      temProximosStatus: getProximosStatus(eq.status).length > 0,
+    });
+    const criarAcao = ({ id, rotulo }: AcaoStatus): PriorityAction => {
+      switch (id) {
+        case "status":
+          return acaoStatus;
+        case "iniciar_verificacao":
+          return { id, label: rotulo, icon: <Play className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void acaoRapida(eq, "EM_VERIFICACAO"), disabled: salvando };
+        case "abrir_verificacao":
+          return { id, label: rotulo, icon: <ClipboardCheck className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => abrirVerificacao(eq) };
+        case "enviar_orcamento":
+          return { id, label: rotulo, icon: <Send className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO") };
+        case "aprovar":
+          return { id, label: rotulo, icon: <CheckCircle className="h-3.5 w-3.5" />, variant: "default", onClick: () => void abrirDialogoAprovacao(eq, "aprovar"), disabled: salvando };
+        case "reprovar":
+          return { id, label: rotulo, icon: <XCircle className="h-3.5 w-3.5" />, variant: "default", className: "bg-destructive text-destructive-foreground hover:bg-destructive/90", onClick: () => void abrirDialogoAprovacao(eq, "reprovar"), disabled: salvando };
+        case "iniciar_manutencao":
+          return { id, label: rotulo, icon: <Wrench className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"), disabled: salvando };
+        case "marcar_pronto":
+          return { id, label: rotulo, icon: <PackageCheck className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void handleMarcarPronto(eq), disabled: salvando || loadingAutomacao };
+        case "retomar_manutencao":
+          return { id, label: rotulo, icon: <Wrench className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"), disabled: salvando };
+        case "registrar_entrega":
+          return { id, label: rotulo, icon: <PackageCheck className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void abrirMudarStatus(eq, "ENTREGUE") };
+        case "reabrir_orcamento":
+          return { id, label: rotulo, icon: <RotateCcw className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => setReabrirAlvo(eq), disabled: salvando };
+        case "renovar_orcamento":
+          return { id, label: rotulo, icon: <RefreshCw className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO") };
+        case "mudar_status":
+          return { id, label: rotulo, icon: <ArrowDownUp className="h-3.5 w-3.5" />, variant: "outline", onClick: () => void abrirMudarStatus(eq), ...(eq.status === "REPROVADO" ? { disabled: salvando } : {}) };
+        case "os_pdf":
+          return { id, label: rotulo, icon: <FileDown className="h-3.5 w-3.5" />, onClick: () => void gerarOrdemServicoPdf(eq), disabled: salvando };
+        case "whatsapp_orcamento":
+          return { id, label: rotulo, icon: <MessageSquare className="h-3.5 w-3.5" />, onClick: () => void enviarWhatsAppOrcamento(eq) };
+        case "whatsapp_pronto":
+          return { id, label: rotulo, icon: <MessageSquare className="h-3.5 w-3.5" />, onClick: () => void enviarWhatsAppPronto(eq) };
+        case "desfazer_aprovacao":
+          return { ...acaoCorrigirDecisao, id, label: rotulo };
+      }
+    };
+    // AcaoDaLinha: um botão visível por linha. A secundária vai para o ⋯ — "Status"
+    // abre a seção Equipamento; as outras (Reprovar) entram em "Neste status".
+    const nesteStatus = (acao: AcaoStatus): PriorityAction =>
+      acao.id === "status" ? criarAcao(acao) : { ...criarAcao(acao), className: undefined, group: "Neste status" };
+    const primary: PriorityAction = criarAcao(acoes.principal);
+    const secundaria = acoes.secundaria;
+    const overflow: PriorityAction[] = [
+      ...(secundaria && secundaria.id !== "status" ? [nesteStatus(secundaria)] : []),
+      ...acoes.nesteStatus.map(nesteStatus),
+      ...(secundaria?.id === "status" ? [acaoStatus] : []),
+      acaoEditar,
+      ...(podeExcluir ? [acaoExcluir] : []),
+    ];
 
     if (STATUS_COM_ORCAMENTO.includes(eq.status)) {
       const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
@@ -2422,28 +2479,27 @@ export default function Equipamentos() {
       overflow.splice(editarIndex >= 0 ? editarIndex : overflow.length, 0, acaoCorrigirStatus);
     }
 
-    return primary
-      ? (
-        <ActionPriorityRow
-          primary={primary}
-          iconOnlyPrimary={eq.status === "ENTREGUE" || eq.status === "ABANDONADO"}
-          secondary={secondary}
-          overflow={agruparAcoesOs(overflow)}
-          iconOnlySecondary
-          iconOnlyOverflowTrigger
-        />
-      )
-      : null;
+    return (
+      <ActionPriorityRow
+        primary={primary}
+        // Na própria página de Detalhes, "Status" (abrir os detalhes) não faz sentido.
+        overflow={agruparAcoesOs(naPagina ? overflow.filter((acao) => acao.id !== "status") : overflow)}
+        acaoDaLinha
+        destaque={naPagina}
+        semPrincipal={naPagina && primary.id === "status"}
+        menuTitulo={`${eq.marca} ${eq.modelo} · ${eq.serial_number}`}
+      />
+    );
   }
 
   // ─── Sub-renders para abas do drawer de detalhes ──────
 
   function renderVerificacaoTab() {
-    if (carregandoDetalhes) return <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>;
+    if (carregandoDetalhes) return <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>;
     if (!verificacaoDetalhes) return <div className="text-center py-8 text-muted-foreground"><ClipboardCheck className="h-10 w-10 mx-auto mb-2 opacity-20" /><p>Nenhuma verificação realizada</p></div>;
 
     const v = verificacaoDetalhes;
-    const emailTecnico = EMAIL_POR_TECNICO[v.tecnico_nome] || "—";
+    const emailTecnico = emailDoTecnico(v.tecnico_nome) || "—";
     const itens: ItemVerificacao[] = v.itens_verificados ? JSON.parse(v.itens_verificados) : [];
     const servs: ServicoNecessario[] = v.servicos_necessarios ? JSON.parse(v.servicos_necessarios) : [];
     const pcs: PecaNecessaria[] = v.pecas_necessarias ? JSON.parse(v.pecas_necessarias) : [];
@@ -2463,7 +2519,7 @@ export default function Equipamentos() {
             <div className="space-y-1">
               {itens.map(item => (
                 <div key={item.id} className="flex items-center gap-2 text-sm">
-                  {item.verificado ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-400" />}
+                  {item.verificado ? <CheckCircle className="h-4 w-4 text-status-ok" /> : <XCircle className="h-4 w-4 text-destructive" />}
                   <span className={item.verificado ? "" : "text-muted-foreground"}>{item.nome}</span>
                 </div>
               ))}
@@ -2522,33 +2578,210 @@ export default function Equipamentos() {
             Gerar Relatório de Status
           </Button>
         </div>
-        <div className="space-y-0">
-        {eventos.map((ev, idx) => (
-          <div key={`${ev.data}-${ev.status}-${idx}`} className="flex items-start gap-3 pb-4">
-            <div className="flex flex-col items-center">
-              <div className={`w-3 h-3 rounded-full mt-1 ${idx === eventos.length - 1 ? "bg-blue-500 ring-2 ring-blue-200" : "bg-muted-foreground/40"}`} />
-              {idx < eventos.length - 1 && <div className="w-0.5 flex-1 bg-border mt-1 min-h-[16px]" />}
-            </div>
-            <div className="flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                {ev.status_anterior && <><StatusBadge status={ev.status_anterior} /><span className="text-muted-foreground">→</span></>}
-                <StatusBadge status={ev.status} />
-                {ev.tipo === "CORRECAO_STATUS" && <span className="text-xs font-medium text-amber-700">Correção</span>}
-                <span className="text-xs text-muted-foreground">
-                  {ev.data_confiavel !== false ? formatDateTimeSalvador(ev.data) : "Horário legado inconsistente"}
-                </span>
-              </div>
-              <p className="mt-1 text-sm">{ev.motivo}</p>
-              {ev.autor && <p className="text-xs text-muted-foreground">Registrado por {ev.autor}</p>}
-            </div>
-          </div>
-        ))}
-        <div className="mt-2 p-2 bg-accent/50 rounded text-sm flex items-center gap-2">
+        <HistoricoOs eventos={eventos} />
+        <div className="flex items-center gap-2 rounded-lg bg-muted p-2.5 text-sm">
           <span className="text-muted-foreground">Status atual:</span>
-          <StatusBadge status={eq.status} />
-        </div>
+          <StatusBadge status={eq.status} completo />
         </div>
       </div>
+    );
+  }
+
+  // ─── Ajuste de orçamento: peças usadas pela página (/equipamentos/:id/orcamento) e pela janela de status ───
+  function blocoAjusteHistorico() {
+    return (
+      <>
+      {verificacaoAjusteOrcamento?.servicos_orcamento_original && (
+        <details className="rounded-md border p-3 text-sm">
+          <summary className="cursor-pointer font-medium">Orçamento original e decisões do cliente</summary>
+          <p className="mt-2 text-muted-foreground">Itens da primeira decisão. Serviços reprovados precisam de nova aprovação para consumir peças.</p>
+          {normalizarServicosOrcamento(verificacaoAjusteOrcamento.servicos_orcamento_original).map((servico) => (
+            <p key={servico.id} className="mt-1">{servico.descricao} · {verificacaoAjusteOrcamento.decisoes_servicos?.find((d) => d.servico_id === servico.id)?.decisao ?? "Sem decisão"}</p>
+          ))}
+        </details>
+      )}
+      {verificacaoAjusteOrcamento?.adjusted_at && (
+        <div className="rounded-md border bg-status-work-bg px-3 py-2 text-sm text-status-work flex items-center gap-2">
+          <History className="h-4 w-4 text-status-work" />
+          <div>
+            <p className="text-xs text-status-work font-medium">Histórico de Ajustes</p>
+            <p className="text-xs">
+              Último ajuste em {new Date(verificacaoAjusteOrcamento.adjusted_at).toLocaleDateString("pt-BR")}
+            </p>
+          </div>
+        </div>
+      )}
+      </>
+    );
+  }
+
+  function blocoAjusteCampos(selecionado: Equipamento) {
+    return (
+      <>
+      <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} onValidityChange={setValorOrcamentoValido} />
+        {Number(valorOrcamento) === 0 && !totalOrcamentoAjusteValido(0, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento) && (
+          <p className="text-xs text-destructive">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
+        )}
+      </div>
+      {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
+        <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
+      )}
+      <div className="space-y-2">
+        <Label htmlFor="observacoes-ajuste">Observações</Label>
+        <Textarea
+          id="observacoes-ajuste"
+          value={observacoesAjuste}
+          onChange={(event) => setObservacoesAjuste(event.target.value)}
+          placeholder="Observações do orçamento"
+          rows={3}
+        />
+      </div>
+      {ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status) ? (
+        <div className="space-y-3">
+        <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Ao salvar, você escolhe entre ajustar sem nova aprovação (o cliente já concordou; só a quantidade adicional terá baixa) ou pedir nova aprovação pelo portal.
+        </p>
+        <FormaPagamentoFields
+          codigo={formaPagamentoAjuste}
+          detalhe={detalhePagamentoAjuste}
+          onCodigoChange={setFormaPagamentoAjuste}
+          onDetalheChange={setDetalhePagamentoAjuste}
+          required
+        />
+        </div>
+      ) : (
+        <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          A forma de pagamento será definida durante a aprovação.
+        </div>
+      )}
+      {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
+        <p className="text-xs text-status-wait">
+          Novo valor em negociação: {formatCurrency(valorOrcamento)} (antes: {formatCurrency(valorOrcamentoAnterior)}).
+        </p>
+      )}
+      </>
+    );
+  }
+
+  function blocoAjusteServicos(moldura = "space-y-3 rounded-md border p-3") {
+    return (
+      <>
+      {verificacaoAjusteOrcamento && (
+        <div className={moldura}>
+          <AjusteOrcamentoServicos
+            servicos={servicosAjuste}
+            catalogo={catalogoServicosAjuste}
+            carregandoCatalogo={carregandoCatalogoAjuste}
+            onChange={setServicosAjuste}
+            onRemoverTodos={() => {
+              setConfirmProps({
+                title: "Remover todos os serviços",
+                description: "Você está removendo TODOS os serviços do orçamento. Deseja continuar?",
+                variant: "destructive",
+                onConfirm: () => {
+                  setServicosAjuste([]);
+                  setConfirmOpen(false);
+                },
+                onCancel: () => setConfirmOpen(false),
+              });
+              setConfirmOpen(true);
+            }}
+          />
+          {pecasLegadasAjuste.length > 0 && (
+            <div className="rounded-md border border-status-wait/30 bg-status-wait-bg p-2">
+              <p className="text-xs font-semibold text-status-wait">Peças antigas sem serviço vinculado</p>
+              <p className="text-xs text-status-wait">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
+              {pecasLegadasAjuste.map((peca, indice) => (
+                <div key={`${peca.id}-${indice}`} className="flex items-center justify-between gap-2 text-sm">
+                  <span>{peca.nome} × {peca.quantidade} · {formatCurrencyOrMissing(peca.valorTotal)}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((atual) => atual.filter((_, i) => i !== indice))}>Remover linha antiga</Button>
+                </div>
+              ))}
+            </div>
+          )}
+          {pecasLegadasAjuste.length === 0 && servicosAjuste.length === 0 && (
+            <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
+          )}
+        </div>
+      )}
+      </>
+    );
+  }
+
+  /** Mesma regra do botão Confirmar da janela de status, para o ajuste. */
+  function confirmarStatusBloqueado(selecionado: Equipamento) {
+    return salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento));
+  }
+
+  /** Soma dos serviços e peças do ajuste, ao vivo (a mesma conta do aviso de divergência ao confirmar). */
+  function somaDoAjuste() {
+    const servicos = servicosAjuste.reduce((soma, servico) => soma + (Number(servico.valor) || 0), 0);
+    const pecas = [...pecasParaOrcamento(servicosAjuste), ...pecasLegadasAjuste].reduce((soma, peca) => soma + peca.valorTotal, 0);
+    return servicos + pecas;
+  }
+
+  /** Ajuste de orçamento como página (decisão 24): mesmos campos e regras da janela; o status da OS não muda. */
+  function renderPaginaAjuste(selecionado: Equipamento) {
+    const soma = somaDoAjuste();
+    return (
+      <section aria-labelledby="ajuste-orcamento-titulo" className="-mb-4 flex min-h-[calc(100vh-8rem)] flex-col gap-4 lg:-mb-8">
+        <div>
+          <button
+            type="button"
+            onClick={() => fecharPaginaAjuste()}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-rapida hover:text-foreground"
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+            <span className="[overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo} · {selecionado.serial_number}</span>
+          </button>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <h1 id="ajuste-orcamento-titulo" className="text-[26px] font-bold leading-tight tracking-tight">Ajuste de orçamento</h1>
+            <StatusBadge status={selecionado.status} completo />
+          </div>
+        </div>
+
+        {blocoAjusteHistorico()}
+
+        <section className="rounded-2xl border bg-card p-5">
+          <h2 className="mb-3 text-base font-bold">Valores</h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl bg-muted px-4 py-3">
+              <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums">{valorOrcamentoOriginal != null ? formatCurrency(valorOrcamentoOriginal) : "—"}</p>
+            </div>
+            <div className="rounded-xl bg-muted px-4 py-3">
+              <p className="text-xs text-muted-foreground">Valor atual antes do ajuste</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums">{valorOrcamentoAnterior != null ? formatCurrency(valorOrcamentoAnterior) : "—"}</p>
+            </div>
+            <div className="rounded-xl bg-status-ok-bg px-4 py-3 text-status-ok">
+              <p className="text-xs">Novo valor calculado</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums">{formatCurrency(soma)}</p>
+            </div>
+          </div>
+        </section>
+
+        {verificacaoAjusteOrcamento && (
+          <section className="rounded-2xl border bg-card p-5">
+            <h2 className="mb-3 text-base font-bold">Serviços e peças</h2>
+            {blocoAjusteServicos("space-y-3")}
+          </section>
+        )}
+
+        <section className="space-y-4 rounded-2xl border bg-card p-5">
+          <h2 className="text-base font-bold">Orçamento</h2>
+          {blocoAjusteCampos(selecionado)}
+        </section>
+
+        <div className="sticky bottom-0 z-20 -mx-4 mt-auto flex flex-wrap items-center justify-between gap-3 border-t bg-card px-4 py-3 lg:-mx-8 lg:px-8">
+          <p className="text-sm text-muted-foreground">O status atual do equipamento será mantido.</p>
+          <div className="flex w-full gap-2 md:w-auto">
+            <Button type="button" variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={() => fecharPaginaAjuste()}>Cancelar</Button>
+            <Button type="button" className="h-12 flex-1 md:h-10 md:flex-none" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
+              {salvando ? "Salvando..." : "Confirmar"}
+            </Button>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -2558,47 +2791,19 @@ export default function Equipamentos() {
 
   return (
     <div className="space-y-6">
+      {!detalhesDialogOpen && idAjusteRota == null && !paginaAjusteAberta && idVerificacaoRota == null && !verificacaoDialogOpen && (<>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Equipamentos</h1>
-          <p className="text-muted-foreground">Gerencie equipamentos, verificações e orçamentos</p>
-        </div>
+      <PageHeader
+        titulo="Equipamentos"
+        descricao={loading
+          ? "Carregando…"
+          : `${totalEquipamentos} ${totalEquipamentos === 1 ? "equipamento" : "equipamentos"}${busca || statusFiltro !== "TODOS" ? " neste filtro" : ""}`}
+      >
         <div className="flex items-center gap-2">
-          <Button onClick={abrirNovo}><Plus className="h-4 w-4 mr-2" />Novo Equipamento</Button>
+          <Button variant="outline" onClick={() => void baixarCsv()} disabled={exportando}>{exportando ? "Exportando…" : "Exportar"}</Button>
+          <Button onClick={abrirNovo}><Plus className="h-4 w-4 mr-2" />Nova entrada</Button>
         </div>
-      </div>
-
-      {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col lg:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input aria-label="Pesquisar equipamentos" placeholder="Série, patrimônio, equipamento, cliente ou CPF/CNPJ" value={busca} onChange={e => setBusca(e.target.value)} className="pl-9 pr-10" />
-              {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
-            </div>
-            <Select value={statusFiltro} onValueChange={setStatusFiltro}>
-              <SelectTrigger aria-label="Filtrar equipamentos por status" className="w-full lg:w-48">
-                <Filter className="h-4 w-4 mr-2" /><SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map(opt => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}
-              </SelectContent>
-            </Select>
-            <Select value={ordenacao} onValueChange={(value: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE") => setOrdenacao(value)}>
-              <SelectTrigger aria-label="Ordenar equipamentos" className="w-full lg:w-56">
-                <ArrowDownUp className="h-4 w-4 mr-2" /><SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ATUALIZACAO_RECENTE">Alterados recentemente</SelectItem>
-                <SelectItem value="CADASTRO_RECENTE">Cadastros recentes</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="shrink-0" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
-          </div>
-        </CardContent>
-      </Card>
+      </PageHeader>
 
       {erroListaEquipamentos && (
         <ErrorAlert
@@ -2610,84 +2815,146 @@ export default function Equipamentos() {
         />
       )}
 
-      {/* Tabela */}
-      <Card>
-        <CardContent className="pt-6">
+      {/* Lista: filtros, tabela e paginação num painel só */}
+      <Card className="rounded-2xl">
+        <CardContent className="space-y-4 p-5">
+          <FiltroDeStatus
+            rotulo="Filtrar equipamentos por status"
+            principais={FILTRO_STATUS_PRINCIPAIS}
+            outros={FILTRO_STATUS_OUTROS}
+            valor={statusFiltro}
+            contagens={contagensStatus}
+            onChange={setStatusFiltro}
+            multiplo
+          />
+          <div className="flex flex-col gap-3 lg:flex-row">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input aria-label="Pesquisar equipamentos" placeholder="Série, patrimônio, equipamento, cliente, contato ou CPF/CNPJ" value={busca} onChange={e => setBusca(e.target.value)} className="h-10 bg-muted pl-9 pr-10" />
+              {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
+            </div>
+            <div className="flex gap-3">
+            <Select value={tecnicoFiltro} onValueChange={setTecnicoFiltro}>
+              <SelectTrigger aria-label="Filtrar por técnico" className="h-10 min-w-0 flex-1 lg:w-44 lg:flex-none">
+                <span className="truncate">Técnico: {tecnicoFiltro === "TODOS" ? "todos" : tecnicoFiltro}</span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TODOS">Todos os técnicos</SelectItem>
+                {nomesFiltroTecnico.map((nome) => (
+                  <SelectItem key={nome} value={nome}>{nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={ordenacao} onValueChange={(value: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE") => setOrdenacao(value)}>
+              <SelectTrigger aria-label="Ordenar equipamentos" className="h-10 min-w-0 flex-1 lg:w-56 lg:flex-none">
+                <ArrowDownUp className="h-4 w-4 mr-2" /><SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ATUALIZACAO_RECENTE">Alterados recentemente</SelectItem>
+                <SelectItem value="CADASTRO_RECENTE">Cadastros recentes</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="h-10 w-10 shrink-0" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
+            </div>
+          </div>
+
           {loading ? (
-            <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+            <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
           ) : equipamentos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Printer className="h-16 w-16 mx-auto mb-4 opacity-20" />
               <p className="text-lg font-medium mb-1">Nenhum equipamento encontrado</p>
-              <p className="text-sm">{busca || statusFiltro !== "TODOS" ? "Tente ajustar os filtros" : "Clique em 'Novo Equipamento' para cadastrar"}</p>
+              <p className="text-sm">{busca || statusFiltro !== "TODOS" ? "Tente ajustar os filtros" : "Clique em 'Nova entrada' para cadastrar"}</p>
             </div>
           ) : (
             <>
-              <PaginationControls
-                page={paginaEquipamentosExibida}
-                totalPages={totalPaginasEquipamentos}
-                onPageChange={setPaginaEquipamentos}
-                label="Paginação de equipamentos"
-              />
-              <div className="rounded-md border">
-                <Table className="min-w-[76rem] table-fixed border-separate border-spacing-0">
-                <TableHeader className="[&_tr]:!border-b-0 [&_th]:border-b">
+              {/* Celular: um cartão por equipamento; a tabela larga com a coluna fixa só a partir de md. */}
+              {!telaLarga ? (
+              <ul className="space-y-3" aria-label="Equipamentos">
+                {equipamentosExibidos.map(eq => (
+                  <li key={eq.id} className="space-y-3 rounded-xl border p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <button
+                        type="button"
+                        className="min-w-0 text-left"
+                        aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
+                        onClick={() => void abrirDetalhes(eq)}
+                      >
+                        <span className="block truncate font-semibold">{eq.marca} {eq.modelo}</span>
+                        <span className="block truncate font-mono text-xs text-muted-foreground">{eq.serial_number}</span>
+                      </button>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">
+                        {eq.valor_orcamento != null && eq.valor_orcamento > 0 ? formatCurrency(eq.valor_orcamento) : <span className="font-normal text-muted-foreground">—</span>}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="truncate text-sm">
+                        {eq.cliente_nome || "—"}
+                        <span className="text-muted-foreground"> · entrada {formatDatePtBr(eq.data_entrada)}</span>
+                      </p>
+                      <p className="text-sm font-medium">{STATUS_LABELS[eq.status as StatusEquipamento] || eq.status}</p>
+                      <BarraDeEtapas status={eq.status} />
+                    </div>
+                    <div className="flex justify-end">{renderAcoes(eq)}</div>
+                  </li>
+                ))}
+              </ul>
+              ) : (
+              <div className="overflow-hidden rounded-xl border">
+                <Table className="min-w-[67.5rem] table-fixed border-separate border-spacing-0">
+                <TableHeader className="bg-muted [&_tr]:!border-b-0 [&_th]:h-10 [&_th]:border-b [&_th]:text-xs [&_th]:font-semibold">
                   <TableRow>
-                    <TableHead className="w-[8rem]">Nº Série</TableHead>
-                    <TableHead className="w-[14rem]">Equipamento</TableHead>
-                    <TableHead className="w-[10rem]">Cliente</TableHead>
-                    <TableHead className="w-[11rem]">Status</TableHead>
-                    <TableHead className="w-[7rem]">Entrada</TableHead>
-                    <TableHead className="w-[8rem]">Última alteração</TableHead>
-                    <TableHead className="sticky right-0 z-20 w-[18rem] min-w-[18rem] bg-card text-right">Ações</TableHead>
+                    <TableHead className="w-[12rem]">Equipamento</TableHead>
+                    <TableHead className="w-[11rem]">Cliente</TableHead>
+                    <TableHead className="w-[11rem]">Andamento</TableHead>
+                    <TableHead className="w-[5.5rem]">Técnico</TableHead>
+                    <TableHead className="w-[5rem]">Entrada</TableHead>
+                    <TableHead className="w-[7.5rem] text-right">Orçamento</TableHead>
+                    <TableHead className="sticky right-0 z-20 w-[15.5rem] min-w-[15.5rem] bg-muted text-right">Próxima ação</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0">
+                <TableBody className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0 [&_td]:py-2.5">
                   {equipamentosExibidos.map(eq => (
                     <TableRow
                       key={eq.id}
                       className="group cursor-pointer"
                       onClick={() => void abrirDetalhes(eq)}
                     >
-                      <TableCell className={`overflow-hidden font-mono font-medium ${EQUIPMENT_ROW_FOCUS_FIRST}`}>
-                        <span className="block truncate" title={eq.serial_number}>{eq.serial_number}</span>
-                      </TableCell>
-                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_FIRST}`}>
                         <div className="min-w-0">
                           <button
                             type="button"
-                            className="equipment-row-open block w-full min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-inherit focus-visible:outline-none"
+                            className="equipment-row-open block w-full min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-semibold text-inherit focus-visible:outline-none"
                             aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
                             onClick={(event) => {
                               event.stopPropagation();
                               void abrirDetalhes(eq);
                             }}
                           >
-                            <span className="block truncate" title={`${eq.marca} ${eq.modelo}`}>{eq.marca} {eq.modelo}</span>
+                            <span className="block truncate" title={`${eq.marca} ${eq.modelo} · ${eq.tipo}`}>{eq.marca} {eq.modelo}</span>
                           </button>
-                          <p className="truncate text-xs text-muted-foreground" title={eq.tipo}>{eq.tipo}</p>
+                          <p className="truncate font-mono text-xs text-muted-foreground" title={eq.serial_number}>{eq.serial_number}</p>
                         </div>
                       </TableCell>
                       <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         {eq.cliente_nome ? (
                           <div className="min-w-0">
                             <span className="block truncate text-sm" title={eq.cliente_nome}>{eq.cliente_nome}</span>
-                            {eq.cliente_telefone && <p className="truncate text-xs text-muted-foreground" title={eq.cliente_telefone}>{eq.cliente_telefone}</p>}
+                            {(eq.responsavel_nome || eq.cliente_telefone) && (
+                              <p className="truncate text-xs text-muted-foreground" title={eq.responsavel_nome || eq.cliente_telefone || undefined}>{eq.responsavel_nome || eq.cliente_telefone}</p>
+                            )}
                           </div>
                         ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <StatusBadge status={eq.status} />
-                          {(eq.status === "AGUARDANDO_APROVACAO" || eq.status === "ORCAMENTO_VENCIDO") &&
-                            eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
-                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
-                                Orçamento: {formatCurrency(eq.valor_orcamento)}
-                              </div>
-                            )}
+                        <div className="min-w-0 space-y-1.5">
+                          <span className="block truncate text-sm font-medium">
+                            {STATUS_LABELS[eq.status as StatusEquipamento] || eq.status}
+                          </span>
+                          <BarraDeEtapas status={eq.status} />
                           {eq.status === "AGUARDANDO_APROVACAO" &&
                             (eq.resposta_cliente === "APROVAR" || eq.resposta_cliente === "RECUSAR") && (
-                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-900">
+                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-status-work/30 bg-status-work-bg px-2 py-0.5 text-xs font-medium text-status-work">
                                 Cliente respondeu: {eq.resposta_cliente === "APROVAR" ? "aprovou" : "recusou"} — {
                                   eq.resposta_cliente_situacao === "EM_CORRECAO" ? "em prazo de correção"
                                     : eq.resposta_cliente_situacao === "PROCESSANDO" ? "aguardando efetivação automática"
@@ -2698,13 +2965,16 @@ export default function Equipamentos() {
                         </div>
                       </TableCell>
                       <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <span className="block truncate">{formatDatePtBr(eq.data_entrada)}</span>
+                        <span className="block truncate" title={eq.tecnico_nome ?? undefined}>{eq.tecnico_nome || "—"}</span>
                       </TableCell>
-                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <span className="block truncate">{formatDatePtBr(eq.atualizado_em || eq.criado_em)}</span>
+                      <TableCell className={`overflow-hidden text-sm text-muted-foreground tabular-nums ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                        <span className="block truncate" title={`Entrada em ${formatDatePtBr(eq.data_entrada)} · última alteração: ${formatDatePtBr(eq.atualizado_em || eq.criado_em)}`}>{formatDatePtBr(eq.data_entrada).slice(0, 5)}</span>
+                      </TableCell>
+                      <TableCell className={`overflow-hidden text-right text-sm font-semibold tabular-nums ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                        {eq.valor_orcamento != null && eq.valor_orcamento > 0 ? formatCurrency(eq.valor_orcamento) : <span className="font-normal text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell
-                        className={`sticky right-0 z-10 w-[18rem] min-w-[18rem] bg-card text-right group-hover:bg-muted/50 ${EQUIPMENT_ROW_FOCUS_LAST}`}
+                        className={`sticky right-0 z-10 w-[15.5rem] min-w-[15.5rem] bg-card text-right group-hover:bg-muted/50 ${EQUIPMENT_ROW_FOCUS_LAST}`}
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => event.stopPropagation()}
                       >
@@ -2717,10 +2987,20 @@ export default function Equipamentos() {
                 </TableBody>
                 </Table>
               </div>
+              )}
+              <PaginationControls
+                page={paginaEquipamentosExibida}
+                totalPages={totalPaginasEquipamentos}
+                onPageChange={setPaginaEquipamentos}
+                label="Paginação de equipamentos"
+                totalItems={totalEquipamentos}
+                className="pb-0"
+              />
             </>
           )}
         </CardContent>
       </Card>
+      </>)}
 
       {/* ═══ Dialog Criar/Editar ═══ */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {
@@ -2734,11 +3014,12 @@ export default function Equipamentos() {
         }
         setDialogOpen(open);
       }}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent tamanho="g">
           <DialogHeader>
             <DialogTitle>{editando ? "Editar Equipamento" : "Novo Equipamento"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+            <DialogBody className="space-y-6">
             {/* ── Cliente ── */}
             <div className="space-y-2">
               <ClienteSelector
@@ -2804,13 +3085,13 @@ export default function Equipamentos() {
                   </div>
                   <FormValidationError message={form.formState.errors.serial_number?.message} />
                   {registrosAnteriores.length > 0 && (
-                    <div className="mt-2 rounded-md border border-amber-400 bg-amber-100 p-3 space-y-2">
-                      <p className="text-sm font-bold text-amber-900">
+                    <div className="mt-2 rounded-md border border-status-wait bg-status-wait-bg p-3 space-y-2">
+                      <p className="text-sm font-bold text-status-wait">
                         ⚠️ ATENÇÃO: Este número de série já foi registrado anteriormente. Marque esta caixa apenas se realmente deseja criar um NOVO ciclo de manutenção.
                       </p>
                       <ul className="space-y-1">
                         {registrosAnteriores.map((r) => (
-                          <li key={r.id} className="text-xs text-amber-800 flex items-center gap-1 flex-wrap">
+                          <li key={r.id} className="text-xs text-status-wait flex items-center gap-1 flex-wrap">
                             <span>• #{r.id}</span>
                             <StatusBadge status={r.status} />
                             <span>— Entrada: {formatDatePtBr(r.data_entrada)}</span>
@@ -2820,7 +3101,7 @@ export default function Equipamentos() {
                           </li>
                         ))}
                       </ul>
-                      <p className="text-xs text-amber-800">
+                      <p className="text-xs text-status-wait">
                         O histórico anterior será preservado. Este será um registro independente.
                       </p>
                       <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
@@ -2828,9 +3109,9 @@ export default function Equipamentos() {
                           type="checkbox"
                           checked={confirmouNovoCiclo}
                           onChange={(e) => setConfirmouNovoCiclo(e.target.checked)}
-                          className="rounded border-amber-400"
+                          className="rounded border-status-wait"
                         />
-                        <span className="text-amber-900 font-semibold">Confirmo que desejo criar um novo ciclo de manutenção para este equipamento</span>
+                        <span className="text-status-wait font-semibold">Confirmo que desejo criar um novo ciclo de manutenção para este equipamento</span>
                       </label>
                     </div>
                   )}
@@ -2886,13 +3167,16 @@ export default function Equipamentos() {
                 <div className="space-y-2">
                   <Label>Técnico (verificação inicial)</Label>
                   <Select
-                    value={tecnicoNovoEquipamento}
+                    value={tecnicoNovoEquipamento || undefined}
                     onValueChange={(value: TecnicoDisponivel) => setTecnicoNovoEquipamento(value)}
                   >
                     <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>
-                      {TECNICOS_DISPONIVEIS.map((tecnico) => (
-                        <SelectItem key={tecnico} value={tecnico}>{tecnico}</SelectItem>
+                      {tecnicoNovoEquipamento && !tecnicos.some((t) => t.nome === tecnicoNovoEquipamento) && (
+                        <SelectItem value={tecnicoNovoEquipamento}>{tecnicoNovoEquipamento}</SelectItem>
+                      )}
+                      {tecnicos.map((tecnico) => (
+                        <SelectItem key={tecnico.id} value={tecnico.nome}>{tecnico.nome}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -2987,7 +3271,7 @@ export default function Equipamentos() {
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="gap-1.5 border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                              className="gap-1.5 border-status-work/30 bg-status-work-bg text-status-work hover:bg-status-work-bg hover:text-status-work"
                               disabled={
                                 salvando ||
                                 carregandoImagensFormulario ||
@@ -3019,7 +3303,7 @@ export default function Equipamentos() {
                     />
                     {carregandoImagensFormulario ? (
                       <div role="status" aria-label="Carregando fotos" className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                       </div>
                     ) : (
                       <GaleriaImagensEquipamento
@@ -3033,6 +3317,7 @@ export default function Equipamentos() {
                 </div>
               </div>
             </div>
+            </DialogBody>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
               <Button type="submit" disabled={salvando || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
@@ -3043,169 +3328,231 @@ export default function Equipamentos() {
         </DialogContent>
       </Dialog>
 
-      {/* ═══ Dialog Detalhes com Abas ═══ */}
-      <Dialog open={detalhesDialogOpen} onOpenChange={setDetalhesDialogOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Detalhes do Equipamento</DialogTitle></DialogHeader>
-          {selecionado && (
-            <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal}>
-            <div className="space-y-4">
-              <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <h3 className="break-words text-lg font-bold [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h3>
-                  <p className="break-words text-sm text-muted-foreground font-mono [overflow-wrap:anywhere]">{selecionado.serial_number}</p>
-                  {selecionado.responsavel_nome && (
-                    <p className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
-                      Contato responsável: <span className="font-medium text-foreground">{selecionado.responsavel_nome}</span>
-                    </p>
-                  )}
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <StatusBadge status={selecionado.status} />
-                  <PortalClienteBotao />
+      {/* ═══ Detalhes da OS (rota /equipamentos/:id) ═══ */}
+      {idVerificacaoRota != null && !verificacaoDialogOpen && (
+        <div role="status" aria-label="Carregando verificação" className="flex h-64 items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      )}
+      {/* ═══ Verificação técnica (rota /equipamentos/:id/verificacao, decisão 24) ═══ */}
+      <VerificacaoTecnica
+        key={selecionado?.id ?? "verificacao"}
+        equipamento={selecionado}
+        open={verificacaoDialogOpen}
+        onOpenChange={(aberta) => { if (!aberta) fecharPaginaVerificacao(); }}
+        onConcluir={handleConcluirVerificacao}
+        salvando={salvando || loadingAutomacao}
+        tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || primeiroTecnico}
+        podeFinalizar={hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS) || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES)}
+      />
+
+      {/* ═══ Ajuste de orçamento (rota /equipamentos/:id/orcamento, decisão 24) ═══ */}
+      {idAjusteRota != null && !paginaAjusteAberta && (
+        <div role="status" aria-label="Carregando ajuste de orçamento" className="flex h-64 items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      )}
+      {paginaAjusteAberta && selecionado && renderPaginaAjuste(selecionado)}
+
+      {detalhesDialogOpen && !paginaAjusteAberta && !verificacaoDialogOpen && selecionado?.id !== idDetalhesAberto && (
+        <div role="status" aria-label="Carregando atendimento" className="flex h-64 items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      )}
+      {detalhesDialogOpen && !paginaAjusteAberta && !verificacaoDialogOpen && selecionado && selecionado.id === idDetalhesAberto && (
+        <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal} onConfigurarPortal={irParaConfiguracoesPortal}>
+          <section aria-labelledby="detalhes-equipamento-titulo" className="space-y-5">
+            <h2 id="detalhes-equipamento-titulo" className="sr-only">Detalhes do Equipamento</h2>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIdDetalhesAberto(null);
+                    navigate("/equipamentos");
+                  }}
+                  className="mb-1 inline-flex items-center gap-0.5 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronLeft className="h-4 w-4" />Equipamentos
+                </button>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                  <h1 className="break-words text-[26px] font-bold leading-tight tracking-tight [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h1>
+                  <span className="font-mono text-sm text-muted-foreground [overflow-wrap:anywhere]">{selecionado.serial_number}</span>
+                  <StatusBadge status={selecionado.status} completo />
                 </div>
               </div>
-
-              <DecisaoOrcamentoCard
-                onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
-              />
-
-              <Tabs key={selecionado.id} defaultValue="info">
-                <TabsList className="grid grid-cols-4 w-full">
-                  <TabsTrigger value="info"><FileText className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Informações</TabsTrigger>
-                  <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>
-                  <TabsTrigger value="comunicacoes"><MessageSquare className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Comunicações</TabsTrigger>
-                  <TabsTrigger value="historico"><History className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Histórico</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="info" className="space-y-4 mt-4">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div><span className="text-muted-foreground">Tipo:</span> <span className="ml-1 font-medium">{selecionado.tipo}</span></div>
-                    <div><span className="text-muted-foreground">Entrada:</span> <span className="ml-1 font-medium">{formatDatePtBr(selecionado.data_entrada)}</span></div>
-                    <div><span className="text-muted-foreground">Patrimônio:</span> <span className="ml-1 font-medium">{selecionado.patrimonio || "—"}</span></div>
-                    <div className="min-w-0 [overflow-wrap:anywhere]"><span className="text-muted-foreground">Nº Série:</span> <span className="ml-1 font-medium font-mono">{selecionado.serial_number}</span></div>
-                  </div>
-                  {selecionado.defeito_relatado && <div className="text-sm"><p className="text-muted-foreground mb-1">Defeito na entrada:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.defeito_relatado}</p></div>}
-                  {selecionado.acessorios && <div className="text-sm"><p className="text-muted-foreground mb-1">Acessórios:</p><p className="bg-accent/50 p-2 rounded">{selecionado.acessorios}</p></div>}
-                  {selecionado.acessorios_outros && <div className="text-sm"><p className="text-muted-foreground mb-1">Outros Acessórios:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.acessorios_outros}</p></div>}
-                  {selecionado.observacoes && <div className="text-sm"><p className="text-muted-foreground mb-1">Observação física:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.observacoes}</p></div>}
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">Fotos da entrada</p>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">
-                            {filtrarImagensPorCategoria(imagensDetalhes, "ENTRADA").length} registrada(s)
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => {
-                              setPhotoUploadCategoria("ENTRADA");
-                              setPhotoUploadNewEquip(false);
-                              setPhotoUploadOpen(true);
-                            }}
-                          >
-                            <Smartphone className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                      {carregandoDetalhes ? (
-                        <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-                        </div>
-                      ) : (
-                        <GaleriaImagensEquipamento
-                          imagens={filtrarImagensPorCategoria(imagensDetalhes, "ENTRADA")}
-                          mensagemVazia="Nenhuma foto de entrada foi registrada para este equipamento."
-                          onVisualizar={setImagemExpandida}
-                          onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
-                          onRemover={(imagem) => void removerImagemDetalhes(imagem)}
-                        />
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">Fotos da saída</p>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">
-                            {filtrarImagensPorCategoria(imagensDetalhes, "SAIDA").length} registrada(s)
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => {
-                              setPhotoUploadCategoria("SAIDA");
-                              setPhotoUploadNewEquip(false);
-                              setPhotoUploadOpen(true);
-                            }}
-                          >
-                            <Smartphone className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                      {carregandoDetalhes ? (
-                        <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-                        </div>
-                      ) : (
-                        <GaleriaImagensEquipamento
-                          imagens={filtrarImagensPorCategoria(imagensDetalhes, "SAIDA")}
-                          mensagemVazia="Nenhuma foto de saída foi registrada para este equipamento."
-                          onVisualizar={setImagemExpandida}
-                          onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
-                          onRemover={(imagem) => void removerImagemDetalhes(imagem)}
-                        />
-                      )}
-                    </div>
-                  </div>
-                  {selecionado.cliente_nome && (
-                    <Card>
-                      <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-1"><Users className="h-4 w-4" />Cliente</CardTitle></CardHeader>
-                      <CardContent className="text-sm space-y-1">
-                        <p><strong>{selecionado.cliente_nome}</strong></p>
-                        {selecionado.cliente_telefone && <p>Tel: {selecionado.cliente_telefone}</p>}
-                        {selecionado.cliente_email && <p>Email: {selecionado.cliente_email}</p>}
-                      </CardContent>
-                    </Card>
-                  )}
-                  {selecionado.valor_orcamento != null && (
-                    <Card>
-                      <CardHeader className="py-3"><CardTitle className="text-sm">Orçamento</CardTitle></CardHeader>
-                      <CardContent className="text-sm space-y-1">
-                        <p>Valor: <strong>{formatCurrency(selecionado.valor_orcamento)}</strong></p>
-                        {selecionado.prazo_aprovacao && <p>Prazo: {formatDatePtBr(selecionado.prazo_aprovacao)}</p>}
-                        {selecionado.valor_final != null && <p>Valor final: <strong>{formatCurrency(selecionado.valor_final)}</strong></p>}
-                      </CardContent>
-                    </Card>
-                  )}
-                  {selecionado.observacoes && <div><p className="text-sm text-muted-foreground">Observações:</p><p className="text-sm mt-1 bg-accent/50 p-2 rounded">{selecionado.observacoes}</p></div>}
-                  <DocumentosEquipamento equipamento={selecionado} />
-                </TabsContent>
-
-                <TabsContent value="verificacao" className="mt-4">{renderVerificacaoTab()}</TabsContent>
-
-                {/* Comunicações — agora usa componente extraído */}
-                <TabsContent value="comunicacoes" className="mt-4">
-                  {carregandoDetalhes ? (
-                    <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>
-                  ) : (
-                    <HistoricoComunicacoes
-                      equipamentoId={selecionado.id!}
-                      comunicacoesExternas={comunicacoes}
-                    />
-                  )}
-                </TabsContent>
-
-                <TabsContent value="historico" className="mt-4">{renderHistoricoTab()}</TabsContent>
-              </Tabs>
+              <div className="flex shrink-0 justify-end">{renderAcoes(selecionado, true)}</div>
             </div>
-            </PortalClienteProvider>
-          )}
-        </DialogContent>
-      </Dialog>
+
+            <Card className="rounded-2xl">
+              <CardContent className="p-5">
+                <BarraDeEtapasGrande status={selecionado.status} historico={historicoDetalhes} />
+              </CardContent>
+            </Card>
+
+            <DecisaoOrcamentoCard
+              onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
+            />
+
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+              <Card className="min-w-0 rounded-2xl">
+                <Tabs key={selecionado.id} value={abaDetalhe} onValueChange={setAbaDetalhe}>
+                  <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent px-3 pt-2 [scrollbar-width:none]">
+                    {[
+                      ["orcamento", "Orçamento"],
+                      ["verificacao", "Verificação"],
+                      ["fotos", `Fotos · ${imagensDetalhes.length}`],
+                      ["historico", "Histórico"],
+                      ["comunicacoes", "Comunicação"],
+                    ].map(([valor, rotulo]) => (
+                      <TabsTrigger
+                        key={valor}
+                        value={valor}
+                        className="relative rounded-none border-b-2 border-transparent px-3 pb-2.5 pt-2 text-sm font-semibold text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                      >
+                        {rotulo}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+
+                  <TabsContent value="orcamento" className="mt-0 space-y-4 p-5">
+                    {carregandoDetalhes ? (
+                      <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
+                    ) : (
+                      <OrcamentoDaOs
+                        equipamento={selecionado}
+                        verificacao={verificacaoDetalhes}
+                        enviadoEm={orcamentoEnviadoEm}
+                        pendentes={pecasPendentes}
+                        onAlterar={STATUS_COM_ORCAMENTO.includes(selecionado.status)
+                          && (hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS)
+                            || (hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES) && orcamentoEmElaboracao(selecionado.status)))
+                          ? () => void abrirAlterarOrcamento(selecionado)
+                          : undefined}
+                      />
+                    )}
+                    <DocumentosEquipamento equipamento={selecionado} />
+                  </TabsContent>
+
+                  <TabsContent value="verificacao" className="mt-0 p-5">{renderVerificacaoTab()}</TabsContent>
+
+                  <TabsContent value="fotos" className="mt-0 p-5">
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {(["ENTRADA", "SAIDA"] as const).map((categoria) => (
+                        <div key={categoria} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold">{categoria === "ENTRADA" ? "Fotos da entrada" : "Fotos da saída"}</p>
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground">
+                                {filtrarImagensPorCategoria(imagensDetalhes, categoria).length} registrada(s)
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                aria-label={categoria === "ENTRADA" ? "Enviar fotos da entrada pelo celular" : "Enviar fotos da saída pelo celular"}
+                                onClick={() => {
+                                  setPhotoUploadCategoria(categoria);
+                                  setPhotoUploadNewEquip(false);
+                                  setPhotoUploadOpen(true);
+                                }}
+                              >
+                                <Smartphone className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                          {carregandoDetalhes ? (
+                            <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                            </div>
+                          ) : (
+                            <GaleriaImagensEquipamento
+                              imagens={filtrarImagensPorCategoria(imagensDetalhes, categoria)}
+                              mensagemVazia={categoria === "ENTRADA"
+                                ? "Nenhuma foto de entrada foi registrada para este equipamento."
+                                : "Nenhuma foto de saída foi registrada para este equipamento."}
+                              onVisualizar={setImagemExpandida}
+                              onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
+                              onRemover={(imagem) => void removerImagemDetalhes(imagem)}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="historico" className="mt-0 p-5">{renderHistoricoTab()}</TabsContent>
+
+                  <TabsContent value="comunicacoes" className="mt-0 p-5">
+                    {carregandoDetalhes ? (
+                      <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
+                    ) : (
+                      <HistoricoComunicacoes
+                        equipamentoId={selecionado.id!}
+                        comunicacoesExternas={comunicacoes}
+                      />
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </Card>
+
+              <div className="space-y-5">
+                <CartaoCliente
+                  dados={{
+                    nome: selecionado.cliente_nome,
+                    documento: selecionado.cliente_documento,
+                    email: selecionado.cliente_email,
+                    telefone: selecionado.cliente_telefone,
+                    contato: selecionado.responsavel_nome
+                      ? {
+                          nome: selecionado.responsavel_nome,
+                          papel: "Contato responsável",
+                          email: selecionado.responsavel_email,
+                          telefone: selecionado.responsavel_telefone,
+                        }
+                      : null,
+                  }}
+                  rodape={<div className="flex justify-end"><PortalClienteBotao /></div>}
+                />
+
+                <Card className="rounded-2xl">
+                  <CardContent className="space-y-3 p-5">
+                    <h2 className="text-base font-bold">Equipamento</h2>
+                    <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+                      <dt className="text-muted-foreground">Tipo</dt><dd className="font-medium">{selecionado.tipo}</dd>
+                      <dt className="text-muted-foreground">Nº Série</dt><dd className="font-mono [overflow-wrap:anywhere]">{selecionado.serial_number}</dd>
+                      <dt className="text-muted-foreground">Patrimônio</dt><dd className="font-medium">{selecionado.patrimonio || "—"}</dd>
+                      <dt className="text-muted-foreground">Entrada</dt><dd className="font-medium">{formatDatePtBr(selecionado.data_entrada)}</dd>
+                      {verificacaoDetalhes?.tecnico_nome && (<><dt className="text-muted-foreground">Técnico</dt><dd className="font-medium">{verificacaoDetalhes.tecnico_nome}</dd></>)}
+                      {selecionado.ciclo_serial != null && selecionado.ciclo_serial > 0 && (
+                        <><dt className="text-muted-foreground">Ciclos</dt><dd className="font-medium">{selecionado.ciclo_serial}º atendimento deste serial</dd></>
+                      )}
+                    </dl>
+                    {selecionado.acessorios && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selecionado.acessorios.split(",").map((item) => item.trim()).filter(Boolean).map((item) => (
+                          <span key={item} className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium">{item}</span>
+                        ))}
+                      </div>
+                    )}
+                    {selecionado.acessorios_outros && (
+                      <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Outros acessórios</p><p className="whitespace-pre-wrap">{selecionado.acessorios_outros}</p></div>
+                    )}
+                    {selecionado.defeito_relatado && (
+                      <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Defeito relatado</p><p className="whitespace-pre-wrap">{selecionado.defeito_relatado}</p></div>
+                    )}
+                    {selecionado.observacoes && (
+                      <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Observação física</p><p className="whitespace-pre-wrap">{selecionado.observacoes}</p></div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <ResumoComunicacoes comunicacoes={comunicacoes} onVerTodas={() => setAbaDetalhe("comunicacoes")} />
+              </div>
+            </div>
+          </section>
+        </PortalClienteProvider>
+      )}
 
       <EscolhaAjusteOrcamentoDialog
         open={escolhaAjuste !== null}
@@ -3239,20 +3586,9 @@ export default function Equipamentos() {
         onNovaProposta={() => { if (reabrirAlvo) void abrirMudarStatus(reabrirAlvo, "AGUARDANDO_APROVACAO"); }}
       />
 
-      {/* ═══ Dialog Verificação Técnica (componente extraído) ═══ */}
-      <VerificacaoTecnica
-        key={selecionado?.id ?? "verificacao"}
-        equipamento={selecionado}
-        open={verificacaoDialogOpen}
-        onOpenChange={setVerificacaoDialogOpen}
-        onConcluir={handleConcluirVerificacao}
-        salvando={salvando || loadingAutomacao}
-        tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || "Ivan"}
-      />
-
       {/* ═══ Dialog Mudar Status ═══ */}
       <Dialog
-        open={statusDialogOpen}
+        open={statusDialogOpen && !ajusteOrcamentoSemMudancaStatus}
         onOpenChange={(open) => {
           setStatusDialogOpen(open);
           if (!open) {
@@ -3262,7 +3598,7 @@ export default function Equipamentos() {
           }
         }}
       >
-        <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-md">
+        <DialogContent tamanho="m" className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>
               {(
@@ -3299,7 +3635,7 @@ export default function Equipamentos() {
                     </div>
                   )}
                   {correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status) && (
-                    <div role="alert" className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                    <div role="alert" className="space-y-2 rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait">
                       <p>
                         Trocar só o status não desfaz pagamento, serviços aprovados nem baixa de estoque. Use a correção guiada da decisão.
                       </p>
@@ -3333,31 +3669,12 @@ export default function Equipamentos() {
               )}
               {((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && (
                 <>
-                  <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <div className="rounded-md border bg-status-wait-bg px-3 py-2 text-sm text-status-wait">
                     {ajusteOrcamentoSemMudancaStatus
                       ? "Edite o orçamento. O status atual do equipamento será mantido."
                       : "Revise o valor e o prazo para reenviar o orçamento atualizado ao cliente."}
                   </div>
-                  {verificacaoAjusteOrcamento?.servicos_orcamento_original && (
-                    <details className="rounded-md border p-3 text-sm">
-                      <summary className="cursor-pointer font-medium">Orçamento original e decisões do cliente</summary>
-                      <p className="mt-2 text-muted-foreground">Itens da primeira decisão. Serviços reprovados precisam de nova aprovação para consumir peças.</p>
-                      {normalizarServicosOrcamento(verificacaoAjusteOrcamento.servicos_orcamento_original).map((servico) => (
-                        <p key={servico.id} className="mt-1">{servico.descricao} · {verificacaoAjusteOrcamento.decisoes_servicos?.find((d) => d.servico_id === servico.id)?.decisao ?? "Sem decisão"}</p>
-                      ))}
-                    </details>
-                  )}
-                  {verificacaoAjusteOrcamento?.adjusted_at && (
-                    <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900 flex items-center gap-2">
-                      <History className="h-4 w-4 text-blue-700" />
-                      <div>
-                        <p className="text-xs text-blue-700 font-medium">Histórico de Ajustes</p>
-                        <p className="text-xs">
-                          Último ajuste em {new Date(verificacaoAjusteOrcamento.adjusted_at).toLocaleDateString("pt-BR")}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                  {blocoAjusteHistorico()}
                   {(valorOrcamentoOriginal != null || valorOrcamentoAnterior != null) && (
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -3366,101 +3683,24 @@ export default function Equipamentos() {
                           {valorOrcamentoOriginal != null ? formatCurrency(valorOrcamentoOriginal) : "—"}
                         </p>
                       </div>
-                      <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900">
-                        <p className="text-xs text-blue-700">Valor atual antes do ajuste</p>
+                      <div className="rounded-md border bg-status-work-bg px-3 py-2 text-sm text-status-work">
+                        <p className="text-xs text-status-work">Valor atual antes do ajuste</p>
                         <p className="font-semibold">
                           {valorOrcamentoAnterior != null ? formatCurrency(valorOrcamentoAnterior) : "—"}
                         </p>
                       </div>
                     </div>
                   )}
-                  <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} onValidityChange={setValorOrcamentoValido} />
-                    {Number(valorOrcamento) === 0 && !totalOrcamentoAjusteValido(0, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento) && (
-                      <p className="text-xs text-red-600">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
-                    )}
-                  </div>
-                  {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
-                    <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="observacoes-ajuste">Observações</Label>
-                    <Textarea
-                      id="observacoes-ajuste"
-                      value={observacoesAjuste}
-                      onChange={(event) => setObservacoesAjuste(event.target.value)}
-                      placeholder="Observações do orçamento"
-                      rows={3}
-                    />
-                  </div>
-                  {ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status) ? (
-                    <div className="space-y-3">
-                    <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                      Ao salvar, você escolhe entre ajustar sem nova aprovação (o cliente já concordou; só a quantidade adicional terá baixa) ou pedir nova aprovação pelo portal.
-                    </p>
-                    <FormaPagamentoFields
-                      codigo={formaPagamentoAjuste}
-                      detalhe={detalhePagamentoAjuste}
-                      onCodigoChange={setFormaPagamentoAjuste}
-                      onDetalheChange={setDetalhePagamentoAjuste}
-                      required
-                    />
-                    </div>
-                  ) : (
-                    <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                      A forma de pagamento será definida durante a aprovação.
-                    </div>
-                  )}
-                  {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
-                    <p className="text-xs text-amber-700">
-                      Novo valor em negociação: {formatCurrency(valorOrcamento)} (antes: {formatCurrency(valorOrcamentoAnterior)}).
-                    </p>
-                  )}
-                  {verificacaoAjusteOrcamento && (
-                    <div className="space-y-3 rounded-md border p-3">
-                      <AjusteOrcamentoServicos
-                        servicos={servicosAjuste}
-                        catalogo={catalogoServicosAjuste}
-                        carregandoCatalogo={carregandoCatalogoAjuste}
-                        onChange={setServicosAjuste}
-                        onRemoverTodos={() => {
-                          setConfirmProps({
-                            title: "Remover todos os serviços",
-                            description: "Você está removendo TODOS os serviços do orçamento. Deseja continuar?",
-                            variant: "destructive",
-                            onConfirm: () => {
-                              setServicosAjuste([]);
-                              setConfirmOpen(false);
-                            },
-                            onCancel: () => setConfirmOpen(false),
-                          });
-                          setConfirmOpen(true);
-                        }}
-                      />
-                      {pecasLegadasAjuste.length > 0 && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 p-2">
-                          <p className="text-xs font-semibold text-amber-900">Peças antigas sem serviço vinculado</p>
-                          <p className="text-xs text-amber-800">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
-                          {pecasLegadasAjuste.map((peca, indice) => (
-                            <div key={`${peca.id}-${indice}`} className="flex items-center justify-between gap-2 text-sm">
-                              <span>{peca.nome} × {peca.quantidade} · {formatCurrencyOrMissing(peca.valorTotal)}</span>
-                              <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((atual) => atual.filter((_, i) => i !== indice))}>Remover linha antiga</Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {pecasLegadasAjuste.length === 0 && servicosAjuste.length === 0 && (
-                        <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
-                      )}
-                    </div>
-                  )}
+                  {blocoAjusteCampos(selecionado)}
+                  {blocoAjusteServicos()}
                   {valorOrcamentoOriginal != null && (
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                         <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
                         <p className="font-semibold">{formatCurrency(valorOrcamentoOriginal)}</p>
                       </div>
-                      <div className="rounded-md border bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                        <p className="text-xs text-emerald-700">Novo valor calculado</p>
+                      <div className="rounded-md border bg-status-ok-bg px-3 py-2 text-sm text-status-ok">
+                        <p className="text-xs text-status-ok">Novo valor calculado</p>
                         <p className="font-semibold">{formatCurrency(valorOrcamento)}</p>
                       </div>
                     </div>
@@ -3493,7 +3733,7 @@ export default function Equipamentos() {
                     />
                   </div>
                   {acordoExcecaoEntrega && valorFinalSugerido != null && valorFinal !== valorFinalSugerido && (
-                    <p className="text-xs text-amber-600">
+                    <p className="text-xs text-status-wait">
                       Exceção registrada: valor diferente da verificação técnica.
                     </p>
                   )}
@@ -3525,7 +3765,7 @@ export default function Equipamentos() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="gap-1.5 border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                            className="gap-1.5 border-status-work/30 bg-status-work-bg text-status-work hover:bg-status-work-bg hover:text-status-work"
                             disabled={
                               salvando ||
                               carregandoImagensSaidaEntrega ||
@@ -3543,7 +3783,7 @@ export default function Equipamentos() {
                         </div>
                       </div>
                     {erroImagensSaidaEntrega && (
-                      <p className="text-xs text-red-500">{erroImagensSaidaEntrega}</p>
+                      <p className="text-xs text-destructive">{erroImagensSaidaEntrega}</p>
                     )}
                     <input
                       id="equipamento-imagens-saida-entrega"
@@ -3560,7 +3800,7 @@ export default function Equipamentos() {
                     />
                     {carregandoImagensSaidaEntrega ? (
                       <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                       </div>
                     ) : (
                       <GaleriaImagensEquipamento
@@ -3574,9 +3814,9 @@ export default function Equipamentos() {
                 </div>
               )}
             </div>
-            <DialogFooter className="shrink-0 bg-background pt-3">
+            <DialogFooter className="shrink-0 bg-card">
                 <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
@@ -3585,8 +3825,8 @@ export default function Equipamentos() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={consumosDialogOpen} onOpenChange={setConsumosDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+      <Dialog open={consumosDialogOpen} onOpenChange={(aberto) => { setConsumosDialogOpen(aberto); if (!aberto) setRecargaPendentes((n) => n + 1); }}>
+        <DialogContent tamanho="m">
           <DialogHeader><DialogTitle>Peças da OS</DialogTitle><DialogDescription>Reposições ficam disponíveis no estoque. Confirme aqui o consumo das peças pendentes.</DialogDescription></DialogHeader>
           <div className="max-h-72 space-y-2 overflow-y-auto">
             {consumosDetalhes.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma peça vinculada a serviços aprovados.</p>}
@@ -3594,13 +3834,13 @@ export default function Equipamentos() {
               <div key={`${consumo.verificacao_id}:${consumo.servico_id}:${consumo.produto_id}`} className="rounded-md border p-2 text-sm">
                 <p className="font-medium">{consumo.nome}</p>
                 <p>{consumo.quantidade_baixada} baixada(s) de {consumo.quantidade_aprovada} aprovada(s)
-                  {consumo.quantidade_baixada < consumo.quantidade_aprovada && <span className="text-amber-700"> · pendente</span>}
+                  {consumo.quantidade_baixada < consumo.quantidade_aprovada && <span className="text-status-wait"> · pendente</span>}
                 </p>
               </div>
             ))}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setConsumosDialogOpen(false)}>Fechar</Button>
+            <Button type="button" variant="outline" onClick={() => { setConsumosDialogOpen(false); setRecargaPendentes((n) => n + 1); }}>Fechar</Button>
             <Button type="button" disabled={baixandoPendentes || !consumosDetalhes.some((c) => c.quantidade_baixada < c.quantidade_aprovada)}
               onClick={() => void confirmarBaixaPendente()}>Confirmar baixa pendente</Button>
           </DialogFooter>
@@ -3608,7 +3848,7 @@ export default function Equipamentos() {
       </Dialog>
 
       <Dialog open={selecaoServicosOpen} onOpenChange={setSelecaoServicosOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent tamanho="m" className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Decisão do cliente sobre o orçamento</DialogTitle><DialogDescription>Registre a decisão do cliente antes de movimentar o estoque.</DialogDescription></DialogHeader>
           <div className="space-y-4">
             {servicosAprovacao.length === 0 ? (
@@ -3630,7 +3870,7 @@ export default function Equipamentos() {
                 onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>{servicosAprovacao.length === 0 ? "Reprovar orçamento" : "Não, selecionar"}</Button>
             </div>
             {respostaClienteDecisao && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              <div className="rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait">
                 <p>O cliente respondeu pelo link: <strong>{respostaClienteDecisao === "APROVAR" ? "aprovou" : "recusou"}</strong> o orçamento.</p>
                 {decisaoDivergeDoCliente && (
                   <div className="mt-2 space-y-1">
@@ -3669,7 +3909,7 @@ export default function Equipamentos() {
                 {servicosAprovacao.length > 0 && <p className="font-medium">{idsAprovados.length} de {servicosAprovacao.length} serviços aprovados</p>}
                 {resumirPecas(servicosAprovacao.filter((s) => idsAprovados.includes(s.id))).map((peca, i) => {
                   const saldo = produtosAprovacao.find((p) => p.id === peca.produto_id)?.quantidade_estoque ?? 0;
-                  return <p key={`${peca.produto_id}-${i}`} className={saldo < peca.quantidade ? "text-amber-700" : ""}>
+                  return <p key={`${peca.produto_id}-${i}`} className={saldo < peca.quantidade ? "text-status-wait" : ""}>
                     {peca.nome}: {peca.quantidade} necessária(s), saldo {saldo}{saldo < peca.quantidade ? " · pendência" : ""}
                   </p>;
                 })}
@@ -3710,11 +3950,16 @@ export default function Equipamentos() {
 
       {/* ═══ Dialog Exclusão ═══ */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Confirmar Exclusão</DialogTitle></DialogHeader>
-          <p className="text-muted-foreground">Excluir <strong>{deletando?.marca} {deletando?.modelo}</strong> (SN: {deletando?.serial_number})?</p>
-          <p className="text-sm text-red-500">Esta ação não pode ser desfeita.</p>
-          <DialogFooter>
+        <DialogContent tamanho="p">
+          <span aria-hidden="true" className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-status-bad-bg text-status-bad">
+            <Trash2 className="h-[22px] w-[22px]" />
+          </span>
+          <DialogTitle>Confirmar Exclusão</DialogTitle>
+          <div className="space-y-1">
+            <p className="text-muted-foreground">Excluir <strong className="text-foreground">{deletando?.marca} {deletando?.modelo}</strong> (SN: {deletando?.serial_number})?</p>
+            <p className="text-sm text-destructive">Esta ação não pode ser desfeita.</p>
+          </div>
+          <DialogFooter className="!border-t-0 !pt-2">
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
             <Button variant="destructive" onClick={onDelete} disabled={salvando}>{salvando ? "Excluindo..." : "Excluir"}</Button>
           </DialogFooter>
@@ -3722,26 +3967,28 @@ export default function Equipamentos() {
       </Dialog>
 
       <Dialog open={Boolean(imagemExpandida)} onOpenChange={(open) => { if (!open) setImagemExpandida(null); }}>
-        <DialogContent className="sm:max-w-5xl">
+        <DialogContent tamanho="visualizador">
           <DialogHeader>
             <DialogTitle>Visualização da imagem</DialogTitle>
+            {imagemExpandida && <DialogDescription className="truncate">{imagemExpandida.filename}</DialogDescription>}
           </DialogHeader>
           {imagemExpandida && (
-            <div className="space-y-3">
-              <div className="max-h-[70vh] overflow-auto rounded-lg border bg-muted/20 p-2">
-                <img
-                  src={imagemExpandida.preview_url}
-                  alt={imagemExpandida.filename}
-                  className="mx-auto h-auto max-h-[65vh] w-auto rounded"
-                />
-              </div>
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>{imagemExpandida.filename}</span>
-                <Button variant="outline" size="sm" className="gap-1" onClick={() => void exportarImagemEquipamento(imagemExpandida)}>
+            <>
+              <DialogBody>
+                <div className="flex min-h-[40vh] items-center justify-center rounded-xl bg-muted p-2">
+                  <img
+                    src={imagemExpandida.preview_url}
+                    alt={imagemExpandida.filename}
+                    className="mx-auto h-auto max-h-[65vh] w-auto rounded-lg"
+                  />
+                </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button className="gap-1" onClick={() => void exportarImagemEquipamento(imagemExpandida)}>
                   <Download className="h-3.5 w-3.5" />Exportar imagem
                 </Button>
-              </div>
-            </div>
+              </DialogFooter>
+            </>
           )}
         </DialogContent>
       </Dialog>

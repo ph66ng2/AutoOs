@@ -72,7 +72,7 @@ export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
   },
   VIEW_EXPENSES: {
     id: "gastos",
-    title: "Gastos",
+    title: "Finanças",
     body: "Consulte os gastos fixos e variáveis da empresa e o resumo de cada mês.",
     target: "nav-/gastos",
   },
@@ -91,7 +91,7 @@ export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
   MANAGE_STATUS_LINKS: {
     id: "links",
     title: "Acessos do portal",
-    body: "Publique orçamentos no portal, gerencie os acessos dos contatos e crie ou revogue os links de acompanhamento da OS. Edite o contato da empresa em Configurações › Integrações. Ligar ou desligar o portal exige Comunicação externa.",
+    body: "Publique orçamentos no portal, gerencie os acessos dos contatos e crie ou revogue os links de acompanhamento da OS. Edite o contato da empresa em Configurações › Portal do Cliente. Ligar ou desligar o portal exige Comunicação externa.",
     target: "nav-/equipamentos",
   },
   DELETE_RECORDS: {
@@ -103,13 +103,12 @@ export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
     id: "equipe",
     title: "Equipe",
     body: "Crie perfis, gere códigos de primeiro acesso e ajuste o que cada pessoa pode fazer.",
-    target: "perfil-tab-equipe",
-    route: "/perfil",
+    target: "nav-/equipe",
   },
   COMMUNICATION_SETTINGS: {
     id: "integracoes",
     title: "Comunicação externa",
-    body: "Configure SMTP e WhatsApp e ligue ou desligue o Portal do Cliente em Configurações › Integrações. Respostas de orçamento também exigem a permissão financeira.",
+    body: "Configure SMTP e WhatsApp em Configurações › Integrações e ligue ou desligue o portal em Configurações › Portal do Cliente. Respostas de orçamento também exigem a permissão financeira.",
     target: "nav-/configuracoes",
   },
 };
