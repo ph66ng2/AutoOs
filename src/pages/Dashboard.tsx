@@ -21,9 +21,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Package,
   Plus,
   ArrowRight,
+  CalendarDays,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -33,7 +33,13 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { movimentoDaBancada, saudacao, variacaoPercentual } from "@/lib/inicio";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
@@ -69,6 +75,9 @@ export default function Dashboard() {
   const [produtosEstoqueBaixo, setProdutosEstoqueBaixo] = useState<Produto[]>([]);
   const [acoesPendentes, setAcoesPendentes] = useState<Equipamento[]>([]);
   const [loading, setLoading] = useState(true);
+  const { status: sessao } = useSensitiveAccess();
+  const agora = new Date();
+  const [mesSel, setMesSel] = useState({ ano: agora.getFullYear(), mes: agora.getMonth() + 1 });
 
   useEffect(() => {
     async function load() {
@@ -122,22 +131,9 @@ export default function Dashboard() {
   }
 
 
-  const recebidosPorMes = useMemo(() => {
-    const map = new Map<string, { label: string; value: number }>();
-    equipamentos.forEach(eq => {
-      const data = parseDate(eq.data_entrada);
-      if (!data) return;
-      const key = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
-      const label = formatMonth(data);
-      const current = map.get(key) || { label, value: 0 };
-      current.value += 1;
-      map.set(key, current);
-    });
-
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([, value]) => value);
-  }, [equipamentos]);
+  const movimento = useMemo(() => movimentoDaBancada(equipamentos, mesSel.ano), [equipamentos, mesSel.ano]);
+  /** O mês anterior pode cair no ano passado (janeiro compara com dezembro). */
+  const movimentoAnoAnterior = useMemo(() => movimentoDaBancada(equipamentos, mesSel.ano - 1), [equipamentos, mesSel.ano]);
 
   const filaPorEtapa = useMemo(() => {
     const etapas = ["Recebido", "Verificação", "Orçamento", "Manutenção", "Pronto"];
@@ -146,7 +142,7 @@ export default function Dashboard() {
       const indice = etapaOsAtual(eq.status);
       if (indice >= 0 && indice < etapas.length) contagem[indice] += 1;
     }
-    return etapas.map((nome, indice) => ({ nome, valor: contagem[indice] }));
+    return etapas.map((nome, indice) => ({ nome, valor: contagem[indice], cor: COR_ETAPA[indice] }));
   }, [equipamentos]);
 
 
@@ -169,17 +165,37 @@ export default function Dashboard() {
     { titulo: "Aguardando peça", valor: aguardandoPeca, rodape: "Retomar quando a peça chegar", cor: "bg-status-wait" },
   ];
   const TRACOS = 30;
-  const maiorFila = Math.max(1, ...filaPorEtapa.map((etapa) => etapa.valor));
+  const primeiroNome = (sessao?.active_profile_name ?? "").trim().split(/\s+/)[0] ?? "";
+  const ultimosMeses = Array.from({ length: 12 }, (_, i) => {
+    const data = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
+    return { ano: data.getFullYear(), mes: data.getMonth() + 1 };
+  });
+  const doMes = movimento[mesSel.mes - 1];
+  const doMesAnterior = mesSel.mes === 1 ? movimentoAnoAnterior[11] : movimento[mesSel.mes - 2];
+  const naFila = filaPorEtapa.reduce((soma, etapa) => soma + etapa.valor, 0);
+  const resumoMovimento = [
+    { rotulo: "Entraram", valor: doMes.entraram, variacao: variacaoPercentual(doMes.entraram, doMesAnterior.entraram), cor: "text-primary" },
+    { rotulo: "Entregues", valor: doMes.entregues, variacao: variacaoPercentual(doMes.entregues, doMesAnterior.entregues), cor: "text-status-ok" },
+    { rotulo: "Reprovados", valor: doMes.reprovados, variacao: null, cor: "text-status-bad" },
+  ];
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <PageHeader titulo="Início" descricao={`${emAtendimento.length} em atendimento`}>
-        <Button onClick={() => navigate("/equipamentos")}>
-          <Plus className="h-4 w-4 mr-1" />Novo Equipamento
-        </Button>
-        <Button onClick={() => navigate("/insumos")} variant="outline">
-          <Package className="h-4 w-4 mr-1" />Novo Insumo/Peça
+      <PageHeader titulo={`${saudacao(agora.getHours())}${primeiroNome ? `, ${primeiroNome}` : ""}`}>
+        <Select value={`${mesSel.ano}-${mesSel.mes}`} onValueChange={(valor) => { const [a, m] = valor.split("-").map(Number); setMesSel({ ano: a, mes: m }); }}>
+          <SelectTrigger aria-label="Mês" className="h-10 w-auto gap-2 px-3 font-semibold">
+            <CalendarDays className="h-4 w-4" aria-hidden="true" />
+            <span>{nomeMes(mesSel.mes)}, {mesSel.ano}</span>
+          </SelectTrigger>
+          <SelectContent>
+            {ultimosMeses.map(({ ano, mes }) => (
+              <SelectItem key={`${ano}-${mes}`} value={`${ano}-${mes}`}>{nomeMes(mes)}, {ano}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button onClick={() => navigate("/equipamentos", { state: { novaEntrada: true } })}>
+          <Plus className="h-4 w-4 mr-1" />Nova entrada
         </Button>
       </PageHeader>
 
@@ -213,52 +229,62 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
-        {/* Entradas por mês: uma série, uma cor; tooltip por barra. */}
+        {/* Movimento da bancada: entraram, entregues e reprovados por mês do ano escolhido. */}
         <Card className="rounded-2xl">
-          <CardHeader className="pb-2"><CardTitle className="text-lg">Entradas por mês</CardTitle></CardHeader>
-          <CardContent className="h-72">
-            {recebidosPorMes.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Sem dados para exibir</div>
-            ) : (
+          <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0 pb-2">
+            <CardTitle className="text-lg">Movimento da bancada</CardTitle>
+            <span className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground" aria-hidden="true">
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" />Entraram</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-status-ok" />Entregues</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-status-bad" />Reprovados</span>
+            </span>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <dl className="flex flex-wrap gap-6">
+              {resumoMovimento.map((item) => (
+                <div key={item.rotulo}>
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{item.rotulo} em {nomeMes(mesSel.mes).toLowerCase()}</dt>
+                  <dd className="flex items-baseline gap-2">
+                    <span className={`text-2xl font-extrabold tabular-nums ${item.cor}`}>{item.valor}</span>
+                    {item.variacao != null && (
+                      <span className="rounded-full bg-secondary px-1.5 text-xs font-semibold tabular-nums text-muted-foreground">
+                        {item.variacao > 0 ? "+" : ""}{item.variacao}%
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <div className="h-60">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={recebidosPorMes} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                <BarChart data={movimento} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <XAxis
+                    dataKey="rotulo"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={({ x, y, payload }: { x: number; y: number; payload: { value: string; index: number } }) => (
+                      <text x={x} y={y + 12} textAnchor="middle" fontSize={12}
+                        fontWeight={payload.index === mesSel.mes - 1 ? 700 : 400}
+                        fill={payload.index === mesSel.mes - 1 ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))"}>
+                        {payload.value}
+                      </text>
+                    )}
+                  />
                   <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
                   <Tooltip
                     cursor={{ fill: "hsl(var(--muted))" }}
-                    formatter={(valor: number) => [valor, "Entradas"]}
                     contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, color: "hsl(var(--foreground))" }}
                   />
-                  <Bar dataKey="value" name="Entradas" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                  <Bar dataKey="reprovados" name="Reprovados" stackId="m" fill="hsl(var(--st-bad))" maxBarSize={36} />
+                  <Bar dataKey="entregues" name="Entregues" stackId="m" fill="hsl(var(--st-ok))" maxBarSize={36} />
+                  <Bar dataKey="entraram" name="Entraram" stackId="m" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={36} />
                 </BarChart>
               </ResponsiveContainer>
-            )}
+            </div>
           </CardContent>
         </Card>
 
-        {/* Fila por etapa: identidade pelo rótulo; a barra só mostra a quantidade. */}
-        <Card className="rounded-2xl">
-          <CardHeader className="pb-2"><CardTitle className="text-lg">Fila por etapa</CardTitle></CardHeader>
-          <CardContent>
-            <ul className="space-y-3">
-              {filaPorEtapa.map((etapa) => (
-                <li key={etapa.nome} className="space-y-1">
-                  <div className="flex items-baseline justify-between text-sm">
-                    <span className="font-medium">{etapa.nome}</span>
-                    <span className="font-semibold tabular-nums">{etapa.valor}</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-track">
-                    <div className="h-2 rounded-full bg-chart-1" style={{ width: `${(etapa.valor / maiorFila) * 100}%` }} />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         {/* Pendências (as mesmas de antes) */}
         <Card className="rounded-2xl">
           <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
@@ -299,6 +325,82 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+        {/* Fila por etapa: arco com a parte de cada etapa e o total no meio. */}
+        <Card className="rounded-2xl">
+          <CardHeader className="pb-2"><CardTitle className="text-lg">Fila por etapa</CardTitle></CardHeader>
+          <CardContent>
+            <div className="relative mx-auto h-36 w-full max-w-xs" role="img" aria-label={`Na fila: ${naFila}. ${filaPorEtapa.map((e) => `${e.nome} ${e.valor}`).join(", ")}`}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={naFila > 0 ? filaPorEtapa : [{ nome: "vazio", valor: 1, cor: "hsl(var(--track))" }]}
+                    dataKey="valor"
+                    nameKey="nome"
+                    cx="50%"
+                    cy="100%"
+                    startAngle={180}
+                    endAngle={0}
+                    innerRadius="125%"
+                    outerRadius="180%"
+                    paddingAngle={naFila > 0 ? 2 : 0}
+                    stroke="none"
+                    isAnimationActive={false}
+                  >
+                    {(naFila > 0 ? filaPorEtapa : [{ nome: "vazio", cor: "hsl(var(--track))" }]).map((etapa) => (
+                      <Cell key={etapa.nome} fill={etapa.cor} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-x-0 bottom-0 text-center">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Na fila</p>
+                <p className="text-3xl font-extrabold tabular-nums">{naFila}</p>
+              </div>
+            </div>
+            <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              {filaPorEtapa.map((etapa) => (
+                <li key={etapa.nome} className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-2">
+                    <span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm" style={{ background: etapa.cor }} />
+                    {etapa.nome}
+                  </span>
+                  <span className="font-semibold tabular-nums">{etapa.valor}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+
+        {/* Estoque baixo */}
+        <Card className="rounded-2xl">
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-lg">Estoque baixo {metrics.estoqueBaixo > 0 && <span className="ml-1 text-sm font-semibold text-muted-foreground">· {metrics.estoqueBaixo}</span>}</CardTitle>
+            <Button variant="outline" size="sm" onClick={() => navigate("/insumos")}>Ver estoque</Button>
+          </CardHeader>
+          <CardContent>
+            {produtosEstoqueBaixo.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Nenhum item com estoque baixo.</p>
+            ) : (
+              <ul className="divide-y">
+                {produtosEstoqueBaixo.map(p => (
+                  <li key={p.id} className="space-y-1.5 py-3">
+                    <div className="flex items-baseline justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate font-semibold">{p.nome}</span>
+                      <span className="shrink-0 font-semibold tabular-nums">{p.quantidade_estoque} <span className="font-normal text-muted-foreground">/ mín. {p.quantidade_minima}</span></span>
+                    </div>
+                    <div className="h-2 rounded-full bg-track">
+                      <div className="h-2 rounded-full bg-status-bad" style={{ width: `${Math.min(100, (p.quantidade_estoque / Math.max(1, p.quantidade_minima)) * 100)}%` }} />
+                    </div>
+                    <p className="text-xs text-muted-foreground">{categoriaProdutoLabel(p.categoria)}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
         {/* Equipamentos recentes (os mesmos de antes) */}
         <Card className="rounded-2xl">
           <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
@@ -333,44 +435,22 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Estoque baixo */}
-        <Card className="rounded-2xl">
-          <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-lg">Estoque baixo {metrics.estoqueBaixo > 0 && <span className="ml-1 text-sm font-semibold text-muted-foreground">· {metrics.estoqueBaixo}</span>}</CardTitle>
-            <Button variant="outline" size="sm" onClick={() => navigate("/insumos")}>Ver estoque</Button>
-          </CardHeader>
-          <CardContent>
-            {produtosEstoqueBaixo.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">Nenhum item com estoque baixo.</p>
-            ) : (
-              <ul className="divide-y">
-                {produtosEstoqueBaixo.map(p => (
-                  <li key={p.id} className="space-y-1.5 py-3">
-                    <div className="flex items-baseline justify-between gap-3 text-sm">
-                      <span className="min-w-0 truncate font-semibold">{p.nome}</span>
-                      <span className="shrink-0 font-semibold tabular-nums">{p.quantidade_estoque} <span className="font-normal text-muted-foreground">/ mín. {p.quantidade_minima}</span></span>
-                    </div>
-                    <div className="h-2 rounded-full bg-track">
-                      <div className="h-2 rounded-full bg-status-bad" style={{ width: `${Math.min(100, (p.quantidade_estoque / Math.max(1, p.quantidade_minima)) * 100)}%` }} />
-                    </div>
-                    <p className="text-xs text-muted-foreground">{categoriaProdutoLabel(p.categoria)}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
 }
 
-function parseDate(value?: string) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+const NOMES_MES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+function nomeMes(mes: number) {
+  return NOMES_MES[mes - 1] ?? "";
 }
 
-function formatMonth(date: Date) {
-  return new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit" }).format(date);
-}
+/** Cor de cada etapa no arco da fila (família de status de cada uma). */
+const COR_ETAPA = [
+  "hsl(var(--st-neutral))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--st-wait))",
+  "hsl(var(--st-work))",
+  "hsl(var(--st-ok))",
+];

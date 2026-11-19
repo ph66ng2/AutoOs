@@ -1,7 +1,7 @@
 import { validarPecas } from "@/lib/orcamento-estoque";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useEffect, useState } from "react";
-import { Plus, Search, Edit, RefreshCw, Wrench, AlertTriangle } from "lucide-react";
+import { Plus, Search, RefreshCw, Wrench, AlertTriangle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ import { FormValidationError } from "@/components/ui/form-validation-error";
 import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { SENSITIVE_PERMISSIONS, type ServicoCatalogo, type PecaVinculada, type SituacaoServico } from "@/types";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
-import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import {
   Select,
@@ -55,7 +55,7 @@ export default function Servicos() {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const { error: showError } = useNotification();
 
-  const { servicos, total: totalServicos, loading, error, criar, atualizar, deletar, reativar, recarregar } = useServicos({
+  const { servicos, total: totalServicos, contagem, loading, error, criar, atualizar, deletar, reativar, recarregar } = useServicos({
     busca: busca || undefined,
     situacao: mostrar,
     page: paginaServicos,
@@ -208,7 +208,7 @@ export default function Servicos() {
     <div className="space-y-6">
       <PageHeader
         titulo="Serviços"
-        descricao={!loading && mostrar === "ATIVOS" && !busca ? `${totalServicos} ${totalServicos === 1 ? "ativo" : "ativos"}` : undefined}
+        descricao={contagem && !busca ? `${contagem.ativos} ${contagem.ativos === 1 ? "ativo" : "ativos"}` : undefined}
       >
         <Button onClick={() => void abrirNovo()}>
           <Plus className="h-4 w-4 mr-2" />
@@ -231,23 +231,15 @@ export default function Servicos() {
                 className="h-11 border-transparent bg-muted pl-10"
               />
             </div>
-            <div role="group" aria-label="Mostrar serviços" className="inline-flex rounded-xl bg-muted p-1">
+            <div role="group" aria-label="Mostrar serviços" className="flex flex-wrap gap-2">
               {(["ATIVOS", "INATIVOS", "TODOS"] as const).map((opcao) => (
-                <button
+                <PilulaFiltro
                   key={opcao}
-                  type="button"
-                  aria-pressed={mostrar === opcao}
+                  ligado={mostrar === opcao}
+                  rotulo={opcao === "ATIVOS" ? "Ativos" : opcao === "INATIVOS" ? "Inativos" : "Todos"}
+                  numero={contagem ? (opcao === "ATIVOS" ? contagem.ativos : opcao === "INATIVOS" ? contagem.inativos : contagem.ativos + contagem.inativos) : undefined}
                   onClick={() => setMostrar(opcao)}
-                  className={cn(
-                    "inline-flex h-11 items-center gap-1.5 rounded-lg px-3 text-[13px] font-semibold transition-colors duration-rapida md:h-9",
-                    mostrar === opcao ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {opcao === "ATIVOS" ? "Ativos" : opcao === "INATIVOS" ? "Inativos" : "Todos"}
-                  {mostrar === opcao && !loading && (
-                    <span className="rounded-full bg-acc-soft px-1.5 text-[11px] font-bold tabular-nums text-acc-soft-foreground">{totalServicos}</span>
-                  )}
-                </button>
+                />
               ))}
             </div>
             <Button variant="outline" size="icon" className="h-11 w-11 md:h-9 md:w-9" aria-label="Recarregar serviços" onClick={recarregar}>
@@ -283,10 +275,18 @@ export default function Servicos() {
                 {servicosExibidos.map((servico) => {
                   const inativo = servico.ativo === false;
                   return (
-                    <li key={servico.id} className="flex flex-col gap-3 rounded-2xl border bg-card p-4">
+                    <li key={servico.id} className="relative flex flex-col gap-3 rounded-2xl border bg-card p-4 transition-colors duration-rapida hover:border-ctl">
                       <div className="flex items-start justify-between gap-3">
                         <div className={cn("min-w-0", inativo && "opacity-55")}>
-                          <p className="font-semibold [overflow-wrap:anywhere]">{servico.nome}</p>
+                          {/* O cartão inteiro abre a edição (o botão se estica sobre ele); o interruptor fica por cima. */}
+                          <button
+                            type="button"
+                            aria-label={`Editar ${servico.nome}`}
+                            onClick={() => void abrirEditar(servico)}
+                            className="text-left font-semibold [overflow-wrap:anywhere] after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
+                          >
+                            {servico.nome}
+                          </button>
                           {servico.descricao && <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{servico.descricao}</p>}
                         </div>
                         <button
@@ -297,7 +297,7 @@ export default function Servicos() {
                           disabled={alternando === servico.id}
                           onClick={() => void (inativo ? reativarServico(servico) : solicitarExclusao(servico))}
                           className={cn(
-                            "relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                            "relative z-10 mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
                             inativo ? "bg-track" : "bg-primary",
                           )}
                         >
@@ -310,23 +310,13 @@ export default function Servicos() {
                           />
                         </button>
                       </div>
-                      <div className="mt-auto flex items-end justify-between gap-3 border-t pt-3">
+                      <div className="mt-auto border-t pt-3">
                         <div className={cn(inativo && "opacity-55")}>
                           <p className="text-xs text-muted-foreground">Preço base</p>
                           <p className="text-lg font-bold tabular-nums">
                             {Number(servico.preco_padrao || 0) === 0 ? "Garantia" : formatCurrency(Number(servico.preco_padrao || 0))}
                           </p>
                         </div>
-                        <ActionPriorityRow
-                          acaoDaLinha
-                          menuTitulo={servico.nome}
-                          primary={{
-                            id: `editar-${servico.id}`,
-                            label: "Editar",
-                            icon: <Edit className="h-4 w-4" />,
-                            onClick: () => void abrirEditar(servico),
-                          }}
-                        />
                       </div>
                     </li>
                   );

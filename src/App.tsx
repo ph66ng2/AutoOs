@@ -67,6 +67,7 @@ const Servicos = lazy(() => import("@/pages/Servicos"));
 const Gastos = lazy(() => import("@/pages/Gastos"));
 const Configuracoes = lazy(() => import("@/pages/Configuracoes"));
 const Perfil = lazy(() => import("@/pages/Perfil"));
+const Equipe = lazy(() => import("@/pages/Equipe"));
 const PowerSyncPOC = lazy(() => import("@/poc/PowerSyncPOC"));
 const Balcao = lazy(() => import("@/pages/Balcao"));
 
@@ -112,7 +113,7 @@ function AppContent() {
       {showEntryGate ? (
         <SessionPinGate
           onEnter={() => void openProfileSelector({
-            title: "Quem está usando o AutoOS?",
+            title: "Quem está usando?",
             description: "Escolha o perfil e informe o PIN. Sem o PIN, o atendimento continua bloqueado.",
           })}
         />
@@ -132,6 +133,7 @@ function AppContent() {
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/perfil" element={<Perfil />} />
+            <Route path="/equipe" element={<Equipe />} />
             {/* Mesmo elemento com e sem :id: filtros e página da lista sobrevivem aos Detalhes da OS. */}
             <Route path="/equipamentos/:id?" element={<Equipamentos />} />
             <Route path="/equipamentos/:id/orcamento" element={<Equipamentos />} />

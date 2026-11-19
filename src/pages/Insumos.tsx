@@ -19,6 +19,8 @@
  * ║  USADO POR: App.tsx (rota /insumos)                         ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
+import { PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
+import { EscolherItemDialog } from "@/pages/insumos/EscolherItemDialog";
 import { useEffect, useRef, useState } from "react";
 import {
   Package,
@@ -214,6 +216,8 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
+  const [escolherItemAberto, setEscolherItemAberto] = useState(false);
+
   async function abrirMovimentacao(p: Produto, tipo: "ENTRADA" | "SAIDA" = "ENTRADA", quantidade = 1) {
     const liberado = await ensureSensitiveAccess({
       title: "Movimentar estoque",
@@ -357,6 +361,9 @@ export default function Insumos() {
               className="h-10 pl-9"
             />
           </div>
+          <Button variant="outline" className="shrink-0" onClick={() => setEscolherItemAberto(true)}>
+            Movimentar estoque
+          </Button>
           <Button className="shrink-0" onClick={() => void abrirNovo()}>
             <Plus className="mr-2 h-4 w-4" />
             Novo item
@@ -395,18 +402,13 @@ export default function Insumos() {
                 const ativo = categoriaFiltro === opt.value;
                 const contagem = opt.value === "TODOS" ? resumo?.totalItens : contagemCategoria(opt.value);
                 return (
-                  <button
+                  <PilulaFiltro
                     key={opt.value}
-                    type="button"
-                    aria-pressed={ativo}
+                    ligado={ativo}
+                    rotulo={opt.value === "TODOS" ? "Todas" : opt.label}
+                    numero={resumo ? contagem : undefined}
                     onClick={() => setCategoriaFiltro(opt.value)}
-                    className={`inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors duration-rapida ${ativo ? "border-foreground bg-foreground text-background" : "bg-card hover:border-ctl"}`}
-                  >
-                    {opt.value === "TODOS" ? "Todas" : opt.label}
-                    {resumo && (
-                      <span className={`rounded-full px-1.5 text-xs tabular-nums ${ativo ? "bg-background/20" : "bg-muted text-muted-foreground"}`}>{contagem}</span>
-                    )}
-                  </button>
+                  />
                 );
               })}
             </div>
@@ -551,6 +553,14 @@ export default function Insumos() {
         form={form}
         salvando={salvando}
         onSubmit={onSubmit}
+      />
+      <EscolherItemDialog
+        open={escolherItemAberto}
+        onOpenChange={setEscolherItemAberto}
+        onEscolher={(produto) => {
+          setEscolherItemAberto(false);
+          void abrirMovimentacao(produto, "ENTRADA");
+        }}
       />
       <InsumosMovimentacaoDialog
         open={movDialogOpen}

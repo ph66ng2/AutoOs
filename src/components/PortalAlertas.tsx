@@ -1,5 +1,5 @@
 /**
- * Central de notificações (sino no canto superior direito).
+ * Central de notificações (sino no cabeçalho do celular ou no pé do menu no computador).
  *
  * Duas fontes, uma lista:
  * - Portal do Cliente: alertas persistentes no banco (`portal_alertas`) — respostas ao orçamento,
@@ -10,7 +10,8 @@
  * Abas: Todos, Erros (erros do app + alertas do portal que pedem ação) e Portal do Cliente.
  */
 
-import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentType, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   BadgeCheck,
@@ -118,14 +119,51 @@ function notificar(alerta: AlertaPortal, ver: () => void) {
   else toast(alerta.titulo, opcoes);
 }
 
+/** Posição `fixed` para o painel caber na janela, seja o sino no topo (celular) ou no pé do menu. */
+export function encaixePainelNotificacoes(
+  ancora: Pick<DOMRect, "top" | "bottom" | "left" | "right">,
+  viewport: { width: number; height: number },
+): CSSProperties {
+  const margem = 8;
+  const gap = 8;
+  const largura = Math.min(27 * 16, viewport.width - margem * 2);
+  const paraDireita = ancora.right + gap + largura <= viewport.width - margem;
+  const left = paraDireita
+    ? ancora.right + gap
+    : Math.max(margem, Math.min(ancora.right - largura, viewport.width - margem - largura));
+  const maxPainel = Math.min(viewport.height * 0.75, viewport.height - margem * 2);
+  const abaixo = viewport.height - ancora.bottom - gap - margem;
+  const acima = ancora.top - gap - margem;
+  const abrirAcima = abaixo < 240 && acima > abaixo;
+  if (abrirAcima) {
+    return {
+      position: "fixed",
+      left,
+      bottom: viewport.height - ancora.top + gap,
+      width: largura,
+      maxHeight: Math.max(0, Math.min(maxPainel, acima)),
+    };
+  }
+  return {
+    position: "fixed",
+    left,
+    top: ancora.bottom + gap,
+    width: largura,
+    maxHeight: Math.max(0, Math.min(maxPainel, abaixo)),
+  };
+}
+
 export function PortalAlertasSino() {
   const navigate = useNavigate();
   const erros = useErrosRegistrados();
   const [naoLidosPortal, setNaoLidosPortal] = useState(0);
   const [aberto, setAberto] = useState(false);
+  const [encaixe, setEncaixe] = useState<CSSProperties>({});
   const ultimoVisto = useRef<number | null>(null);
   const notificados = useRef<string[]>([]);
   const raiz = useRef<HTMLDivElement>(null);
+  const botao = useRef<HTMLButtonElement>(null);
+  const painel = useRef<HTMLDivElement>(null);
   const errosNaoLidos = erros.filter((item) => !item.lido).length;
   const naoLidos = naoLidosPortal + errosNaoLidos;
   const errosAbertos = useRef<string[]>([]);
@@ -181,6 +219,26 @@ export function PortalAlertasSino() {
     return () => window.clearInterval(timer);
   }, [verificar]);
 
+  const atualizarEncaixe = useCallback(() => {
+    const alvo = botao.current;
+    if (!alvo) return;
+    setEncaixe(encaixePainelNotificacoes(alvo.getBoundingClientRect(), {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }));
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!aberto) return;
+    atualizarEncaixe();
+    window.addEventListener("resize", atualizarEncaixe);
+    window.addEventListener("scroll", atualizarEncaixe, true);
+    return () => {
+      window.removeEventListener("resize", atualizarEncaixe);
+      window.removeEventListener("scroll", atualizarEncaixe, true);
+    };
+  }, [aberto, atualizarEncaixe]);
+
   // Fecha ao clicar fora ou com Esc, como os menus do app.
   useEffect(() => {
     if (!aberto) return;
@@ -189,7 +247,9 @@ export function PortalAlertasSino() {
     notificados.current = [];
     errosAbertos.current.forEach((id) => toast.dismiss(`${PREFIXO_TOAST_ERRO}${id}`));
     const fora = (event: MouseEvent) => {
-      if (raiz.current && !raiz.current.contains(event.target as Node)) setAberto(false);
+      const alvo = event.target as Node;
+      if (raiz.current?.contains(alvo) || painel.current?.contains(alvo)) return;
+      setAberto(false);
     };
     const esc = (event: KeyboardEvent) => { if (event.key === "Escape") setAberto(false); };
     document.addEventListener("mousedown", fora);
@@ -203,6 +263,7 @@ export function PortalAlertasSino() {
   return (
     <div ref={raiz} className="relative">
       <Button
+        ref={botao}
         type="button"
         variant="ghost"
         size="icon"
@@ -219,13 +280,16 @@ export function PortalAlertasSino() {
           </span>
         )}
       </Button>
-      {aberto && (
+      {aberto && createPortal(
         <PortalAlertasPainel
+          ref={painel}
           erros={erros}
+          encaixe={encaixe}
           onFechar={() => setAberto(false)}
           onAbrirAtendimento={abrirAtendimento}
           onChanged={() => void verificar()}
-        />
+        />,
+        document.body,
       )}
     </div>
   );
@@ -239,6 +303,7 @@ type Item =
 
 type PainelProps = {
   erros: ErroRegistrado[];
+  encaixe: CSSProperties;
   onFechar: () => void;
   onAbrirAtendimento: (equipamentoId: number) => void;
   onChanged: () => void;
@@ -246,7 +311,7 @@ type PainelProps = {
 
 const ROTULO_ABA: Record<Aba, string> = { todos: "Todos", erros: "Erros", portal: "Portal do Cliente" };
 
-export function PortalAlertasPainel({ erros, onFechar, onAbrirAtendimento, onChanged }: PainelProps) {
+export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(function PortalAlertasPainel({ erros, encaixe, onFechar, onAbrirAtendimento, onChanged }, ref) {
   const [aba, setAba] = useState<Aba>("todos");
   const [historico, setHistorico] = useState(false);
   const [alertas, setAlertas] = useState<AlertaPortal[]>([]);
@@ -257,7 +322,7 @@ export function PortalAlertasPainel({ erros, onFechar, onAbrirAtendimento, onCha
     setLoading(true);
     setErro(null);
     try {
-      setAlertas(await db.listarAlertasPortal(!historico, historico ? 200 : 100));
+      setAlertas((await db.listarAlertasPortal(!historico, historico ? 200 : 100)) ?? []);
     } catch (cause) {
       setErro(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -314,9 +379,11 @@ export function PortalAlertasPainel({ erros, onFechar, onAbrirAtendimento, onCha
 
   return (
     <div
+      ref={ref}
       role="dialog"
       aria-label="Notificações"
-      className="absolute right-0 top-12 z-[1000000000] flex max-h-[75vh] animate-in fade-in-0 slide-in-from-top-1 duration-padrao ease-saida w-[min(27rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-[0_12px_32px_rgba(0,0,0,0.18)]"
+      className="z-[1000000000] flex animate-in fade-in-0 slide-in-from-top-1 duration-padrao ease-saida flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-[0_12px_32px_rgba(0,0,0,0.18)]"
+      style={encaixe}
     >
       <div className="flex items-center justify-between gap-3 pb-1 pl-4 pr-3 pt-3">
         <h2 className="text-base font-extrabold">Notificações</h2>
@@ -396,7 +463,7 @@ export function PortalAlertasPainel({ erros, onFechar, onAbrirAtendimento, onCha
       )}
     </div>
   );
-}
+});
 
 function ItemPortal({ alerta, onAbrir, onMarcar }: { alerta: AlertaPortal; onAbrir: () => void; onMarcar: () => void }) {
   const visual = visualDoAlerta(alerta);

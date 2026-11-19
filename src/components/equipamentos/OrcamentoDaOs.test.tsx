@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { OrcamentoDaOs, linhasDoOrcamento } from "./OrcamentoDaOs";
 import type { Equipamento, Verificacao } from "@/types";
@@ -53,5 +53,32 @@ describe("OrcamentoDaOs", () => {
   it("sem orçamento nem verificação: avisa que não foi elaborado", () => {
     render(<OrcamentoDaOs equipamento={{ id: 1 } as Equipamento} verificacao={null} />);
     expect(screen.getByText(/ainda não foi elaborado/)).toBeInTheDocument();
+  });
+
+  it("cabeçalho com envio, prazo e Alterar Orçamento; selo de baixa pendente na peça", () => {
+    const onAlterar = vi.fn();
+    const equipamento = { id: 1, valor_orcamento: 340, prazo_aprovacao: "2026-11-15" } as Equipamento;
+    render(
+      <OrcamentoDaOs
+        equipamento={equipamento}
+        verificacao={verificacao}
+        enviadoEm="2026-11-09 17:02:00"
+        pendentes={new Set(["a:7"])}
+        onAlterar={onAlterar}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Orçamento enviado em 09/11 às 14:02" })).toBeInTheDocument();
+    expect(screen.getByText("Prazo de aprovação: 15/11/2026")).toBeInTheDocument();
+    screen.getByRole("button", { name: "Alterar Orçamento" }).click();
+    expect(onAlterar).toHaveBeenCalled();
+    const linhaRolete = screen.getByText("Rolete").closest("tr")!;
+    expect(within(linhaRolete).getByText("baixa pendente")).toBeInTheDocument();
+  });
+
+  it("sem envio registrado o título é só Orçamento e sem ação não há botão", () => {
+    render(<OrcamentoDaOs equipamento={{ id: 1, valor_orcamento: 340 } as Equipamento} verificacao={verificacao} />);
+    expect(screen.getByRole("heading", { name: "Orçamento" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Alterar Orçamento" })).toBeNull();
+    expect(screen.queryByText("baixa pendente")).toBeNull();
   });
 });

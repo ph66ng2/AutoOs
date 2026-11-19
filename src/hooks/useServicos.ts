@@ -14,16 +14,20 @@ export function useServicos(params?: UseServicosParams) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Números dos filtros (ativos e inativos com a busca); null se a contagem falhar. */
+  const [contagem, setContagem] = useState<{ ativos: number; inativos: number } | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const numeros = Promise.resolve().then(() => db.contarServicos(params?.busca)).catch(() => null);
       const data = await db.listarServicosPaginados(
         params?.busca,
         params?.situacao ?? "ATIVOS",
         Math.max((params?.page ?? 1) - 1, 0),
       );
+      setContagem(await numeros);
       setServicos(data.items);
       setTotal(data.total);
     } catch (err: any) {
@@ -81,6 +85,7 @@ export function useServicos(params?: UseServicosParams) {
   return {
     servicos,
     total,
+    contagem,
     loading,
     error,
     criar,

@@ -143,7 +143,7 @@ export default function Configuracoes() {
     return matchesSearch && matchesOutcome && matchesProfile;
   });
 
-  const { register, handleSubmit, setValue, control } = useForm<SmtpFormValues>({
+  const { register, handleSubmit, setValue, control, watch } = useForm<SmtpFormValues>({
     defaultValues: {
       ...SMTP_DEFAULTS,
       password: "",
@@ -154,6 +154,7 @@ export default function Configuracoes() {
     register: registerWhatsapp,
     handleSubmit: handleSubmitWhatsapp,
     setValue: setWhatsappValue,
+    watch: watchWhatsapp,
   } = useForm<WhatsappFormValues>({
     defaultValues: {
       provider: "EVOLUTION",
@@ -782,6 +783,8 @@ export default function Configuracoes() {
           photoTunnelHasToken={photoTunnelHasToken}
           photoTunnelEnvOverride={photoTunnelEnvOverride}
           photoTunnelPublicHost={photoTunnelPublicHost}
+          resumoSmtp={{ host: watch("host"), port: watch("port"), use_tls: watch("use_tls"), from_email: watch("from_email") }}
+          whatsappUrl={watchWhatsapp("api_url")}
         />
 
         {abas.portal && <ConfiguracoesTabPortal />}

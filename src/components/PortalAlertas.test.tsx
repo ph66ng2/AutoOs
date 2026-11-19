@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { EVENTO_ALERTAS_PORTAL, PortalAlertasSino, visualDoAlerta } from "@/components/PortalAlertas";
+import { EVENTO_ALERTAS_PORTAL, PortalAlertasSino, encaixePainelNotificacoes, visualDoAlerta } from "@/components/PortalAlertas";
 import { __resetErrosRegistrados } from "@/lib/error-log";
 import { notificarErro } from "@/hooks/useNotification";
 import type { AlertaPortal } from "@/types";
@@ -199,5 +199,28 @@ describe("PortalAlertasSino", () => {
     expect(texto).toContain("Contexto: Clientes");
     expect(texto).toContain("Mensagem: Não foi possível concluir esta ação.");
     expect(await screen.findByText("Copiado")).toBeInTheDocument();
+  });
+});
+
+describe("encaixePainelNotificacoes", () => {
+  it("abre para a direita e para cima quando o sino está no pé do menu", () => {
+    const estilo = encaixePainelNotificacoes(
+      { top: 700, bottom: 740, left: 200, right: 240 },
+      { width: 1280, height: 800 },
+    );
+    expect(estilo.position).toBe("fixed");
+    expect(estilo.left).toBe(248);
+    expect(estilo.bottom).toBe(108);
+    expect(estilo.top).toBeUndefined();
+  });
+
+  it("abre para baixo alinhado à direita quando o sino está no cabeçalho", () => {
+    const estilo = encaixePainelNotificacoes(
+      { top: 8, bottom: 48, left: 980, right: 1020 },
+      { width: 1024, height: 768 },
+    );
+    expect(estilo.left).toBe(584);
+    expect(estilo.top).toBe(56);
+    expect(estilo.bottom).toBeUndefined();
   });
 });

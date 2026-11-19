@@ -505,6 +505,7 @@ export default function Clientes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [painelAoLado, primeiroCliente?.id]);
   const clienteAberto = clientesExibidos.find((c) => c.id === contatosExpandido) ?? null;
+  const cadastrados = (n: number) => `${n} ${n === 1 ? "cadastrado" : "cadastrados"}`;
   const contagemFiltro = (valor: FiltroClientes) => {
     if (!contagem) return undefined;
     const porFiltro: Record<FiltroClientes, number> = { TODOS: contagem.todos, EMPRESAS: contagem.empresas, PESSOAS: contagem.pessoas, COM_OS_ABERTA: contagem.comOsAberta, PORTAL_ATIVO: contagem.portalAtivo };
@@ -521,7 +522,7 @@ export default function Clientes() {
       {/* Header */}
       <PageHeader
         titulo="Clientes"
-        descricao={contagem ? `${contagem.todos} cadastrados · ${contagem.comOsAberta} com OS aberta` : loading ? "Carregando…" : `${totalClientes} cadastrados`}
+        descricao={contagem ? `${cadastrados(contagem.todos)} · ${contagem.comOsAberta} com OS aberta` : loading ? "Carregando…" : cadastrados(totalClientes)}
       >
         <Button variant="outline" onClick={() => void abrirRegularizacaoLegados()}>
           Regularizar cadastros
@@ -688,7 +689,7 @@ export default function Clientes() {
                     <p className="text-lg font-extrabold tabular-nums">{resumo?.osAbertas ?? clienteAberto.os_abertas ?? "—"}</p>
                   </div>
                   <div className="flex flex-col justify-between gap-1 rounded-xl bg-muted p-3">
-                    <p className="text-xs text-muted-foreground" title="OS que entraram neste ano, abertas ou já fechadas">Serviços no ano</p>
+                    <p className="text-xs text-muted-foreground" title="OS que entraram neste ano, abertas ou já fechadas">No ano</p>
                     <p className="text-lg font-extrabold tabular-nums">{resumo?.noAno ?? "—"}</p>
                   </div>
                   {resumo?.faturado != null && (
@@ -703,14 +704,9 @@ export default function Clientes() {
                   <div className="flex items-center justify-between">
                     <h3 className="text-base font-bold">Contatos</h3>
                     {clienteAberto.empresa_id && (
-                      <div className="flex items-center gap-4">
-                        <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => setContatosClienteSelecionado(clienteAberto)}>
-                          Gerenciar portal
-                        </button>
-                        <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => setContatosClienteSelecionado(clienteAberto)}>
-                          + Contato
-                        </button>
-                      </div>
+                      <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => setContatosClienteSelecionado(clienteAberto)}>
+                        + Contato
+                      </button>
                     )}
                   </div>
                   {!clienteAberto.empresa_id ? (
@@ -751,7 +747,14 @@ export default function Clientes() {
                 </section>
 
                 <section id={`equipamentos-cliente-${clienteAberto.id}`} aria-label="Equipamentos deste cliente" className="space-y-1">
-                  <h3 className="text-base font-bold">Equipamentos deste cliente</h3>
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-base font-bold">Equipamentos deste cliente</h3>
+                    {aparelhosCliente.length > 0 && (
+                      <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => navigate(`/clientes/${clienteAberto.id}/equipamentos`)}>
+                        {aparelhosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS ? `Ver todos (${aparelhosCliente.length})` : "Histórico"}
+                      </button>
+                    )}
+                  </div>
                   {carregandoEquip ? (
                     <p className="py-2 text-sm text-muted-foreground">Carregando equipamentos...</p>
                   ) : equipamentosCliente.length === 0 ? (
@@ -778,18 +781,17 @@ export default function Clientes() {
                       ))}
                     </ul>
                   )}
-                  {aparelhosCliente.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      className="mt-2 h-11 w-full bg-acc-soft font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
-                      onClick={() => navigate(`/clientes/${clienteAberto.id}/equipamentos`)}
-                    >
-                      {aparelhosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS
-                        ? `Ver todos os ${aparelhosCliente.length} equipamentos (+${aparelhosCliente.length - LIMITE_EQUIPAMENTOS_EXPANDIDOS})`
-                        : "Ver histórico de equipamentos"}
-                    </Button>
-                  )}
                 </section>
+
+                {clienteAberto.empresa_id && (
+                  <Button
+                    variant="ghost"
+                    className="h-11 w-full bg-acc-soft font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
+                    onClick={() => setContatosClienteSelecionado(clienteAberto)}
+                  >
+                    Gerenciar acesso ao portal
+                  </Button>
+                )}
 
               </>
             )}

@@ -9,7 +9,7 @@ const marina: SecurityProfile = {
 };
 
 const props: React.ComponentProps<typeof ProfileSessionDialog> = {
-  open: true, mandatory: true, mode: "startup", title: "Quem está usando o AutoOS?", description: "Escolha seu perfil",
+  open: true, mandatory: true, mode: "startup", title: "Quem está usando?", description: "Escolha seu perfil",
   profiles: [marina], activeProfileId: null, unlocked: false,
   selectedProfileId: "2", selectedProfile: marina,
   pin: "2580", confirmPin: "", busy: false, error: null,
@@ -29,7 +29,7 @@ describe("entrada: modo deste computador", () => {
     expect(screen.getByText("PIN de Marina")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Modo completo/ })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(screen.getByRole("radio", { name: /Balcão/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Entrar com este perfil" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
     expect(localStorage.getItem("autoos_app_mode")).toBe("counter");
     expect(onSubmit).toHaveBeenCalledOnce();
   });

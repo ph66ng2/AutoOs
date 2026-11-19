@@ -151,7 +151,7 @@ describe("primeiro acesso a partir da janela de perfis", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /QA Tres/ }));
     fireEvent.change(screen.getByLabelText("PIN do perfil"), { target: { value: "2468" } });
-    press(button("Entrar com este perfil"));
+    press(button("Entrar"));
 
     // Reabrir o perfil retoma o assistente na etapa do perfil, sem pedir o código de novo.
     expect(await screen.findByRole("heading", { name: "Deixe com a sua cara" }, { timeout: 3000 })).toBeInTheDocument();
@@ -179,7 +179,7 @@ describe("primeiro acesso a partir da janela de perfis", () => {
     render(<SensitiveAccessProvider><span /></SensitiveAccessProvider>);
     fireEvent.click(await screen.findByRole("button", { name: /QA Tres/ }));
     fireEvent.change(screen.getByLabelText("PIN do perfil"), { target: { value: "2468" } });
-    press(button("Entrar com este perfil"));
+    press(button("Entrar"));
     expect(await screen.findByRole("heading", { name: "Deixe com a sua cara" }, { timeout: 3000 })).toBeInTheDocument();
 
     const operation = vi.fn().mockRejectedValue("Acesso sensível bloqueado. Informe o PIN para continuar.");

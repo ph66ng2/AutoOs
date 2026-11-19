@@ -474,7 +474,7 @@ async fn main() -> Result<()> {
         .bind(equipamento.id).fetch_one(&pool).await?;
 
     let recent_page = equipamentos::listar_equipamentos_paginados(
-        Some(0), None, Some("AGUARDANDO_APROVACAO".to_string()), Some("CADASTRO_RECENTE".to_string()),
+        Some(0), None, Some("AGUARDANDO_APROVACAO".to_string()), Some("CADASTRO_RECENTE".to_string()), None,
     ).await.map_err(|error| anyhow!(error))?;
     if !recent_page.items.iter().any(|item| item.id == equipamento.id) {
         return Err(anyhow!("recent equipment order omitted the expected record"));

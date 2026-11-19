@@ -59,10 +59,10 @@ const FAIXAS_MODAL = [
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { tamanho?: TamanhoModal }
->(({ className, children, onPointerDownOutside, onInteractOutside, tamanho = "m", ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { tamanho?: TamanhoModal; overlayClassName?: string }
+>(({ className, children, onPointerDownOutside, onInteractOutside, tamanho = "m", overlayClassName, ...props }, ref) => (
   <DialogPortal>
-    <DialogOverlay />
+    <DialogOverlay className={overlayClassName} />
     <DialogPrimitive.Content
       ref={ref}
       // Clicar num aviso (toast) com a janela aberta não pode fechar a janela nem perder o que

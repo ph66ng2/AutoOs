@@ -11,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EVENT_LABELS } from "@/lib/eventos-auditoria";
 import { AppearancePicker } from "@/components/perfil/AppearancePicker";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
-import { TeamAccessManager } from "@/components/TeamAccessManager";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { getAppMode, setAppMode } from "@/lib/app-mode";
 import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
@@ -65,7 +64,7 @@ export default function Perfil() {
           type="button"
           variant="outline"
           onClick={() => void openProfileSelector({
-            title: "Quem está usando o AutoOS?",
+            title: "Quem está usando?",
             description: "Escolha o perfil e informe o PIN para entrar.",
           })}
         >
@@ -80,7 +79,7 @@ export default function Perfil() {
               <Lock className="mt-0.5 h-5 w-5 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Informe seu PIN para ver e editar o seu perfil.</p>
             </div>
-            <Button type="button" onClick={() => void openProfileSelector({ title: "Quem está usando o AutoOS?", description: "Escolha o perfil e informe o PIN para entrar." })}>
+            <Button type="button" onClick={() => void openProfileSelector({ title: "Quem está usando?", description: "Escolha o perfil e informe o PIN para entrar." })}>
               Desbloquear
             </Button>
           </CardContent>
@@ -97,9 +96,6 @@ export default function Perfil() {
             ].map(([value, label]) => (
               <TabsTrigger key={value} value={value} className={TAB_CLASS}>{label}</TabsTrigger>
             ))}
-            {status?.can_manage_profiles && (
-              <TabsTrigger value="equipe" data-tour="perfil-tab-equipe" className={TAB_CLASS}>Equipe</TabsTrigger>
-            )}
           </TabsList>
 
           <TabsContent value="visao" className="mt-0">
@@ -117,11 +113,6 @@ export default function Perfil() {
           <TabsContent value="tutorial" className="mt-0">
             <Tutorial profile={profile} permissions={status?.permissions ?? []} />
           </TabsContent>
-          {status?.can_manage_profiles && (
-            <TabsContent value="equipe" className="mt-0">
-              <TeamAccessManager activeProfileId={status.active_profile_id} onChanged={refreshStatus} />
-            </TabsContent>
-          )}
         </Tabs>
       )}
     </div>

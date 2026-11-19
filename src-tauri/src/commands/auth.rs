@@ -852,6 +852,18 @@ pub fn require_sensitive_access_without_touch() -> Result<SecurityProfileSummary
 
 /// Resolve a empresa exclusivamente a partir do perfil atualmente autenticado.
 /// Valores recebidos da interface nunca devem escolher o tenant de uma escrita.
+/// Nome da empresa da sessão, para o topo do menu lateral.
+#[tauri::command]
+pub async fn obter_empresa_ativa() -> Result<String, String> {
+    let pool = crate::db::get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    sqlx::query_scalar::<_, String>("SELECT nome FROM empresas WHERE id = $1")
+        .bind(empresa_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 pub async fn require_active_session_company_id(pool: &PgPool) -> Result<i32, String> {
     let profile = require_sensitive_access()?;
     company_id_for_profile(pool, &profile).await

@@ -86,16 +86,13 @@ export const OPCOES_FILTRO_STATUS = [
   ...ORDEM_FILTRO_STATUS.map((value) => ({ value, label: STATUS_LABELS[value] })),
 ];
 
-/** Status fora do fluxo principal: ficam no menu "Outros" do filtro. */
-const STATUS_FILTRO_OUTROS = new Set<string>(["ENTREGUE", "ORCAMENTO_VENCIDO", "REPROVADO", "ABANDONADO"]);
-/** Na faixa, o rótulo curto que os selos já usam; o nome completo vai no title e no aria-label. */
+/** Encerrados que quase ninguém filtra: ficam no menu "Outros"; o resto vira pílula, como no canvas. */
+const STATUS_FILTRO_OUTROS = new Set<string>(["ENTREGUE", "ABANDONADO"]);
+/** Rótulo da pílula: o nome da etapa (o "Orçam." do selo não precisa caber aqui). */
+const ROTULO_PILULA: Partial<Record<string, string>> = { ORCAMENTO_VENCIDO: "Vencido" };
 export const FILTRO_STATUS_PRINCIPAIS = OPCOES_FILTRO_STATUS
   .filter((opcao) => !STATUS_FILTRO_OUTROS.has(opcao.value))
-  .map((opcao) => ({
-    ...opcao,
-    titulo: opcao.label,
-    label: STATUS_BADGE_LABELS_PADRAO[opcao.value as StatusEquipamento] ?? opcao.label,
-  }));
+  .map((opcao) => ({ ...opcao, titulo: opcao.label, label: ROTULO_PILULA[opcao.value] ?? opcao.label }));
 export const FILTRO_STATUS_OUTROS = OPCOES_FILTRO_STATUS.filter((opcao) => STATUS_FILTRO_OUTROS.has(opcao.value));
 
 export const EMAIL_POR_TECNICO: Record<string, string> = {

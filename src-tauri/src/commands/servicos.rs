@@ -233,6 +233,29 @@ pub async fn listar_servicos_paginados(
     .await
 }
 
+/// Quantos serviços ativos e inativos a busca encontra (números dos filtros da tela).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn contar_servicos(busca: Option<String>) -> Result<ContagemServicos, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let mut query = QueryBuilder::<Postgres>::new(
+        "SELECT COUNT(*) FILTER (WHERE ativo) AS ativos, COUNT(*) FILTER (WHERE NOT ativo) AS inativos FROM servicos_catalogo",
+    );
+    add_service_filters(&mut query, empresa_id, busca.as_deref(), SituacaoServico::Todos);
+    query
+        .build_query_as::<ContagemServicos>()
+        .fetch_one(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct ContagemServicos {
+    pub ativos: i64,
+    pub inativos: i64,
+}
+
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn listar_servicos_catalogo_ativos() -> Result<Vec<ServicoCatalogoRow>, String> {

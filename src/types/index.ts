@@ -151,6 +151,12 @@ export interface Equipamento {
   // Auditoria
   criado_em?: string;
   atualizado_em?: string;
+  /** Técnico da verificação mais recente (só leitura, vem da lista). */
+  tecnico_nome?: string | null;
+  /** Ordem deste atendimento entre os registros com a mesma série (1 = primeiro). */
+  ciclo_serial?: number | null;
+  /** Forma de pagamento da verificação mais recente (só leitura). */
+  forma_pagamento_codigo?: FormaPagamentoCodigo | null;
 }
 
 /** Evento cronológico exibido no histórico operacional do equipamento. */

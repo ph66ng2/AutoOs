@@ -11,7 +11,7 @@
 
 use crate::commands::types::{
     normalize_forma_pagamento, AprovarOrcamentoInput, EquipamentoHistoricoEvento,
-    EquipamentoInput, EquipamentoRow, PaginatedResult, EQUIPAMENTO_SELECT,
+    ContagemStatusRow, EquipamentoInput, EquipamentoRow, PaginatedResult, EQUIPAMENTO_SELECT,
 };
 use crate::commands::auth::{
     current_session_profile, record_security_event, require_active_session_company_id,
@@ -111,6 +111,7 @@ fn add_equipment_filters(
     empresa_id: i32,
     busca: Option<&str>,
     status: Option<&str>,
+    tecnico: Option<&str>,
 ) {
     query.push(" WHERE empresa_id = ").push_bind(empresa_id);
 
@@ -171,6 +172,16 @@ fn add_equipment_filters(
     {
         query.push(" AND status = ").push_bind(normalize_status_key(status));
     }
+
+    // Técnico = quem assinou a verificação mais recente (o mesmo que a lista mostra).
+    if let Some(tecnico) = tecnico.map(str::trim).filter(|value| !value.is_empty()) {
+        query
+            .push(
+                " AND (SELECT NULLIF(TRIM(v.tecnico_nome), '') FROM verificacoes v
+                        WHERE v.equipamento_id = equipamentos.id ORDER BY v.id DESC LIMIT 1) = ",
+            )
+            .push_bind(tecnico.to_string());
+    }
 }
 
 fn equipment_order_clause(ordenacao: Option<&str>) -> &'static str {
@@ -191,8 +202,22 @@ pub(crate) async fn query_equipment_page_on_connection(
     ordenacao: Option<&str>,
     page_size: i32,
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
+    query_equipment_page_filtered(connection, empresa_id, page, busca, status, None, ordenacao, page_size).await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn query_equipment_page_filtered(
+    connection: &mut PgConnection,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    status: Option<&str>,
+    tecnico: Option<&str>,
+    ordenacao: Option<&str>,
+    page_size: i32,
+) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM equipamentos");
-    add_equipment_filters(&mut count_query, empresa_id, busca, status);
+    add_equipment_filters(&mut count_query, empresa_id, busca, status, tecnico);
     let total = count_query
         .build_query_scalar::<i64>()
         .fetch_one(&mut *connection)
@@ -201,7 +226,7 @@ pub(crate) async fn query_equipment_page_on_connection(
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
     let mut items_query = QueryBuilder::<Postgres>::new(EQUIPAMENTO_SELECT);
-    add_equipment_filters(&mut items_query, empresa_id, busca, status);
+    add_equipment_filters(&mut items_query, empresa_id, busca, status, tecnico);
     items_query
         .push(equipment_order_clause(ordenacao))
         .push(" LIMIT ")
@@ -656,20 +681,41 @@ pub async fn listar_equipamentos_paginados(
     busca: Option<String>,
     status: Option<String>,
     ordenacao: Option<String>,
+    tecnico: Option<String>,
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
     let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
-    query_equipment_page_on_connection(
+    query_equipment_page_filtered(
         &mut connection,
         empresa_id,
         page,
         busca.as_deref(),
         status.as_deref(),
+        tecnico.as_deref(),
         ordenacao.as_deref(),
         UI_PAGE_SIZE,
     )
     .await
+}
+
+/// Quantos equipamentos cada status tem, com a mesma busca e técnico da lista (para os filtros).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn contar_equipamentos_por_status(
+    busca: Option<String>,
+    tecnico: Option<String>,
+) -> Result<Vec<ContagemStatusRow>, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let mut query = QueryBuilder::<Postgres>::new("SELECT COALESCE(status, '') AS status, COUNT(*) AS total FROM equipamentos");
+    add_equipment_filters(&mut query, empresa_id, busca.as_deref(), None, tecnico.as_deref());
+    query.push(" GROUP BY status");
+    query
+        .build_query_as::<ContagemStatusRow>()
+        .fetch_all(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
 }
 
 /// Buscar equipamento por ID.

@@ -441,16 +441,20 @@ export function VerificacaoTecnica({
                   </div>
                 )}
               </div>
-              <div className="w-32">
-                <ValorDecimalInput
-                  min={0}
-                  placeholder="Valor"
-                  aria-label="Valor do serviço"
-                  value={Number(s.valor) || 0}
-                  onValueChange={(valor) => atualizarServico(s.id, { valor })}
-                  onValidityChange={(valido) => setValoresServicoInvalidos((atual) => ({ ...atual, [s.id]: !valido }))}
-                  className="w-32"
-                />
+              <div className="w-36">
+                {/* "R$" colado ao campo, como na prancheta da verificação. */}
+                <div className="flex items-stretch overflow-hidden rounded-md border border-input focus-within:ring-2 focus-within:ring-ring">
+                  <span aria-hidden="true" className="flex items-center bg-muted px-2.5 text-sm text-muted-foreground">R$</span>
+                  <ValorDecimalInput
+                    min={0}
+                    placeholder="Valor"
+                    aria-label="Valor do serviço"
+                    value={Number(s.valor) || 0}
+                    onValueChange={(valor) => atualizarServico(s.id, { valor })}
+                    onValidityChange={(valido) => setValoresServicoInvalidos((atual) => ({ ...atual, [s.id]: !valido }))}
+                    className="min-w-0 flex-1 rounded-none border-0 text-right tabular-nums focus-visible:ring-0 focus-visible:ring-offset-0"
+                  />
+                </div>
                 {s.descricao.trim() && Number(s.valor) === 0 && !valoresServicoInvalidos[s.id] && (
                   <p className="mt-1 text-xs text-status-ok">Garantia</p>
                 )}
