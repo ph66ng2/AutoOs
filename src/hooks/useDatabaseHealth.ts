@@ -28,6 +28,8 @@ export type DatabaseHealth =
  */
 export function useDatabaseHealth() {
   const [health, setHealth] = useState<DatabaseHealth>({ status: "ok" });
+  const downRef = useRef(false);
+  downRef.current = health.status === "caiu";
   const checkingRef = useRef(false);
   const attemptRef = useRef(0);
 
@@ -63,15 +65,22 @@ export function useDatabaseHealth() {
   }, []);
 
   // Indícios de queda: comando que falhou com cara de conexão, ou rede do sistema.
+  // Com a queda já confirmada, falhas novas de comando não antecipam a
+  // tentativa: a espera (e o mínimo de 30 s com o servidor lotado) vale.
+  // "Tentar agora" e a volta da rede continuam checando na hora.
   useEffect(() => {
-    const suspeita = () => void check();
+    const suspeita = () => {
+      if (downRef.current) return;
+      void check();
+    };
+    const redeVoltou = () => void check();
     const parar = ouvirPossivelQuedaDeConexao(suspeita);
     window.addEventListener("offline", suspeita);
-    window.addEventListener("online", suspeita);
+    window.addEventListener("online", redeVoltou);
     return () => {
       parar();
       window.removeEventListener("offline", suspeita);
-      window.removeEventListener("online", suspeita);
+      window.removeEventListener("online", redeVoltou);
     };
   }, [check]);
 

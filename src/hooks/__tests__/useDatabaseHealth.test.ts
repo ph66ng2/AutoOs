@@ -100,4 +100,34 @@ describe("useDatabaseHealth", () => {
     await passarSegundos(5);
     expect(result.current.health).toMatchObject({ status: "caiu", downSince: inicio });
   });
+
+  it("com a queda confirmada, novas falhas de comando não antecipam a tentativa", async () => {
+    const lotado = { tipo: "capacidade" as const, mensagem: "SQLSTATE 53300: too many clients" };
+    verificarSaudeBanco.mockResolvedValue(lotado);
+    const { result } = renderHook(() => useDatabaseHealth());
+
+    reportarFalhaDeComando("listar_clientes", "pool timed out");
+    await flush();
+    expect(result.current.health).toMatchObject({ status: "caiu", secondsLeft: 30 });
+
+    await passarSegundos(3);
+    reportarFalhaDeComando("contar_alertas_portal_nao_lidos", "pool timed out");
+    await flush();
+    expect(verificarSaudeBanco).toHaveBeenCalledTimes(1);
+    expect(result.current.health).toMatchObject({ status: "caiu", secondsLeft: 27 });
+  });
+
+  it("a volta da rede checa na hora mesmo durante a espera", async () => {
+    verificarSaudeBanco.mockResolvedValueOnce(rede).mockResolvedValueOnce(null);
+    const { result } = renderHook(() => useDatabaseHealth());
+
+    reportarFalhaDeComando("listar_clientes", "pool timed out");
+    await flush();
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await flush();
+    expect(verificarSaudeBanco).toHaveBeenCalledTimes(2);
+    expect(result.current.health.status).toBe("restabelecida");
+  });
 });
