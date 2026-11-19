@@ -212,6 +212,8 @@ import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
 import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
 import { useNomesFiltroTecnico, useTecnicos } from "@/hooks/useTecnicos";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+import { quandoRascunho, useRascunho } from "@/hooks/useRascunho";
 import { emailDoTecnico } from "@/lib/tecnicos";
 import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
 import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
@@ -585,6 +587,63 @@ export default function Equipamentos() {
       },
   });
 
+  // Rascunho da Nova entrada: fechar a janela, trocar de tela ou fechar o app não perde o que foi digitado.
+  interface RascunhoEntrada {
+    form: EquipamentoFormData;
+    cliente: Cliente | null;
+    responsavel: ClienteContato | null;
+    tecnico: string;
+  }
+  const rascunhoEntrada = useRascunho<RascunhoEntrada>("nova-entrada");
+  const [rascunhoRecuperadoEm, setRascunhoRecuperadoEm] = useState<string | null>(null);
+  const novaEntradaAberta = dialogOpen && !editando;
+  useEffect(() => {
+    if (!novaEntradaAberta) return;
+    const guardar = () => {
+      const valores = form.getValues();
+      const temAlgo = Boolean(clienteVinculado || valores.serial_number?.trim() || valores.defeito_relatado?.trim() || valores.marca || valores.modelo?.trim());
+      if (temAlgo) rascunhoEntrada.salvar({ form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento });
+    };
+    guardar();
+    const assinatura = form.watch(guardar);
+    return () => assinatura.unsubscribe();
+  }, [novaEntradaAberta, form, clienteVinculado, responsavelVinculado, tecnicoNovoEquipamento, rascunhoEntrada]);
+
+  /**
+   * Cancelar a Nova entrada descarta o rascunho (Esc, o X e trocar de tela guardam).
+   * Com algo preenchido, o aviso oferece desfazer por alguns segundos.
+   */
+  function descartarEntrada() {
+    const valores = form.getValues();
+    const temAlgo = Boolean(clienteVinculado || valores.serial_number?.trim() || valores.defeito_relatado?.trim() || valores.marca || valores.modelo?.trim());
+    const copia: RascunhoEntrada = { form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento };
+    rascunhoEntrada.limpar();
+    setRascunhoRecuperadoEm(null);
+    if (!temAlgo) return;
+    toast("Entrada descartada", {
+      action: {
+        label: "Desfazer",
+        onClick: () => {
+          rascunhoEntrada.salvarAgora(copia);
+          abrirNovo();
+        },
+      },
+    });
+  }
+
+  function comecarEntradaDoZero() {
+    rascunhoEntrada.limpar();
+    setRascunhoRecuperadoEm(null);
+    setClienteVinculado(null);
+    setResponsavelVinculado(null);
+    setTecnicoNovoEquipamento(primeiroTecnico);
+    form.reset({
+      serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
+      defeito_relatado: "", acessorios: [], acessorios_outros: "",
+      observacoes: "",
+    });
+  }
+
   // ─── Handlers ─────────────────────────────────────────
 
   /** Abre dialog para criar novo equipamento. Reseta form e limpa cliente */
@@ -608,6 +667,14 @@ export default function Equipamentos() {
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
       observacoes: "",
     });
+    const rascunho = rascunhoEntrada.ler();
+    setRascunhoRecuperadoEm(rascunho?.salvoEm ?? null);
+    if (rascunho) {
+      form.reset({ ...form.getValues(), ...rascunho.dados.form, status: "RECEBIDO" });
+      setClienteVinculado(rascunho.dados.cliente);
+      setResponsavelVinculado(rascunho.dados.responsavel);
+      if (rascunho.dados.tecnico) setTecnicoNovoEquipamento(rascunho.dados.tecnico);
+    }
     setDialogOpen(true);
   }
 
@@ -911,6 +978,10 @@ export default function Equipamentos() {
       });
   }, [idDetalhesRota, abrirDetalhes, navigate]);
 
+  // Verificação pela metade: menu, Ctrl+K ou voltar perguntam antes. Cancelar e finalizar
+  // voltam para a origem, que é saída livre.
+  const [verificacaoSuja, setVerificacaoSuja] = useState(false);
+  const avisoVerificacao = useAvisoAoSair(verificacaoDialogOpen && verificacaoSuja, (destino) => destino === origemVerificacaoRef.current);
   const paginaVerificacaoAbertaRef = useRef(false);
   paginaVerificacaoAbertaRef.current = verificacaoDialogOpen;
   /** Abre a página de verificação técnica (VerificacaoTecnica.tsx, /equipamentos/:id/verificacao). */
@@ -1295,6 +1366,10 @@ export default function Equipamentos() {
       }
       const equipamentoSalvo = resultado.data;
       const equipamentoIdSalvo = equipamentoSalvo.id!;
+      if (!editando) {
+        rascunhoEntrada.limpar();
+        setRascunhoRecuperadoEm(null);
+      }
 
       if (fotosAlteradas) {
         try {
@@ -3020,6 +3095,12 @@ export default function Equipamentos() {
           </DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
             <DialogBody className="space-y-6">
+            {!editando && rascunhoRecuperadoEm && (
+              <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-status-work-bg px-4 py-3 text-sm">
+                <span>Rascunho de {quandoRascunho(rascunhoRecuperadoEm)} recuperado. Fotos não ficam no rascunho.</span>
+                <Button type="button" variant="ghost" size="sm" onClick={comecarEntradaDoZero}>Começar do zero</Button>
+              </div>
+            )}
             {/* ── Cliente ── */}
             <div className="space-y-2">
               <ClienteSelector
@@ -3319,7 +3400,7 @@ export default function Equipamentos() {
             </div>
             </DialogBody>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
+              <DialogClose asChild><Button variant="outline" type="button" onClick={editando ? undefined : descartarEntrada}>Cancelar</Button></DialogClose>
               <Button type="submit" disabled={salvando || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
                 {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}
               </Button>
@@ -3344,7 +3425,9 @@ export default function Equipamentos() {
         salvando={salvando || loadingAutomacao}
         tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || primeiroTecnico}
         podeFinalizar={hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS) || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES)}
+        onSujoChange={setVerificacaoSuja}
       />
+      {avisoVerificacao.dialogo}
 
       {/* ═══ Ajuste de orçamento (rota /equipamentos/:id/orcamento, decisão 24) ═══ */}
       {idAjusteRota != null && !paginaAjusteAberta && (

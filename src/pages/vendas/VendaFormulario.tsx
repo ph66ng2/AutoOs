@@ -15,6 +15,7 @@ import { STATUS_ORCAMENTO_INSUMOS_COR, STATUS_ORCAMENTO_INSUMOS_LABEL } from "@/
 import { cn, formatCurrency } from "@/lib/utils";
 import { OrcamentoInsumosItensEditor } from "@/pages/insumos/OrcamentoInsumosItensEditor";
 import { SENSITIVE_PERMISSIONS } from "@/types";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 
 function Secao({ titulo, nota, children }: { titulo: string; nota?: string; children: React.ReactNode }) {
   return (
@@ -45,6 +46,8 @@ export default function VendaFormulario() {
     totais, faltas, editavel, podeSalvar, motivoSemSalvar, salvar, editar,
   } = editor;
   const destino = orcamentoId != null ? `/vendas/${orcamentoId}` : "/vendas";
+  // Menu, Ctrl+K ou voltar com a venda pela metade: pergunta antes. Voltar/Cancelar também avisa.
+  const aviso = useAvisoAoSair(alterado && editavel);
 
   // "Renovar validade" chega com ?foco=validade.
   useEffect(() => {
@@ -56,7 +59,9 @@ export default function VendaFormulario() {
 
   async function salvarEVoltar() {
     const salvo = await salvar();
-    if (salvo) navigate(`/vendas/${salvo.id}`);
+    if (!salvo) return;
+    aviso.liberarProximaSaida();
+    navigate(`/vendas/${salvo.id}`);
   }
 
   const voltar = (
@@ -113,6 +118,7 @@ export default function VendaFormulario() {
 
   return (
     <div className="-mb-4 flex min-h-[calc(100vh-8rem)] flex-col gap-4 lg:-mb-8">
+      {aviso.dialogo}
       {voltar}
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-[26px] font-bold leading-tight tracking-tight">

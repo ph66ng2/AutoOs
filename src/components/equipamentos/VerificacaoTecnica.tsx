@@ -74,6 +74,8 @@ interface VerificacaoTecnicaProps {
   tecnicoInicial?: TecnicoDisponivel;
   /** Sem Ações financeiras nem Elaborar e enviar orçamentos, a página abre, mas finalizar pede o PIN de quem tem. */
   podeFinalizar?: boolean;
+  /** Avisa quando há algo preenchido (para perguntar antes de sair da página). */
+  onSujoChange?: (sujo: boolean) => void;
 }
 
 export function VerificacaoTecnica({
@@ -84,6 +86,7 @@ export function VerificacaoTecnica({
   salvando = false,
   tecnicoInicial = "",
   podeFinalizar = true,
+  onSujoChange,
 }: VerificacaoTecnicaProps) {
   // ─── State ──────────────────────────────────────────
   const [diagnostico, setDiagnostico] = useState("");
@@ -141,6 +144,11 @@ export function VerificacaoTecnica({
         setImagensVerificacao([]);
       });
   }, [open, equipamento?.id]);
+
+  // Algo digitado ou marcado (fotos já ficam salvas no envio, não contam).
+  const checklistMudou = checklist.some((item, i) => JSON.stringify(item) !== JSON.stringify(CHECKLIST_PADRAO[i]));
+  const sujo = open && (diagnostico.trim() !== "" || observacoesVerif.trim() !== "" || servicos.length > 0 || checklistMudou);
+  useEffect(() => { onSujoChange?.(sujo); }, [sujo, onSujoChange]);
 
   // ─── Helpers ────────────────────────────────────────
   /** Limpa todos os campos do formulário para valores iniciais */

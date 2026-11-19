@@ -22,6 +22,7 @@ import { servicoCatalogoSchema, type ServicoCatalogoFormData } from "@/lib/valid
 import { useServicos } from "@/hooks/useServicos";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useNotification } from "@/hooks/useNotification";
+import { toast } from "sonner";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
@@ -174,6 +175,11 @@ export default function Servicos() {
       }
       setDeleteDialogOpen(false);
       setDeletando(null);
+      // Desativar é reversível (o serviço só sai da verificação técnica): oferece desfazer.
+      const desativado = deletando;
+      toast(`${desativado.nome} desativado`, {
+        action: { label: "Desfazer", onClick: () => void reativarServico(desativado) },
+      });
     } catch (err: any) {
       console.error("Erro ao desativar serviço:", err);
       showError("Serviços", "Desativar serviço", err);

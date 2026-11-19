@@ -17,8 +17,8 @@
  * ║  USADO POR: main.tsx (ponto de entrada)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { lazy, useCallback, useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { createContext, lazy, useCallback, useContext, useEffect, useState } from "react";
+import { createBrowserRouter, RouterProvider, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -118,7 +118,7 @@ function AppContent() {
           })}
         />
       ) : (
-      <BrowserRouter>
+      <RoteadorDoApp>
         <AppModeChoice
           visible={!loading && sessionReady && appMode === null && !firstAccessOpen}
           onSelect={setCurrentAppMode}
@@ -181,7 +181,7 @@ function AppContent() {
             <Route path="/balcao/painel" element={<Balcao />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </RoteadorDoApp>
       )}
       {splashVisible && (
         <BootSplash
@@ -192,6 +192,29 @@ function AppContent() {
       )}
     </>
   );
+}
+
+/**
+ * Roteador com dados (createBrowserRouter): é o que permite `useBlocker`, usado para avisar
+ * antes de sair de um formulário pela metade. Uma rota coringa entrega a árvore de <Routes>
+ * de sempre, então as rotas continuam declaradas como antes. O roteador nasce quando o
+ * conteúdo monta (como o BrowserRouter antigo), lendo o endereço atual.
+ */
+const ConteudoDoRoteador = createContext<React.ReactNode>(null);
+
+function RoteadorDoApp({ children }: { children: React.ReactNode }) {
+  const [router] = useState(() => createBrowserRouter([{ path: "*", element: <ConteudoRoteado /> }]));
+  useEffect(() => () => router.dispose(), [router]);
+  return (
+    <ConteudoDoRoteador.Provider value={children}>
+      <RouterProvider router={router} />
+    </ConteudoDoRoteador.Provider>
+  );
+}
+
+/** A rota coringa só devolve a árvore de <Routes> recebida por contexto (que se atualiza a cada render do App). */
+function ConteudoRoteado() {
+  return <>{useContext(ConteudoDoRoteador)}</>;
 }
 
 function SessionPinGate({ onEnter }: { onEnter: () => void }) {
