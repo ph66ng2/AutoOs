@@ -47,6 +47,16 @@ beforeAll(() => {
 });
 
 describe("Insumos: só o estoque", () => {
+  it("vindo do Estoque baixo do Início, a busca já vem preenchida com o item", async () => {
+    const { MemoryRouter } = await import("react-router-dom");
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/insumos", state: { busca: "CAB-420" } }]}>
+        <Insumos />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText("Buscar insumos e peças")).toHaveValue("CAB-420");
+  });
+
   it("abre no estoque, com o botão de novo item e o alerta de mínimo", () => {
     render(<Insumos />);
     expect(screen.getByRole("button", { name: /novo item/i })).toBeInTheDocument();

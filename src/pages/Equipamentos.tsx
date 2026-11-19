@@ -468,7 +468,13 @@ export default function Equipamentos() {
   // Vindo de um alerta/atalho: abre o atendimento pedido. Se outra janela de detalhes estiver
   // aberta, troca na hora; só espera quando há um formulário em preenchimento.
   useEffect(() => {
-    const state = location.state as { equipamentoId?: number; novaEntrada?: boolean } | null;
+    const state = location.state as { equipamentoId?: number; novaEntrada?: boolean; statusFiltro?: string } | null;
+    // Cartão ou etapa do Início: abre a lista já filtrada por aquele status.
+    if (state?.statusFiltro) {
+      navigate(location.pathname, { replace: true, state: {} });
+      setStatusFiltro(state.statusFiltro);
+      return;
+    }
     // "+ Nova entrada" do Início: abre o cadastro direto.
     if (state?.novaEntrada) {
       navigate(location.pathname, { replace: true, state: {} });
