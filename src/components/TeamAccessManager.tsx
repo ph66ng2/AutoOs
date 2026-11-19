@@ -327,10 +327,12 @@ export function TeamAccessManager({
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold [overflow-wrap:anywhere]">{profile.nome}</span>
                         {profile.id === activeProfileId && <Badge variant="secondary">Você</Badge>}
-                        {profile.atende_tecnico && <Badge variant="outline">Técnico</Badge>}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {securityRoleLabel(profile.role)}
+                        {/* A função Técnico já diz que atende; só fala da marca quando ela foge da função. */}
+                        {profile.atende_tecnico && profile.role !== "TECNICO" && " · atende OS"}
+                        {!profile.atende_tecnico && profile.role === "TECNICO" && " · fora das OS"}
                         {memberStatus(profile).label !== "Ativo" && (
                           <>
                             {" · "}
