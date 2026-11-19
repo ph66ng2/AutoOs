@@ -158,6 +158,7 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - **Leaving half-filled forms** — `useAvisoAoSair(sujo, saidaLivre?)` asks "Sair sem salvar?" on menu, Ctrl+K or back navigation; call `liberarProximaSaida()` right before navigating after a successful save. Used by Verificação técnica and VendaFormulario. Outside a data router (unit tests with `MemoryRouter`) it is a no-op.
 - **Autosaved drafts** — `useRascunho(chave)` keeps form fields in localStorage on this computer (no photos). Nova entrada restores the draft with "Rascunho de … recuperado · Começar do zero"; Esc/X/navigation keep it, Cancelar discards it with a "Desfazer" toast, saving clears it.
 - **Undo** — only for actions that are really reversible and send nothing outside (discarding a Nova entrada, deactivating a catalog service). Never for status changes, messages, portal or financial actions.
+- **Batch actions on equipment** — `useAcoesEmLote` + `AcoesEmLote`: export selected (CSV), download each service order PDF (`OrdemServico_<id>_<cliente>.pdf`, same publication path as the single download), resend the "ready" WhatsApp only for OS in PRONTO (uncertain sends are reported, never retried), and move only to `ETAPAS_EM_LOTE` (EM_VERIFICACAO, AGUARDANDO_PECA, EM_MANUTENCAO) when `getProximosStatus` allows. Each OS runs alone; failures are listed. No batch approve/reject/deliver.
 - **Insumos module temporarily blocked** — marked with `[BLOQUEIO-TEMPORARIO-INSUMOS]` comments across `App.tsx`, `Layout.tsx`, `Dashboard.tsx`.
 
 ### Migrations (PostgreSQL)
