@@ -594,12 +594,19 @@ export default function Equipamentos() {
     cliente: Cliente | null;
     responsavel: ClienteContato | null;
     tecnico: string;
+    /** Formulário que gravou (sobrevive a sair e voltar da tela): salvar só apaga o próprio rascunho. */
+    dono?: string;
   }
   const rascunhoEntrada = useRascunho<RascunhoEntrada>("nova-entrada");
-  /** Cada Nova entrada aberta ganha um número; o salvar só apaga o rascunho do seu próprio formulário. */
-  const donoRascunhoEntrada = useRef(0);
+  /** Cada Nova entrada aberta ganha uma identidade gravada junto com o rascunho. */
+  const donoRascunhoEntrada = useRef("");
   const [rascunhoRecuperadoEm, setRascunhoRecuperadoEm] = useState<string | null>(null);
-  const [conferindoSerieRascunho, setConferindoSerieRascunho] = useState(false);
+  const [conferindoSerie, setConferindoSerie] = useState(false);
+  /**
+   * Toda consulta de histórico da série (digitada, do rascunho ou de um equipamento anterior)
+   * ganha um número; só a mais recente, e só se a série ainda for a mesma, aplica o resultado.
+   */
+  const consultaSerieSeq = useRef(0);
   const novaEntradaAberta = dialogOpen && !editando;
   useEffect(() => {
     if (!novaEntradaAberta) return;
@@ -608,7 +615,7 @@ export default function Equipamentos() {
       const temAlgo = entradaTemAlgo(valores, clienteVinculado);
       // Formulário vazio não tem rascunho (e cancela um salvamento antigo pendente, como o
       // que o reset de "Começar do zero" agenda com o cliente anterior).
-      if (temAlgo) rascunhoEntrada.salvar({ form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento });
+      if (temAlgo) rascunhoEntrada.salvar({ form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento, dono: donoRascunhoEntrada.current });
       else rascunhoEntrada.limpar();
     };
     guardar();
@@ -623,7 +630,7 @@ export default function Equipamentos() {
   function descartarEntrada() {
     const valores = form.getValues();
     const temAlgo = entradaTemAlgo(valores, clienteVinculado);
-    const copia: RascunhoEntrada = { form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento };
+    const copia: RascunhoEntrada = { form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento, dono: donoRascunhoEntrada.current };
     rascunhoEntrada.limpar();
     setRascunhoRecuperadoEm(null);
     if (!temAlgo) return;
@@ -674,8 +681,9 @@ export default function Equipamentos() {
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
       observacoes: "",
     });
-    donoRascunhoEntrada.current += 1;
-    setConferindoSerieRascunho(false);
+    donoRascunhoEntrada.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    consultaSerieSeq.current += 1; // consulta de um formulário anterior não vale para este
+    setConferindoSerie(false);
     const rascunho = rascunhoEntrada.ler();
     setRascunhoRecuperadoEm(rascunho?.salvoEm ?? null);
     if (rascunho) {
@@ -687,12 +695,13 @@ export default function Equipamentos() {
       // sem isso, dava para cadastrar outro ciclo sem a confirmação obrigatória.
       const serieRascunho = rascunho.dados.form.serial_number?.trim() ?? "";
       if (serieRascunho.length >= 3) {
-        const dono = donoRascunhoEntrada.current;
-        setConferindoSerieRascunho(true);
+        const seq = ++consultaSerieSeq.current;
+        const vale = () => seq === consultaSerieSeq.current && form.getValues("serial_number")?.trim() === serieRascunho;
+        setConferindoSerie(true);
         db.buscarEquipamentosPorSerial(serieRascunho)
-          .then((registros) => { if (donoRascunhoEntrada.current === dono) setRegistrosAnteriores(registros); })
+          .then((registros) => { if (vale()) setRegistrosAnteriores(registros); })
           .catch((err) => console.error("Erro ao buscar registros anteriores:", err))
-          .finally(() => { if (donoRascunhoEntrada.current === dono) setConferindoSerieRascunho(false); });
+          .finally(() => { if (seq === consultaSerieSeq.current) setConferindoSerie(false); });
       }
     }
     setDialogOpen(true);
@@ -863,15 +872,21 @@ export default function Equipamentos() {
   /** Ao perder foco no campo serial, busca registros existentes com mesmo número de série */
   async function handleSerialBlur() {
     const serial = form.getValues("serial_number");
+    // Consulta nova: a do rascunho (se ainda estiver no ar) deixa de valer.
+    const seq = ++consultaSerieSeq.current;
     // Esconde sugestões após blur (delay pra permitir clique)
     setTimeout(() => setMostrarSugestoes(false), 200);
     if (!serial || serial.trim().length < 3) {
+      setConferindoSerie(false);
       setRegistrosAnteriores([]);
       setConfirmouNovoCiclo(false);
       return;
     }
+    // Cadastrar fica travado até a resposta: série repetida exige confirmar o novo ciclo.
+    setConferindoSerie(true);
     try {
       const registros = await db.buscarEquipamentosPorSerial(serial);
+      if (seq !== consultaSerieSeq.current || form.getValues("serial_number") !== serial) return;
       const anteriores = editando
         ? registros.filter((r) => r.id !== editando.id)
         : registros;
@@ -879,6 +894,8 @@ export default function Equipamentos() {
       setConfirmouNovoCiclo(false);
     } catch (err) {
       console.error("Erro ao buscar registros anteriores:", err);
+    } finally {
+      if (seq === consultaSerieSeq.current) setConferindoSerie(false);
     }
   }
 
@@ -887,7 +904,15 @@ export default function Equipamentos() {
    * quando o atendimento já foi encerrado; se ainda está em atendimento, avisa e não preenche.
    */
   async function usarEquipamentoAnterior(anterior: Equipamento) {
-    const resultado = await usarEquipamentoAnteriorNoCadastro(form, anterior, (serial) => db.buscarEquipamentosPorSerial(serial));
+    const seq = ++consultaSerieSeq.current;
+    setConferindoSerie(true);
+    let resultado: Awaited<ReturnType<typeof usarEquipamentoAnteriorNoCadastro>>;
+    try {
+      resultado = await usarEquipamentoAnteriorNoCadastro(form, anterior, (serial) => db.buscarEquipamentosPorSerial(serial));
+    } finally {
+      if (seq === consultaSerieSeq.current) setConferindoSerie(false);
+    }
+    if (seq !== consultaSerieSeq.current) return;
     if (resultado.tipo === "em_atendimento") {
       setAnteriorEmAtendimento(anterior);
       return;
@@ -1324,7 +1349,7 @@ export default function Equipamentos() {
     const sequenciaEdicao = fotoEdicaoSeq.current;
     const meuRascunhoEntrada = donoRascunhoEntrada.current;
     // Mesma trava do botão, também para o Enter: série repetida exige confirmar o novo ciclo.
-    if (conferindoSerieRascunho || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)) return;
+    if (conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)) return;
     const baselineFotos = editando ? baselineFotosRef.current : null;
     if (editando && (carregandoImagensFormulario || !baselineFotos || baselineFotos.equipamentoId !== editando.id)) {
       setErroImagens("As fotos ainda não foram carregadas com segurança. Recarregue as fotos antes de salvar.");
@@ -1392,12 +1417,11 @@ export default function Equipamentos() {
       }
       const equipamentoSalvo = resultado.data;
       const equipamentoIdSalvo = equipamentoSalvo.id!;
-      // Só apaga o rascunho deste formulário: se a pessoa já abriu outra Nova entrada
-      // enquanto este salvava, o rascunho é do formulário novo. Fechar a janela no meio
-      // não muda o dono (senão o equipamento já criado voltaria como rascunho).
-      if (!editando && donoRascunhoEntrada.current === meuRascunhoEntrada) {
-        rascunhoEntrada.limpar();
-        setRascunhoRecuperadoEm(null);
+      // Só apaga o rascunho deste formulário (a identidade vai gravada com ele): se outra
+      // Nova entrada já gravou por cima, mesmo depois de sair e voltar da tela, ele fica.
+      if (!editando) {
+        rascunhoEntrada.limparSe((rascunho) => rascunho.dono === meuRascunhoEntrada);
+        if (donoRascunhoEntrada.current === meuRascunhoEntrada) setRascunhoRecuperadoEm(null);
       }
 
       if (fotosAlteradas) {
@@ -3430,7 +3454,7 @@ export default function Equipamentos() {
             </DialogBody>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline" type="button" onClick={editando ? undefined : descartarEntrada}>Cancelar</Button></DialogClose>
-              <Button type="submit" disabled={salvando || conferindoSerieRascunho || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
+              <Button type="submit" disabled={salvando || conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
                 {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}
               </Button>
             </DialogFooter>

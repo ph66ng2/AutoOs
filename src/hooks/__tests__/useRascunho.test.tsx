@@ -68,3 +68,14 @@ describe("useRascunho: reabrir dentro da pausa", () => {
     expect(result.current.ler()?.dados).toEqual({ serie: "ZB-3" });
   });
 });
+
+describe("useRascunho: limparSe", () => {
+  it("só apaga quando o gravado é do dono", () => {
+    const { result } = renderHook(() => useRascunho<{ dono: string }>("teste"));
+    act(() => result.current.salvarAgora({ dono: "novo" }));
+    act(() => result.current.limparSe((dados) => dados.dono === "antigo"));
+    expect(result.current.ler()?.dados).toEqual({ dono: "novo" });
+    act(() => result.current.limparSe((dados) => dados.dono === "novo"));
+    expect(result.current.ler()).toBeNull();
+  });
+});

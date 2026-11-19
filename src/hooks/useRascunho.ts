@@ -66,6 +66,17 @@ export function useRascunho<T>(chave: string) {
     }, ESPERA_MS);
   }, [cancelarEspera, salvarAgora]);
 
+  /** Apaga o rascunho só se o gravado ainda for o mesmo (`eDoDono`); o pendente também. */
+  const limparSe = useCallback((eDoDono: (dados: T) => boolean) => {
+    if (pendente.current != null && eDoDono(pendente.current)) cancelarEspera();
+    try {
+      const bruto = localStorage.getItem(chaveCompleta);
+      if (!bruto) return;
+      const gravado = JSON.parse(bruto) as Rascunho<T>;
+      if (gravado?.dados != null && eDoDono(gravado.dados)) localStorage.removeItem(chaveCompleta);
+    } catch { /* sem armazenamento */ }
+  }, [cancelarEspera, chaveCompleta]);
+
   const limpar = useCallback(() => {
     cancelarEspera();
     try { localStorage.removeItem(chaveCompleta); } catch { /* sem armazenamento */ }
@@ -85,7 +96,7 @@ export function useRascunho<T>(chave: string) {
     };
   }, [salvarAgora]);
 
-  return useMemo(() => ({ ler, salvar, salvarAgora, limpar }), [ler, salvar, salvarAgora, limpar]);
+  return useMemo(() => ({ ler, salvar, salvarAgora, limpar, limparSe }), [ler, salvar, salvarAgora, limpar, limparSe]);
 }
 
 /** "hoje às 14:32" ou "18/11 às 09:05", para o aviso de rascunho recuperado. */
