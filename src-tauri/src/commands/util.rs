@@ -21,7 +21,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, warn};
 use url::Url;
 
 const AUTOOS_TEMP_DIR: &str = "autoos";
@@ -1635,8 +1635,32 @@ pub async fn verificar_status_banco() -> Result<bool, String> {
 
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn obter_erro_inicializacao_banco() -> Result<Option<String>, String> {
+pub async fn obter_erro_inicializacao_banco() -> Result<Option<crate::db::DatabaseInitError>, String> {
     Ok(crate::db::database_init_error())
+}
+
+/// Checagem rápida com o app aberto (`SELECT 1`). `None` quando o banco respondeu.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn verificar_saude_banco() -> Result<Option<crate::db::DatabaseInitError>, String> {
+    Ok(crate::db::check_database_health().await)
+}
+
+/// Tenta de novo a conexão com a configuração já resolvida (env, build ou
+/// arquivo salvo), sem pedir URL. Devolve `None` quando conectou.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn tentar_reconectar_banco() -> Result<Option<crate::db::DatabaseInitError>, String> {
+    match crate::db::init_database().await {
+        Ok(_) => {
+            info!("Reconexão com o banco concluída");
+            Ok(None)
+        }
+        Err(error) => {
+            warn!("Reconexão com o banco falhou: {}", crate::db::database_error_message(&error));
+            Ok(crate::db::database_init_error())
+        }
+    }
 }
 
 #[tauri::command]

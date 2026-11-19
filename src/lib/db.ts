@@ -26,8 +26,10 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { emitirOrcamentoPublicado, type ReferenciaPdfPortal } from "@/lib/portal-documentos";
 import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
+import { reportarFalhaDeComando } from "@/lib/database-health";
 import type {
   AcessoPortalContato,
+  DatabaseInitError,
   AjusteOrcamentoInput,
   AlertaPortal,
   ContatoPortalEmpresa,
@@ -105,7 +107,11 @@ export interface ImpressoraWindows {
 const invoke = <T>(command: string, args?: Record<string, unknown>): Promise<T> =>
   withSensitiveAccessRetry(() => args === undefined
     ? tauriInvoke<T>(command)
-    : tauriInvoke<T>(command, args));
+    : tauriInvoke<T>(command, args)).catch((error: unknown) => {
+    // Falha com cara de queda de conexão pede a checagem do banco (useDatabaseHealth).
+    reportarFalhaDeComando(command, error);
+    throw error;
+  });
 
 /** Payload esperado pelo Rust em `criar_cliente` / `atualizar_cliente` (parâmetro `input`). */
 function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
@@ -138,6 +144,11 @@ function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
 }
 
 export const db = {
+  /** Reconecta com a configuração de banco já salva. `null` significa que conectou. */
+  tentarReconectarBanco: () => invoke<DatabaseInitError | null>("tentar_reconectar_banco"),
+  obterErroInicializacaoBanco: () => invoke<DatabaseInitError | null>("obter_erro_inicializacao_banco"),
+  /** Checagem rápida com o app aberto (`SELECT 1`). `null` quando o banco respondeu. */
+  verificarSaudeBanco: () => invoke<DatabaseInitError | null>("verificar_saude_banco"),
   getSeenReleaseHighlights: () => invoke<string | null>("get_seen_release_highlights"),
   markReleaseHighlightsSeen: () => invoke<void>("mark_release_highlights_seen"),
 
