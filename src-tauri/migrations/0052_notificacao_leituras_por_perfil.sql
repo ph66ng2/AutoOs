@@ -15,7 +15,7 @@ END;
 $$;
 
 CREATE TABLE IF NOT EXISTS public.notificacao_leituras (
-    id BIGSERIAL PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     empresa_id INTEGER NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
     profile_id INTEGER NOT NULL,
     chave TEXT NOT NULL,
