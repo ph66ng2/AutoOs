@@ -168,6 +168,11 @@ export const db = {
     return Object.fromEntries(linhas.map((linha) => [linha.status, Number(linha.total)]));
   },
 
+  /** Nomes de técnico já gravados nas verificações (filtro de técnico) → Rust: listar_nomes_tecnicos_verificacoes */
+  async listarNomesTecnicosVerificacoes(): Promise<string[]> {
+    return invoke<string[]>("listar_nomes_tecnicos_verificacoes");
+  },
+
   /** Busca equipamento por ID → Rust: buscar_equipamento */
   async buscarEquipamento(id: number): Promise<Equipamento> {
     return invoke<Equipamento>("buscar_equipamento", { id });

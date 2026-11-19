@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { erroEmailProfissional } from "@/lib/email-profissional";
 import { ProfilePermissions } from "@/components/ProfilePermissions";
 import { CreateProfileCard } from "@/components/CreateProfileCard";
 import { AccessCodeCard } from "@/components/perfil/AccessCodeCard";
@@ -120,6 +122,8 @@ export function TeamAccessManager({
     action: Action;
   } | null>(null);
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [atendeTecnico, setAtendeTecnico] = useState(false);
   const [role, setRole] = useState("CUSTOM");
   const [permissions, setPermissions] = useState<SensitivePermission[]>([]);
   const [adminPin, setAdminPin] = useState("");
@@ -152,6 +156,8 @@ export function TeamAccessManager({
   function open(profile: SecurityProfile, action: Action) {
     setSelection({ profile, action });
     setName(profile.nome);
+    setEmail(profile.email_profissional ?? "");
+    setAtendeTecnico(Boolean(profile.atende_tecnico));
     setRole(profile.role);
     setPermissions([...profile.permissions]);
     setAdminPin("");
@@ -172,6 +178,13 @@ export function TeamAccessManager({
     if (action === "edit" && name.trim().length < 3) {
       setError("Informe um nome com pelo menos 3 caracteres.");
       return;
+    }
+    if (action === "edit") {
+      const erroEmail = erroEmailProfissional(email);
+      if (erroEmail) {
+        setError(erroEmail);
+        return;
+      }
     }
     if (action === "edit") {
       const compat = perfilCompativel056(role, permissions);
@@ -200,7 +213,7 @@ export function TeamAccessManager({
       if (action === "edit")
         await SensitiveAccessService.updateProfile(
           profile.id,
-          { nome: name.trim(), role, permissions },
+          { nome: name.trim(), role, permissions, email_profissional: email.trim(), atende_tecnico: atendeTecnico },
           adminPin,
         );
       if (action === "code") {
@@ -317,6 +330,9 @@ export function TeamAccessManager({
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {securityRoleLabel(profile.role)}
+                        {/* A função Técnico já diz que atende; só fala da marca quando ela foge da função. */}
+                        {profile.atende_tecnico && profile.role !== "TECNICO" && " · atende OS"}
+                        {!profile.atende_tecnico && profile.role === "TECNICO" && " · fora das OS"}
                         {memberStatus(profile).label !== "Ativo" && (
                           <>
                             {" · "}
@@ -326,6 +342,11 @@ export function TeamAccessManager({
                           </>
                         )}
                       </p>
+                      {profile.email_profissional ? (
+                        <p className="truncate text-xs text-muted-foreground" title={profile.email_profissional}>{profile.email_profissional}</p>
+                      ) : (
+                        <p className="text-xs font-semibold text-status-wait">Sem e-mail profissional: edite para completar</p>
+                      )}
                     </div>
                     <Button
                       variant="outline"
@@ -451,7 +472,7 @@ export function TeamAccessManager({
                 : "Confira os dados antes de confirmar."}
             </DialogDescription>
           </DialogHeader>
-          <form onChange={() => setError(null)} onSubmit={(event) => void submit(event)} className="space-y-5">
+          <form noValidate onChange={() => setError(null)} onSubmit={(event) => void submit(event)} className="space-y-5">
             {selection?.action === "edit" && (
               <>
                 <div className="space-y-2">
@@ -464,6 +485,23 @@ export function TeamAccessManager({
                     maxLength={80}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="team-email">E-mail profissional</Label>
+                  <Input
+                    id="team-email"
+                    type="email"
+                    autoComplete="off"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    disabled={busy}
+                    maxLength={254}
+                    placeholder="nome@empresa.com.br"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox checked={atendeTecnico} onCheckedChange={(valor) => setAtendeTecnico(valor === true)} disabled={busy} />
+                  Faz atendimento técnico (aparece como técnico nas OS)
+                </label>
                 <div className="space-y-2">
                   <Label htmlFor="team-role">Função</Label>
                   <select

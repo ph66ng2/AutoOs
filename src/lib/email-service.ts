@@ -18,6 +18,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
+import { emailDoTecnico, extrairTecnicoInicial } from "@/lib/tecnicos";
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
 import { PdfService } from "@/lib/pdf-service";
@@ -44,22 +45,12 @@ const AVISO_TROCA_PECAS_TEXTO =
 const AVISO_TROCA_PECAS_HTML =
   "<strong>Atenção:</strong> em caso de troca de peças, o prazo de execução do serviço pode ser estendido.";
 
+/** E-mail profissional do perfil técnico com esse nome (antes fixo para "Ivan" e "Isaias"). */
 export function emailTecnicoPorNome(tecnicoNome?: string) {
-  const normalizado = (tecnicoNome || "")
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  if (normalizado === "ivan") return "ivan@bmitag.com.br";
-  if (normalizado === "isaias") return "isaias@bmitag.com.br";
-  return "";
+  return emailDoTecnico(tecnicoNome);
 }
 
-function extrairTecnicoInicialDeObservacoes(observacoes?: string | null) {
-  if (!observacoes) return "";
-  const match = observacoes.match(/^Técnico inicial:\s*(Ivan|Isaias|Isaías)\b/m);
-  return match?.[1] || "";
-}
+const extrairTecnicoInicialDeObservacoes = extrairTecnicoInicial;
 
 /**
  * Monta a lista de cópias (CC) de um email automático.

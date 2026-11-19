@@ -1,4 +1,5 @@
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
+import { extrairTecnicoInicial } from "@/lib/tecnicos";
 import type { EquipamentoFormData } from "@/lib/validations";
 import { db } from "@/lib/db";
 import type { EquipamentoImagemDraft } from "@/lib/equipamento-imagem-utils";
@@ -11,10 +12,9 @@ import { MENSAGEM_AGUARDANDO_TOTAL_ZERO, MENSAGEM_TOTAL_ZERO_SEM_GARANTIA, MENSA
 import { STATUS_SENSIVEIS } from "./equipamentos-page-constants";
 import { getCorrectionStates, getNextStates, normalizeStatusKey } from "@/lib/status-fsm";
 
+/** Técnico gravado na entrada ("Técnico inicial: <nome>"); null se não houver. */
 export function extrairTecnicoInicialDeObservacoes(observacoes?: string | null): TecnicoDisponivel | null {
-  if (!observacoes) return null;
-  const match = observacoes.match(/^Técnico inicial:\s*(Ivan|Isaias)\b/m);
-  return (match?.[1] as TecnicoDisponivel | undefined) || null;
+  return extrairTecnicoInicial(observacoes) || null;
 }
 
 export function removerTecnicoInicialDasObservacoes(observacoes?: string | null) {

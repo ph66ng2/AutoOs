@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { erroEmailProfissional } from "@/lib/email-profissional";
 import {
   ArrowLeft,
   ArrowRight,
@@ -36,6 +38,8 @@ const steps = ["Pessoa e função", "Liberações", "Revisão"];
 
 export function CreateProfileCard({ profiles, onCreated, onBusyChange }: Props) {
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [atendeTecnico, setAtendeTecnico] = useState(false);
   const [role, setRole] = useState(ROLE_INICIAL);
   const [permissions, setPermissions] = useState<SensitivePermission[]>([...PRESET_INICIAL.permissions]);
   const [step, setStep] = useState(0);
@@ -60,6 +64,7 @@ export function CreateProfileCard({ profiles, onCreated, onBusyChange }: Props) 
         ? "Já existe um perfil com este nome. Escolha outro nome."
         : null;
 
+  const emailError = erroEmailProfissional(email);
   const compat = perfilCompativel056(role, permissions);
 
   const adminPinError = !/^\d{4,8}$/.test(adminPin)
@@ -74,13 +79,15 @@ export function CreateProfileCard({ profiles, onCreated, onBusyChange }: Props) 
   }
   function continueStep() {
     setSubmitted(true);
-    if (step === 0 && nameError) return;
+    if (step === 0 && (nameError || emailError)) return;
     if (step === 1 && !compat.ok) return;
     goTo(step + 1);
   }
   function reset() {
     setCreated(null);
     setName("");
+    setEmail("");
+    setAtendeTecnico(false);
     setRole(ROLE_INICIAL);
     setPermissions([...PRESET_INICIAL.permissions]);
     setAdminPin("");
@@ -88,14 +95,14 @@ export function CreateProfileCard({ profiles, onCreated, onBusyChange }: Props) 
   }
   async function createProfile() {
     setSubmitted(true);
-    if (nameError || !compat.ok || adminPinError || inFlight.current) return;
+    if (nameError || emailError || !compat.ok || adminPinError || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     onBusyChange?.(true);
     setError(null);
     try {
       const code = await SensitiveAccessService.createProfileWithCode(
-        { nome: trimmedName, role, permissions },
+        { nome: trimmedName, role, permissions, email_profissional: email.trim(), atende_tecnico: atendeTecnico },
         adminPin,
       );
       setCreated(code);
@@ -166,6 +173,7 @@ export function CreateProfileCard({ profiles, onCreated, onBusyChange }: Props) 
               ))}
             </ol>
             <form
+              noValidate
               onChange={() => { setError(null); setSubmitted(false); }}
               onSubmit={(event) => {
                 event.preventDefault();
@@ -212,6 +220,27 @@ export function CreateProfileCard({ profiles, onCreated, onBusyChange }: Props) 
                       </p>
                     )}
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="profile-email">E-mail profissional</Label>
+                    <Input
+                      id="profile-email"
+                      type="email"
+                      autoComplete="off"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="nome@empresa.com.br"
+                      maxLength={254}
+                      aria-invalid={submitted && !!emailError}
+                      aria-describedby={submitted && emailError ? "profile-email-error" : undefined}
+                    />
+                    {submitted && emailError && (
+                      <p id="profile-email-error" role="alert" className="text-sm text-destructive">{emailError}</p>
+                    )}
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={atendeTecnico} onCheckedChange={(valor) => setAtendeTecnico(valor === true)} />
+                    Faz atendimento técnico (aparece como técnico nas OS)
+                  </label>
                   <fieldset>
                     <legend className="mb-3 text-sm font-medium">
                       Função inicial

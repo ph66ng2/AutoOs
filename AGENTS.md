@@ -64,7 +64,7 @@ Desktop app for printer management, technical reception, operational communicati
 | Supply stock | `src/pages/Insumos.tsx` + `produtos.rs` | Currently blocked in routing (`BlockedInsumosPage`) |
 | Settings/security | `src/pages/Configuracoes.tsx` + `auth.rs` + `util.rs` | Profiles, PIN, audit, backup, schema status |
 | Auth/permissions | `auth.rs` | PINs in OS keyring (never DB), XOR session obfuscation |
-| Profiles, first access, tour | `src/pages/Perfil.tsx`, `src/components/perfil/`, `src/components/tour/`, `src/lib/tour-steps.ts` + `auth.rs` + `0041_perfil_personalizacao_primeiro_acesso.sql` | Admin creates a profile and gets a one-time access code (only its Argon2 hash in `codigos_primeiro_acesso`; 24h, single use, one open code per profile, revoked after 5 wrong guesses counted in the database, consumed only after the PIN is stored in the keyring). The person redeems it on each computer and creates their own PIN there. Name/icon/color/theme live in `security_profiles`. Tour steps per permission in `tour-steps.ts`; `tour_permissoes_vistas` drives the "what's new" tour |
+| Profiles, first access, tour | `src/pages/Perfil.tsx`, `src/components/perfil/`, `src/components/tour/`, `src/lib/tour-steps.ts` + `auth.rs` + `0041_perfil_personalizacao_primeiro_acesso.sql` | Admin creates a profile and gets a one-time access code (only its Argon2 hash in `codigos_primeiro_acesso`; 24h, single use, one open code per profile, revoked after 5 wrong guesses counted in the database, consumed only after the PIN is stored in the keyring). The person redeems it on each computer and creates their own PIN there. Name/icon/color/theme, the mandatory professional email (`email_profissional`) and the "faz atendimento técnico" flag (`atende_tecnico`) live in `security_profiles`. Tour steps per permission in `tour-steps.ts`; `tour_permissoes_vistas` drives the "what's new" tour |
 | Database | `db.rs` + `migrations/` | sqlx runtime queries only (no `query!` macros) |
 | PDF generation | `src/lib/pdf-service.ts` | jsPDF + autotable, 1211 lines with BMITAG branding |
 | Email/WhatsApp | `src/lib/email-service.ts`, `whatsapp-service.ts` | SMTP + Evolution API. Email CC hardcoded to `medeiros@bmitag.com.br` |
@@ -292,7 +292,7 @@ O que o script não pega, quem coordena confere à mão, sem pedir a um modelo: 
 - **tsconfig excludes test files** — `"exclude": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"]` means `tsc --noEmit` does not check tests.
 - **Vitest Windows stability** — `pool: 'threads'`, `fileParallelism: false`, `maxWorkers: 1` to avoid fork/AV issues on Windows.
 - **Playwright mock mode** — E2E tests run with `VITE_E2E_MOCK=1` which aliases `@tauri-apps/api/core` to `e2e/mocks/tauri-core.ts`. This validates UI flows with in-memory mock data, **not** real Tauri + PostgreSQL.
-- **Email CC hardcoded** — `email-service.ts` always CCs `medeiros@bmitag.com.br`. Technician emails mapped by name (`ivan` → `ivan@bmitag.com.br`).
+- **Email CC hardcoded** — `email-service.ts` always CCs `medeiros@bmitag.com.br`. Technicians are the machine's profiles marked `atende_tecnico` (`src/lib/tecnicos.ts`, `useTecnicos`); the technician's email is the profile's mandatory `email_profissional` (migration `0051`). Old OS keep the technician name as text.
 - **Windows code signing** — `certificateThumbprint` is `null` in `tauri.conf.json`. Build-time script `scripts/apply-windows-bundle-signing.mjs` injects it from env var for CI/release builds.
 
 ## NOTES

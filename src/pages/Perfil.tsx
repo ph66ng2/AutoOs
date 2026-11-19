@@ -1,3 +1,4 @@
+import { erroEmailProfissional } from "@/lib/email-profissional";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -243,6 +244,7 @@ function CapabilityItem({ title, note, allowed }: { title: string; note: string;
 function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved: () => Promise<void> }) {
   const look = profileAppearance(profile);
   const [nome, setNome] = useState(profile.nome);
+  const [email, setEmail] = useState(profile.email_profissional ?? "");
   const [color, setColor] = useState(look.color);
   const [icon, setIcon] = useState(look.icon);
   const [theme, setTheme] = useState<ProfileTheme>(look.theme);
@@ -252,11 +254,14 @@ function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved:
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (nome.trim().length < 3) return setError("O nome deve ter pelo menos 3 caracteres.");
+    const erroEmail = erroEmailProfissional(email);
+    if (erroEmail) return setError(erroEmail);
     setBusy(true);
     setError(null);
     try {
       await SensitiveAccessService.savePersonalization({
         nome: nome.trim(),
+        email_profissional: email.trim(),
         avatar_icone: icon,
         avatar_cor: color,
         tema: theme,
@@ -274,12 +279,15 @@ function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved:
   return (
     <Card className="max-w-3xl">
       <CardContent className="p-6">
-        <form onSubmit={(event) => void save(event)} className="space-y-7">
+        <form noValidate onSubmit={(event) => void save(event)} className="space-y-7">
           <div className="flex items-center gap-4">
             <ProfileAvatar icon={icon} color={color} size="lg" />
             <div className="max-w-sm flex-1 space-y-2">
               <Label htmlFor="perfil-nome">Nome de exibição</Label>
               <Input id="perfil-nome" value={nome} onChange={(event) => setNome(event.target.value)} maxLength={40} disabled={busy} />
+              <Label htmlFor="perfil-email" className="block pt-2">E-mail profissional</Label>
+              <Input id="perfil-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} disabled={busy} placeholder="nome@empresa.com.br" />
+              {!profile.email_profissional && <p className="text-xs font-semibold text-status-wait">Seu perfil ainda não tem e-mail profissional.</p>}
             </div>
           </div>
           <AppearancePicker

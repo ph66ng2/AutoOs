@@ -15,6 +15,9 @@ const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({ db }));
 import { PdfService } from "@/lib/pdf-service";
+import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+
+beforeEach(() => semearTecnicosPadrao());
 vi.mock("@/lib/email-service", () => ({ EmailService: emailService }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ status: { active_profile_name: "Atendente", unlocked: true }, ensureSensitiveAccess, lockSensitiveAccess: vi.fn(), openProfileSelector: vi.fn() }),

@@ -900,6 +900,10 @@ export interface SecurityProfile {
   onboarding_pendente?: boolean;
   /** Permissões que o tour já apresentou; `null` = nunca viu o tour. */
   tour_permissoes_vistas?: SensitivePermission[] | null;
+  /** E-mail profissional (cópia dos e-mails da OS, PDF). Vazio em perfis antigos até alguém preencher. */
+  email_profissional?: string | null;
+  /** Aparece na lista de técnicos da OS. */
+  atende_tecnico?: boolean;
 }
 
 export interface CodigoPrimeiroAcesso {
@@ -912,6 +916,8 @@ export interface CodigoPrimeiroAcesso {
 
 export interface PersonalizacaoPerfilInput {
   nome: string;
+  /** O próprio dono preenche ou troca; omitido mantém o atual. */
+  email_profissional?: string;
   avatar_icone: string | null;
   avatar_cor: string | null;
   tema: "light" | "dark" | null;
@@ -922,6 +928,9 @@ export interface SecurityProfileInput {
   nome: string;
   role: string;
   permissions: SensitivePermission[];
+  /** Obrigatório ao criar e ao editar pela Equipe. */
+  email_profissional: string;
+  atende_tecnico: boolean;
 }
 
 export interface SecurityAuditEvent {

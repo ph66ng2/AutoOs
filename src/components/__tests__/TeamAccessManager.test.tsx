@@ -6,7 +6,7 @@ const service = vi.hoisted(() => ({ listProfiles: vi.fn(), updateProfile: vi.fn(
 vi.mock("@/lib/sensitive-access", () => ({ SensitiveAccessService: service }));
 const profiles = [
   { id: 1, nome: "Paulo", role: "ADMIN", permissions: ["MANAGE_PROFILES"], pin_configured: true, pin_required: true, ativo: true },
-  { id: 2, nome: "Ivan", role: "TECNICO", permissions: ["STOCK_CONTROL"], pin_configured: false, pin_required: true, ativo: true, onboarding_pendente: true },
+  { id: 2, nome: "Ivan", role: "TECNICO", permissions: ["STOCK_CONTROL"], pin_configured: false, pin_required: true, ativo: true, onboarding_pendente: true, email_profissional: "ivan@empresa.test", atende_tecnico: true },
   { id: 3, nome: "Maria", role: "ATENDENTE", permissions: [], pin_configured: true, pin_required: true, ativo: false },
 ];
 describe("gestão da equipe", () => {
@@ -32,8 +32,28 @@ describe("gestão da equipe", () => {
     expect(service.updateProfile).not.toHaveBeenCalled();
     await user.type(screen.getByLabelText("Seu PIN de administrador"), "1234");
     await user.click(screen.getByRole("button", { name: "Confirmar alteração" }));
-    await waitFor(() => expect(service.updateProfile).toHaveBeenCalledWith(2, { nome: "Ivan", role: "TECNICO", permissions: ["STOCK_CONTROL"] }, "1234"));
+    await waitFor(() => expect(service.updateProfile).toHaveBeenCalledWith(2, { nome: "Ivan", role: "TECNICO", permissions: ["STOCK_CONTROL"], email_profissional: "ivan@empresa.test", atende_tecnico: true }, "1234"));
     expect(changed).toHaveBeenCalledOnce();
+  });
+  it("editar exige o e-mail profissional e grava a marca de técnico", async () => {
+    const user = userEvent.setup();
+    service.updateProfile.mockResolvedValue(undefined);
+    render(<TeamAccessManager activeProfileId={1} onChanged={vi.fn().mockResolvedValue(undefined)} />);
+    await screen.findByText("Paulo");
+    expect(screen.getByText("Sem e-mail profissional: edite para completar")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Editar", exact: true })[0]);
+    await user.type(screen.getByLabelText("Seu PIN de administrador"), "1234");
+    await user.click(screen.getByRole("button", { name: "Confirmar alteração" }));
+    expect(await screen.findByText("Informe o e-mail profissional.")).toBeInTheDocument();
+    expect(service.updateProfile).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText("E-mail profissional"), "paulo@empresa.test");
+    await user.click(screen.getByLabelText(/Faz atendimento técnico/));
+    await user.click(screen.getByRole("button", { name: "Confirmar alteração" }));
+    await waitFor(() => expect(service.updateProfile).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ email_profissional: "paulo@empresa.test", atende_tecnico: true }),
+      "1234",
+    ));
   });
   it("sem a trava 0.5.6, reativa perfil sem permissões", async () => {
     const user = userEvent.setup();
@@ -84,6 +104,7 @@ describe("gestão da equipe", () => {
     await screen.findByText("Ivan");
     await user.click(screen.getByRole("button", { name: /Novo perfil/ }));
     await user.type(screen.getByLabelText("Nome provisório"), "Nova pessoa");
+    await user.type(screen.getByLabelText("E-mail profissional"), "nova@empresa.test");
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     await user.type(screen.getByLabelText("Seu PIN de administrador"), "1234");

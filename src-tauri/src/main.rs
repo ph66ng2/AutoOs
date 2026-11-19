@@ -162,6 +162,7 @@ fn main() {
             commands::equipamentos::listar_equipamentos,
             commands::equipamentos::listar_equipamentos_paginados,
             commands::equipamentos::contar_equipamentos_por_status,
+            commands::equipamentos::listar_nomes_tecnicos_verificacoes,
             commands::auth::obter_empresa_ativa,
             commands::equipamentos::listar_equipamentos_cliente,
             commands::equipamentos::buscar_equipamento,

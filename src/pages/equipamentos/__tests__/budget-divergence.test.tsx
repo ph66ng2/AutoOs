@@ -326,6 +326,9 @@ function makeVerificacao(opts?: { adjusted_at?: string; servicos?: any[]; pecas?
 // ─── Import Component ───────────────────────────────────
 
 import Equipamentos from "../../Equipamentos";
+import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+
+beforeEach(() => semearTecnicosPadrao());
 
 describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {

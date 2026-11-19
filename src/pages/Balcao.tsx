@@ -61,9 +61,7 @@ import { afterCounterRegistration } from "@/lib/counter-registration";
 import { EmailService } from "@/lib/email-service";
 import { equipamentoSchema } from "@/lib/validations";
 import {
-  EMAIL_POR_TECNICO,
   MARCA_EQUIPAMENTO_OPTIONS,
-  TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
 } from "@/pages/equipamentos/equipamentos-page-constants";
 import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
@@ -71,6 +69,7 @@ import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolv
 import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
 import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "@/lib/logo-monochrome-base64";
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
+import { useTecnicos } from "@/hooks/useTecnicos";
 import { todayLocalIsoDate } from "@/lib/date-utils";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
 import {
@@ -540,7 +539,13 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     laudo_tecnico: "",
     observacoes: "",
   });
-  const [tecnico, setTecnico] = useState<TecnicoDisponivel>("Ivan");
+  const tecnicos = useTecnicos();
+  const [tecnico, setTecnico] = useState<TecnicoDisponivel>("");
+  // Sem escolha ainda: o primeiro técnico da lista (perfis com "faz atendimento técnico").
+  useEffect(() => {
+    if (!tecnico && tecnicos.length > 0) setTecnico(tecnicos[0].nome);
+  }, [tecnico, tecnicos]);
+  const emailDoTecnicoEscolhido = tecnicos.find((t) => t.nome === tecnico)?.email ?? "";
   const [emailPromptOpen, setEmailPromptOpen] = useState(false);
   const [emailRecipient, setEmailRecipient] = useState<ResolvedRecipient | null>(null);
   const [emailFeedback, setEmailFeedback] = useState<string | null>(null);
@@ -692,10 +697,11 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       );
     if (history.length && !confirmedCycle)
       return setError("Confirme a criação de um novo ciclo para este serial.");
+    if (!tecnico) return setError("Escolha o técnico que está operando.");
     setSaving(true);
     setError(null);
     try {
-      const emailTecnico = EMAIL_POR_TECNICO[tecnico] || "";
+      const emailTecnico = emailDoTecnicoEscolhido;
       const observacoes = [
         `Técnico inicial: ${tecnico}${emailTecnico ? ` (${emailTecnico})` : ""}`,
         data.observacoes.trim(),
@@ -997,15 +1003,17 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TECNICOS_DISPONIVEIS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
+                  {tecnicos.map((option) => (
+                    <SelectItem key={option.id} value={option.nome}>
+                      {option.nome}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">
-                E-mail do técnico: {EMAIL_POR_TECNICO[tecnico]}
+                {tecnicos.length === 0
+                  ? "Nenhum perfil marcado como técnico. Marque em Equipe e acessos."
+                  : `E-mail do técnico: ${emailDoTecnicoEscolhido || "não informado"}`}
               </p>
             </div>
           </div>
@@ -1231,7 +1239,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
             />
             <Info
               label="Técnico"
-              value={`${tecnico} — ${EMAIL_POR_TECNICO[tecnico] || "—"}`}
+              value={`${tecnico || "—"} — ${emailDoTecnicoEscolhido || "—"}`}
             />
             <Info
               label="Teste de impressão"

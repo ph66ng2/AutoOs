@@ -23,6 +23,7 @@
  * ║  - VerificacaoTecnica (componente)                           ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
+import { useTecnicos } from "@/hooks/useTecnicos";
 import { Fragment, useEffect, useState } from "react";
 import { Camera, ChevronLeft, Lock, Plus, Search, Trash2 } from "lucide-react";
 import { LinhaServicoCelular } from "@/components/equipamentos/LinhaServicoCelular";
@@ -57,8 +58,8 @@ import { useNotification } from "@/hooks/useNotification";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { imagemPersistidaParaDraft, type EquipamentoImagemDraft } from "@/lib/equipamento-imagem-utils";
 
-const TECNICOS_DISPONIVEIS = ["Ivan", "Isaias"] as const;
-export type TecnicoDisponivel = (typeof TECNICOS_DISPONIVEIS)[number];
+/** Nome do técnico da OS: um perfil com "faz atendimento técnico" (OS antigas podem ter outro nome gravado). */
+export type TecnicoDisponivel = string;
 
 /** Dados de verificação sem ID (para criação). Usado por useStatusEquipamento.finalizarVerificacao */
 export interface DadosVerificacao extends Omit<Verificacao, "id"> {}
@@ -81,7 +82,7 @@ export function VerificacaoTecnica({
   onOpenChange,
   onConcluir,
   salvando = false,
-  tecnicoInicial = "Ivan",
+  tecnicoInicial = "",
   podeFinalizar = true,
 }: VerificacaoTecnicaProps) {
   // ─── State ──────────────────────────────────────────
@@ -92,7 +93,14 @@ export function VerificacaoTecnica({
   const [checklist, setChecklist] = useState<ItemVerificacao[]>(() => CHECKLIST_PADRAO.map((item) => ({ ...item })));
   const [servicos, setServicos] = useState<ServicoNecessario[]>([]);
   const [observacoesVerif, setObservacoesVerif] = useState("");
-  const [tecnicoNome, setTecnicoNome] = useState<TecnicoDisponivel>(tecnicoInicial);
+  const tecnicos = useTecnicos();
+  // Sem técnico sugerido pela entrada: o primeiro da lista de técnicos.
+  const tecnicoPadrao = tecnicoInicial || tecnicos[0]?.nome || "";
+  const [tecnicoNome, setTecnicoNome] = useState<TecnicoDisponivel>(tecnicoPadrao);
+  // OS antiga com um técnico que não é perfil (texto gravado na época) continua aparecendo.
+  const opcoesTecnico = tecnicoNome && !tecnicos.some((t) => t.nome === tecnicoNome)
+    ? [...tecnicos.map((t) => t.nome), tecnicoNome]
+    : tecnicos.map((t) => t.nome);
   const [catalogoServicos, setCatalogoServicos] = useState<ServicoCatalogo[]>([]);
   const [carregandoCatalogo, setCarregandoCatalogo] = useState(false);
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
@@ -117,8 +125,8 @@ export function VerificacaoTecnica({
 
   useEffect(() => {
     if (!open) return;
-    setTecnicoNome(tecnicoInicial);
-  }, [open, tecnicoInicial]);
+    setTecnicoNome(tecnicoPadrao);
+  }, [open, tecnicoPadrao]);
 
   useEffect(() => {
     if (!open || !equipamento?.id) {
@@ -141,7 +149,7 @@ export function VerificacaoTecnica({
     setChecklist(CHECKLIST_PADRAO.map((item) => ({ ...item })));
     setServicos([]);
     setObservacoesVerif("");
-    setTecnicoNome(tecnicoInicial);
+    setTecnicoNome(tecnicoPadrao);
     setImagensVerificacao([]);
     setValoresServicoInvalidos({});
     setConfirmGarantiaOpen(false);
@@ -223,6 +231,11 @@ export function VerificacaoTecnica({
     const custoTotal = custoTotalServicos + custoTotalPecas;
     if (custoTotal === 0 && !osSomenteGarantia(servicosNormalizados)) {
       warning("Verificação", MENSAGEM_TOTAL_ZERO_SEM_GARANTIA);
+      return;
+    }
+
+    if (!tecnicoNome.trim()) {
+      warning("Verificação", "Escolha o técnico responsável.");
       return;
     }
 
@@ -334,12 +347,15 @@ export function VerificacaoTecnica({
         <div className="grid gap-4 md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
           <div className="space-y-2">
             <label htmlFor="verificacao-tecnico" className="text-sm font-medium">Técnico responsável</label>
-            <Select value={tecnicoNome} onValueChange={(value: (typeof TECNICOS_DISPONIVEIS)[number]) => setTecnicoNome(value)}>
+            <Select value={tecnicoNome || undefined} onValueChange={setTecnicoNome}>
               <SelectTrigger id="verificacao-tecnico" className="w-full">
                 <SelectValue placeholder="Selecione o técnico" />
               </SelectTrigger>
               <SelectContent>
-                {TECNICOS_DISPONIVEIS.map((tecnico) => (
+                {opcoesTecnico.length === 0 && (
+                  <p className="px-2 py-1.5 text-sm text-muted-foreground">Nenhum perfil marcado como técnico. Marque em Equipe e acessos.</p>
+                )}
+                {opcoesTecnico.map((tecnico) => (
                   <SelectItem key={tecnico} value={tecnico}>
                     {tecnico}
                   </SelectItem>

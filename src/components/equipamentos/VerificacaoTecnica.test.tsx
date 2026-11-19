@@ -1,8 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VerificacaoTecnica } from "./VerificacaoTecnica";
 import { MENSAGEM_TOTAL_ZERO_SEM_GARANTIA } from "@/lib/orcamento-estoque";
+import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+
+beforeEach(() => semearTecnicosPadrao());
 
 const warning = vi.hoisted(() => vi.fn());
 
