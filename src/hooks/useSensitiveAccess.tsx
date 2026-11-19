@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useBootUi } from "@/components/BootUi";
 import { erroPinNovo } from "@/lib/pin-rules";
 import { ProfileSessionDialog, type FirstAccessOrigin } from "@/components/ProfileSessionDialog";
+import { definirPerfisConhecidos } from "@/lib/tecnicos";
 import { FirstAccessBridge } from "@/components/perfil/FirstAccessBridge";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { PrimeiroAcessoWizard } from "@/components/perfil/PrimeiroAcessoWizard";
@@ -137,6 +138,8 @@ const KEYRING_BLOCKED_MESSAGE = "O cofre de senhas do sistema está bloqueado ou
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const { bootAnimationComplete } = useBootUi();
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
+  // Técnicos e e-mails profissionais vêm dos perfis (lib/tecnicos): e-mail e PDF consultam por nome.
+  useEffect(() => { definirPerfisConhecidos(status?.profiles ?? []); }, [status?.profiles]);
   const [loading, setLoading] = useState(true);
   const [connectionUnavailable, setConnectionUnavailable] = useState(false);
   const refreshFailuresRef = useRef(0);

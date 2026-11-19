@@ -401,6 +401,9 @@ const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
     ("security_profiles", "tema"),
     ("security_profiles", "onboarding_concluido_em"),
     ("security_profiles", "tour_permissoes_vistas"),
+    // Técnicos e e-mail profissional por perfil (0051).
+    ("security_profiles", "email_profissional"),
+    ("security_profiles", "atende_tecnico"),
 ];
 
 const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[

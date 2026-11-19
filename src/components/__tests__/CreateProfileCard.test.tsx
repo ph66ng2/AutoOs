@@ -26,8 +26,20 @@ describe("cadastro guiado de colaboradores", () => {
     const user = userEvent.setup();
     render(<CreateProfileCard profiles={profiles} onCreated={vi.fn()} />);
     await user.type(screen.getByLabelText("Nome provisório"), "operador");
+    await user.type(screen.getByLabelText("E-mail profissional"), "operador@empresa.test");
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Já existe um perfil");
+    expect(createProfileWithCode).not.toHaveBeenCalled();
+  });
+  it("e-mail profissional é obrigatório para avançar", async () => {
+    const user = userEvent.setup();
+    render(<CreateProfileCard profiles={profiles} onCreated={vi.fn()} />);
+    await user.type(screen.getByLabelText("Nome provisório"), "Joana");
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Informe o e-mail profissional.");
+    await user.type(screen.getByLabelText("E-mail profissional"), "joana");
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("E-mail profissional inválido.");
     expect(createProfileWithCode).not.toHaveBeenCalled();
   });
   it("sem a trava 0.5.6, Recepção fica disponível", () => {
@@ -39,6 +51,7 @@ describe("cadastro guiado de colaboradores", () => {
     const user = userEvent.setup();
     render(<CreateProfileCard profiles={profiles} onCreated={vi.fn()} />);
     await user.type(screen.getByLabelText("Nome provisório"), "Maria");
+    await user.type(screen.getByLabelText("E-mail profissional"), "pessoa@empresa.test");
     await user.click(screen.getByRole("radio", { name: /^Personalizado/ }));
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(screen.getByRole("heading", { name: "Liberações" })).toBeInTheDocument();
@@ -59,6 +72,7 @@ describe("cadastro guiado de colaboradores", () => {
     });
     render(<CreateProfileCard profiles={profiles} onCreated={onCreated} />);
     await user.type(screen.getByLabelText("Nome provisório"), "Tec 2");
+    await user.type(screen.getByLabelText("E-mail profissional"), "pessoa@empresa.test");
     await user.click(screen.getByRole("radio", { name: /^Técnico/ }));
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     await user.click(screen.getByRole("button", { name: "Continuar" }));
@@ -69,7 +83,7 @@ describe("cadastro guiado de colaboradores", () => {
     await user.click(screen.getByRole("button", { name: "Criar e gerar código" }));
     await waitFor(() =>
       expect(createProfileWithCode).toHaveBeenCalledWith(
-        { nome: "Tec 2", role: "TECNICO", permissions: ["STOCK_CONTROL", "PREPARE_QUOTES", "MANAGE_STATUS_LINKS", "FINANCIAL_ACTIONS"] },
+        { nome: "Tec 2", role: "TECNICO", permissions: ["STOCK_CONTROL", "PREPARE_QUOTES", "MANAGE_STATUS_LINKS", "FINANCIAL_ACTIONS"], email_profissional: "pessoa@empresa.test", atende_tecnico: false },
         "4321",
       ),
     );
@@ -82,6 +96,7 @@ describe("cadastro guiado de colaboradores", () => {
     const user = userEvent.setup();
     render(<CreateProfileCard profiles={profiles} onCreated={vi.fn()} />);
     await user.type(screen.getByLabelText("Nome provisório"), "Paula");
+    await user.type(screen.getByLabelText("E-mail profissional"), "pessoa@empresa.test");
     await user.click(screen.getByRole("radio", { name: /^Financeiro/ }));
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(

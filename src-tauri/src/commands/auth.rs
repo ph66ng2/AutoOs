@@ -121,6 +121,12 @@ pub struct SecurityProfileSummary {
     /// Permissões que o tour já apresentou. `None` = o tour nunca foi visto.
     #[serde(default)]
     pub tour_permissoes_vistas: Option<Vec<String>>,
+    /// E-mail profissional; vazio em perfis antigos até alguém preencher.
+    #[serde(default)]
+    pub email_profissional: Option<String>,
+    /// Aparece na lista de técnicos da OS.
+    #[serde(default)]
+    pub atende_tecnico: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,6 +169,28 @@ pub struct SecurityProfileInput {
     pub nome: String,
     pub role: String,
     pub permissions: Vec<String>,
+    /// E-mail profissional (obrigatório ao criar ou editar pela Equipe).
+    pub email_profissional: Option<String>,
+    /// Aparece como técnico nas OS (entrada e verificação).
+    pub atende_tecnico: bool,
+}
+
+/// E-mail profissional do perfil: obrigatório, minúsculo, formato simples nome@dominio.tld.
+pub(crate) fn validar_email_profissional(valor: Option<&str>) -> Result<String, String> {
+    let email = valor.unwrap_or("").trim().to_lowercase();
+    if email.is_empty() {
+        return Err("Informe o e-mail profissional do perfil.".to_string());
+    }
+    let valido = email.len() <= 254
+        && !email.chars().any(char::is_whitespace)
+        && email.matches('@').count() == 1
+        && email.split_once('@').is_some_and(|(local, dominio)| {
+            !local.is_empty() && dominio.contains('.') && !dominio.starts_with('.') && !dominio.ends_with('.')
+        });
+    if !valido {
+        return Err("E-mail profissional inválido.".to_string());
+    }
+    Ok(email)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,13 +214,16 @@ struct SecurityProfileRecord {
     tema: Option<String>,
     onboarding_concluido_em: Option<DateTime<Utc>>,
     tour_permissoes_vistas: Option<String>,
+    email_profissional: Option<String>,
+    atende_tecnico: bool,
 }
 
 /// Colunas de `SecurityProfileRecord`. Macro para compor SQL estático com `concat!`.
 macro_rules! profile_columns {
     () => {
         "id, nome, role, permissions, pin_required, ativo, is_default, criado_em, \
-         avatar_icone, avatar_cor, tema, onboarding_concluido_em, tour_permissoes_vistas"
+         avatar_icone, avatar_cor, tema, onboarding_concluido_em, tour_permissoes_vistas, \
+         email_profissional, atende_tecnico"
     };
 }
 
@@ -1160,6 +1191,8 @@ fn profile_summary(record: SecurityProfileRecord, pin_configured: bool) -> Resul
             Some(raw) => Some(parse_permissions(raw)?),
             None => None,
         },
+        email_profissional: record.email_profissional,
+        atende_tecnico: record.atende_tecnico,
     })
 }
 
@@ -1536,6 +1569,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
         return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
     }
     validate_new_pin(&pin)?;
+    let email = validar_email_profissional(input.email_profissional.as_deref())?;
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
@@ -1548,13 +1582,15 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let row = sqlx::query(
-        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, atualizado_em)
-         VALUES ($1, $2, $3, true, false, $4, NOW()) RETURNING id"
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, email_profissional, atende_tecnico, atualizado_em)
+         VALUES ($1, $2, $3, true, false, $4, $5, $6, NOW()) RETURNING id"
     )
     .bind(nome)
     .bind(&role)
     .bind(&permissions_json)
     .bind(!pin.trim().is_empty())
+    .bind(&email)
+    .bind(input.atende_tecnico)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
@@ -1603,6 +1639,7 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
     if nome.len() < 3 {
         return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
     }
+    let email = validar_email_profissional(input.email_profissional.as_deref())?;
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
@@ -1621,13 +1658,15 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     sqlx::query(
         "UPDATE security_profiles
-         SET nome = $1, role = $2, permissions = $3, atualizado_em = NOW()
+         SET nome = $1, role = $2, permissions = $3, email_profissional = $5, atende_tecnico = $6, atualizado_em = NOW()
          WHERE id = $4"
     )
     .bind(nome)
     .bind(&role)
     .bind(&permissions_json)
     .bind(profile_id)
+    .bind(&email)
+    .bind(input.atende_tecnico)
     .execute(&pool)
     .await
     .map_err(|e| {
@@ -2307,6 +2346,8 @@ pub struct CodigoPrimeiroAcesso {
 #[serde(default)]
 pub struct PersonalizacaoPerfilInput {
     pub nome: String,
+    /// O próprio dono pode preencher ou trocar o e-mail profissional. `None` mantém o atual.
+    pub email_profissional: Option<String>,
     pub avatar_icone: Option<String>,
     pub avatar_cor: Option<String>,
     pub tema: Option<String>,
@@ -2410,6 +2451,7 @@ pub async fn criar_perfil_com_codigo(input: SecurityProfileInput, admin_pin: Str
     if nome.chars().count() < 3 {
         return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
     }
+    let email = validar_email_profissional(input.email_profissional.as_deref())?;
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
     validar_perfil_ativo_056(&role, &permissions)?;
@@ -2419,14 +2461,16 @@ pub async fn criar_perfil_com_codigo(input: SecurityProfileInput, admin_pin: Str
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     // O novo membro herda a empresa de quem o cadastrou.
     let profile_id: i32 = sqlx::query_scalar(
-        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, empresa_id, atualizado_em)
-         VALUES ($1, $2, $3, true, false, true, (SELECT empresa_id FROM security_profiles WHERE id = $4), NOW())
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, empresa_id, email_profissional, atende_tecnico, atualizado_em)
+         VALUES ($1, $2, $3, true, false, true, (SELECT empresa_id FROM security_profiles WHERE id = $4), $5, $6, NOW())
          RETURNING id",
     )
     .bind(nome)
     .bind(&role)
     .bind(&permissions_json)
     .bind(actor.id)
+    .bind(&email)
+    .bind(input.atende_tecnico)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
@@ -2702,12 +2746,17 @@ pub async fn ativar_perfil_com_codigo(
 pub async fn salvar_personalizacao_perfil(input: PersonalizacaoPerfilInput) -> Result<SensitiveAccessStatus, String> {
     let profile = require_sensitive_access()?;
     validar_personalizacao(&input)?;
+    let email = match input.email_profissional.as_deref() {
+        Some(valor) => Some(validar_email_profissional(Some(valor))?),
+        None => None,
+    };
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let nome = input.nome.trim();
     sqlx::query(
         "UPDATE security_profiles
          SET nome = $1, avatar_icone = $2, avatar_cor = $3, tema = $4,
+             email_profissional = COALESCE($7, email_profissional),
              onboarding_concluido_em = CASE WHEN $5 THEN COALESCE(onboarding_concluido_em, NOW()) ELSE onboarding_concluido_em END,
              atualizado_em = NOW()
          WHERE id = $6 AND ativo = true",
@@ -2718,6 +2767,7 @@ pub async fn salvar_personalizacao_perfil(input: PersonalizacaoPerfilInput) -> R
     .bind(input.tema.as_deref())
     .bind(input.concluir_onboarding)
     .bind(profile.id)
+    .bind(email.as_deref())
     .execute(&pool)
     .await
     .map_err(|e| {
@@ -3040,6 +3090,8 @@ mod tests {
             tema: None,
             onboarding_concluido_em: None,
             tour_permissoes_vistas: None,
+            email_profissional: None,
+            atende_tecnico: false,
         };
         let stale = StoredSensitivePin {
             pin_hash: "$argon2id$placeholder".to_string(),
@@ -3097,9 +3149,20 @@ mod tests {
     }
 
     #[test]
+    fn email_profissional_obrigatorio_e_com_formato() {
+        assert!(validar_email_profissional(None).is_err());
+        assert!(validar_email_profissional(Some("  ")).is_err());
+        assert!(validar_email_profissional(Some("ana")).is_err());
+        assert!(validar_email_profissional(Some("ana@empresa")).is_err());
+        assert!(validar_email_profissional(Some("ana @empresa.com")).is_err());
+        assert_eq!(validar_email_profissional(Some(" Ana@Empresa.com.br ")).unwrap(), "ana@empresa.com.br");
+    }
+
+    #[test]
     fn personalizacao_aceita_apenas_opcoes_da_interface() {
         let valida = PersonalizacaoPerfilInput {
             nome: "Juliana".to_string(),
+            email_profissional: None,
             avatar_icone: Some("shape-orb".to_string()),
             avatar_cor: Some("#0F766E".to_string()),
             tema: Some("dark".to_string()),
@@ -3117,6 +3180,7 @@ mod tests {
     fn valida_clone(input: &PersonalizacaoPerfilInput) -> PersonalizacaoPerfilInput {
         PersonalizacaoPerfilInput {
             nome: input.nome.clone(),
+            email_profissional: input.email_profissional.clone(),
             avatar_icone: input.avatar_icone.clone(),
             avatar_cor: input.avatar_cor.clone(),
             tema: input.tema.clone(),

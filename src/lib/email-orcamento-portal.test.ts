@@ -35,6 +35,9 @@ import {
   gerarCorpoOrcamentoPortalTexto,
   SENHA_MASCARADA,
 } from "@/lib/email-orcamento-portal";
+import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+
+beforeEach(() => semearTecnicosPadrao());
 
 const equip: Equipamento = {
   id: 10,

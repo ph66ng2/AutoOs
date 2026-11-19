@@ -22,6 +22,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
+import { emailDoTecnico, extrairTecnicoInicial } from "@/lib/tecnicos";
 import type { jsPDF } from "jspdf";
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
@@ -183,17 +184,9 @@ function formatoImagemPdf(mimeType: string): "PNG" | "JPEG" {
   return mimeType === "image/png" ? "PNG" : "JPEG";
 }
 
-function emailTecnicoPorNome(tecnicoNome?: string) {
-  if (tecnicoNome === "Ivan") return "ivan@bmitag.com.br";
-  if (tecnicoNome === "Isaias") return "isaias@bmitag.com.br";
-  return "";
-}
-
-function extrairTecnicoInicialDeObservacoes(observacoes?: string | null) {
-  if (!observacoes) return "";
-  const match = observacoes.match(/^Técnico inicial:\s*(Ivan|Isaias)\b/m);
-  return match?.[1] || "";
-}
+/** E-mail profissional do perfil técnico (lib/tecnicos); antes fixo no código. */
+const emailTecnicoPorNome = (tecnicoNome?: string) => emailDoTecnico(tecnicoNome);
+const extrairTecnicoInicialDeObservacoes = extrairTecnicoInicial;
 
 function limparObservacoesParaDocumento(observacoes?: string | null) {
   if (!observacoes) return "";

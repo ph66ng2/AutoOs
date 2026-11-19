@@ -151,12 +151,10 @@ import {
   type EquipamentoImagemDraft,
 } from "@/lib/equipamento-imagem-utils";
 import {
-  EMAIL_POR_TECNICO,
   MARCA_EQUIPAMENTO_OPTIONS,
   STATUS_COM_ORCAMENTO,
   FILTRO_STATUS_OUTROS,
   FILTRO_STATUS_PRINCIPAIS,
-  TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
 } from "@/pages/equipamentos/equipamentos-page-constants";
 import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
@@ -212,6 +210,8 @@ import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
 import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
+import { useTecnicos } from "@/hooks/useTecnicos";
+import { emailDoTecnico } from "@/lib/tecnicos";
 import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
 import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
 import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGrande";
@@ -345,7 +345,9 @@ export default function Equipamentos() {
   const [valorFinal, setValorFinal] = useState<number>(0);
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
-  const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("Ivan");
+  const tecnicos = useTecnicos();
+  const primeiroTecnico = tecnicos[0]?.nome ?? "";
+  const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("");
   const [marcaOutroOpen, setMarcaOutroOpen] = useState(false);
   const [tipoOutroOpen, setTipoOutroOpen] = useState(false);
   const [imagensSaidaEntrega, setImagensSaidaEntrega] = useState<EquipamentoImagemDraft[]>([]);
@@ -591,7 +593,7 @@ export default function Equipamentos() {
     setErroImagens(null);
     setImagensFormulario([]);
     setCarregandoImagensFormulario(false);
-    setTecnicoNovoEquipamento("Ivan");
+    setTecnicoNovoEquipamento(primeiroTecnico);
     setRegistrosAnteriores([]);
     setConfirmouNovoCiclo(false);
     setAnteriorEmAtendimento(null);
@@ -654,7 +656,7 @@ export default function Equipamentos() {
     setErroImagens(null);
     setImagensFormulario([]);
     setCarregandoImagensFormulario(true);
-    setTecnicoNovoEquipamento(extrairTecnicoInicialDeObservacoes(eq.observacoes) || "Ivan");
+    setTecnicoNovoEquipamento(extrairTecnicoInicialDeObservacoes(eq.observacoes) || primeiroTecnico);
     if (eq.id) void carregarFotosDaEdicao(eq.id, sequencia);
     else setCarregandoImagensFormulario(false);
     // Se o equipamento tem cliente_id, carregar do banco; senão, montar objeto parcial
@@ -1232,6 +1234,10 @@ export default function Equipamentos() {
       return;
     }
     setErroCliente(null);
+    if (!tecnicoNovoEquipamento) {
+      showError("Equipamentos", "Salvar equipamento", new Error("Escolha o técnico da verificação inicial. Marque os técnicos em Equipe e acessos."));
+      return;
+    }
     setSalvando(true);
     try {
       // Nome de exibição do cliente
@@ -1242,7 +1248,7 @@ export default function Equipamentos() {
       const acessoriosTexto = (data.acessorios || []).filter(Boolean).join(", ");
 
       const observacoesSemTecnico = removerTecnicoInicialDasObservacoes(data.observacoes || "");
-      const emailTecnicoInicial = EMAIL_POR_TECNICO[tecnicoNovoEquipamento] || "";
+      const emailTecnicoInicial = emailDoTecnico(tecnicoNovoEquipamento);
       const linhaTecnicoInicial = `Técnico inicial: ${tecnicoNovoEquipamento}${emailTecnicoInicial ? ` (${emailTecnicoInicial})` : ""}`;
       const observacoesComTecnico = [linhaTecnicoInicial, observacoesSemTecnico]
         .filter(Boolean)
@@ -2487,7 +2493,7 @@ export default function Equipamentos() {
     if (!verificacaoDetalhes) return <div className="text-center py-8 text-muted-foreground"><ClipboardCheck className="h-10 w-10 mx-auto mb-2 opacity-20" /><p>Nenhuma verificação realizada</p></div>;
 
     const v = verificacaoDetalhes;
-    const emailTecnico = EMAIL_POR_TECNICO[v.tecnico_nome] || "—";
+    const emailTecnico = emailDoTecnico(v.tecnico_nome) || "—";
     const itens: ItemVerificacao[] = v.itens_verificados ? JSON.parse(v.itens_verificados) : [];
     const servs: ServicoNecessario[] = v.servicos_necessarios ? JSON.parse(v.servicos_necessarios) : [];
     const pcs: PecaNecessaria[] = v.pecas_necessarias ? JSON.parse(v.pecas_necessarias) : [];
@@ -2827,8 +2833,8 @@ export default function Equipamentos() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="TODOS">Todos os técnicos</SelectItem>
-                {TECNICOS_DISPONIVEIS.map((tecnico) => (
-                  <SelectItem key={tecnico} value={tecnico}>{tecnico}</SelectItem>
+                {tecnicos.map((tecnico) => (
+                  <SelectItem key={tecnico.id} value={tecnico.nome}>{tecnico.nome}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -3154,13 +3160,16 @@ export default function Equipamentos() {
                 <div className="space-y-2">
                   <Label>Técnico (verificação inicial)</Label>
                   <Select
-                    value={tecnicoNovoEquipamento}
+                    value={tecnicoNovoEquipamento || undefined}
                     onValueChange={(value: TecnicoDisponivel) => setTecnicoNovoEquipamento(value)}
                   >
                     <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>
-                      {TECNICOS_DISPONIVEIS.map((tecnico) => (
-                        <SelectItem key={tecnico} value={tecnico}>{tecnico}</SelectItem>
+                      {tecnicoNovoEquipamento && !tecnicos.some((t) => t.nome === tecnicoNovoEquipamento) && (
+                        <SelectItem value={tecnicoNovoEquipamento}>{tecnicoNovoEquipamento}</SelectItem>
+                      )}
+                      {tecnicos.map((tecnico) => (
+                        <SelectItem key={tecnico.id} value={tecnico.nome}>{tecnico.nome}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -3326,7 +3335,7 @@ export default function Equipamentos() {
         onOpenChange={(aberta) => { if (!aberta) fecharPaginaVerificacao(); }}
         onConcluir={handleConcluirVerificacao}
         salvando={salvando || loadingAutomacao}
-        tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || "Ivan"}
+        tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || primeiroTecnico}
         podeFinalizar={hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS) || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES)}
       />
 

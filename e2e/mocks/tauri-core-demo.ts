@@ -22,7 +22,10 @@ const status = {
   active_role: "ATENDENTE",
   permissions: ["FINANCIAL_ACTIONS", "VIEW_EXPENSES", "STOCK_CONTROL"],
   can_manage_profiles: false,
-  profiles: [],
+  profiles: [
+    { id: 1, nome: "Atendente BMITAG", role: "ATENDENTE", permissions: [], pin_configured: true, pin_required: true, is_default: true, ativo: true, email_profissional: "atendimento@empresa.test", atende_tecnico: false },
+    { id: 2, nome: "Ivan Santos", role: "TECNICO", permissions: [], pin_configured: true, pin_required: true, is_default: false, ativo: true, email_profissional: "ivan@empresa.test", atende_tecnico: true },
+  ],
 };
 
 const cliente = {

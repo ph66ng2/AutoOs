@@ -1,4 +1,3 @@
-import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
 import {
   STATUS_LABELS,
   type EquipamentoImagemCategoria,
@@ -95,9 +94,4 @@ export const FILTRO_STATUS_PRINCIPAIS = OPCOES_FILTRO_STATUS
   .map((opcao) => ({ ...opcao, titulo: opcao.label, label: ROTULO_PILULA[opcao.value] ?? opcao.label }));
 export const FILTRO_STATUS_OUTROS = OPCOES_FILTRO_STATUS.filter((opcao) => STATUS_FILTRO_OUTROS.has(opcao.value));
 
-export const EMAIL_POR_TECNICO: Record<string, string> = {
-  Ivan: "ivan@bmitag.com.br",
-  Isaias: "isaias@bmitag.com.br",
-};
 
-export const TECNICOS_DISPONIVEIS: TecnicoDisponivel[] = ["Ivan", "Isaias"];
