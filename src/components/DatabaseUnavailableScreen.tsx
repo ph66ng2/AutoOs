@@ -114,7 +114,7 @@ export function DatabaseUnavailableScreen({ initialError, downSince, onConnected
       await navigator.clipboard.writeText(supportDetailsText(error));
       toast("Detalhes copiados", {
         description: "Cole na conversa com o suporte.",
-        icon: <Check className="h-4 w-4 text-[var(--cx-ok,#3d7a55)]" aria-hidden="true" />,
+        icon: <Check className="h-4 w-4 text-status-ok" aria-hidden="true" />,
       });
     } catch {
       toast.error("Não foi possível copiar", { description: "Abra \"Detalhes para o suporte\" e copie o texto à mão." });
@@ -258,8 +258,8 @@ export function DatabaseFallback({ onConnected }: { onConnected: () => void }) {
 
   if (view.kind === "loading") {
     return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050608]">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-cyan-400" />
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary motion-reduce:[animation-duration:1.6s]" />
       </div>
     );
   }

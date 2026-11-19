@@ -141,7 +141,9 @@ pub fn database_init_error() -> Option<DatabaseInitError> {
     INIT_ERROR.lock().ok().and_then(|g| g.clone())
 }
 
-const DATABASE_HEALTH_TIMEOUT: Duration = Duration::from_secs(5);
+/// Maior que o `DATABASE_ACQUIRE_TIMEOUT`: o pool precisa desistir primeiro, com
+/// `PoolTimedOut`, para a lotação do servidor (53300) poder ser confirmada.
+const DATABASE_HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn init_error_from(error: &sqlx::Error) -> DatabaseInitError {
     DatabaseInitError {
@@ -170,9 +172,27 @@ pub async fn check_database_health() -> Option<DatabaseInitError> {
     let result = tokio::time::timeout(DATABASE_HEALTH_TIMEOUT, sqlx::query("SELECT 1").execute(&pool)).await;
     match result {
         Ok(Ok(_)) => None,
+        Ok(Err(sqlx::Error::PoolTimedOut)) => Some(pool_timeout_health_error().await),
         Ok(Err(error)) => Some(init_error_from(&error)),
         Err(_) => Some(init_error_from(&health_timeout_error())),
     }
+}
+
+/// O sqlx repete o 53300 até o acquire estourar e devolve `PoolTimedOut`.
+/// `database_operation_error` confirma a lotação com uma conexão de
+/// diagnóstico; sem confirmação, segue como rede.
+async fn pool_timeout_health_error() -> DatabaseInitError {
+    let mensagem = database_operation_error(sqlx::Error::PoolTimedOut).await;
+    health_error_after_pool_timeout(mensagem)
+}
+
+fn health_error_after_pool_timeout(mensagem: String) -> DatabaseInitError {
+    let tipo = if mensagem == DATABASE_ACCESS_LIMIT_ERROR {
+        DatabaseErrorKind::Capacidade
+    } else {
+        DatabaseErrorKind::Rede
+    };
+    DatabaseInitError { tipo, mensagem }
 }
 
 fn is_database_capacity_error(error: &sqlx::Error) -> bool {
@@ -959,6 +979,20 @@ mod tests {
 
         let faltando = schema_failure_into_error(SchemaCheckFailure::Mismatch("tabela x ausente".to_string()));
         assert_eq!(database_error_kind(&faltando), DatabaseErrorKind::Incompativel);
+    }
+
+    #[test]
+    fn health_timeout_outlasts_pool_acquire() {
+        // Se a checagem desistisse antes do pool, a lotação nunca seria confirmada.
+        assert!(DATABASE_HEALTH_TIMEOUT > DATABASE_ACQUIRE_TIMEOUT);
+    }
+
+    #[test]
+    fn pool_timeout_keeps_confirmed_capacity_in_health_check() {
+        let lotado = health_error_after_pool_timeout(DATABASE_ACCESS_LIMIT_ERROR.to_string());
+        assert_eq!(lotado.tipo, DatabaseErrorKind::Capacidade);
+        let lento = health_error_after_pool_timeout(database_error_message(&sqlx::Error::PoolTimedOut));
+        assert_eq!(lento.tipo, DatabaseErrorKind::Rede);
     }
 
     #[test]
