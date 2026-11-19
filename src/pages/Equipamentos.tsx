@@ -216,6 +216,7 @@ import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstado
 import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { quandoRascunho, useRascunho } from "@/hooks/useRascunho";
 import { HistoricoDoSerial } from "@/components/equipamentos/HistoricoDoSerial";
+import { BotaoCopiar } from "@/components/ui/botao-copiar";
 import { emailDoTecnico } from "@/lib/tecnicos";
 import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
 import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
@@ -3493,7 +3494,10 @@ export default function Equipamentos() {
                 </button>
                 <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                   <h1 className="break-words text-[26px] font-bold leading-tight tracking-tight [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h1>
-                  <span className="font-mono text-sm text-muted-foreground [overflow-wrap:anywhere]">{selecionado.serial_number}</span>
+                  <span className="inline-flex items-center gap-0.5 font-mono text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                    {selecionado.serial_number}
+                    {selecionado.serial_number && <BotaoCopiar valor={selecionado.serial_number} rotulo="número de série" />}
+                  </span>
                   <StatusBadge status={selecionado.status} completo />
                 </div>
               </div>

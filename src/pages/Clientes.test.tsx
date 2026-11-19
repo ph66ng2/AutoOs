@@ -22,6 +22,7 @@ vi.mock("@/hooks/useNotification", () => ({
 const dbMocks = vi.hoisted(() => ({
   listarEquipamentosCliente: vi.fn().mockResolvedValue([]),
   listarClienteContatos: vi.fn().mockResolvedValue([]),
+  abrirUrl: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/db", () => ({ db: dbMocks }));
 
@@ -93,6 +94,17 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(mocks.criar.mock.calls[0]![0]).toMatchObject({
       exige_ordem_compra: true, receber_email: true, receber_whatsapp: true,
     });
+  });
+
+  it("painel do cliente: WhatsApp abre o wa.me do telefone e o telefone tem copiar", async () => {
+    mocks.clientes = [clienteSalvo({ email: "ana@x.com" })];
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    fireEvent.click(await screen.findByRole("button", { name: /WhatsApp/ }));
+    expect(dbMocks.abrirUrl).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/wa\.me\/5571999990000/));
+    expect(screen.getByRole("button", { name: "Copiar telefone" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copiar e-mail" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copiar CPF/CNPJ" })).toBeInTheDocument();
   });
 
   it("abrir o cliente pelo nome mostra os contatos no painel e clicar de novo fecha", async () => {
