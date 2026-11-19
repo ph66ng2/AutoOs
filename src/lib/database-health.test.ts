@@ -12,6 +12,7 @@ describe("pareceFalhaDeConexao", () => {
     "error communicating with database: Connection reset by peer (os error 104)",
     "Não foi possível alcançar o banco. Verifique a internet, DNS ou compatibilidade IPv4/IPv6.",
     new Error("O banco demorou para responder: a checagem de conexão excedeu 5 segundos."),
+    "Falha ao estabelecer a conexão segura TLS com o banco.",
   ])("reconhece queda de conexão: %s", (erro) => {
     expect(pareceFalhaDeConexao(erro)).toBe(true);
   });

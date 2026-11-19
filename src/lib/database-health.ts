@@ -29,6 +29,7 @@ const TEXTOS_DE_CONEXAO = [
   "não foi possível alcançar o banco",
   "a conexão com o banco excedeu",
   "o banco demorou para responder",
+  "falha ao estabelecer a conexão segura tls",
   "pool de conexões não inicializado",
   "sqlstate 53300",
 ];

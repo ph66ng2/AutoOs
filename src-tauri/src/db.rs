@@ -244,6 +244,21 @@ pub fn clear_database_init_error() {
     }
 }
 
+/// Grava o erro da abertura (ou do "Tentar novamente"). `PoolTimedOut` passa
+/// pela mesma confirmação de lotação da checagem de saúde, para a tela
+/// respeitar a espera de 30 s quando o servidor está cheio.
+async fn record_database_init_error(error: &sqlx::Error) {
+    let init_error = if matches!(error, sqlx::Error::PoolTimedOut) {
+        pool_timeout_health_error().await
+    } else {
+        init_error_from(error)
+    };
+    if let Ok(mut guard) = INIT_ERROR.lock() {
+        *guard = Some(init_error);
+    }
+}
+
+#[cfg(test)]
 fn set_database_init_error(error: &sqlx::Error) {
     let init_error = init_error_from(error);
     if let Ok(mut guard) = INIT_ERROR.lock() {
@@ -804,7 +819,7 @@ pub async fn init_database() -> Result<PgPool, sqlx::Error> {
     .await;
 
     if let Err(error) = &result {
-        set_database_init_error(error);
+        record_database_init_error(error).await;
     }
     result
 }
@@ -814,7 +829,7 @@ pub async fn init_database_with_url(database_url: &str) -> Result<PgPool, sqlx::
     let _init_guard = INIT_LOCK.lock().await;
     let result = connect_and_setup_pool(database_url).await;
     if let Err(error) = &result {
-        set_database_init_error(error);
+        record_database_init_error(error).await;
     }
     result
 }
