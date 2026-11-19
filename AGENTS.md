@@ -152,6 +152,8 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - **shadcn/ui** components in `src/components/ui/` — lightly customized, kept close to original. `cn()` from `lib/utils.ts` used everywhere.
 - **Sensitive routes** use `<SensitiveRoute>` wrapper component (renders lock screen if unauthorized), not route guards in `App.tsx` logic.
 - **Boot splash** — every launch plays the BMI TAG opening (`src/components/opening/BmiTagOpening.tsx`, via `BootSplash`). Its own duration (2450 ms; 220 ms with reduced motion) is the minimum splash time; there is no separate timer and no "first boot of the day" variant. The PIN/profile dialog waits for `bootAnimationComplete` (`BootUi.tsx`), capped at 20 s. See `docs/ABERTURA_BMITAG.md`.
+- **Lists remember their state** — filter, search, sort and page use `useEstadoLembrado` (sessionStorage, cleared when the app closes) and `usePrimeiraPaginaAoFiltrar` (page 1 only when the filter changes). New list screens follow the same pattern.
+- **Global search and shortcuts** — `Layout` mounts `BuscaGlobal` (Ctrl+K: OS, clients, supplies, screens) and `useAtalhosGlobais` (`N` new entry, `/` page search, `?` help). Letter shortcuts never fire inside a text field or with a modal open. The equipment status filter accepts several statuses (Ctrl+click; comma-separated list to the backend).
 - **Insumos module temporarily blocked** — marked with `[BLOQUEIO-TEMPORARIO-INSUMOS]` comments across `App.tsx`, `Layout.tsx`, `Dashboard.tsx`.
 
 ### Migrations (PostgreSQL)

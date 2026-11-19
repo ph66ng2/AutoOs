@@ -23,6 +23,7 @@ import { useEstadoNavegacao } from "@/hooks/useEstadoNavegacao";
 import { PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
 import { EscolherItemDialog } from "@/pages/insumos/EscolherItemDialog";
 import { useEffect, useRef, useState } from "react";
+import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import {
   Package,
   Plus,
@@ -81,10 +82,18 @@ function NumeroEstoque({ titulo, valor, detalhe, alerta = false }: { titulo: str
 export default function Insumos() {
   // Item de "Estoque baixo" do Início: a lista abre já buscando por ele.
   const estadoNavegacao = useEstadoNavegacao<{ busca?: string }>();
-  const [busca, setBusca] = useState(() => estadoNavegacao?.busca ?? "");
-  const [categoriaFiltro, setCategoriaFiltro] = useState("TODOS");
+  const [busca, setBusca] = useEstadoLembrado("insumos:busca", estadoNavegacao?.busca ?? "");
+  const [categoriaFiltro, setCategoriaFiltro] = useEstadoLembrado("insumos:categoria", "TODOS");
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
-  const [paginaInsumos, setPaginaInsumos] = useState(1);
+  // Vindo do Início ou do Ctrl+K, a busca pedida vale (também com a tela já aberta) e os
+  // filtros lembrados saem do caminho, senão uma categoria antiga esconderia o item pedido.
+  useEffect(() => {
+    if (!estadoNavegacao?.busca) return;
+    setBusca(estadoNavegacao.busca);
+    setCategoriaFiltro("TODOS");
+    setApenasEstoqueBaixo(false);
+  }, [estadoNavegacao, setBusca, setCategoriaFiltro]);
+  const [paginaInsumos, setPaginaInsumos] = useEstadoLembrado("insumos:pagina", 1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [movDialogOpen, setMovDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -118,13 +127,12 @@ export default function Insumos() {
   const paginaInsumosExibida = Math.min(paginaInsumos, totalPaginasInsumos);
   const produtosExibidos = produtos;
 
-  useEffect(() => {
-    setPaginaInsumos(1);
-  }, [busca, categoriaFiltro, apenasEstoqueBaixo]);
+  usePrimeiraPaginaAoFiltrar([busca, categoriaFiltro, apenasEstoqueBaixo], () => setPaginaInsumos(1));
 
   useEffect(() => {
+    if (loading) return;
     setPaginaInsumos((pagina) => Math.min(pagina, totalPaginasInsumos));
-  }, [totalPaginasInsumos]);
+  }, [totalPaginasInsumos, loading, setPaginaInsumos]);
   const { error: showError } = useNotification();
   const { resumo, recarregar: recarregarResumo } = useResumoEstoque();
   const voltarDepoisDaEntrada = useRef<string | null>(null);

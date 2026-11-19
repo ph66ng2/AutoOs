@@ -76,4 +76,13 @@ describe("Serviços (fase 8)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Desativar o serviço" }));
     await waitFor(() => expect(mocks.deletar).toHaveBeenCalledWith(1));
   });
+
+  it("volta para a página lembrada e não a perde enquanto o total carrega", async () => {
+    sessionStorage.setItem("autoos:lista:servicos:pagina", JSON.stringify(2));
+    mocks.listar.mockResolvedValue({ items: [ativo], total: 40 });
+    render(<Servicos />);
+    await screen.findByText("Limpeza da cabeça");
+    await waitFor(() => expect(mocks.listar).toHaveBeenLastCalledWith(undefined, "ATIVOS", 1));
+    expect(mocks.listar.mock.calls.every((chamada) => chamada[2] === 1)).toBe(true);
+  });
 });

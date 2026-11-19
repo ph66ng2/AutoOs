@@ -1,3 +1,4 @@
+import type React from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
@@ -23,7 +24,7 @@ export function PilulaFiltro({
   rotulo: string;
   numero?: number;
   titulo?: string;
-  onClick: () => void;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <button
@@ -51,6 +52,8 @@ export function PilulaFiltro({
  * Filtro de status em pílulas, como no canvas: cada uma com o seu número.
  * `contagens` traz o total por status (com a busca aplicada); "Todos" é a soma.
  * `outros` (encerrados que quase ninguém filtra) ficam num menu à direita.
+ * Com `multiplo`, Ctrl/Shift+clique soma ou tira um status e `valor` vira uma lista
+ * separada por vírgula ("RECEBIDO,EM_VERIFICACAO"); o clique simples continua trocando.
  */
 export function FiltroDeStatus({
   principais,
@@ -59,6 +62,7 @@ export function FiltroDeStatus({
   contagens,
   onChange,
   rotulo,
+  multiplo = false,
 }: {
   principais: OpcaoFiltroStatus[];
   outros?: OpcaoFiltroStatus[];
@@ -66,24 +70,34 @@ export function FiltroDeStatus({
   contagens?: Record<string, number> | null;
   onChange: (valor: string) => void;
   rotulo: string;
+  multiplo?: boolean;
 }) {
+  const selecionados = valor.split(",").map((item) => item.trim()).filter(Boolean);
+  const ligado = (status: string) => (status === TODOS ? selecionados.length === 0 || valor === TODOS : selecionados.includes(status));
+  const escolher = (status: string, event?: React.MouseEvent) => {
+    const somar = multiplo && status !== TODOS && !!event && (event.ctrlKey || event.metaKey || event.shiftKey);
+    if (!somar) return onChange(status);
+    const base = selecionados.filter((item) => item !== TODOS);
+    const proximo = base.includes(status) ? base.filter((item) => item !== status) : [...base, status];
+    onChange(proximo.length ? proximo.join(",") : TODOS);
+  };
   const numero = (status: string) => {
     if (!contagens) return undefined;
     if (status === TODOS) return Object.values(contagens).reduce((soma, n) => soma + n, 0);
     return contagens[status] ?? 0;
   };
-  const outroLigado = outros.find((opcao) => opcao.value === valor);
+  const outroLigado = outros.find((opcao) => selecionados.includes(opcao.value));
 
   return (
     <div role="group" aria-label={rotulo} className="flex flex-wrap items-center gap-2">
       {principais.map((opcao) => (
         <PilulaFiltro
           key={opcao.value}
-          ligado={opcao.value === valor}
+          ligado={ligado(opcao.value)}
           rotulo={opcao.label}
-          titulo={opcao.titulo}
+          titulo={multiplo && opcao.value !== TODOS ? `${opcao.titulo ?? opcao.label} · Ctrl+clique para combinar` : opcao.titulo}
           numero={numero(opcao.value)}
-          onClick={() => onChange(opcao.value)}
+          onClick={(event) => escolher(opcao.value, event)}
         />
       ))}
       {outros.length > 0 && (
