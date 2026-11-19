@@ -32,6 +32,7 @@ import type {
   DatabaseInitError,
   AjusteOrcamentoInput,
   AlertaPortal,
+  AvisoInterno,
   ContatoPortalEmpresa,
   OrcamentoPublicado,
   OrcamentoPendentePortal,
@@ -389,6 +390,16 @@ export const db = {
   },
 
   /** Sem `alertaId`, marca todos os não lidos da empresa ativa. */
+  /** Avisos internos do perfil da sessão (nova OS, vence amanhã, pronto parado…) → Rust: listar_avisos_internos */
+  async listarAvisosInternos(): Promise<AvisoInterno[]> {
+    return invoke<AvisoInterno[]>("listar_avisos_internos");
+  },
+
+  /** Marca avisos internos como lidos para o perfil da sessão → Rust: marcar_avisos_lidos */
+  async marcarAvisosLidos(chaves: string[]): Promise<number> {
+    return invoke<number>("marcar_avisos_lidos", { chaves });
+  },
+
   async marcarAlertasPortalLidos(alertaId?: number): Promise<number> {
     return invoke<number>("marcar_alertas_portal_lidos", { alertaId: alertaId ?? null });
   },

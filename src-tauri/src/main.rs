@@ -182,6 +182,8 @@ fn main() {
             commands::portal_cliente::listar_alertas_portal,
             commands::portal_cliente::contar_alertas_portal_nao_lidos,
             commands::portal_cliente::marcar_alertas_portal_lidos,
+            commands::notificacoes::listar_avisos_internos,
+            commands::notificacoes::marcar_avisos_lidos,
             commands::portal_cliente::definir_acesso_portal_contato,
             commands::portal_cliente::definir_senha_portal_contato,
             commands::portal_cliente::publicar_orcamento_portal,

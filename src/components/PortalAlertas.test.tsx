@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   contar: vi.fn(),
   listar: vi.fn(),
   marcar: vi.fn(),
+  avisos: vi.fn(),
+  marcarAvisos: vi.fn(),
   toast: Object.assign(vi.fn(), { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), dismiss: vi.fn() }),
 }));
 
@@ -18,6 +20,8 @@ vi.mock("@/lib/db", () => ({
     contarAlertasPortalNaoLidos: mocks.contar,
     listarAlertasPortal: mocks.listar,
     marcarAlertasPortalLidos: mocks.marcar,
+    listarAvisosInternos: mocks.avisos,
+    marcarAvisosLidos: mocks.marcarAvisos,
   },
 }));
 vi.mock("sonner", () => ({ toast: mocks.toast }));
@@ -42,6 +46,7 @@ function renderSino() {
       <Routes>
         <Route path="/" element={<PortalAlertasSino />} />
         <Route path="/equipamentos" element={<Destino />} />
+        <Route path="/insumos" element={<p>Tela de insumos</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -49,6 +54,8 @@ function renderSino() {
 
 describe("PortalAlertasSino", () => {
   beforeEach(() => {
+    mocks.avisos.mockReset().mockResolvedValue([]);
+    mocks.marcarAvisos.mockReset().mockResolvedValue(1);
     vi.clearAllMocks();
     __resetErrosRegistrados();
     mocks.contar.mockResolvedValue(1);
@@ -186,6 +193,22 @@ describe("PortalAlertasSino", () => {
     mocks.listar.mockResolvedValue([]);
     renderSino();
     expect(await screen.findByRole("button", { name: "Notificações: erros novos em Sistema" })).toBeInTheDocument();
+  });
+
+  it("avisos internos contam no sino, aparecem em Avisos e abrir marca como lido e leva ao destino", async () => {
+    mocks.contar.mockResolvedValue(0);
+    mocks.listar.mockResolvedValue([]);
+    mocks.avisos.mockResolvedValue([
+      { chave: "estoque-baixo:abc", tipo: "estoque-baixo", titulo: "2 itens com estoque baixo", detalhe: "Ribbon 110, Etiqueta", lido: false, quando: "2026-11-19T10:00:00Z" },
+      { chave: "pronto-parado:4:2026-11-10", tipo: "pronto-parado", titulo: "Pronto há 9 dias sem retirada: Elgin L42", lido: true, quando: "2026-11-17T10:00:00Z", equipamentoId: 4 },
+    ]);
+    renderSino();
+    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 1 não lida(s)" }));
+    expect(await screen.findByText("2 itens com estoque baixo")).toBeInTheDocument();
+    expect(screen.queryByText(/Pronto há 9 dias/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ver estoque" }));
+    await waitFor(() => expect(mocks.marcarAvisos).toHaveBeenCalledWith(["estoque-baixo:abc"]));
+    expect(await screen.findByText("Tela de insumos")).toBeInTheDocument();
   });
 
   it("copiar no painel de erros leva código, descrição técnica e referência do log", async () => {

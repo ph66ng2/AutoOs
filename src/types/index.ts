@@ -402,6 +402,18 @@ export interface EstadoPortal {
   respostasAtrasadas: number;
 }
 
+/** Aviso interno calculado pelo banco (função `avisos_internos`, 0053); "lido" é por perfil. */
+export interface AvisoInterno {
+  chave: string;
+  tipo: "os-nova" | "vence-amanha" | "pronto-parado" | "peca-chegou" | "estoque-baixo" | "venda-aprovada";
+  titulo: string;
+  detalhe?: string | null;
+  equipamentoId?: number | null;
+  vendaId?: number | null;
+  quando?: string | null;
+  lido: boolean;
+}
+
 /** Alerta interno persistente gerado pelo Portal do Cliente. */
 export interface AlertaPortal {
   id: number;
