@@ -128,6 +128,7 @@ export function Layout() {
       ? { id: status.active_profile_id, nome: status.active_profile_name || "Perfil ativo", avatar_icone: null, avatar_cor: null, tema: null }
       : null);
   const activeLook = activeProfile ? profileAppearance(activeProfile) : null;
+  const portalDesligado = Boolean(status?.profiles.find((p) => p.id === status.active_profile_id)?.avisos_desligados?.includes("portal"));
   const sessaoAtiva = Boolean(status?.pin_configured && status.unlocked);
   const telaLarga = useLarguraMinima(768);
   const empresa = useEmpresaAtiva(`${status?.active_profile_id ?? ""}-${status?.unlocked ?? ""}`);
@@ -280,7 +281,7 @@ export function Layout() {
             >
               <Store className="h-[18px] w-[18px]" />
             </Button>
-            {telaLarga && <PortalAlertasSino perfilId={status?.active_profile_id ?? null} />}
+            {telaLarga && <PortalAlertasSino perfilId={status?.active_profile_id ?? null} portalDesligado={portalDesligado} />}
           </div>
           {!collapsed && mostrarAvisoAcesso && <SensitiveAccessBadge />}
           {activeProfile && activeLook && (
@@ -351,7 +352,7 @@ export function Layout() {
             <Button type="button" variant="outline" size="icon" aria-label="Abrir menu" aria-expanded={mobileOpen} aria-controls="main-sidebar" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></Button>
             <span className="font-semibold">{empresa ?? "AutoOS"}</span>
             <div className="ml-auto flex items-center gap-2">
-              <PortalAlertasSino perfilId={status?.active_profile_id ?? null} />
+              <PortalAlertasSino perfilId={status?.active_profile_id ?? null} portalDesligado={portalDesligado} />
             </div>
           </header>
         )}

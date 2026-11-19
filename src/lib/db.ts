@@ -395,6 +395,11 @@ export const db = {
     return invoke<AvisoInterno[]>("listar_avisos_internos");
   },
 
+  /** Tipos de aviso que o perfil da sessão não quer receber → Rust: salvar_avisos_desligados */
+  async salvarAvisosDesligados(tipos: string[]): Promise<string[]> {
+    return invoke<string[]>("salvar_avisos_desligados", { tipos });
+  },
+
   /** Marca avisos internos como lidos para o perfil da sessão → Rust: marcar_avisos_lidos */
   async marcarAvisosLidos(chaves: string[]): Promise<number> {
     return invoke<number>("marcar_avisos_lidos", { chaves });

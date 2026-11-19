@@ -127,6 +127,9 @@ pub struct SecurityProfileSummary {
     /// Aparece na lista de técnicos da OS.
     #[serde(default)]
     pub atende_tecnico: bool,
+    /// Tipos de aviso que o perfil não quer no sino (0054). Vazio = todos.
+    #[serde(default)]
+    pub avisos_desligados: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,6 +219,7 @@ struct SecurityProfileRecord {
     tour_permissoes_vistas: Option<String>,
     email_profissional: Option<String>,
     atende_tecnico: bool,
+    avisos_desligados: Vec<String>,
 }
 
 /// Colunas de `SecurityProfileRecord`. Macro para compor SQL estático com `concat!`.
@@ -223,7 +227,7 @@ macro_rules! profile_columns {
     () => {
         "id, nome, role, permissions, pin_required, ativo, is_default, criado_em, \
          avatar_icone, avatar_cor, tema, onboarding_concluido_em, tour_permissoes_vistas, \
-         email_profissional, atende_tecnico"
+         email_profissional, atende_tecnico, avisos_desligados"
     };
 }
 
@@ -1193,6 +1197,7 @@ fn profile_summary(record: SecurityProfileRecord, pin_configured: bool) -> Resul
         },
         email_profissional: record.email_profissional,
         atende_tecnico: record.atende_tecnico,
+        avisos_desligados: record.avisos_desligados,
     })
 }
 
@@ -3092,6 +3097,7 @@ mod tests {
             tour_permissoes_vistas: None,
             email_profissional: None,
             atende_tecnico: false,
+            avisos_desligados: Vec::new(),
         };
         let stale = StoredSensitivePin {
             pin_hash: "$argon2id$placeholder".to_string(),

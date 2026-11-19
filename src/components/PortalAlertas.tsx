@@ -38,6 +38,7 @@ import { marcarErrosLidos, useErrosRegistrados, type ErroRegistrado } from "@/li
 import { PREFIXO_TOAST_ERRO } from "@/hooks/useNotification";
 import { cn } from "@/lib/utils";
 import { destinoDoAviso, ROTULO_ABRIR_AVISO, VISUAL_AVISO } from "@/lib/avisos-internos";
+import { notificarSistema } from "@/lib/notificacao-sistema";
 import type { AvisoInterno } from "@/types";
 import type { AlertaPortal } from "@/types";
 
@@ -159,7 +160,12 @@ export function encaixePainelNotificacoes(
  * `perfilId`: perfil ativo. Ao trocar de perfil, o sino esquece os avisos e o "lido" do anterior
  * e consulta de novo; respostas de consultas da sessão anterior são descartadas.
  */
-export function PortalAlertasSino({ perfilId = null }: { perfilId?: number | null } = {}) {
+export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: {
+  perfilId?: number | null;
+  /** Perfil › Notificações desligou o portal: some do número, dos avisos e do painel. As
+   *  mudanças continuam sendo detectadas (a lista de equipamentos e a OS aberta dependem disso). */
+  portalDesligado?: boolean;
+} = {}) {
   const navigate = useNavigate();
   const erros = useErrosRegistrados();
   const [naoLidosPortal, setNaoLidosPortal] = useState(0);
@@ -177,7 +183,9 @@ export function PortalAlertasSino({ perfilId = null }: { perfilId?: number | nul
   const errosNaoLidos = erros.filter((item) => !item.lido).length;
   // Só avisos contam no número; erros do app ficam na aba Sistema (um ponto discreto no sino).
   const avisosNaoLidos = avisos.filter((aviso) => !aviso.lido).length;
-  const naoLidos = naoLidosPortal + avisosNaoLidos;
+  const naoLidos = (portalDesligado ? 0 : naoLidosPortal) + avisosNaoLidos;
+  const portalDesligadoRef = useRef(portalDesligado);
+  portalDesligadoRef.current = portalDesligado;
   const errosAbertos = useRef<string[]>([]);
   errosAbertos.current = erros.filter((item) => !item.lido).map((item) => item.id);
 
@@ -201,6 +209,8 @@ export function PortalAlertasSino({ perfilId = null }: { perfilId?: number | nul
     const novos = vistos ? lista.filter((aviso) => !aviso.lido && !vistos.has(aviso.chave)) : [];
     avisosVistos.current = new Set([...(vistos ?? []), ...lista.map((aviso) => aviso.chave)]);
     novos.slice(0, MAX_TOASTS_POR_VEZ).forEach((aviso) => {
+      // Minimizado ou sem foco, o aviso também vai para a central de notificações do Windows.
+      void notificarSistema(aviso.titulo, aviso.detalhe);
       const visual = VISUAL_AVISO[aviso.tipo];
       toast(aviso.titulo, {
         id: `aviso-${aviso.chave}`,
@@ -243,11 +253,12 @@ export function PortalAlertasSino({ perfilId = null }: { perfilId?: number | nul
       // Na primeira consulta só o contador aparece; toasts são para o que chegar depois.
       if (ultimoVisto.current !== null) {
         const novos = recentes.filter((alerta) => alerta.id > (ultimoVisto.current ?? 0));
-        novos
+        (portalDesligadoRef.current ? [] : novos)
           .slice(0, MAX_TOASTS_POR_VEZ)
           .reverse()
           .forEach((alerta) => {
             notificados.current.push(`portal-alerta-${alerta.id}`);
+            void notificarSistema(alerta.titulo, alerta.detalhe);
             notificar(alerta, () => {
               // "Ver" conta como leitura, igual a abrir pelo painel.
               void db.marcarAlertasPortalLidos(alerta.id).then(() => verificarRef.current()).catch(() => undefined);
@@ -356,6 +367,7 @@ export function PortalAlertasSino({ perfilId = null }: { perfilId?: number | nul
         <PortalAlertasPainel
           ref={painel}
           erros={erros}
+          portalDesligado={portalDesligado}
           avisos={avisos}
           onAbrirAviso={abrirAviso}
           encaixe={encaixe}
@@ -379,6 +391,7 @@ type Item =
 
 type PainelProps = {
   erros: ErroRegistrado[];
+  portalDesligado?: boolean;
   avisos: AvisoInterno[];
   onAbrirAviso: (aviso: AvisoInterno) => void;
   encaixe: CSSProperties;
@@ -389,7 +402,7 @@ type PainelProps = {
 
 const ROTULO_ABA: Record<Aba, string> = { avisos: "Avisos", sistema: "Sistema" };
 
-export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(function PortalAlertasPainel({ erros, avisos, onAbrirAviso, encaixe, onFechar, onAbrirAtendimento, onChanged }, ref) {
+export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(function PortalAlertasPainel({ erros, portalDesligado = false, avisos, onAbrirAviso, encaixe, onFechar, onAbrirAtendimento, onChanged }, ref) {
   const [aba, setAba] = useState<Aba>("avisos");
   const [historico, setHistorico] = useState(false);
   const [alertas, setAlertas] = useState<AlertaPortal[]>([]);
@@ -431,13 +444,13 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
   const errosVisiveis = historico ? erros : erros.filter((item) => !item.lido);
   const avisosVisiveis = historico ? avisos : avisos.filter((aviso) => !aviso.lido);
   const contagem: Record<Aba, number> = {
-    avisos: alertas.filter((a) => !a.lidoEm).length + avisos.filter((a) => !a.lido).length,
+    avisos: (portalDesligado ? 0 : alertas.filter((a) => !a.lidoEm).length) + avisos.filter((a) => !a.lido).length,
     sistema: erros.filter((e) => !e.lido).length,
   };
 
   const itens: Item[] = aba === "avisos"
     ? [
-      ...alertas.map((alerta): Item => ({ tipo: "portal", chave: `p-${alerta.id}`, quando: alerta.criadoEm, alerta })),
+      ...(portalDesligado ? [] : alertas).map((alerta): Item => ({ tipo: "portal", chave: `p-${alerta.id}`, quando: alerta.criadoEm, alerta })),
       ...avisosVisiveis.map((aviso): Item => ({ tipo: "aviso", chave: `a-${aviso.chave}`, quando: aviso.quando ?? "", aviso })),
     ].sort((a, b) => b.quando.localeCompare(a.quando))
     : errosVisiveis
@@ -460,7 +473,7 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
       return;
     }
     await marcarAvisos(avisos.filter((aviso) => !aviso.lido).map((aviso) => aviso.chave));
-    await marcar();
+    if (!portalDesligado) await marcar();
   };
   const haNaoLidos = itens.some((item) => (item.tipo === "portal" ? !item.alerta.lidoEm : item.tipo === "aviso" ? !item.aviso.lido : !item.registro.lido));
 

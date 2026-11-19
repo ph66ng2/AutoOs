@@ -24,6 +24,7 @@ import { requestTour } from "@/lib/tour-request";
 import { setUiSoundsEnabled, uiSoundsEnabled } from "@/lib/ui-sounds";
 import { BASE_MODULES, newPermissions } from "@/lib/tour-steps";
 import { ListaAtalhos } from "@/components/busca/AjudaAtalhos";
+import { PreferenciasNotificacao } from "@/components/perfil/PreferenciasNotificacao";
 import { cn } from "@/lib/utils";
 import {
   SENSITIVE_PERMISSION_LABELS,
@@ -94,6 +95,7 @@ export default function Perfil() {
               ["visao", "Visão geral"],
               ["personalizar", "Personalizar"],
               ["seguranca", "Segurança"],
+              ["notificacoes", "Notificações"],
               ["tutorial", "Tutorial"],
             ].map(([value, label]) => (
               <TabsTrigger key={value} value={value} className={TAB_CLASS}>{label}</TabsTrigger>
@@ -111,6 +113,9 @@ export default function Perfil() {
           </TabsContent>
           <TabsContent value="seguranca" className="mt-0">
             <Seguranca onChanged={refreshStatus} />
+          </TabsContent>
+          <TabsContent value="notificacoes" className="mt-0">
+            <PreferenciasNotificacao desligados={profile.avisos_desligados ?? []} onSaved={refreshStatus} />
           </TabsContent>
           <TabsContent value="tutorial" className="mt-0">
             <Tutorial profile={profile} permissions={status?.permissions ?? []} />
@@ -144,7 +149,7 @@ function VisaoGeral({
   useEffect(() => {
     let alive = true;
     SensitiveAccessService.listMyActivity(5)
-      .then((events) => { if (alive) setActivity(events); })
+      .then((events) => { if (alive) setActivity(events ?? []); })
       .catch(() => { if (alive) setActivity([]); });
     return () => { alive = false; };
   }, [profile.id]);

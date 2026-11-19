@@ -7,6 +7,15 @@ const status = {
 
 /** Stubs de runtime exigidos por @tauri-apps/plugin-updater durante o bootstrap. */
 export class Resource {}
+
+/** Stub exigido por @tauri-apps/plugin-notification (sem plugins no navegador de teste). */
+export class PluginListener {
+  async unregister(): Promise<void> {}
+}
+export async function addPluginListener(): Promise<PluginListener> {
+  return new PluginListener();
+}
+
 export class Channel<T> {
   onmessage: ((message: T) => void) | null = null;
 }

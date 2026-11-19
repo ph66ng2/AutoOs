@@ -88,6 +88,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .setup(|_app| {
             info!("Inicializando banco de dados...");
             match tauri::async_runtime::block_on(db::init_database()) {
@@ -184,6 +185,7 @@ fn main() {
             commands::portal_cliente::marcar_alertas_portal_lidos,
             commands::notificacoes::listar_avisos_internos,
             commands::notificacoes::marcar_avisos_lidos,
+            commands::notificacoes::salvar_avisos_desligados,
             commands::portal_cliente::definir_acesso_portal_contato,
             commands::portal_cliente::definir_senha_portal_contato,
             commands::portal_cliente::publicar_orcamento_portal,
