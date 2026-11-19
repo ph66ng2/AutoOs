@@ -7,6 +7,8 @@ vi.mock("@/lib/db", () => ({ db: { listarServicosPaginados: mocks.listar, reativ
 vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: vi.fn().mockResolvedValue(true) }) }));
 vi.mock("@/hooks/useNotification", () => ({ useNotification: () => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn() }) }));
 vi.mock("@/components/equipamentos/PecasDoServico", () => ({ PecasDoServico: () => null }));
+const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
+vi.mock("sonner", () => ({ toast: toastMock }));
 
 import Servicos from "./Servicos";
 
@@ -84,5 +86,16 @@ describe("Serviços (fase 8)", () => {
     await screen.findByText("Limpeza da cabeça");
     await waitFor(() => expect(mocks.listar).toHaveBeenLastCalledWith(undefined, "ATIVOS", 1));
     expect(mocks.listar.mock.calls.every((chamada) => chamada[2] === 1)).toBe(true);
+  });
+
+  it("desativar oferece desfazer, que reativa o serviço", async () => {
+    render(<Servicos />);
+    await userEvent.click(await screen.findByRole("switch", { name: "Serviço ativo: Limpeza da cabeça" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Desativar o serviço" }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith("Limpeza da cabeça desativado", expect.anything()));
+    const opcoes = toastMock.mock.calls[0][1] as { action: { label: string; onClick: () => void } };
+    expect(opcoes.action.label).toBe("Desfazer");
+    opcoes.action.onClick();
+    await waitFor(() => expect(mocks.reativar).toHaveBeenCalledWith(1));
   });
 });

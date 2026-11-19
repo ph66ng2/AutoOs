@@ -32,7 +32,10 @@ import {
   RefreshCw,
   Plus,
   ContactRound,
+  MessageCircle,
 } from "lucide-react";
+import { BotaoCopiar } from "@/components/ui/botao-copiar";
+import { montarLinkWhatsapp, telefoneParaExibir } from "@/lib/contato-cliente";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -678,10 +681,46 @@ export default function Clientes() {
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">{clienteAberto.tipo_pessoa === "PJ" ? "Empresa" : "Pessoa"}</p>
                     <h2 className="break-words text-xl font-extrabold leading-7">{nomeExibicaoCliente(clienteAberto)}</h2>
-                    <p className="font-mono text-xs text-muted-foreground">{documentoExibicaoCliente(clienteAberto)}</p>
+                    <p className="flex items-center gap-1 font-mono text-xs text-muted-foreground">
+                      {documentoExibicaoCliente(clienteAberto)}
+                      {documentoExibicaoCliente(clienteAberto) !== "—" && (
+                        <BotaoCopiar valor={(clienteAberto.documento || clienteAberto.cpf_cnpj || "").replace(/\D/g, "")} rotulo="CPF/CNPJ" />
+                      )}
+                    </p>
                   </div>
                   <Button variant="outline" size="sm" className="shrink-0" onClick={() => void abrirEditar(clienteAberto)}>Editar</Button>
                 </div>
+
+                {(clienteAberto.telefone?.trim() || clienteAberto.email?.trim()) && (
+                  <ul aria-label="Contato do cliente" className="space-y-1 text-sm">
+                    {clienteAberto.telefone?.trim() && (
+                      <li className="flex items-center gap-1">
+                        <span className="tabular-nums">{telefoneParaExibir(clienteAberto.telefone)}</span>
+                        <BotaoCopiar valor={telefoneParaExibir(clienteAberto.telefone)} rotulo="telefone" />
+                        {montarLinkWhatsapp(clienteAberto.telefone, "") && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="ml-auto h-7 gap-1.5 px-2 text-xs"
+                            onClick={() => {
+                              const link = montarLinkWhatsapp(clienteAberto.telefone, "");
+                              if (link) void db.abrirUrl(link).catch((err) => showError("Clientes", "Abrir WhatsApp", err));
+                            }}
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" /> WhatsApp
+                          </Button>
+                        )}
+                      </li>
+                    )}
+                    {clienteAberto.email?.trim() && (
+                      <li className="flex min-w-0 items-center gap-1">
+                        <span className="truncate">{clienteAberto.email.trim()}</span>
+                        <BotaoCopiar valor={clienteAberto.email.trim()} rotulo="e-mail" />
+                      </li>
+                    )}
+                  </ul>
+                )}
 
                 <div className={`grid gap-2 ${resumo?.faturado != null ? "grid-cols-3" : "grid-cols-2"}`}>
                   <div className="flex flex-col justify-between gap-1 rounded-xl bg-muted p-3">
