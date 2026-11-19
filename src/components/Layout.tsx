@@ -229,6 +229,7 @@ export function Layout() {
             type="button"
             onClick={() => setBuscaAberta(true)}
             aria-label="Buscar (Ctrl+K)"
+            data-tour="busca-global"
             title={collapsed ? "Buscar (Ctrl+K)" : undefined}
             className={cn(
               "flex h-10 w-full items-center gap-3 rounded-lg border border-sidebar-border bg-card/60 px-3 text-sm text-muted-foreground transition-colors duration-rapida hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",

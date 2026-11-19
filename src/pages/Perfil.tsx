@@ -23,6 +23,8 @@ import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { requestTour } from "@/lib/tour-request";
 import { setUiSoundsEnabled, uiSoundsEnabled } from "@/lib/ui-sounds";
 import { BASE_MODULES, newPermissions } from "@/lib/tour-steps";
+import { OBSERVACAO_ATALHOS } from "@/lib/atalhos";
+import { ListaAtalhos } from "@/components/busca/AjudaAtalhos";
 import { cn } from "@/lib/utils";
 import {
   SENSITIVE_PERMISSION_LABELS,
@@ -417,6 +419,15 @@ function Tutorial({ profile, permissions }: { profile: SecurityProfile; permissi
           <Button type="button" onClick={() => openTour("completo")}>
             <Sparkles className="mr-2 h-4 w-4" /> Ver tour
           </Button>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Atalhos de teclado</CardTitle>
+          <CardDescription>{OBSERVACAO_ATALHOS} Em qualquer tela, aperte ? para ver esta lista.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ListaAtalhos />
         </CardContent>
       </Card>
       <Card>
