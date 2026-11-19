@@ -121,7 +121,7 @@ export function Layout() {
   const [desktopCollapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const collapsed = desktopCollapsed && !mobileOpen;
-  const { status, lockSensitiveAccess, connectionUnavailable } = useSensitiveAccess();
+  const { status, lockSensitiveAccess, connectionUnavailable, ensureSensitiveAccess } = useSensitiveAccess();
   // A lista de perfis pode não trazer o perfil da sessão; o nome da sessão basta para o cartão.
   const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id)
     ?? (status?.active_profile_id != null
@@ -160,6 +160,14 @@ export function Layout() {
     abrirBusca: () => setBuscaAberta(true),
     abrirAjuda: () => setAjudaAberta(true),
     novaEntrada: () => navigate("/equipamentos", { state: { novaEntrada: true } }),
+    // Mesma liberação do botão "+ Novo orçamento" de Vendas.
+    novaVenda: () => {
+      void ensureSensitiveAccess({
+        title: "Novo orçamento de insumos",
+        description: "Informe o PIN para criar um orçamento de venda de insumos.",
+        permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+      }).then((liberado) => { if (liberado) navigate("/vendas/novo"); });
+    },
   });
   const renderItem = (item: NavItem) => (
     <NavLink
@@ -229,6 +237,7 @@ export function Layout() {
             type="button"
             onClick={() => setBuscaAberta(true)}
             aria-label="Buscar (Ctrl+K)"
+            data-tour="busca-global"
             title={collapsed ? "Buscar (Ctrl+K)" : undefined}
             className={cn(
               "flex h-10 w-full items-center gap-3 rounded-lg border border-sidebar-border bg-card/60 px-3 text-sm text-muted-foreground transition-colors duration-rapida hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
