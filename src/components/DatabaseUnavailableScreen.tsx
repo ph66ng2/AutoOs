@@ -28,6 +28,16 @@ export function reconnectDelaySeconds(attempt: number, tipo: DatabaseErrorKind):
   return tipo === "capacidade" ? Math.max(delay, CAPACITY_MIN_DELAY_SECONDS) : delay;
 }
 
+/** A partir de quantos minutos sem conexão a tela sugere chamar alguém. */
+export const LONG_OUTAGE_MINUTES = 5;
+
+/** Linha de queda longa; antes de 5 min não diz nada (contar tentativas só assusta). */
+export function longOutageMessage(downSinceMs: number, nowMs: number): string | null {
+  const minutes = Math.floor((nowMs - downSinceMs) / 60_000);
+  if (minutes < LONG_OUTAGE_MINUTES) return null;
+  return `Sem conexão há ${minutes} min. Se continuar, chame o administrador.`;
+}
+
 type FailureKind = Exclude<DatabaseErrorKind, "nao_configurado">;
 
 const COPY: Record<FailureKind, { title: string; description: string }> = {
@@ -85,12 +95,16 @@ export function supportDetailsText(error: DatabaseInitError, now: Date = new Dat
 
 interface DatabaseUnavailableScreenProps {
   initialError: DatabaseInitError;
+  /** Quando a conexão caiu (ms). Fica com quem monta a tela para sobreviver à ida à configuração avançada. */
+  downSince?: number;
   onConnected: () => void;
   onOpenAdvanced: () => void;
 }
 
-export function DatabaseUnavailableScreen({ initialError, onConnected, onOpenAdvanced }: DatabaseUnavailableScreenProps) {
+export function DatabaseUnavailableScreen({ initialError, downSince, onConnected, onOpenAdvanced }: DatabaseUnavailableScreenProps) {
   const [error, setError] = useState(initialError);
+  const [mountedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const [reconnecting, setReconnecting] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -98,6 +112,12 @@ export function DatabaseUnavailableScreen({ initialError, onConnected, onOpenAdv
   const reconnectingRef = useRef(false);
 
   const automatic = isTransientDatabaseError(error.tipo);
+  const longOutage = automatic ? longOutageMessage(downSince ?? mountedAt, now) : null;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const scheduleNext = useCallback((tipo: DatabaseErrorKind) => {
     if (!isTransientDatabaseError(tipo)) {
@@ -199,6 +219,7 @@ export function DatabaseUnavailableScreen({ initialError, onConnected, onOpenAdv
         <StateIcon tipo={error.tipo} />
         <h1 className="mt-2 text-2xl font-bold tracking-[-0.01em] [text-wrap:balance]">{copy.title}</h1>
         <p className="m-0 max-w-[40ch] text-[15px] text-[var(--cx-muted)] [text-wrap:pretty]">{copy.description}</p>
+        {longOutage && <p className="m-0 text-[13px] text-[var(--cx-muted)]">{longOutage}</p>}
 
         <div className="mt-2 flex flex-wrap justify-center gap-2">
           {automatic ? (
@@ -262,6 +283,7 @@ type FallbackView =
  */
 export function DatabaseFallback({ onConnected }: { onConnected: () => void }) {
   const [view, setView] = useState<FallbackView>({ kind: "loading" });
+  const [downSince] = useState(() => Date.now());
 
   useEffect(() => {
     let active = true;
@@ -301,6 +323,7 @@ export function DatabaseFallback({ onConnected }: { onConnected: () => void }) {
   return (
     <DatabaseUnavailableScreen
       initialError={view.error}
+      downSince={downSince}
       onConnected={onConnected}
       onOpenAdvanced={() => setView({ kind: "advanced", error: view.error })}
     />
