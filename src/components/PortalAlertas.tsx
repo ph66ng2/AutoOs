@@ -37,6 +37,8 @@ import { copyErrorDetails } from "@/lib/error-utils";
 import { marcarErrosLidos, useErrosRegistrados, type ErroRegistrado } from "@/lib/error-log";
 import { PREFIXO_TOAST_ERRO } from "@/hooks/useNotification";
 import { cn } from "@/lib/utils";
+import { destinoDoAviso, ROTULO_ABRIR_AVISO, VISUAL_AVISO } from "@/lib/avisos-internos";
+import type { AvisoInterno } from "@/types";
 import type { AlertaPortal } from "@/types";
 
 const POLL_MS = 30_000;
@@ -153,10 +155,18 @@ export function encaixePainelNotificacoes(
   };
 }
 
-export function PortalAlertasSino() {
+/**
+ * `perfilId`: perfil ativo. Ao trocar de perfil, o sino esquece os avisos e o "lido" do anterior
+ * e consulta de novo; respostas de consultas da sessão anterior são descartadas.
+ */
+export function PortalAlertasSino({ perfilId = null }: { perfilId?: number | null } = {}) {
   const navigate = useNavigate();
   const erros = useErrosRegistrados();
   const [naoLidosPortal, setNaoLidosPortal] = useState(0);
+  const [avisos, setAvisos] = useState<AvisoInterno[]>([]);
+  const avisosVistos = useRef<Set<string> | null>(null);
+  /** Muda a cada troca de perfil: resposta que volta com outro número é da sessão anterior. */
+  const geracao = useRef(0);
   const [aberto, setAberto] = useState(false);
   const [encaixe, setEncaixe] = useState<CSSProperties>({});
   const ultimoVisto = useRef<number | null>(null);
@@ -166,7 +176,8 @@ export function PortalAlertasSino() {
   const painel = useRef<HTMLDivElement>(null);
   const errosNaoLidos = erros.filter((item) => !item.lido).length;
   // Só avisos contam no número; erros do app ficam na aba Sistema (um ponto discreto no sino).
-  const naoLidos = naoLidosPortal;
+  const avisosNaoLidos = avisos.filter((aviso) => !aviso.lido).length;
+  const naoLidos = naoLidosPortal + avisosNaoLidos;
   const errosAbertos = useRef<string[]>([]);
   errosAbertos.current = erros.filter((item) => !item.lido).map((item) => item.id);
 
@@ -175,9 +186,53 @@ export function PortalAlertasSino() {
     navigate("/equipamentos", { state: { equipamentoId } });
   }, [navigate]);
 
+  /** Avisos internos: contam no sino; os que aparecem depois da primeira consulta viram aviso rápido. */
+  const verificarAvisos = useCallback(async () => {
+    const minhaGeracao = geracao.current;
+    let lista: AvisoInterno[] = [];
+    try {
+      lista = (await db.listarAvisosInternos()) ?? [];
+    } catch {
+      // Sem sessão ou banco sem a migration 0053: nenhum aviso interno.
+    }
+    if (minhaGeracao !== geracao.current) return;
+    setAvisos(lista);
+    const vistos = avisosVistos.current;
+    const novos = vistos ? lista.filter((aviso) => !aviso.lido && !vistos.has(aviso.chave)) : [];
+    avisosVistos.current = new Set([...(vistos ?? []), ...lista.map((aviso) => aviso.chave)]);
+    novos.slice(0, MAX_TOASTS_POR_VEZ).forEach((aviso) => {
+      const visual = VISUAL_AVISO[aviso.tipo];
+      toast(aviso.titulo, {
+        id: `aviso-${aviso.chave}`,
+        description: aviso.detalhe ?? undefined,
+        icon: (
+          <span className={cn("inline-flex h-7 w-7 items-center justify-center rounded-lg", visual.chip)}>
+            <visual.Icone className="h-4 w-4" />
+          </span>
+        ),
+        duration: 10_000,
+        action: { label: "Ver", onClick: () => abrirAvisoRef.current(aviso) },
+        classNames: { icon: "!m-0 !h-7 !w-7" },
+      });
+    });
+  }, []);
+
+  const abrirAviso = useCallback((aviso: AvisoInterno) => {
+    // Abrir conta como leitura, igual aos alertas do portal.
+    void db.marcarAvisosLidos([aviso.chave]).then(() => verificarAvisos()).catch(() => undefined);
+    const destino = destinoDoAviso(aviso);
+    setAberto(false);
+    if (destino) navigate(destino.path, destino.state ? { state: destino.state } : undefined);
+  }, [navigate, verificarAvisos]);
+  const abrirAvisoRef = useRef(abrirAviso);
+  abrirAvisoRef.current = abrirAviso;
+
   const verificar = useCallback(async () => {
+    void verificarAvisos();
+    const minhaGeracao = geracao.current;
     try {
       const total = Number(await db.contarAlertasPortalNaoLidos()) || 0;
+      if (minhaGeracao !== geracao.current) return;
       setNaoLidosPortal(total);
       if (total === 0) {
         ultimoVisto.current ??= 0;
@@ -210,9 +265,23 @@ export function PortalAlertasSino() {
       // Sessão bloqueada ou banco sem a migration 0035: só os erros do app contam.
       setNaoLidosPortal(0);
     }
-  }, [abrirAtendimento]);
+  }, [abrirAtendimento, verificarAvisos]);
   const verificarRef = useRef(verificar);
   verificarRef.current = verificar;
+
+  // Troca de perfil: o que o sino mostrava era do perfil anterior (permissões e "lido").
+  const perfilAnterior = useRef(perfilId);
+  useEffect(() => {
+    if (perfilAnterior.current === perfilId) return;
+    perfilAnterior.current = perfilId;
+    geracao.current += 1;
+    setAvisos([]);
+    setNaoLidosPortal(0);
+    avisosVistos.current = null;
+    ultimoVisto.current = null;
+    setAberto(false);
+    void verificarRef.current();
+  }, [perfilId]);
 
   useEffect(() => {
     void verificar();
@@ -287,6 +356,8 @@ export function PortalAlertasSino() {
         <PortalAlertasPainel
           ref={painel}
           erros={erros}
+          avisos={avisos}
+          onAbrirAviso={abrirAviso}
           encaixe={encaixe}
           onFechar={() => setAberto(false)}
           onAbrirAtendimento={abrirAtendimento}
@@ -303,10 +374,13 @@ type Aba = "avisos" | "sistema";
 
 type Item =
   | { tipo: "portal"; chave: string; quando: string; alerta: AlertaPortal }
+  | { tipo: "aviso"; chave: string; quando: string; aviso: AvisoInterno }
   | { tipo: "erro"; chave: string; quando: string; registro: ErroRegistrado };
 
 type PainelProps = {
   erros: ErroRegistrado[];
+  avisos: AvisoInterno[];
+  onAbrirAviso: (aviso: AvisoInterno) => void;
   encaixe: CSSProperties;
   onFechar: () => void;
   onAbrirAtendimento: (equipamentoId: number) => void;
@@ -315,7 +389,7 @@ type PainelProps = {
 
 const ROTULO_ABA: Record<Aba, string> = { avisos: "Avisos", sistema: "Sistema" };
 
-export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(function PortalAlertasPainel({ erros, encaixe, onFechar, onAbrirAtendimento, onChanged }, ref) {
+export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(function PortalAlertasPainel({ erros, avisos, onAbrirAviso, encaixe, onFechar, onAbrirAtendimento, onChanged }, ref) {
   const [aba, setAba] = useState<Aba>("avisos");
   const [historico, setHistorico] = useState(false);
   const [alertas, setAlertas] = useState<AlertaPortal[]>([]);
@@ -355,22 +429,40 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
   };
 
   const errosVisiveis = historico ? erros : erros.filter((item) => !item.lido);
+  const avisosVisiveis = historico ? avisos : avisos.filter((aviso) => !aviso.lido);
   const contagem: Record<Aba, number> = {
-    avisos: alertas.filter((a) => !a.lidoEm).length,
+    avisos: alertas.filter((a) => !a.lidoEm).length + avisos.filter((a) => !a.lido).length,
     sistema: erros.filter((e) => !e.lido).length,
   };
 
   const itens: Item[] = aba === "avisos"
-    ? alertas.map((alerta): Item => ({ tipo: "portal", chave: `p-${alerta.id}`, quando: alerta.criadoEm, alerta }))
+    ? [
+      ...alertas.map((alerta): Item => ({ tipo: "portal", chave: `p-${alerta.id}`, quando: alerta.criadoEm, alerta })),
+      ...avisosVisiveis.map((aviso): Item => ({ tipo: "aviso", chave: `a-${aviso.chave}`, quando: aviso.quando ?? "", aviso })),
+    ].sort((a, b) => b.quando.localeCompare(a.quando))
     : errosVisiveis
       .map((registro): Item => ({ tipo: "erro", chave: `e-${registro.id}`, quando: registro.erro.timestamp.toISOString(), registro }))
       .sort((a, b) => b.quando.localeCompare(a.quando));
 
-  const marcarTodos = async () => {
-    if (aba === "sistema") marcarErrosLidos();
-    else await marcar();
+  const marcarAvisos = async (chaves: string[]) => {
+    if (chaves.length === 0) return;
+    try {
+      await db.marcarAvisosLidos(chaves);
+      onChanged();
+    } catch (cause) {
+      setErro(cause instanceof Error ? cause.message : String(cause));
+    }
   };
-  const haNaoLidos = itens.some((item) => (item.tipo === "portal" ? !item.alerta.lidoEm : !item.registro.lido));
+
+  const marcarTodos = async () => {
+    if (aba === "sistema") {
+      marcarErrosLidos();
+      return;
+    }
+    await marcarAvisos(avisos.filter((aviso) => !aviso.lido).map((aviso) => aviso.chave));
+    await marcar();
+  };
+  const haNaoLidos = itens.some((item) => (item.tipo === "portal" ? !item.alerta.lidoEm : item.tipo === "aviso" ? !item.aviso.lido : !item.registro.lido));
 
   return (
     <div
@@ -449,9 +541,11 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
         )}
         {itens.map((item) => item.tipo === "portal"
           ? <ItemPortal key={item.chave} alerta={item.alerta} onAbrir={() => void abrir(item.alerta)} onMarcar={() => void marcar(item.alerta.id)} />
-          : <ItemErro key={item.chave} registro={item.registro} />)}
+          : item.tipo === "aviso"
+            ? <ItemAviso key={item.chave} aviso={item.aviso} onAbrir={() => onAbrirAviso(item.aviso)} onMarcar={() => void marcarAvisos([item.aviso.chave])} />
+            : <ItemErro key={item.chave} registro={item.registro} />)}
       </div>
-      {aba === "avisos" && (
+      {aba === "avisos" && itens.some((item) => item.tipo === "portal") && (
         <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">
           Portal: “confirma às…” significa que o cliente ainda pode desfazer. Só inicie o serviço depois.
         </p>
@@ -493,6 +587,40 @@ function ItemPortal({ alerta, onAbrir, onMarcar }: { alerta: AlertaPortal; onAbr
             <span className="text-xs text-muted-foreground">
               Lido {alerta.lidoPor ? `por ${alerta.lidoPor} ` : ""}{quando(alerta.lidoEm)}
             </span>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ItemAviso({ aviso, onAbrir, onMarcar }: { aviso: AvisoInterno; onAbrir: () => void; onMarcar: () => void }) {
+  const visual = VISUAL_AVISO[aviso.tipo];
+  return (
+    <article className={cn("flex gap-3 border-t px-4 py-3.5", aviso.lido && "opacity-[.78]")}>
+      <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]", visual.chip)} aria-hidden="true">
+        <visual.Icone className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className={cn("text-sm leading-snug", aviso.lido ? "font-semibold" : "font-extrabold")}>{aviso.titulo}</h3>
+          <span className="flex shrink-0 items-center gap-1.5">
+            {aviso.quando && <time className="text-xs text-muted-foreground" dateTime={aviso.quando}>{quando(aviso.quando)}</time>}
+            {!aviso.lido && <span className="h-2 w-2 rounded-full bg-primary" aria-label="Não lida" />}
+          </span>
+        </div>
+        {aviso.detalhe && <p className="mt-0.5 line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">{aviso.detalhe}</p>}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1">
+          <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">{visual.rotulo}</span>
+          {destinoDoAviso(aviso) && (
+            <button type="button" className="text-[13px] font-semibold text-primary hover:underline" onClick={onAbrir}>
+              {ROTULO_ABRIR_AVISO[aviso.tipo]}
+            </button>
+          )}
+          {!aviso.lido && (
+            <button type="button" className="text-[13px] text-muted-foreground hover:text-foreground hover:underline" onClick={onMarcar}>
+              Marcar como lido
+            </button>
           )}
         </div>
       </div>

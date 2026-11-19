@@ -280,7 +280,7 @@ export function Layout() {
             >
               <Store className="h-[18px] w-[18px]" />
             </Button>
-            {telaLarga && <PortalAlertasSino />}
+            {telaLarga && <PortalAlertasSino perfilId={status?.active_profile_id ?? null} />}
           </div>
           {!collapsed && mostrarAvisoAcesso && <SensitiveAccessBadge />}
           {activeProfile && activeLook && (
@@ -351,7 +351,7 @@ export function Layout() {
             <Button type="button" variant="outline" size="icon" aria-label="Abrir menu" aria-expanded={mobileOpen} aria-controls="main-sidebar" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></Button>
             <span className="font-semibold">{empresa ?? "AutoOS"}</span>
             <div className="ml-auto flex items-center gap-2">
-              <PortalAlertasSino />
+              <PortalAlertasSino perfilId={status?.active_profile_id ?? null} />
             </div>
           </header>
         )}

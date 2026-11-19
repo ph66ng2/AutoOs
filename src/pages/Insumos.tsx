@@ -81,13 +81,20 @@ function NumeroEstoque({ titulo, valor, detalhe, alerta = false }: { titulo: str
 
 export default function Insumos() {
   // Item de "Estoque baixo" do Início: a lista abre já buscando por ele.
-  const estadoNavegacao = useEstadoNavegacao<{ busca?: string }>();
+  const estadoNavegacao = useEstadoNavegacao<{ busca?: string; estoqueBaixo?: boolean }>();
   const [busca, setBusca] = useEstadoLembrado("insumos:busca", estadoNavegacao?.busca ?? "");
   const [categoriaFiltro, setCategoriaFiltro] = useEstadoLembrado("insumos:categoria", "TODOS");
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
   // Vindo do Início ou do Ctrl+K, a busca pedida vale (também com a tela já aberta) e os
   // filtros lembrados saem do caminho, senão uma categoria antiga esconderia o item pedido.
   useEffect(() => {
+    // Aviso de estoque baixo do sino: a lista abre só com os itens abaixo do mínimo.
+    if (estadoNavegacao?.estoqueBaixo) {
+      setBusca("");
+      setCategoriaFiltro("TODOS");
+      setApenasEstoqueBaixo(true);
+      return;
+    }
     if (!estadoNavegacao?.busca) return;
     setBusca(estadoNavegacao.busca);
     setCategoriaFiltro("TODOS");

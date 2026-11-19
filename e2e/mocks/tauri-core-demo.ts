@@ -211,6 +211,13 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return [] as T;
     case "listar_alertas_portal":
       return [] as T;
+    case "listar_avisos_internos":
+      return [
+        { chave: "os-nova:1", tipo: "os-nova", titulo: "Nova OS para você: Zebra ZD620", detalhe: "BMITAG · Não puxa a etiqueta", equipamentoId: 1, lido: false, quando: new Date().toISOString() },
+        { chave: "estoque-baixo:demo", tipo: "estoque-baixo", titulo: "2 itens com estoque baixo", detalhe: "Cabeça GC420t, Botão feed", lido: false, quando: new Date(Date.now() - 3_600_000).toISOString() },
+      ] as T;
+    case "marcar_avisos_lidos":
+      return 1 as T;
     case "contar_alertas_portal_nao_lidos":
       return 0 as T;
     case "listar_servicos_paginados": {
