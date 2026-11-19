@@ -31,6 +31,12 @@ const BASE_TOUR: TourStep[] = [
     target: "nav",
   },
   {
+    id: "busca",
+    title: "Buscar e atalhos",
+    body: "Ctrl+K busca equipamento, cliente, insumo ou tela de qualquer lugar. Ctrl+/ mostra os outros atalhos.",
+    target: "busca-global",
+  },
+  {
     id: "equipamentos",
     title: "Equipamentos",
     body: "Toda impressora que chega começa aqui: cliente, defeito relatado, fotos pelo celular e o status até a entrega.",

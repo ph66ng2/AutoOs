@@ -194,7 +194,7 @@ export default function Dashboard() {
             ))}
           </SelectContent>
         </Select>
-        <Button onClick={() => navigate("/equipamentos", { state: { novaEntrada: true } })}>
+        <Button onClick={() => navigate("/equipamentos", { state: { novaEntrada: true } })} title="Nova entrada (Alt+N)" aria-keyshortcuts="Alt+N">
           <Plus className="h-4 w-4 mr-1" />Nova entrada
         </Button>
       </PageHeader>

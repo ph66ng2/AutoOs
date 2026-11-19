@@ -4,6 +4,7 @@ export interface AcoesAtalho {
   abrirBusca: () => void;
   abrirAjuda: () => void;
   novaEntrada: () => void;
+  novaVenda: () => void;
 }
 
 function editavel(alvo: EventTarget | null) {
@@ -19,9 +20,10 @@ export function caixaDeBuscaDaTela(raiz: ParentNode = document): HTMLInputElemen
 }
 
 /**
- * Atalhos do app inteiro. Ctrl+K vale também dentro de campos; as letras só fora deles.
- * Nenhum vale com janela modal aberta (o convite do tour não conta).
- * Assim nunca roubam o que a pessoa está digitando nem trocam a tela por baixo de uma operação.
+ * Atalhos do app inteiro. Os que abrem algo usam uma tecla de apoio (Ctrl/Alt), então valem
+ * até dentro de um campo sem atrapalhar a digitação; só a "/" é sozinha e por isso fica de fora
+ * dos campos. Com uma janela modal aberta nenhum vale: trocar de tela por baixo de uma operação
+ * aplicaria a operação no lugar errado. O convite do tour não conta como janela.
  */
 export function useAtalhosGlobais(acoes: AcoesAtalho) {
   const ref = useRef(acoes);
@@ -29,29 +31,20 @@ export function useAtalhosGlobais(acoes: AcoesAtalho) {
   useEffect(() => {
     const aoTeclar = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return;
-      // Com uma janela modal aberta (mudança de status, cadastro…) nada navega por atalho:
-      // trocar de equipamento por baixo dela aplicaria a operação no equipamento errado.
       const janelaAberta = document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]') != null;
-      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "k") {
-        if (janelaAberta) return;
-        event.preventDefault();
-        ref.current.abrirBusca();
-        return;
-      }
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (editavel(event.target) || janelaAberta) return;
-      if (event.key === "/") {
+      if (janelaAberta) return;
+      const ctrl = event.ctrlKey || event.metaKey;
+      const executar = (acao: () => void) => { event.preventDefault(); acao(); };
+      // Pelo código da tecla: com Alt, o Mac troca o caractere (Alt+N vira "˜").
+      if (ctrl && !event.altKey && !event.shiftKey && event.code === "KeyK") return executar(ref.current.abrirBusca);
+      if (ctrl && !event.altKey && (event.key === "/" || event.code === "Slash")) return executar(ref.current.abrirAjuda);
+      if (event.altKey && !ctrl && !event.shiftKey && event.code === "KeyN") return executar(ref.current.novaEntrada);
+      if (event.altKey && !ctrl && !event.shiftKey && event.code === "KeyV") return executar(ref.current.novaVenda);
+      if (ctrl || event.altKey || event.shiftKey) return;
+      if (event.key === "/" && !editavel(event.target)) {
         const caixa = caixaDeBuscaDaTela();
         if (!caixa) return;
-        event.preventDefault();
-        caixa.focus();
-        caixa.select();
-      } else if (event.key === "?") {
-        event.preventDefault();
-        ref.current.abrirAjuda();
-      } else if (event.key.toLowerCase() === "n" && !event.shiftKey) {
-        event.preventDefault();
-        ref.current.novaEntrada();
+        executar(() => { caixa.focus(); caixa.select(); });
       }
     };
     window.addEventListener("keydown", aoTeclar);
