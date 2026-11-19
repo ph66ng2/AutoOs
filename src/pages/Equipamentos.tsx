@@ -215,6 +215,8 @@ import { useNomesFiltroTecnico, useTecnicos } from "@/hooks/useTecnicos";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { quandoRascunho, useRascunho } from "@/hooks/useRascunho";
+import { HistoricoDoSerial } from "@/components/equipamentos/HistoricoDoSerial";
+import { BotaoCopiar } from "@/components/ui/botao-copiar";
 import { emailDoTecnico } from "@/lib/tecnicos";
 import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
 import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
@@ -3219,35 +3221,14 @@ export default function Equipamentos() {
                   </div>
                   <FormValidationError message={form.formState.errors.serial_number?.message} />
                   {registrosAnteriores.length > 0 && (
-                    <div className="mt-2 rounded-md border border-status-wait bg-status-wait-bg p-3 space-y-2">
-                      <p className="text-sm font-bold text-status-wait">
-                        ⚠️ ATENÇÃO: Este número de série já foi registrado anteriormente. Marque esta caixa apenas se realmente deseja criar um NOVO ciclo de manutenção.
-                      </p>
-                      <ul className="space-y-1">
-                        {registrosAnteriores.map((r) => (
-                          <li key={r.id} className="text-xs text-status-wait flex items-center gap-1 flex-wrap">
-                            <span>• #{r.id}</span>
-                            <StatusBadge status={r.status} />
-                            <span>— Entrada: {formatDatePtBr(r.data_entrada)}</span>
-                            {r.data_saida && (
-                              <span>| Saída: {new Date(r.data_saida).toLocaleDateString("pt-BR")}</span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                      <p className="text-xs text-status-wait">
-                        O histórico anterior será preservado. Este será um registro independente.
-                      </p>
-                      <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
-                        <input
-                          type="checkbox"
-                          checked={confirmouNovoCiclo}
-                          onChange={(e) => setConfirmouNovoCiclo(e.target.checked)}
-                          className="rounded border-status-wait"
-                        />
-                        <span className="text-status-wait font-semibold">Confirmo que desejo criar um novo ciclo de manutenção para este equipamento</span>
-                      </label>
-                    </div>
+                    <HistoricoDoSerial
+                      registros={registrosAnteriores}
+                      confirmado={confirmouNovoCiclo}
+                      onConfirmar={setConfirmouNovoCiclo}
+                      // Fecha a Nova entrada antes (o rascunho guarda o que foi digitado): a OS
+                      // anterior nunca abre por baixo de um cadastro em andamento.
+                      onAbrir={(eq) => { setDialogOpen(false); navigate(`/equipamentos/${eq.id}`); }}
+                    />
                   )}
                 </div>
                 <div className="space-y-2">
@@ -3513,7 +3494,10 @@ export default function Equipamentos() {
                 </button>
                 <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                   <h1 className="break-words text-[26px] font-bold leading-tight tracking-tight [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h1>
-                  <span className="font-mono text-sm text-muted-foreground [overflow-wrap:anywhere]">{selecionado.serial_number}</span>
+                  <span className="inline-flex items-center gap-0.5 font-mono text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                    {selecionado.serial_number}
+                    {selecionado.serial_number && <BotaoCopiar valor={selecionado.serial_number} rotulo="número de série" />}
+                  </span>
                   <StatusBadge status={selecionado.status} completo />
                 </div>
               </div>
