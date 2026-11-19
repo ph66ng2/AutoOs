@@ -416,9 +416,11 @@ export default function Equipamentos() {
 
   usePrimeiraPaginaAoFiltrar([busca, statusFiltro, ordenacao, tecnicoFiltro], () => setPaginaEquipamentos(1));
 
+  // Só limita a página depois de o total chegar: antes dele, a página lembrada valeria 1.
   useEffect(() => {
+    if (loading) return;
     setPaginaEquipamentos((pagina) => Math.min(pagina, totalPaginasEquipamentos));
-  }, [totalPaginasEquipamentos]);
+  }, [totalPaginasEquipamentos, loading, setPaginaEquipamentos]);
 
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =

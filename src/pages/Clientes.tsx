@@ -140,8 +140,9 @@ export default function Clientes() {
   usePrimeiraPaginaAoFiltrar([busca, filtro], () => setAbaAtual(1));
 
   useEffect(() => {
+    if (loading) return;
     setAbaAtual((aba) => Math.min(aba, totalAbas));
-  }, [totalAbas]);
+  }, [totalAbas, loading, setAbaAtual]);
 
   const form = useForm<ClienteFormData>({
     resolver: zodResolver(clienteSchema),

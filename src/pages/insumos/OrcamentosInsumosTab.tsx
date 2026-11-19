@@ -101,8 +101,9 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
 
   usePrimeiraPaginaAoFiltrar([busca, status], () => setPagina(1));
   useEffect(() => {
+    if (loading) return;
     setPagina((atual) => Math.min(atual, paginas));
-  }, [paginas]);
+  }, [paginas, loading, setPagina]);
 
   async function abrirNovo() {
     const liberado = await ensureSensitiveAccess({

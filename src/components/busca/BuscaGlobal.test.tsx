@@ -61,3 +61,21 @@ describe("BuscaGlobal (Ctrl+K)", () => {
     await waitFor(() => expect(db.listarClientesPaginados).not.toHaveBeenCalled());
   });
 });
+
+describe("BuscaGlobal: troca de termo", () => {
+  it("ao mudar o termo, os resultados do anterior somem antes da nova busca", async () => {
+    const user = userEvent.setup();
+    db.listarClientesPaginados.mockResolvedValue({ items: [], total: 0 });
+    db.listarProdutosPaginados.mockResolvedValue({ items: [], total: 0 });
+    db.listarEquipamentosPaginados.mockResolvedValueOnce({ items: [{ id: 7, marca: "Zebra", modelo: "ZD220", serial_number: "AAA", status: "RECEBIDO" }], total: 1 })
+      .mockImplementation(() => new Promise(() => undefined));
+    montar();
+    await user.type(screen.getByRole("combobox"), "aaa");
+    expect(await screen.findByRole("option", { name: /Zebra ZD220/ })).toBeInTheDocument();
+    await user.clear(screen.getByRole("combobox"));
+    await user.type(screen.getByRole("combobox"), "bbb");
+    expect(screen.queryByRole("option", { name: /Zebra ZD220/ })).not.toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(screen.getByTestId("onde")).toHaveTextContent(/^\/null$/);
+  });
+});

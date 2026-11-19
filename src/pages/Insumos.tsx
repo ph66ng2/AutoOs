@@ -83,12 +83,16 @@ export default function Insumos() {
   // Item de "Estoque baixo" do Início: a lista abre já buscando por ele.
   const estadoNavegacao = useEstadoNavegacao<{ busca?: string }>();
   const [busca, setBusca] = useEstadoLembrado("insumos:busca", estadoNavegacao?.busca ?? "");
-  // Vindo do Início ou do Ctrl+K, a busca pedida vale (também com a tela já aberta).
-  useEffect(() => {
-    if (estadoNavegacao?.busca) setBusca(estadoNavegacao.busca);
-  }, [estadoNavegacao, setBusca]);
   const [categoriaFiltro, setCategoriaFiltro] = useEstadoLembrado("insumos:categoria", "TODOS");
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
+  // Vindo do Início ou do Ctrl+K, a busca pedida vale (também com a tela já aberta) e os
+  // filtros lembrados saem do caminho, senão uma categoria antiga esconderia o item pedido.
+  useEffect(() => {
+    if (!estadoNavegacao?.busca) return;
+    setBusca(estadoNavegacao.busca);
+    setCategoriaFiltro("TODOS");
+    setApenasEstoqueBaixo(false);
+  }, [estadoNavegacao, setBusca, setCategoriaFiltro]);
   const [paginaInsumos, setPaginaInsumos] = useEstadoLembrado("insumos:pagina", 1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [movDialogOpen, setMovDialogOpen] = useState(false);
@@ -126,8 +130,9 @@ export default function Insumos() {
   usePrimeiraPaginaAoFiltrar([busca, categoriaFiltro, apenasEstoqueBaixo], () => setPaginaInsumos(1));
 
   useEffect(() => {
+    if (loading) return;
     setPaginaInsumos((pagina) => Math.min(pagina, totalPaginasInsumos));
-  }, [totalPaginasInsumos]);
+  }, [totalPaginasInsumos, loading, setPaginaInsumos]);
   const { error: showError } = useNotification();
   const { resumo, recarregar: recarregarResumo } = useResumoEstoque();
   const voltarDepoisDaEntrada = useRef<string | null>(null);

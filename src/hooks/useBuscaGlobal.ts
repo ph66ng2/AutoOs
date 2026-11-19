@@ -51,6 +51,8 @@ export function useBuscaGlobal(termo: string, telas: TelaBuscavel[]) {
       return;
     }
     let vivo = true;
+    // Resultados do termo anterior saem já: Enter durante a busca nunca abre o item errado.
+    setResultados(daTela);
     setBuscando(true);
     const espera = window.setTimeout(() => {
       const seguro = <T,>(promessa: () => Promise<T>) => Promise.resolve().then(promessa).catch(() => null);

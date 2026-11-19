@@ -68,8 +68,9 @@ export default function Servicos() {
   usePrimeiraPaginaAoFiltrar([busca, mostrar], () => setPaginaServicos(1));
 
   useEffect(() => {
+    if (loading) return;
     setPaginaServicos((pagina) => Math.min(pagina, totalPaginasServicos));
-  }, [totalPaginasServicos]);
+  }, [totalPaginasServicos, loading, setPaginaServicos]);
 
   const form = useForm<ServicoCatalogoFormData>({
     resolver: zodResolver(servicoCatalogoSchema),
