@@ -599,6 +599,7 @@ export default function Equipamentos() {
   /** Cada Nova entrada aberta ganha um número; o salvar só apaga o rascunho do seu próprio formulário. */
   const donoRascunhoEntrada = useRef(0);
   const [rascunhoRecuperadoEm, setRascunhoRecuperadoEm] = useState<string | null>(null);
+  const [conferindoSerieRascunho, setConferindoSerieRascunho] = useState(false);
   const novaEntradaAberta = dialogOpen && !editando;
   useEffect(() => {
     if (!novaEntradaAberta) return;
@@ -674,6 +675,7 @@ export default function Equipamentos() {
       observacoes: "",
     });
     donoRascunhoEntrada.current += 1;
+    setConferindoSerieRascunho(false);
     const rascunho = rascunhoEntrada.ler();
     setRascunhoRecuperadoEm(rascunho?.salvoEm ?? null);
     if (rascunho) {
@@ -681,6 +683,17 @@ export default function Equipamentos() {
       setClienteVinculado(rascunho.dados.cliente);
       setResponsavelVinculado(rascunho.dados.responsavel);
       if (rascunho.dados.tecnico) setTecnicoNovoEquipamento(rascunho.dados.tecnico);
+      // A série do rascunho passa pela mesma conferência de histórico que a digitada:
+      // sem isso, dava para cadastrar outro ciclo sem a confirmação obrigatória.
+      const serieRascunho = rascunho.dados.form.serial_number?.trim() ?? "";
+      if (serieRascunho.length >= 3) {
+        const dono = donoRascunhoEntrada.current;
+        setConferindoSerieRascunho(true);
+        db.buscarEquipamentosPorSerial(serieRascunho)
+          .then((registros) => { if (donoRascunhoEntrada.current === dono) setRegistrosAnteriores(registros); })
+          .catch((err) => console.error("Erro ao buscar registros anteriores:", err))
+          .finally(() => { if (donoRascunhoEntrada.current === dono) setConferindoSerieRascunho(false); });
+      }
     }
     setDialogOpen(true);
   }
@@ -1310,6 +1323,8 @@ export default function Equipamentos() {
   async function onSubmit(data: EquipamentoFormData) {
     const sequenciaEdicao = fotoEdicaoSeq.current;
     const meuRascunhoEntrada = donoRascunhoEntrada.current;
+    // Mesma trava do botão, também para o Enter: série repetida exige confirmar o novo ciclo.
+    if (conferindoSerieRascunho || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)) return;
     const baselineFotos = editando ? baselineFotosRef.current : null;
     if (editando && (carregandoImagensFormulario || !baselineFotos || baselineFotos.equipamentoId !== editando.id)) {
       setErroImagens("As fotos ainda não foram carregadas com segurança. Recarregue as fotos antes de salvar.");
@@ -3415,7 +3430,7 @@ export default function Equipamentos() {
             </DialogBody>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline" type="button" onClick={editando ? undefined : descartarEntrada}>Cancelar</Button></DialogClose>
-              <Button type="submit" disabled={salvando || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
+              <Button type="submit" disabled={salvando || conferindoSerieRascunho || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
                 {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}
               </Button>
             </DialogFooter>
