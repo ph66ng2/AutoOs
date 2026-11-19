@@ -141,6 +141,40 @@ pub fn database_init_error() -> Option<DatabaseInitError> {
     INIT_ERROR.lock().ok().and_then(|g| g.clone())
 }
 
+const DATABASE_HEALTH_TIMEOUT: Duration = Duration::from_secs(5);
+
+fn init_error_from(error: &sqlx::Error) -> DatabaseInitError {
+    DatabaseInitError {
+        tipo: database_error_kind(error),
+        mensagem: database_error_message(error),
+    }
+}
+
+fn health_timeout_error() -> sqlx::Error {
+    sqlx::Error::Io(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        format!("a checagem de conexão excedeu {} segundos.", DATABASE_HEALTH_TIMEOUT.as_secs()),
+    ))
+}
+
+/// Checagem rápida com o app já aberto: um `SELECT 1` no pool atual. `None`
+/// quando o banco respondeu. Não recria o pool; o sqlx reabre conexões
+/// sozinho quando a rede volta.
+pub async fn check_database_health() -> Option<DatabaseInitError> {
+    let Some(pool) = POOL.lock().ok().and_then(|guard| guard.clone()) else {
+        return Some(database_init_error().unwrap_or(DatabaseInitError {
+            tipo: DatabaseErrorKind::Desconhecido,
+            mensagem: "Pool de conexões não inicializado.".to_string(),
+        }));
+    };
+    let result = tokio::time::timeout(DATABASE_HEALTH_TIMEOUT, sqlx::query("SELECT 1").execute(&pool)).await;
+    match result {
+        Ok(Ok(_)) => None,
+        Ok(Err(error)) => Some(init_error_from(&error)),
+        Err(_) => Some(init_error_from(&health_timeout_error())),
+    }
+}
+
 fn is_database_capacity_error(error: &sqlx::Error) -> bool {
     match error {
         sqlx::Error::Database(database_error) => {
@@ -191,10 +225,7 @@ pub fn clear_database_init_error() {
 }
 
 fn set_database_init_error(error: &sqlx::Error) {
-    let init_error = DatabaseInitError {
-        tipo: database_error_kind(error),
-        mensagem: database_error_message(error),
-    };
+    let init_error = init_error_from(error);
     if let Ok(mut guard) = INIT_ERROR.lock() {
         *guard = Some(init_error);
     }
@@ -925,6 +956,13 @@ mod tests {
 
         let faltando = schema_failure_into_error(SchemaCheckFailure::Mismatch("tabela x ausente".to_string()));
         assert_eq!(database_error_kind(&faltando), DatabaseErrorKind::Incompativel);
+    }
+
+    #[test]
+    fn slow_health_check_is_transient() {
+        let lento = init_error_from(&health_timeout_error());
+        assert_eq!(lento.tipo, DatabaseErrorKind::Rede);
+        assert!(lento.mensagem.contains("demorou para responder"));
     }
 
     #[test]

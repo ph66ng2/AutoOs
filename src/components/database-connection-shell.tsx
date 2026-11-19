@@ -50,6 +50,12 @@ const LIGHT: Record<string, string> = {
   "--cx-neutral-bg": "#eceef1",
 };
 
+/** Cores das telas de conexão para o tema atual, como variáveis CSS (`--cx-*`). */
+export function useConnectionThemeVars(): CSSProperties {
+  const { resolvedTheme } = useTheme();
+  return (resolvedTheme === "light" ? LIGHT : DARK) as CSSProperties;
+}
+
 export type ConnectionTone = "wait" | "bad" | "neutral";
 
 const TONE_CLASS: Record<ConnectionTone, string> = {
@@ -93,8 +99,7 @@ interface ConnectionShellProps {
 
 /** Fundo, marca no canto e rodapé comuns às telas de conexão. */
 export function ConnectionShell({ children, footer }: ConnectionShellProps) {
-  const { resolvedTheme } = useTheme();
-  const vars = (resolvedTheme === "light" ? LIGHT : DARK) as CSSProperties;
+  const vars = useConnectionThemeVars();
 
   return (
     <div

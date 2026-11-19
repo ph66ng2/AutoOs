@@ -1639,6 +1639,13 @@ pub async fn obter_erro_inicializacao_banco() -> Result<Option<crate::db::Databa
     Ok(crate::db::database_init_error())
 }
 
+/// Checagem rápida com o app aberto (`SELECT 1`). `None` quando o banco respondeu.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn verificar_saude_banco() -> Result<Option<crate::db::DatabaseInitError>, String> {
+    Ok(crate::db::check_database_health().await)
+}
+
 /// Tenta de novo a conexão com a configuração já resolvida (env, build ou
 /// arquivo salvo), sem pedir URL. Devolve `None` quando conectou.
 #[tauri::command]

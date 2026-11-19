@@ -24,6 +24,7 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { BootSplash } from "@/components/BootSplash";
 import { DatabaseFallback } from "@/components/DatabaseUnavailableScreen";
+import { DatabaseConnectionAlert } from "@/components/DatabaseConnectionAlert";
 import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 import { Layout } from "@/components/Layout";
@@ -234,6 +235,7 @@ function App() {
       <ErrorBoundary>
         <AppContent />
       </ErrorBoundary>
+      <DatabaseConnectionAlert />
     </>
   );
 }

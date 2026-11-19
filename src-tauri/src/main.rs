@@ -158,6 +158,7 @@ fn main() {
             commands::util::verificar_status_banco,
             commands::util::obter_erro_inicializacao_banco,
             commands::util::tentar_reconectar_banco,
+            commands::util::verificar_saude_banco,
             commands::util::reiniciar_banco_com_config,
             // Equipamentos
             commands::equipamentos::listar_equipamentos,
