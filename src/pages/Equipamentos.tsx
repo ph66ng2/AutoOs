@@ -477,7 +477,10 @@ export default function Equipamentos() {
     // Cartão ou etapa do Início: abre a lista já filtrada por aquele status.
     if (state?.statusFiltro) {
       navigate(location.pathname, { replace: true, state: {} });
+      // Pedido explícito: a lista mostra a etapa inteira, sem a busca ou o técnico lembrados.
       setStatusFiltro(state.statusFiltro);
+      setBusca("");
+      setTecnicoFiltro("TODOS");
       return;
     }
     // "+ Nova entrada" do Início: abre o cadastro direto.
