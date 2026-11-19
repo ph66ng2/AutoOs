@@ -147,7 +147,8 @@ export function VerificacaoTecnica({
 
   // Algo digitado ou marcado (fotos já ficam salvas no envio, não contam).
   const checklistMudou = checklist.some((item, i) => JSON.stringify(item) !== JSON.stringify(CHECKLIST_PADRAO[i]));
-  const sujo = open && (diagnostico.trim() !== "" || observacoesVerif.trim() !== "" || servicos.length > 0 || checklistMudou);
+  const sujo = open && (diagnostico.trim() !== "" || observacoesVerif.trim() !== "" || servicos.length > 0 || checklistMudou
+    || tecnicoNome !== tecnicoPadrao);
   useEffect(() => { onSujoChange?.(sujo); }, [sujo, onSujoChange]);
 
   // ─── Helpers ────────────────────────────────────────

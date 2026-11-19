@@ -247,4 +247,25 @@ describe("VerificacaoTecnica", () => {
       window.matchMedia = original;
     }
   });
+
+  it("trocar só o técnico já conta como verificação preenchida", async () => {
+    HTMLElement.prototype.hasPointerCapture = () => false;
+    HTMLElement.prototype.scrollIntoView = () => undefined;
+    const user = userEvent.setup();
+    const onSujoChange = vi.fn();
+    render(
+      <VerificacaoTecnica
+        equipamento={{ id: 1, marca: "Zebra", modelo: "ZT230", serial_number: "SN", tipo: "Impressora", status: "EM_VERIFICACAO", data_entrada: "2026-10-01" } as never}
+        open
+        onOpenChange={vi.fn()}
+        onConcluir={vi.fn()}
+        tecnicoInicial="Ivan"
+        onSujoChange={onSujoChange}
+      />,
+    );
+    await waitFor(() => expect(onSujoChange).toHaveBeenLastCalledWith(false));
+    await user.click(screen.getByLabelText("Técnico responsável"));
+    await user.click(await screen.findByRole("option", { name: "Isaias" }));
+    await waitFor(() => expect(onSujoChange).toHaveBeenLastCalledWith(true));
+  });
 });

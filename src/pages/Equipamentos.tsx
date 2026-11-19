@@ -596,6 +596,8 @@ export default function Equipamentos() {
     tecnico: string;
   }
   const rascunhoEntrada = useRascunho<RascunhoEntrada>("nova-entrada");
+  /** Cada Nova entrada aberta ganha um número; o salvar só apaga o rascunho do seu próprio formulário. */
+  const donoRascunhoEntrada = useRef(0);
   const [rascunhoRecuperadoEm, setRascunhoRecuperadoEm] = useState<string | null>(null);
   const novaEntradaAberta = dialogOpen && !editando;
   useEffect(() => {
@@ -671,6 +673,7 @@ export default function Equipamentos() {
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
       observacoes: "",
     });
+    donoRascunhoEntrada.current += 1;
     const rascunho = rascunhoEntrada.ler();
     setRascunhoRecuperadoEm(rascunho?.salvoEm ?? null);
     if (rascunho) {
@@ -1306,6 +1309,7 @@ export default function Equipamentos() {
    */
   async function onSubmit(data: EquipamentoFormData) {
     const sequenciaEdicao = fotoEdicaoSeq.current;
+    const meuRascunhoEntrada = donoRascunhoEntrada.current;
     const baselineFotos = editando ? baselineFotosRef.current : null;
     if (editando && (carregandoImagensFormulario || !baselineFotos || baselineFotos.equipamentoId !== editando.id)) {
       setErroImagens("As fotos ainda não foram carregadas com segurança. Recarregue as fotos antes de salvar.");
@@ -1374,8 +1378,9 @@ export default function Equipamentos() {
       const equipamentoSalvo = resultado.data;
       const equipamentoIdSalvo = equipamentoSalvo.id!;
       // Só apaga o rascunho deste formulário: se a pessoa já abriu outra Nova entrada
-      // enquanto este salvava, o rascunho é do formulário novo.
-      if (!editando && fotoEdicaoSeq.current === sequenciaEdicao) {
+      // enquanto este salvava, o rascunho é do formulário novo. Fechar a janela no meio
+      // não muda o dono (senão o equipamento já criado voltaria como rascunho).
+      if (!editando && donoRascunhoEntrada.current === meuRascunhoEntrada) {
         rascunhoEntrada.limpar();
         setRascunhoRecuperadoEm(null);
       }
