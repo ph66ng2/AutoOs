@@ -916,6 +916,8 @@ export interface SecurityProfile {
   email_profissional?: string | null;
   /** Aparece na lista de técnicos da OS. */
   atende_tecnico?: boolean;
+  /** Tipos de aviso desligados pelo perfil (0054); vazio = recebe tudo. */
+  avisos_desligados?: string[];
 }
 
 export interface CodigoPrimeiroAcesso {

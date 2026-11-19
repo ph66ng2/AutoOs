@@ -25,6 +25,20 @@ pub struct AvisoInterno {
 
 const TIPOS_AVISO: &[&str] = &["os-nova", "vence-amanha", "pronto-parado", "peca-chegou", "estoque-baixo", "venda-aprovada"];
 
+/// Tipos que a pessoa pode desligar em Perfil › Notificações: os avisos internos e os do portal.
+pub(crate) fn tipos_desligaveis_validos(tipos: &[String]) -> Result<Vec<String>, String> {
+    let mut validos: Vec<String> = Vec::new();
+    for tipo in tipos.iter().map(|t| t.trim()) {
+        if tipo != "portal" && !TIPOS_AVISO.contains(&tipo) {
+            return Err(format!("Tipo de aviso desconhecido: {tipo}"));
+        }
+        if !validos.iter().any(|v| v == tipo) {
+            validos.push(tipo.to_string());
+        }
+    }
+    Ok(validos)
+}
+
 /// Chave de aviso aceita para marcar como lido: um dos tipos conhecidos, sem espaços, até 120 caracteres.
 pub(crate) fn chave_valida(chave: &str) -> bool {
     let chave = chave.trim();
@@ -47,7 +61,9 @@ pub async fn listar_avisos_internos() -> Result<Vec<AvisoInterno>, String> {
     sqlx::query_as::<_, AvisoInterno>(
         "SELECT chave, tipo, titulo, detalhe, equipamento_id, venda_id,
                 to_char(quando AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS quando, lido
-         FROM avisos_internos($1, $2, $3, $4, $5, $6)",
+         FROM avisos_internos($1, $2, $3, $4, $5, $6) a
+         WHERE NOT EXISTS (SELECT 1 FROM security_profiles p
+                           WHERE p.id = $2 AND a.tipo = ANY(p.avisos_desligados))",
     )
     .bind(empresa_id)
     .bind(perfil.id)
@@ -85,9 +101,33 @@ pub async fn marcar_avisos_lidos(chaves: Vec<String>) -> Result<u64, String> {
     Ok(result.rows_affected())
 }
 
+/// Salva os tipos de aviso que o perfil da sessão não quer receber. Devolve a lista gravada.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn salvar_avisos_desligados(tipos: Vec<String>) -> Result<Vec<String>, String> {
+    let perfil = require_sensitive_access()?;
+    let tipos = tipos_desligaveis_validos(&tipos)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE security_profiles SET avisos_desligados = $1, atualizado_em = NOW() WHERE id = $2 AND ativo = true")
+        .bind(&tipos)
+        .bind(perfil.id)
+        .execute(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(tipos)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::chave_valida;
+    use super::{chave_valida, tipos_desligaveis_validos};
+
+    #[test]
+    fn so_desliga_tipos_conhecidos_sem_repetir() {
+        let ok = tipos_desligaveis_validos(&["portal".into(), " estoque-baixo ".into(), "portal".into()]).unwrap();
+        assert_eq!(ok, vec!["portal".to_string(), "estoque-baixo".to_string()]);
+        assert!(tipos_desligaveis_validos(&["qualquer".into()]).is_err());
+        assert!(tipos_desligaveis_validos(&[]).unwrap().is_empty());
+    }
 
     #[test]
     fn so_aceita_chaves_de_avisos_conhecidos() {

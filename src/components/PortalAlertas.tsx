@@ -38,6 +38,7 @@ import { marcarErrosLidos, useErrosRegistrados, type ErroRegistrado } from "@/li
 import { PREFIXO_TOAST_ERRO } from "@/hooks/useNotification";
 import { cn } from "@/lib/utils";
 import { destinoDoAviso, ROTULO_ABRIR_AVISO, VISUAL_AVISO } from "@/lib/avisos-internos";
+import { notificarSistema } from "@/lib/notificacao-sistema";
 import type { AvisoInterno } from "@/types";
 import type { AlertaPortal } from "@/types";
 
@@ -201,6 +202,8 @@ export function PortalAlertasSino({ perfilId = null }: { perfilId?: number | nul
     const novos = vistos ? lista.filter((aviso) => !aviso.lido && !vistos.has(aviso.chave)) : [];
     avisosVistos.current = new Set([...(vistos ?? []), ...lista.map((aviso) => aviso.chave)]);
     novos.slice(0, MAX_TOASTS_POR_VEZ).forEach((aviso) => {
+      // Minimizado ou sem foco, o aviso também vai para a central de notificações do Windows.
+      void notificarSistema(aviso.titulo, aviso.detalhe);
       const visual = VISUAL_AVISO[aviso.tipo];
       toast(aviso.titulo, {
         id: `aviso-${aviso.chave}`,
@@ -248,6 +251,7 @@ export function PortalAlertasSino({ perfilId = null }: { perfilId?: number | nul
           .reverse()
           .forEach((alerta) => {
             notificados.current.push(`portal-alerta-${alerta.id}`);
+            void notificarSistema(alerta.titulo, alerta.detalhe);
             notificar(alerta, () => {
               // "Ver" conta como leitura, igual a abrir pelo painel.
               void db.marcarAlertasPortalLidos(alerta.id).then(() => verificarRef.current()).catch(() => undefined);

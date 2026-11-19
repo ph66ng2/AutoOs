@@ -1,7 +1,7 @@
 /** Demonstration-only IPC for the team UI. Never used by production builds. */
 import { invoke as baseInvoke } from "./tauri-core";
 import { SENSITIVE_PERMISSIONS, type SecurityProfile, type SecurityProfileInput } from "../../src/types";
-export { Resource, Channel, isTauri } from "./tauri-core";
+export { Resource, Channel, isTauri, addPluginListener, PluginListener } from "./tauri-core";
 const all = Object.values(SENSITIVE_PERMISSIONS);
 const profiles: SecurityProfile[] = [
   { id: 1, nome: "Paulo Medeiros", role: "ADMIN", permissions: all, pin_configured: true, pin_required: true, is_default: true, ativo: true },

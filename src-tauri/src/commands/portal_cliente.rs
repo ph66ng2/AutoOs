@@ -118,6 +118,7 @@ pub async fn listar_alertas_portal(
          LEFT JOIN security_profiles p ON p.id = a.lido_por_profile_id
          LEFT JOIN orcamento_respostas r ON r.id = a.resposta_id AND r.empresa_id = a.empresa_id
          WHERE a.empresa_id = $1 AND ($2 = FALSE OR (a.lido_em IS NULL AND l.id IS NULL))
+           AND NOT EXISTS (SELECT 1 FROM security_profiles d WHERE d.id = $4 AND 'portal' = ANY(d.avisos_desligados))
          ORDER BY a.id DESC
          LIMIT $3"
     )))
@@ -138,6 +139,8 @@ pub async fn contar_alertas_portal_nao_lidos() -> Result<i64, String> {
     sqlx::query_scalar(
         "SELECT COUNT(*) FROM portal_alertas a
          WHERE a.empresa_id = $1 AND a.lido_em IS NULL
+           -- Quem desligou os avisos do portal (Perfil › Notificações, 0054) não tem contador.
+           AND NOT EXISTS (SELECT 1 FROM security_profiles p WHERE p.id = $2 AND 'portal' = ANY(p.avisos_desligados))
            AND NOT EXISTS (SELECT 1 FROM notificacao_leituras l
                            WHERE l.empresa_id = a.empresa_id AND l.profile_id = $2 AND l.chave = 'portal:' || a.id)",
     )
