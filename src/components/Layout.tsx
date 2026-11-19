@@ -13,7 +13,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   LayoutGrid,
   Printer,
@@ -25,6 +25,7 @@ import {
   ShoppingBag,
   Menu,
   X,
+  Search,
   Lock,
   Settings,
   BadgeCheck,
@@ -36,7 +37,10 @@ import {
 import { setAppMode, type AppMode } from "@/lib/app-mode";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { useEmpresaAtiva } from "@/hooks/useEmpresaAtiva";
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { BuscaGlobal } from "@/components/busca/BuscaGlobal";
+import { AjudaAtalhos } from "@/components/busca/AjudaAtalhos";
+import { useAtalhosGlobais } from "@/hooks/useAtalhosGlobais";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -135,6 +139,22 @@ export function Layout() {
     .map((grupo) => ({ ...grupo, itens: grupo.itens.filter((item) => navItemVisible(item, status)) }))
     .filter((grupo) => grupo.itens.length > 0);
   const mostrarConfiguracoes = navItemVisible(configuracoesItem, status);
+  const navigate = useNavigate();
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [ajudaAberta, setAjudaAberta] = useState(false);
+  // Telas que o Ctrl+K encontra: as mesmas do menu (Balcão troca o modo do app, fica de fora).
+  const chaveTelas = visibleGroups.flatMap((grupo) => grupo.itens.map((item) => item.path)).join("|") + (mostrarConfiguracoes ? "|cfg" : "");
+  const telasBuscaveis = useMemo(
+    () => [...visibleGroups.flatMap((grupo) => grupo.itens), ...(mostrarConfiguracoes ? [configuracoesItem] : [])]
+      .filter((item) => !item.modo)
+      .map((item) => ({ label: item.label, path: item.path })),
+    [chaveTelas],
+  );
+  useAtalhosGlobais({
+    abrirBusca: () => setBuscaAberta(true),
+    abrirAjuda: () => setAjudaAberta(true),
+    novaEntrada: () => navigate("/equipamentos", { state: { novaEntrada: true } }),
+  });
   const renderItem = (item: NavItem) => (
     <NavLink
       key={item.path}
@@ -196,6 +216,24 @@ export function Layout() {
             </Button>
           </div>
         )}
+
+        {/* Busca global (Ctrl+K) */}
+        <div className={cn("shrink-0 px-3 pb-1", collapsed && "flex justify-center px-0")}>
+          <button
+            type="button"
+            onClick={() => setBuscaAberta(true)}
+            aria-label="Buscar (Ctrl+K)"
+            title={collapsed ? "Buscar (Ctrl+K)" : undefined}
+            className={cn(
+              "flex h-10 w-full items-center gap-3 rounded-lg border border-sidebar-border bg-card/60 px-3 text-sm text-muted-foreground transition-colors duration-rapida hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              collapsed && "h-9 w-9 justify-center px-0",
+            )}
+          >
+            <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {!collapsed && <span className="flex-1 text-left">Buscar</span>}
+            {!collapsed && <kbd className="rounded border bg-muted px-1.5 text-[11px] font-medium">Ctrl K</kbd>}
+          </button>
+        </div>
 
         {/* Navigation */}
         {/* No celular o menu inteiro rola (nada some atrás da rolagem da lista); no computador só a lista rola. */}
@@ -279,6 +317,8 @@ export function Layout() {
       </aside>
 
       {/* Main Content */}
+      <BuscaGlobal aberta={buscaAberta} onAbertaChange={setBuscaAberta} telas={telasBuscaveis} />
+      <AjudaAtalhos aberta={ajudaAberta} onAbertaChange={setAjudaAberta} />
       <main className="min-w-0 flex-1 overflow-auto bg-background">
         {/* Faixa superior: menu no celular e, à direita, as notificações (logo acima dos avisos). */}
         {/* Só no celular: abrir o menu e as notificações. No computador a página começa no título. */}
