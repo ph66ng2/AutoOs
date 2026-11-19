@@ -217,6 +217,8 @@ import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { quandoRascunho, useRascunho } from "@/hooks/useRascunho";
 import { HistoricoDoSerial } from "@/components/equipamentos/HistoricoDoSerial";
 import { BotaoCopiar } from "@/components/ui/botao-copiar";
+import { AcoesEmLote, type RelatorioLote } from "@/components/equipamentos/AcoesEmLote";
+import { Checkbox } from "@/components/ui/checkbox";
 import { emailDoTecnico } from "@/lib/tecnicos";
 import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
 import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
@@ -355,6 +357,17 @@ export default function Equipamentos() {
   const tecnicos = useTecnicos();
   const primeiroTecnico = tecnicos[0]?.nome ?? "";
   const nomesFiltroTecnico = useNomesFiltroTecnico();
+  // Seleção para ações em lote: guarda a OS inteira, então sobrevive à troca de página.
+  // As ações releem cada OS antes de agir; aqui a seleção só acompanha a lista recarregada.
+  const [selecaoLote, setSelecaoLote] = useState<Map<number, Equipamento>>(() => new Map());
+  const [loteOcupado, setLoteOcupado] = useState(false);
+  const [relatorioLote, setRelatorioLote] = useState<RelatorioLote | null>(null);
+  const alternarSelecao = (eq: Equipamento, marcar: boolean) => setSelecaoLote((atual) => {
+    const proxima = new Map(atual);
+    if (marcar && eq.id != null) proxima.set(eq.id, eq);
+    else if (eq.id != null) proxima.delete(eq.id);
+    return proxima;
+  });
   const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("");
   const [marcaOutroOpen, setMarcaOutroOpen] = useState(false);
   const [tipoOutroOpen, setTipoOutroOpen] = useState(false);
@@ -418,6 +431,20 @@ export default function Equipamentos() {
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
   const equipamentosExibidos = equipamentos;
+  useEffect(() => {
+    setSelecaoLote((atual) => {
+      if (atual.size === 0) return atual;
+      let mudou = false;
+      const proxima = new Map(atual);
+      for (const eq of equipamentos) {
+        if (eq.id != null && proxima.has(eq.id) && proxima.get(eq.id) !== eq) {
+          proxima.set(eq.id, eq);
+          mudou = true;
+        }
+      }
+      return mudou ? proxima : atual;
+    });
+  }, [equipamentos]);
 
   usePrimeiraPaginaAoFiltrar([busca, statusFiltro, ordenacao, tecnicoFiltro], () => setPaginaEquipamentos(1));
 
@@ -2988,6 +3015,21 @@ export default function Equipamentos() {
             </div>
           </div>
 
+          {/* Fora do bloco de carregamento: recarregar a lista não desmonta a barra no meio de um lote. */}
+          {(selecaoLote.size > 0 || loteOcupado || relatorioLote) && (
+            <AcoesEmLote
+              selecionados={[...selecaoLote.values()]}
+              ocupado={loteOcupado}
+              onOcupadoChange={setLoteOcupado}
+              relatorio={relatorioLote}
+              onRelatorioChange={setRelatorioLote}
+              onLimpar={() => setSelecaoLote(new Map())}
+              onConcluido={async (idsComFalha, recarregarLista) => {
+                setSelecaoLote((atual) => new Map([...atual].filter(([id]) => idsComFalha.includes(id))));
+                if (recarregarLista) await recarregar();
+              }}
+            />
+          )}
           {loading ? (
             <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
           ) : equipamentos.length === 0 ? (
@@ -3004,6 +3046,12 @@ export default function Equipamentos() {
                 {equipamentosExibidos.map(eq => (
                   <li key={eq.id} className="space-y-3 rounded-xl border p-4">
                     <div className="flex items-start justify-between gap-3">
+                      <Checkbox
+                        className="mt-1"
+                        aria-label={`Selecionar OS #${eq.id} (${eq.marca} ${eq.modelo})`}
+                        checked={eq.id != null && selecaoLote.has(eq.id)}
+                        onCheckedChange={(marcado) => alternarSelecao(eq, marcado)}
+                      />
                       <button
                         type="button"
                         className="min-w-0 text-left"
@@ -3031,9 +3079,16 @@ export default function Equipamentos() {
               </ul>
               ) : (
               <div className="overflow-hidden rounded-xl border">
-                <Table className="min-w-[67.5rem] table-fixed border-separate border-spacing-0">
+                <Table className="min-w-[70rem] table-fixed border-separate border-spacing-0">
                 <TableHeader className="bg-muted [&_tr]:!border-b-0 [&_th]:h-10 [&_th]:border-b [&_th]:text-xs [&_th]:font-semibold">
                   <TableRow>
+                    <TableHead className="w-10 pr-0">
+                      <Checkbox
+                        aria-label="Selecionar as OS desta página"
+                        checked={equipamentosExibidos.length > 0 && equipamentosExibidos.every((eq) => eq.id != null && selecaoLote.has(eq.id))}
+                        onCheckedChange={(marcado) => equipamentosExibidos.forEach((eq) => alternarSelecao(eq, marcado))}
+                      />
+                    </TableHead>
                     <TableHead className="w-[12rem]">Equipamento</TableHead>
                     <TableHead className="w-[11rem]">Cliente</TableHead>
                     <TableHead className="w-[11rem]">Andamento</TableHead>
@@ -3050,7 +3105,14 @@ export default function Equipamentos() {
                       className="group cursor-pointer"
                       onClick={() => void abrirDetalhes(eq)}
                     >
-                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_FIRST}`}>
+                      <TableCell className={`w-10 pr-0 ${EQUIPMENT_ROW_FOCUS_FIRST}`} onClick={(event) => event.stopPropagation()}>
+                        <Checkbox
+                          aria-label={`Selecionar OS #${eq.id} (${eq.marca} ${eq.modelo})`}
+                          checked={eq.id != null && selecaoLote.has(eq.id)}
+                          onCheckedChange={(marcado) => alternarSelecao(eq, marcado)}
+                        />
+                      </TableCell>
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <div className="min-w-0">
                           <button
                             type="button"
