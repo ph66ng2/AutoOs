@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, CloudOff, KeyRound, Server } from "lucide-react";
-import { ConnectionSpinner, cxButton, useConnectionThemeVars } from "@/components/database-connection-shell";
+import { CX_SHADOW_FLOAT, ConnectionSpinner, cxButton, useConnectionThemeVars } from "@/components/database-connection-shell";
 import { useDatabaseHealth, type DatabaseHealth } from "@/hooks/useDatabaseHealth";
 import { failureCopy, longOutageMessage } from "@/lib/database-reconnect";
 import { isTransientDatabaseError } from "@/lib/db-config";
@@ -32,12 +32,13 @@ export function DatabaseConnectionAlertView({ health, onRetry }: DatabaseConnect
 
   if (health.status === "ok") return null;
 
-  const shell = "fixed left-1/2 top-3 z-[70] w-[min(560px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border bg-[var(--cx-surface)] p-3 pr-4 text-sm text-[var(--cx-ink)] shadow-lg";
+  // Aviso rápido da direção B: superfície, borda neutra, sombra de flutuante; a cor da família fica só no ícone.
+  const shell = `fixed left-1/2 top-3 z-[70] w-[min(560px,calc(100vw-32px))] -translate-x-1/2 rounded-[14px] border border-[var(--cx-line)] bg-[var(--cx-surface)] p-3 pr-3.5 text-sm text-[var(--cx-ink)] ${CX_SHADOW_FLOAT}`;
 
   if (health.status === "restabelecida") {
     return (
-      <div style={vars} role="status" className={`${shell} flex items-center gap-3 border-[var(--cx-line-soft)]`}>
-        <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--cx-ok)]">
+      <div style={vars} role="status" className={`${shell} flex items-center gap-3`}>
+        <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[var(--cx-ok-bg)] text-[var(--cx-ok)]">
           <Check className="h-4 w-4" />
         </span>
         <strong className="font-bold">Conexão restabelecida</strong>
@@ -59,9 +60,9 @@ export function DatabaseConnectionAlertView({ health, onRetry }: DatabaseConnect
       style={vars}
       role="alert"
       aria-live="assertive"
-      className={`${shell} flex items-start gap-3 ${automatic ? "border-[var(--cx-wait)]" : "border-[var(--cx-bad)]"}`}
+      className={`${shell} flex items-start gap-3`}
     >
-      <span aria-hidden="true" className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${tone}`}>
+      <span aria-hidden="true" className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${tone}`}>
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0 flex-1">

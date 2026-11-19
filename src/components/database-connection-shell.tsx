@@ -1,15 +1,20 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useTheme } from "next-themes";
 
+import "@fontsource-variable/manrope";
+import "@fontsource/ibm-plex-mono/500.css";
+
 /**
- * Cores das telas de conexão com o banco, tiradas do canvas de redesign
- * (pranchetas "Conexão com o banco", direção B). Ficam restritas a estas telas
- * até o redesign chegar ao resto do app.
+ * Tokens das telas de conexão com o banco, copiados de
+ * `docs/redesign/referencia/design-system/tokens.css` (direção B, branches
+ * `redesign/*`). Ficam restritos a estas telas até o redesign chegar à
+ * `master`; os nomes seguem os do redesign com o prefixo `--cx-`.
  */
 const DARK: Record<string, string> = {
   "--cx-bg": "#0a0c10",
   "--cx-surface": "#12161c",
-  "--cx-sunken": "#151a21",
+  "--cx-sunken": "#0a0c10",
+  "--cx-line": "#232a33",
   "--cx-line-soft": "#1b2129",
   "--cx-ink": "#e6e9ee",
   "--cx-muted": "#9aa3ae",
@@ -19,6 +24,7 @@ const DARK: Record<string, string> = {
   "--cx-track": "#2a323c",
   "--cx-danger": "#d58a84",
   "--cx-ok": "#7fb08f",
+  "--cx-ok-bg": "#17241c",
   "--cx-field-border": "#56677a",
   "--cx-wait": "#cfac6e",
   "--cx-wait-bg": "#2a2318",
@@ -31,8 +37,9 @@ const DARK: Record<string, string> = {
 const LIGHT: Record<string, string> = {
   "--cx-bg": "#f4f5f6",
   "--cx-surface": "#ffffff",
-  "--cx-sunken": "#eef1f4",
-  "--cx-line-soft": "#e1e5ea",
+  "--cx-sunken": "#f4f6f8",
+  "--cx-line": "#e1e5ea",
+  "--cx-line-soft": "#eef1f4",
   "--cx-ink": "#1d242c",
   "--cx-muted": "#5d6673",
   "--cx-ctl": "#cfd5dc",
@@ -40,7 +47,8 @@ const LIGHT: Record<string, string> = {
   "--cx-acc-ink": "#ffffff",
   "--cx-track": "#e3e7ec",
   "--cx-danger": "#a8443f",
-  "--cx-ok": "#3d7a55",
+  "--cx-ok": "#38704e",
+  "--cx-ok-bg": "#e4efe8",
   "--cx-field-border": "#7f8ea1",
   "--cx-wait": "#8a6420",
   "--cx-wait-bg": "#f5eddc",
@@ -50,10 +58,19 @@ const LIGHT: Record<string, string> = {
   "--cx-neutral-bg": "#eceef1",
 };
 
+/** Fontes da direção B: Manrope em tudo, IBM Plex Mono para códigos. */
+const FONTS: Record<string, string> = {
+  "--cx-mono": "'IBM Plex Mono', ui-monospace, Consolas, monospace",
+  fontFamily: "'Manrope Variable', 'Manrope', 'Segoe UI', system-ui, sans-serif",
+};
+
+/** Sombra só no que flutua (menu, aviso). */
+export const CX_SHADOW_FLOAT = "shadow-[0_12px_32px_rgba(0,0,0,0.18)]";
+
 /** Cores das telas de conexão para o tema atual, como variáveis CSS (`--cx-*`). */
 export function useConnectionThemeVars(): CSSProperties {
   const { resolvedTheme } = useTheme();
-  return (resolvedTheme === "light" ? LIGHT : DARK) as CSSProperties;
+  return { ...(resolvedTheme === "light" ? LIGHT : DARK), ...FONTS } as CSSProperties;
 }
 
 export type ConnectionTone = "wait" | "bad" | "neutral";

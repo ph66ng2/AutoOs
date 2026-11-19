@@ -217,7 +217,7 @@ export function DatabaseUnavailableScreen({ initialError, downSince, onConnected
           </button>
           {detailsOpen && (
             <div id="detalhes-suporte" className="mt-2 rounded-xl bg-[var(--cx-sunken)] px-3.5 py-3">
-              <code className="block break-words font-mono text-xs leading-normal text-[var(--cx-muted)]">{error.mensagem}</code>
+              <code className="block break-words [font-family:var(--cx-mono)] text-xs leading-normal text-[var(--cx-muted)]">{error.mensagem}</code>
             </div>
           )}
         </div>
