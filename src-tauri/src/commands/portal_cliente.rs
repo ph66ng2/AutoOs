@@ -7,7 +7,7 @@
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_active_session_company_id_without_touch,
     require_any_permission, require_permission,
-    profile_has_permission, require_sensitive_access, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
+    current_session_profile, profile_has_permission, require_sensitive_access, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
     PERMISSION_PREPARE_QUOTES, PERMISSION_COMMUNICATION_SETTINGS,
 };
 use crate::commands::orcamento_decisao::obter_ou_criar_versao;
@@ -89,7 +89,13 @@ fn texto(value: Option<&str>, max: usize) -> Option<String> {
         .map(|v| v.chars().take(max).collect())
 }
 
-/// Alertas do portal da empresa ativa, do mais recente ao mais antigo.
+/// Perfil da sessão para o "lido" do sino; sem sessão (antes do PIN), ninguém leu nada novo.
+fn perfil_do_sino() -> i32 {
+    current_session_profile().ok().flatten().map(|(_, perfil)| perfil.id).unwrap_or(0)
+}
+
+/// Alertas do portal da empresa ativa, do mais recente ao mais antigo. "Lido" é por perfil
+/// (notificacao_leituras, 0052); a leitura antiga da empresa (lido_em) continua valendo para todos.
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn listar_alertas_portal(
@@ -103,18 +109,22 @@ pub async fn listar_alertas_portal(
     sqlx::query_as::<_, AlertaPortal>(sqlx::AssertSqlSafe(format!(
         "SELECT a.id, a.equipamento_id, a.tipo, a.titulo, a.detalhe,
                 to_char(a.criado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS criado_em,
-                to_char(a.lido_em AT TIME ZONE 'UTC', '{TS_FMT}') AS lido_em,
-                p.nome AS lido_por, r.decisao
+                to_char(COALESCE(l.lido_em, a.lido_em) AT TIME ZONE 'UTC', '{TS_FMT}') AS lido_em,
+                CASE WHEN l.lido_em IS NOT NULL THEN eu.nome ELSE p.nome END AS lido_por, r.decisao
          FROM portal_alertas a
+         LEFT JOIN notificacao_leituras l
+                ON l.empresa_id = a.empresa_id AND l.profile_id = $4 AND l.chave = 'portal:' || a.id
+         LEFT JOIN security_profiles eu ON eu.id = $4
          LEFT JOIN security_profiles p ON p.id = a.lido_por_profile_id
          LEFT JOIN orcamento_respostas r ON r.id = a.resposta_id AND r.empresa_id = a.empresa_id
-         WHERE a.empresa_id = $1 AND ($2 = FALSE OR a.lido_em IS NULL)
+         WHERE a.empresa_id = $1 AND ($2 = FALSE OR (a.lido_em IS NULL AND l.id IS NULL))
          ORDER BY a.id DESC
          LIMIT $3"
     )))
     .bind(empresa_id)
     .bind(apenas_nao_lidos)
     .bind(limite)
+    .bind(perfil_do_sino())
     .fetch_all(&pool)
     .await
     .map_err(super::operator_errors::mapear_erro_sql)
@@ -125,14 +135,21 @@ pub async fn contar_alertas_portal_nao_lidos() -> Result<i64, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     // Consulta de segundo plano (sino a cada 30 s): não renova a sessão sensível.
     let empresa_id = require_active_session_company_id_without_touch(&pool).await?;
-    sqlx::query_scalar("SELECT COUNT(*) FROM portal_alertas WHERE empresa_id = $1 AND lido_em IS NULL")
-        .bind(empresa_id)
-        .fetch_one(&pool)
-        .await
-        .map_err(super::operator_errors::mapear_erro_sql)
+    sqlx::query_scalar(
+        "SELECT COUNT(*) FROM portal_alertas a
+         WHERE a.empresa_id = $1 AND a.lido_em IS NULL
+           AND NOT EXISTS (SELECT 1 FROM notificacao_leituras l
+                           WHERE l.empresa_id = a.empresa_id AND l.profile_id = $2 AND l.chave = 'portal:' || a.id)",
+    )
+    .bind(empresa_id)
+    .bind(perfil_do_sino())
+    .fetch_one(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)
 }
 
-/// Marca como lido um alerta (`alerta_id`) ou todos os não lidos (`None`). A leitura fica no histórico.
+/// Marca como lido, para o perfil da sessão, um alerta (`alerta_id`) ou todos os não lidos (`None`).
+/// Os outros perfis continuam vendo o alerta como novo.
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn marcar_alertas_portal_lidos(alerta_id: Option<i64>) -> Result<u64, String> {
@@ -140,8 +157,11 @@ pub async fn marcar_alertas_portal_lidos(alerta_id: Option<i64>) -> Result<u64, 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
     let result = sqlx::query(
-        "UPDATE portal_alertas SET lido_em = NOW(), lido_por_profile_id = $3
-         WHERE empresa_id = $1 AND lido_em IS NULL AND ($2::BIGINT IS NULL OR id = $2)",
+        "INSERT INTO notificacao_leituras (empresa_id, profile_id, chave)
+         SELECT a.empresa_id, $3, 'portal:' || a.id
+         FROM portal_alertas a
+         WHERE a.empresa_id = $1 AND a.lido_em IS NULL AND ($2::BIGINT IS NULL OR a.id = $2)
+         ON CONFLICT (empresa_id, profile_id, chave) DO NOTHING",
     )
     .bind(empresa_id)
     .bind(alerta_id)

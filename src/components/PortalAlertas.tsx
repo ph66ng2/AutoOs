@@ -165,7 +165,8 @@ export function PortalAlertasSino() {
   const botao = useRef<HTMLButtonElement>(null);
   const painel = useRef<HTMLDivElement>(null);
   const errosNaoLidos = erros.filter((item) => !item.lido).length;
-  const naoLidos = naoLidosPortal + errosNaoLidos;
+  // Só avisos contam no número; erros do app ficam na aba Sistema (um ponto discreto no sino).
+  const naoLidos = naoLidosPortal;
   const errosAbertos = useRef<string[]>([]);
   errosAbertos.current = erros.filter((item) => !item.lido).map((item) => item.id);
 
@@ -271,14 +272,16 @@ export function PortalAlertasSino() {
         onClick={() => setAberto((valor) => !valor)}
         aria-haspopup="dialog"
         aria-expanded={aberto}
-        aria-label={naoLidos > 0 ? `Notificações: ${naoLidos} não lida(s)` : "Notificações"}
+        aria-label={naoLidos > 0 ? `Notificações: ${naoLidos} não lida(s)` : errosNaoLidos > 0 ? "Notificações: erros novos em Sistema" : "Notificações"}
       >
         <Bell className="h-5 w-5" />
-        {naoLidos > 0 && (
+        {naoLidos > 0 ? (
           <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-extrabold leading-none text-primary-foreground ring-2 ring-card">
             {naoLidos > 99 ? "99+" : naoLidos}
           </span>
-        )}
+        ) : errosNaoLidos > 0 ? (
+          <span aria-hidden="true" title="Há erros novos em Sistema" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-muted-foreground ring-2 ring-card" />
+        ) : null}
       </Button>
       {aberto && createPortal(
         <PortalAlertasPainel
@@ -295,7 +298,8 @@ export function PortalAlertasSino() {
   );
 }
 
-type Aba = "todos" | "erros" | "portal";
+/** Avisos: o que a equipe precisa fazer (portal e, depois, avisos internos). Sistema: erros do app. */
+type Aba = "avisos" | "sistema";
 
 type Item =
   | { tipo: "portal"; chave: string; quando: string; alerta: AlertaPortal }
@@ -309,10 +313,10 @@ type PainelProps = {
   onChanged: () => void;
 };
 
-const ROTULO_ABA: Record<Aba, string> = { todos: "Todos", erros: "Erros", portal: "Portal do Cliente" };
+const ROTULO_ABA: Record<Aba, string> = { avisos: "Avisos", sistema: "Sistema" };
 
 export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(function PortalAlertasPainel({ erros, encaixe, onFechar, onAbrirAtendimento, onChanged }, ref) {
-  const [aba, setAba] = useState<Aba>("todos");
+  const [aba, setAba] = useState<Aba>("avisos");
   const [historico, setHistorico] = useState(false);
   const [alertas, setAlertas] = useState<AlertaPortal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -351,29 +355,20 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
   };
 
   const errosVisiveis = historico ? erros : erros.filter((item) => !item.lido);
-  const portalErro = (alerta: AlertaPortal) => visualDoAlerta(alerta).erro === true;
   const contagem: Record<Aba, number> = {
-    todos: alertas.filter((a) => !a.lidoEm).length + erros.filter((e) => !e.lido).length,
-    erros: alertas.filter((a) => !a.lidoEm && portalErro(a)).length + erros.filter((e) => !e.lido).length,
-    portal: alertas.filter((a) => !a.lidoEm).length,
+    avisos: alertas.filter((a) => !a.lidoEm).length,
+    sistema: erros.filter((e) => !e.lido).length,
   };
 
-  const itens: Item[] = [
-    ...(aba === "portal" || aba === "todos" ? alertas : aba === "erros" ? alertas.filter(portalErro) : [])
-      .map((alerta): Item => ({ tipo: "portal", chave: `p-${alerta.id}`, quando: alerta.criadoEm, alerta })),
-    ...(aba === "portal" ? [] : errosVisiveis)
-      .map((registro): Item => ({ tipo: "erro", chave: `e-${registro.id}`, quando: registro.erro.timestamp.toISOString(), registro })),
-  ].sort((a, b) => b.quando.localeCompare(a.quando));
+  const itens: Item[] = aba === "avisos"
+    ? alertas.map((alerta): Item => ({ tipo: "portal", chave: `p-${alerta.id}`, quando: alerta.criadoEm, alerta }))
+    : errosVisiveis
+      .map((registro): Item => ({ tipo: "erro", chave: `e-${registro.id}`, quando: registro.erro.timestamp.toISOString(), registro }))
+      .sort((a, b) => b.quando.localeCompare(a.quando));
 
   const marcarTodos = async () => {
-    if (aba !== "portal") marcarErrosLidos();
-    if (aba === "erros") {
-      for (const alerta of alertas.filter((a) => !a.lidoEm && portalErro(a))) await db.marcarAlertasPortalLidos(alerta.id).catch(() => undefined);
-      onChanged();
-      await carregar();
-    } else {
-      await marcar();
-    }
+    if (aba === "sistema") marcarErrosLidos();
+    else await marcar();
   };
   const haNaoLidos = itens.some((item) => (item.tipo === "portal" ? !item.alerta.lidoEm : !item.registro.lido));
 
@@ -392,7 +387,7 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
         </button>
       </div>
       <div className="flex gap-5 border-b px-4" role="tablist" aria-label="Tipo de notificação">
-        {(["todos", "erros", "portal"] as const).map((valor) => (
+        {(["avisos", "sistema"] as const).map((valor) => (
           <button
             key={valor}
             type="button"
@@ -408,7 +403,7 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
             {contagem[valor] > 0 && (
               <span className={cn(
                 "rounded-full px-[7px] text-[11px] font-semibold leading-[18px]",
-                valor === "erros" ? "bg-status-bad-bg text-status-bad" : "bg-secondary text-muted-foreground",
+                valor === "sistema" ? "bg-status-bad-bg text-status-bad" : "bg-secondary text-muted-foreground",
               )}>
                 {contagem[valor]}
               </span>
@@ -439,24 +434,24 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
           </button>
         )}
       </div>
-      {aba === "erros" && (
+      {aba === "sistema" && (
         <p className="mx-4 mb-2 rounded-lg bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
           “Copiar relatório” leva código, descrição técnica e referência do log — é o que você manda para o suporte.
         </p>
       )}
       <div className="flex-1 overflow-y-auto">
-        {erro && aba !== "erros" && <p className="px-4 py-2 text-sm text-destructive" role="alert">{erro}</p>}
+        {erro && aba === "avisos" && <p className="px-4 py-2 text-sm text-destructive" role="alert">{erro}</p>}
         {loading && itens.length === 0 && <p className="px-4 py-2 text-sm text-muted-foreground">Carregando…</p>}
         {!loading && itens.length === 0 && (
           <p className="border-t px-4 py-10 text-center text-sm text-muted-foreground">
-            {historico ? "Nada registrado." : aba === "erros" ? "Nenhum erro novo." : "Nenhuma notificação nova."}
+            {historico ? "Nada registrado." : aba === "sistema" ? "Nenhum erro novo." : "Nenhum aviso novo."}
           </p>
         )}
         {itens.map((item) => item.tipo === "portal"
           ? <ItemPortal key={item.chave} alerta={item.alerta} onAbrir={() => void abrir(item.alerta)} onMarcar={() => void marcar(item.alerta.id)} />
           : <ItemErro key={item.chave} registro={item.registro} />)}
       </div>
-      {aba !== "erros" && (
+      {aba === "avisos" && (
         <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">
           Portal: “confirma às…” significa que o cliente ainda pode desfazer. Só inicie o serviço depois.
         </p>
