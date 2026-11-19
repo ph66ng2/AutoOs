@@ -15,6 +15,7 @@ function Formulario() {
       <Link to="/outra">Ir para outra</Link>
       <Link to="/origem">Cancelar</Link>
       <button type="button" onClick={() => { aviso.liberarProximaSaida(); navigate("/outra"); }}>Salvar</button>
+      <button type="button" onClick={() => aviso.liberarProximaSaida()}>Liberar sem sair</button>
       {aviso.dialogo}
     </div>
   );
@@ -67,5 +68,15 @@ describe("useAvisoAoSair", () => {
     await user.type(screen.getByLabelText("campo"), "x");
     await user.click(screen.getByRole("button", { name: "Salvar" }));
     expect(screen.getByText("Outra tela")).toBeInTheDocument();
+  });
+
+  it("liberar sem navegar em seguida expira: a saída seguinte ainda avisa", async () => {
+    const user = userEvent.setup();
+    montar();
+    await user.type(screen.getByLabelText("campo"), "abc");
+    await user.click(screen.getByRole("button", { name: "Liberar sem sair" }));
+    await new Promise((resolver) => setTimeout(resolver, 5));
+    await user.click(screen.getByText("Ir para outra"));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
   });
 });

@@ -179,6 +179,7 @@ import {
   totalOrcamentoAjusteValido,
   totalOrcamentoAprovacaoValido,
   whatsappNaoConfigurado,
+  entradaTemAlgo,
 } from "@/pages/equipamentos/equipamentos-page-utils";
 import { DateIsoInput } from "@/components/ui/date-iso-input";
 import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
@@ -601,7 +602,7 @@ export default function Equipamentos() {
     if (!novaEntradaAberta) return;
     const guardar = () => {
       const valores = form.getValues();
-      const temAlgo = Boolean(clienteVinculado || valores.serial_number?.trim() || valores.defeito_relatado?.trim() || valores.marca || valores.modelo?.trim());
+      const temAlgo = entradaTemAlgo(valores, clienteVinculado);
       // Formulário vazio não tem rascunho (e cancela um salvamento antigo pendente, como o
       // que o reset de "Começar do zero" agenda com o cliente anterior).
       if (temAlgo) rascunhoEntrada.salvar({ form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento });
@@ -618,7 +619,7 @@ export default function Equipamentos() {
    */
   function descartarEntrada() {
     const valores = form.getValues();
-    const temAlgo = Boolean(clienteVinculado || valores.serial_number?.trim() || valores.defeito_relatado?.trim() || valores.marca || valores.modelo?.trim());
+    const temAlgo = entradaTemAlgo(valores, clienteVinculado);
     const copia: RascunhoEntrada = { form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento };
     rascunhoEntrada.limpar();
     setRascunhoRecuperadoEm(null);
@@ -981,10 +982,10 @@ export default function Equipamentos() {
       });
   }, [idDetalhesRota, abrirDetalhes, navigate]);
 
-  // Verificação pela metade: menu, Ctrl+K ou voltar perguntam antes. Cancelar e finalizar
-  // voltam para a origem, que é saída livre.
+  // Verificação pela metade: menu, Ctrl+K ou voltar perguntam antes. Só Cancelar e
+  // Finalizar (fecharPaginaVerificacao) passam direto.
   const [verificacaoSuja, setVerificacaoSuja] = useState(false);
-  const avisoVerificacao = useAvisoAoSair(verificacaoDialogOpen && verificacaoSuja, (destino) => destino === origemVerificacaoRef.current);
+  const avisoVerificacao = useAvisoAoSair(verificacaoDialogOpen && verificacaoSuja);
   const paginaVerificacaoAbertaRef = useRef(false);
   paginaVerificacaoAbertaRef.current = verificacaoDialogOpen;
   /** Abre a página de verificação técnica (VerificacaoTecnica.tsx, /equipamentos/:id/verificacao). */
@@ -1012,7 +1013,10 @@ export default function Equipamentos() {
       db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
       return;
     }
-    if (pathnameAtualRef.current !== origem) navigate(origem);
+    if (pathnameAtualRef.current !== origem) {
+      avisoVerificacao.liberarProximaSaida();
+      navigate(origem);
+    }
   }
 
   // Link direto, voltar ou avançar até a verificação: abre a página se a OS está em verificação.

@@ -9,8 +9,9 @@ describe("useRascunho", () => {
   it("salva depois de uma pausa, lê de volta e some ao limpar", () => {
     const { result } = renderHook(() => useRascunho<{ serie: string }>("teste"));
     act(() => { result.current.salvar({ serie: "A" }); result.current.salvar({ serie: "AB" }); });
-    expect(result.current.ler()).toBeNull();
+    expect(localStorage.getItem("autoos:rascunho:teste")).toBeNull();
     act(() => { vi.advanceTimersByTime(500); });
+    expect(localStorage.getItem("autoos:rascunho:teste")).toContain("AB");
     expect(result.current.ler()?.dados).toEqual({ serie: "AB" });
     act(() => result.current.limpar());
     expect(result.current.ler()).toBeNull();
@@ -54,5 +55,16 @@ describe("useRascunho: sair no meio da pausa", () => {
     act(() => result.current.salvar({ serie: "ZB-2" }));
     window.dispatchEvent(new Event("pagehide"));
     expect(result.current.ler()?.dados).toEqual({ serie: "ZB-2" });
+  });
+});
+
+describe("useRascunho: reabrir dentro da pausa", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("ler devolve o que ainda estava pendente", () => {
+    const { result } = renderHook(() => useRascunho<{ serie: string }>("teste"));
+    act(() => result.current.salvar({ serie: "ZB-3" }));
+    expect(result.current.ler()?.dados).toEqual({ serie: "ZB-3" });
   });
 });

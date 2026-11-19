@@ -122,3 +122,16 @@ describe("OPCOES_FILTRO_STATUS", () => {
     expect(OPCOES_FILTRO_STATUS.slice(1).map((o) => o.value).sort()).toEqual(Object.values(STATUS_EQUIPAMENTO).sort());
   });
 });
+
+describe("entradaTemAlgo", () => {
+  it("qualquer campo preenchido ou cliente escolhido conta; o padrão vazio não", async () => {
+    const { entradaTemAlgo } = await import("./equipamentos-page-utils");
+    const vazio = { serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO", defeito_relatado: "", acessorios: [], acessorios_outros: "", observacoes: "" };
+    expect(entradaTemAlgo(vazio, null)).toBe(false);
+    expect(entradaTemAlgo({ ...vazio, patrimonio: "PAT-1" }, null)).toBe(true);
+    expect(entradaTemAlgo({ ...vazio, tipo: "Térmica" }, null)).toBe(true);
+    expect(entradaTemAlgo({ ...vazio, acessorios: ["Fonte"] }, null)).toBe(true);
+    expect(entradaTemAlgo({ ...vazio, observacoes: "  " }, null)).toBe(false);
+    expect(entradaTemAlgo(vazio, { id: 1 })).toBe(true);
+  });
+});

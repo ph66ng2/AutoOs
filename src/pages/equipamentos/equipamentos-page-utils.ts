@@ -231,3 +231,12 @@ export function agruparAcoesOs<T extends { id: string; group?: string }>(acoes: 
 export function precisaPerguntarQuemRecebeOrcamento(precisaContato: boolean, osSoDeGarantia: boolean) {
   return precisaContato && !osSoDeGarantia;
 }
+
+/** Algo digitado na Nova entrada (qualquer campo fora do padrão, ou cliente escolhido): vale rascunho. */
+export function entradaTemAlgo(valores: Partial<EquipamentoFormData>, cliente: unknown): boolean {
+  if (cliente) return true;
+  const texto = (valor: unknown) => typeof valor === "string" && valor.trim() !== "";
+  return texto(valores.serial_number) || texto(valores.patrimonio) || texto(valores.marca) || texto(valores.modelo)
+    || texto(valores.tipo) || texto(valores.defeito_relatado) || texto(valores.acessorios_outros) || texto(valores.observacoes)
+    || (Array.isArray(valores.acessorios) && valores.acessorios.length > 0);
+}

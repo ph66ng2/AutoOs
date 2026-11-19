@@ -21,6 +21,16 @@ export function useRascunho<T>(chave: string) {
   const chaveCompleta = PREFIXO + chave;
 
   const ler = useCallback((): Rascunho<T> | null => {
+    // Fechou e reabriu dentro da pausa: o que estava pendente vale como rascunho.
+    if (pendente.current != null) {
+      const dados = pendente.current;
+      if (espera.current != null) window.clearTimeout(espera.current);
+      espera.current = null;
+      pendente.current = null;
+      try {
+        localStorage.setItem(chaveCompleta, JSON.stringify({ dados, salvoEm: new Date().toISOString() } satisfies Rascunho<T>));
+      } catch { /* sem armazenamento */ }
+    }
     try {
       const bruto = localStorage.getItem(chaveCompleta);
       if (!bruto) return null;

@@ -53,7 +53,12 @@ function useAvisoComRoteador(sujo: boolean, saidaLivre?: (pathname: string) => b
     if (blocker.state === "blocked" && !sujo) blocker.proceed();
   }, [blocker, sujo]);
 
-  const liberarProximaSaida = useCallback(() => { liberado.current = true; }, []);
+  // Vale só para a navegação disparada logo em seguida (o bloqueio é conferido na hora do
+  // navigate); se nenhuma acontecer, a liberação expira e não vaza para um clique posterior.
+  const liberarProximaSaida = useCallback(() => {
+    liberado.current = true;
+    window.setTimeout(() => { liberado.current = false; }, 0);
+  }, []);
   // O ConfirmDialog chama onConfirm/onCancel e depois onOpenChange(false): só a primeira decide.
   const decidido = useRef(false);
   useEffect(() => { if (blocker.state === "blocked") decidido.current = false; }, [blocker.state]);
