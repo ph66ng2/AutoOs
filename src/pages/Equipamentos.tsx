@@ -210,7 +210,7 @@ import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
 import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
-import { useTecnicos } from "@/hooks/useTecnicos";
+import { useNomesFiltroTecnico, useTecnicos } from "@/hooks/useTecnicos";
 import { emailDoTecnico } from "@/lib/tecnicos";
 import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
 import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
@@ -347,6 +347,7 @@ export default function Equipamentos() {
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
   const tecnicos = useTecnicos();
   const primeiroTecnico = tecnicos[0]?.nome ?? "";
+  const nomesFiltroTecnico = useNomesFiltroTecnico();
   const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("");
   const [marcaOutroOpen, setMarcaOutroOpen] = useState(false);
   const [tipoOutroOpen, setTipoOutroOpen] = useState(false);
@@ -2833,8 +2834,8 @@ export default function Equipamentos() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="TODOS">Todos os técnicos</SelectItem>
-                {tecnicos.map((tecnico) => (
-                  <SelectItem key={tecnico.id} value={tecnico.nome}>{tecnico.nome}</SelectItem>
+                {nomesFiltroTecnico.map((nome) => (
+                  <SelectItem key={nome} value={nome}>{nome}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

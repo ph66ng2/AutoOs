@@ -19,16 +19,24 @@ UPDATE security_profiles
    SET atende_tecnico = TRUE, atualizado_em = NOW()
  WHERE role = 'TECNICO' AND atende_tecnico = FALSE;
 
--- Instalação interna: os técnicos da antiga lista fixa (Ivan e Isaías) seguem
--- técnicos, e a equipe já conhecida recebe o e-mail que o sistema usava.
--- Casa pelo primeiro nome, sem acento, e só preenche o que está vazio.
-UPDATE security_profiles
-SET email_profissional = translate(lower(split_part(btrim(nome), ' ', 1)), 'áíã', 'aia') || '@bmitag.com.br',
+-- Instalação interna: e-mails confirmados pelo responsável para Ivan, Isaías e
+-- Aline, os mesmos que o sistema já usava nos PDFs. Só preenche quando o
+-- primeiro nome (sem acento) identifica um único perfil e o e-mail está vazio;
+-- havendo dois "Ivan", nenhum recebe e o administrador completa na tela.
+WITH candidatos AS (
+  SELECT id, translate(lower(split_part(btrim(nome), ' ', 1)), 'áíã', 'aia') AS primeiro
+  FROM security_profiles
+), unicos AS (
+  SELECT primeiro, MIN(id) AS id
+  FROM candidatos
+  WHERE primeiro IN ('ivan', 'isaias', 'aline')
+  GROUP BY primeiro
+  HAVING COUNT(*) = 1
+)
+UPDATE security_profiles sp
+SET email_profissional = CASE WHEN sp.email_profissional IS NULL THEN u.primeiro || '@bmitag.com.br' ELSE sp.email_profissional END,
+    atende_tecnico = sp.atende_tecnico OR u.primeiro IN ('ivan', 'isaias'),
     atualizado_em = NOW()
-WHERE email_profissional IS NULL
-  AND translate(lower(split_part(btrim(nome), ' ', 1)), 'áíã', 'aia') IN ('ivan', 'isaias', 'aline');
-
-UPDATE security_profiles
-SET atende_tecnico = TRUE, atualizado_em = NOW()
-WHERE atende_tecnico = FALSE
-  AND translate(lower(split_part(btrim(nome), ' ', 1)), 'áíã', 'aia') IN ('ivan', 'isaias');
+FROM unicos u
+WHERE sp.id = u.id
+  AND (sp.email_profissional IS NULL OR (u.primeiro IN ('ivan', 'isaias') AND NOT sp.atende_tecnico));

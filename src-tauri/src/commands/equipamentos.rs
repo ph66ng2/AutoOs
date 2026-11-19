@@ -718,6 +718,24 @@ pub async fn contar_equipamentos_por_status(
         .map_err(super::operator_errors::mapear_erro_sql)
 }
 
+/// Nomes de técnico já gravados nas verificações (o filtro inclui quem não é mais perfil técnico).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn listar_nomes_tecnicos_verificacoes() -> Result<Vec<String>, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT TRIM(v.tecnico_nome) FROM verificacoes v
+         JOIN equipamentos e ON e.id = v.equipamento_id
+         WHERE e.empresa_id = $1 AND NULLIF(TRIM(v.tecnico_nome), '') IS NOT NULL
+         ORDER BY 1",
+    )
+    .bind(empresa_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)
+}
+
 /// Buscar equipamento por ID.
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]

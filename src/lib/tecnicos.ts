@@ -39,11 +39,19 @@ export function tecnicosAtivos(): Tecnico[] {
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
-/** E-mail profissional do perfil com esse nome (sem acento e caixa); vazio se não houver. */
+/**
+ * E-mail profissional do perfil com esse nome; vazio se não houver.
+ * Primeiro o nome igual (só ignorando caixa e espaços); sem acento só quando
+ * um único perfil casa, para "José" e "Jose" não trocarem de e-mail.
+ */
 export function emailDoTecnico(nome?: string | null): string {
   if (!nome) return "";
+  const exato = nome.trim().toLocaleLowerCase("pt-BR");
+  const igual = perfisConhecidos.find((perfil) => perfil.nome.trim().toLocaleLowerCase("pt-BR") === exato);
+  if (igual) return igual.email_profissional ?? "";
   const alvo = normalizar(nome);
-  return perfisConhecidos.find((perfil) => normalizar(perfil.nome) === alvo)?.email_profissional ?? "";
+  const parecidos = perfisConhecidos.filter((perfil) => normalizar(perfil.nome) === alvo);
+  return parecidos.length === 1 ? parecidos[0].email_profissional ?? "" : "";
 }
 
 /** Linha "Técnico inicial: <nome> (<e-mail>)" que a entrada grava nas observações da OS; devolve só o nome. */

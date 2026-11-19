@@ -23,6 +23,7 @@ test-results/
 # Vitest faz parte da configuração de testes e precisa acompanhar o código.
 src/test/*
 !src/test/setup.ts
+!src/test/tecnicos-fixture.ts
 e2e/report/
 e2e/results/
 
