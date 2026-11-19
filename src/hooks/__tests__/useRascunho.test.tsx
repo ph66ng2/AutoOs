@@ -36,3 +36,23 @@ describe("quandoRascunho", () => {
     expect(quandoRascunho(new Date(2026, 10, 18, 9, 5).toISOString(), agora)).toBe("18/11 às 09:05");
   });
 });
+
+describe("useRascunho: sair no meio da pausa", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("desmontar grava na hora o que estava pendente", () => {
+    const { result, unmount } = renderHook(() => useRascunho<{ serie: string }>("teste"));
+    act(() => result.current.salvar({ serie: "ZB-1" }));
+    unmount();
+    const { result: depois } = renderHook(() => useRascunho<{ serie: string }>("teste"));
+    expect(depois.current.ler()?.dados).toEqual({ serie: "ZB-1" });
+  });
+
+  it("fechar o app (pagehide) grava o pendente", () => {
+    const { result } = renderHook(() => useRascunho<{ serie: string }>("teste"));
+    act(() => result.current.salvar({ serie: "ZB-2" }));
+    window.dispatchEvent(new Event("pagehide"));
+    expect(result.current.ler()?.dados).toEqual({ serie: "ZB-2" });
+  });
+});

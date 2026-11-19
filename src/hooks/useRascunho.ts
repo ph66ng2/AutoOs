@@ -16,6 +16,8 @@ export interface Rascunho<T> {
  */
 export function useRascunho<T>(chave: string) {
   const espera = useRef<number | null>(null);
+  /** Último conteúdo ainda não gravado (a gravação espera uma pausa na digitação). */
+  const pendente = useRef<T | null>(null);
   const chaveCompleta = PREFIXO + chave;
 
   const ler = useCallback((): Rascunho<T> | null => {
@@ -32,6 +34,7 @@ export function useRascunho<T>(chave: string) {
   const cancelarEspera = useCallback(() => {
     if (espera.current != null) window.clearTimeout(espera.current);
     espera.current = null;
+    pendente.current = null;
   }, []);
 
   const salvarAgora = useCallback((dados: T, salvoEm = new Date().toISOString()) => {
@@ -46,6 +49,7 @@ export function useRascunho<T>(chave: string) {
   /** Salva depois de uma pausa na digitação. */
   const salvar = useCallback((dados: T) => {
     cancelarEspera();
+    pendente.current = dados;
     espera.current = window.setTimeout(() => {
       espera.current = null;
       salvarAgora(dados);
@@ -57,7 +61,19 @@ export function useRascunho<T>(chave: string) {
     try { localStorage.removeItem(chaveCompleta); } catch { /* sem armazenamento */ }
   }, [cancelarEspera, chaveCompleta]);
 
-  useEffect(() => cancelarEspera, [cancelarEspera]);
+  // Sair da tela ou fechar o app no meio da pausa grava na hora o que estava pendente.
+  useEffect(() => {
+    const gravarPendente = () => {
+      if (pendente.current != null) salvarAgora(pendente.current);
+    };
+    window.addEventListener("pagehide", gravarPendente);
+    window.addEventListener("beforeunload", gravarPendente);
+    return () => {
+      window.removeEventListener("pagehide", gravarPendente);
+      window.removeEventListener("beforeunload", gravarPendente);
+      gravarPendente();
+    };
+  }, [salvarAgora]);
 
   return useMemo(() => ({ ler, salvar, salvarAgora, limpar }), [ler, salvar, salvarAgora, limpar]);
 }

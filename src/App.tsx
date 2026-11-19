@@ -17,7 +17,7 @@
  * ║  USADO POR: main.tsx (ponto de entrada)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { createContext, lazy, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, lazy, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createBrowserRouter, RouterProvider, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { useTheme } from "next-themes";
@@ -204,7 +204,16 @@ const ConteudoDoRoteador = createContext<React.ReactNode>(null);
 
 function RoteadorDoApp({ children }: { children: React.ReactNode }) {
   const [router] = useState(() => createBrowserRouter([{ path: "*", element: <ConteudoRoteado /> }]));
-  useEffect(() => () => router.dispose(), [router]);
+  // Descarta o roteador só quando a árvore sai de vez. No StrictMode (desenvolvimento) o React
+  // desmonta e remonta os efeitos na hora; descartar ali deixaria o voltar/avançar sem efeito.
+  const montado = useRef(false);
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+      window.setTimeout(() => { if (!montado.current) router.dispose(); }, 0);
+    };
+  }, [router]);
   return (
     <ConteudoDoRoteador.Provider value={children}>
       <RouterProvider router={router} />

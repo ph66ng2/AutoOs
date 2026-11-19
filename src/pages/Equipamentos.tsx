@@ -602,7 +602,10 @@ export default function Equipamentos() {
     const guardar = () => {
       const valores = form.getValues();
       const temAlgo = Boolean(clienteVinculado || valores.serial_number?.trim() || valores.defeito_relatado?.trim() || valores.marca || valores.modelo?.trim());
+      // Formulário vazio não tem rascunho (e cancela um salvamento antigo pendente, como o
+      // que o reset de "Começar do zero" agenda com o cliente anterior).
       if (temAlgo) rascunhoEntrada.salvar({ form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento });
+      else rascunhoEntrada.limpar();
     };
     guardar();
     const assinatura = form.watch(guardar);
@@ -1366,7 +1369,9 @@ export default function Equipamentos() {
       }
       const equipamentoSalvo = resultado.data;
       const equipamentoIdSalvo = equipamentoSalvo.id!;
-      if (!editando) {
+      // Só apaga o rascunho deste formulário: se a pessoa já abriu outra Nova entrada
+      // enquanto este salvava, o rascunho é do formulário novo.
+      if (!editando && fotoEdicaoSeq.current === sequenciaEdicao) {
         rascunhoEntrada.limpar();
         setRascunhoRecuperadoEm(null);
       }
