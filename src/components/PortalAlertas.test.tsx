@@ -234,6 +234,26 @@ describe("PortalAlertasSino", () => {
     expect(screen.getByRole("button", { name: "Notificações" })).toBeInTheDocument();
   });
 
+  it("portal desligado no perfil: sem número e sem aviso, mas a lista de equipamentos continua sendo avisada", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const eventos: number[][] = [];
+    const ouvir = (event: Event) => eventos.push((event as CustomEvent<{ equipamentoIds: number[] }>).detail.equipamentoIds);
+    window.addEventListener(EVENTO_ALERTAS_PORTAL, ouvir);
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes><Route path="/" element={<PortalAlertasSino portalDesligado />} /></Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("button", { name: "Notificações" })).toBeInTheDocument();
+    mocks.contar.mockResolvedValue(2);
+    mocks.listar.mockResolvedValue([{ ...alerta, id: 9, equipamentoId: 50 }, alerta]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await waitFor(() => expect(eventos).toEqual([[50]]));
+    expect(mocks.toast).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Notificações" })).toBeInTheDocument();
+    window.removeEventListener(EVENTO_ALERTAS_PORTAL, ouvir);
+  });
+
   it("copiar no painel de erros leva código, descrição técnica e referência do log", async () => {
     const escrever = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText: escrever }, configurable: true });
