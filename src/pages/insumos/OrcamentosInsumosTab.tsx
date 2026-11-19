@@ -135,7 +135,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
 
   const botaoNovo = podeAgir ? (
     telaLarga ? (
-      <Button onClick={() => void abrirNovo()}>
+      <Button onClick={() => void abrirNovo()} title="Novo orçamento (Alt+V)" aria-keyshortcuts="Alt+V">
         <Plus className="mr-1.5 h-4 w-4" />
         Novo orçamento
       </Button>

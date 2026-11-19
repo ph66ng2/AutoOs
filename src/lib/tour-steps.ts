@@ -33,7 +33,7 @@ const BASE_TOUR: TourStep[] = [
   {
     id: "busca",
     title: "Buscar e atalhos",
-    body: "Ctrl+K busca equipamento, cliente, insumo ou tela de qualquer lugar. N abre uma nova entrada e ? mostra todos os atalhos (também em Perfil › Tutorial).",
+    body: "Ctrl+K busca equipamento, cliente, insumo ou tela de qualquer lugar. Ctrl+/ mostra os outros atalhos.",
     target: "busca-global",
   },
   {

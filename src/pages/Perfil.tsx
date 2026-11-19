@@ -23,7 +23,6 @@ import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { requestTour } from "@/lib/tour-request";
 import { setUiSoundsEnabled, uiSoundsEnabled } from "@/lib/ui-sounds";
 import { BASE_MODULES, newPermissions } from "@/lib/tour-steps";
-import { OBSERVACAO_ATALHOS } from "@/lib/atalhos";
 import { ListaAtalhos } from "@/components/busca/AjudaAtalhos";
 import { cn } from "@/lib/utils";
 import {
@@ -423,8 +422,7 @@ function Tutorial({ profile, permissions }: { profile: SecurityProfile; permissi
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Atalhos de teclado</CardTitle>
-          <CardDescription>{OBSERVACAO_ATALHOS} Em qualquer tela, aperte ? para ver esta lista.</CardDescription>
+          <CardTitle className="text-base">Atalhos</CardTitle>
         </CardHeader>
         <CardContent>
           <ListaAtalhos />

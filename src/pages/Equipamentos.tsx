@@ -2931,7 +2931,7 @@ export default function Equipamentos() {
       >
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => void baixarCsv()} disabled={exportando}>{exportando ? "Exportando…" : "Exportar"}</Button>
-          <Button onClick={abrirNovo}><Plus className="h-4 w-4 mr-2" />Nova entrada</Button>
+          <Button onClick={abrirNovo} title="Nova entrada (Alt+N)" aria-keyshortcuts="Alt+N"><Plus className="h-4 w-4 mr-2" />Nova entrada</Button>
         </div>
       </PageHeader>
 
@@ -3434,6 +3434,11 @@ export default function Equipamentos() {
             </div>
             </DialogBody>
             <DialogFooter>
+              {!editando && (
+                <p className="mr-auto hidden self-center text-xs text-muted-foreground sm:block">
+                  <kbd className="rounded border bg-muted px-1 font-medium">Esc</kbd> fecha e guarda como rascunho
+                </p>
+              )}
               <DialogClose asChild><Button variant="outline" type="button" onClick={editando ? undefined : descartarEntrada}>Cancelar</Button></DialogClose>
               <Button type="submit" disabled={salvando || conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
                 {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}

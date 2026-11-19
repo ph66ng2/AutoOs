@@ -62,7 +62,6 @@ export function BuscaGlobal({ aberta, onAbertaChange, telas }: { aberta: boolean
             className="h-14 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted-foreground"
           />
           {buscando && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-label="Buscando" />}
-          <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 text-[11px] font-medium text-muted-foreground sm:inline">Esc</kbd>
         </div>
         <ul id="busca-global-lista" role="listbox" ref={lista} aria-label="Resultados" className="max-h-[min(60vh,440px)] overflow-y-auto p-2">
           {grupos.map(([grupo, itens]) => (
@@ -93,6 +92,12 @@ export function BuscaGlobal({ aberta, onAbertaChange, telas }: { aberta: boolean
             </li>
           )}
         </ul>
+        {/* As teclas aparecem onde são usadas, não num guia à parte. */}
+        <p aria-hidden="true" className="hidden items-center gap-3 border-t px-4 py-2 text-[11px] text-muted-foreground sm:flex">
+          <span><kbd className="rounded border bg-muted px-1 font-medium">↑</kbd> <kbd className="rounded border bg-muted px-1 font-medium">↓</kbd> escolher</span>
+          <span><kbd className="rounded border bg-muted px-1 font-medium">Enter</kbd> abrir</span>
+          <span><kbd className="rounded border bg-muted px-1 font-medium">Esc</kbd> fechar</span>
+        </p>
       </DialogContent>
     </Dialog>
   );
