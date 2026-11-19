@@ -206,6 +206,10 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return "Sua empresa" as T;
     case "listar_pecas_baixa_pendente":
       return [] as T;
+    case "listar_alertas_portal":
+      return [] as T;
+    case "contar_alertas_portal_nao_lidos":
+      return 0 as T;
     case "listar_servicos_paginados": {
       const page = Math.max(0, Number(args?.page ?? 0));
       const busca = String(args?.busca ?? "").toLowerCase();

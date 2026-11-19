@@ -322,7 +322,7 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
     setLoading(true);
     setErro(null);
     try {
-      setAlertas(await db.listarAlertasPortal(!historico, historico ? 200 : 100));
+      setAlertas((await db.listarAlertasPortal(!historico, historico ? 200 : 100)) ?? []);
     } catch (cause) {
       setErro(cause instanceof Error ? cause.message : String(cause));
     } finally {
