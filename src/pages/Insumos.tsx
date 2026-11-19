@@ -19,6 +19,7 @@
  * ║  USADO POR: App.tsx (rota /insumos)                         ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
+import { useEstadoNavegacao } from "@/hooks/useEstadoNavegacao";
 import { PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
 import { EscolherItemDialog } from "@/pages/insumos/EscolherItemDialog";
 import { useEffect, useRef, useState } from "react";
@@ -78,7 +79,9 @@ function NumeroEstoque({ titulo, valor, detalhe, alerta = false }: { titulo: str
 }
 
 export default function Insumos() {
-  const [busca, setBusca] = useState("");
+  // Item de "Estoque baixo" do Início: a lista abre já buscando por ele.
+  const estadoNavegacao = useEstadoNavegacao<{ busca?: string }>();
+  const [busca, setBusca] = useState(() => estadoNavegacao?.busca ?? "");
   const [categoriaFiltro, setCategoriaFiltro] = useState("TODOS");
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
   const [paginaInsumos, setPaginaInsumos] = useState(1);

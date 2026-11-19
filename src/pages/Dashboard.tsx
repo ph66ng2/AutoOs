@@ -159,10 +159,10 @@ export default function Dashboard() {
   const entraramHoje = equipamentos.filter((eq) => (eq.data_entrada ?? "").slice(0, 10) === hoje).length;
   const aguardandoPeca = equipamentos.filter((eq) => eq.status === "AGUARDANDO_PECA").length;
   const cartoes = [
-    { titulo: "Em atendimento", valor: emAtendimento.length, rodape: `${entraramHoje} ${entraramHoje === 1 ? "entrou" : "entraram"} hoje`, cor: "bg-primary" },
-    { titulo: "Aguardando aprovação", valor: metrics.aguardandoAprovacao, rodape: "Orçamentos com o cliente", cor: "bg-status-wait" },
-    { titulo: "Prontos para entrega", valor: metrics.prontos, rodape: "Avisar o cliente e registrar a entrega", cor: "bg-status-ok" },
-    { titulo: "Aguardando peça", valor: aguardandoPeca, rodape: "Retomar quando a peça chegar", cor: "bg-status-wait" },
+    { titulo: "Em atendimento", valor: emAtendimento.length, rodape: `${entraramHoje} ${entraramHoje === 1 ? "entrou" : "entraram"} hoje`, cor: "bg-primary", status: "TODOS" },
+    { titulo: "Aguardando aprovação", valor: metrics.aguardandoAprovacao, rodape: "Orçamentos com o cliente", cor: "bg-status-wait", status: "AGUARDANDO_APROVACAO" },
+    { titulo: "Prontos para entrega", valor: metrics.prontos, rodape: "Avisar o cliente e registrar a entrega", cor: "bg-status-ok", status: "PRONTO" },
+    { titulo: "Aguardando peça", valor: aguardandoPeca, rodape: "Retomar quando a peça chegar", cor: "bg-status-wait", status: "AGUARDANDO_PECA" },
   ];
   const TRACOS = 30;
   const primeiroNome = (sessao?.active_profile_name ?? "").trim().split(/\s+/)[0] ?? "";
@@ -207,7 +207,7 @@ export default function Dashboard() {
             <button
               key={cartao.titulo}
               type="button"
-              onClick={() => navigate("/equipamentos")}
+              onClick={() => navigate("/equipamentos", { state: { statusFiltro: cartao.status } })}
               className="group flex flex-col overflow-hidden rounded-2xl border bg-card text-left transition-colors hover:border-ctl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="space-y-3 p-4">
@@ -349,8 +349,13 @@ export default function Dashboard() {
                     stroke="none"
                     isAnimationActive={false}
                   >
-                    {(naFila > 0 ? filaPorEtapa : [{ nome: "vazio", cor: "hsl(var(--track))" }]).map((etapa) => (
-                      <Cell key={etapa.nome} fill={etapa.cor} />
+                    {(naFila > 0 ? filaPorEtapa : [{ nome: "vazio", cor: "hsl(var(--track))" }]).map((etapa, indice) => (
+                      <Cell
+                        key={etapa.nome}
+                        fill={etapa.cor}
+                        className={naFila > 0 ? "cursor-pointer" : undefined}
+                        onClick={naFila > 0 ? () => navigate("/equipamentos", { state: { statusFiltro: STATUS_DA_ETAPA[indice] } }) : undefined}
+                      />
                     ))}
                   </Pie>
                 </PieChart>
@@ -361,13 +366,19 @@ export default function Dashboard() {
               </div>
             </div>
             <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-              {filaPorEtapa.map((etapa) => (
-                <li key={etapa.nome} className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-2">
-                    <span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm" style={{ background: etapa.cor }} />
-                    {etapa.nome}
-                  </span>
-                  <span className="font-semibold tabular-nums">{etapa.valor}</span>
+              {filaPorEtapa.map((etapa, indice) => (
+                <li key={etapa.nome}>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/equipamentos", { state: { statusFiltro: STATUS_DA_ETAPA[indice] } })}
+                    className="flex w-full items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left transition-colors duration-rapida hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm" style={{ background: etapa.cor }} />
+                      {etapa.nome}
+                    </span>
+                    <span className="font-semibold tabular-nums">{etapa.valor}</span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -386,7 +397,12 @@ export default function Dashboard() {
             ) : (
               <ul className="divide-y">
                 {produtosEstoqueBaixo.map(p => (
-                  <li key={p.id} className="space-y-1.5 py-3">
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/insumos", { state: { busca: p.codigo || p.nome } })}
+                      className="block w-full space-y-1.5 py-3 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
                     <div className="flex items-baseline justify-between gap-3 text-sm">
                       <span className="min-w-0 truncate font-semibold">{p.nome}</span>
                       <span className="shrink-0 font-semibold tabular-nums">{p.quantidade_estoque} <span className="font-normal text-muted-foreground">/ mín. {p.quantidade_minima}</span></span>
@@ -395,6 +411,7 @@ export default function Dashboard() {
                       <div className="h-2 rounded-full bg-status-bad" style={{ width: `${Math.min(100, (p.quantidade_estoque / Math.max(1, p.quantidade_minima)) * 100)}%` }} />
                     </div>
                     <p className="text-xs text-muted-foreground">{categoriaProdutoLabel(p.categoria)}</p>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -447,6 +464,12 @@ function nomeMes(mes: number) {
 }
 
 /** Cor de cada etapa no arco da fila (família de status de cada uma). */
+/**
+ * Status que a lista de Equipamentos filtra ao clicar em cada etapa da fila. A lista filtra um
+ * status por vez: a etapa abre no status principal dela (Orçamento → Aguardando aprovação).
+ */
+const STATUS_DA_ETAPA = ["RECEBIDO", "EM_VERIFICACAO", "AGUARDANDO_APROVACAO", "EM_MANUTENCAO", "PRONTO"];
+
 const COR_ETAPA = [
   "hsl(var(--st-neutral))",
   "hsl(var(--chart-2))",
