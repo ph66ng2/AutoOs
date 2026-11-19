@@ -211,6 +211,29 @@ describe("PortalAlertasSino", () => {
     expect(await screen.findByText("Tela de insumos")).toBeInTheDocument();
   });
 
+  it("trocar de perfil esquece os avisos do anterior e ignora a resposta atrasada dele", async () => {
+    mocks.contar.mockResolvedValue(0);
+    mocks.listar.mockResolvedValue([]);
+    let responderAntigo: (v: unknown) => void = () => undefined;
+    mocks.avisos
+      .mockReturnValueOnce(new Promise((resolver) => { responderAntigo = resolver; }))
+      .mockResolvedValue([]);
+    const arvore = (perfilId: number) => (
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes><Route path="/" element={<PortalAlertasSino perfilId={perfilId} />} /></Routes>
+      </MemoryRouter>
+    );
+    const { rerender } = render(arvore(1));
+    await waitFor(() => expect(mocks.avisos).toHaveBeenCalledTimes(1));
+    rerender(arvore(2));
+    await waitFor(() => expect(mocks.avisos).toHaveBeenCalledTimes(2));
+    // A resposta do perfil 1 chega depois da troca: não pode aparecer para o perfil 2.
+    await act(async () => {
+      responderAntigo([{ chave: "estoque-baixo:x", tipo: "estoque-baixo", titulo: "Aviso do perfil 1", lido: false }]);
+    });
+    expect(screen.getByRole("button", { name: "Notificações" })).toBeInTheDocument();
+  });
+
   it("copiar no painel de erros leva código, descrição técnica e referência do log", async () => {
     const escrever = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText: escrever }, configurable: true });

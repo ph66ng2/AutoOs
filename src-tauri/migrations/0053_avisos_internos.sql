@@ -5,7 +5,7 @@
 --   vence-amanha   quem elabora orçamentos (p_orcamento), OS aguardando aprovação com prazo amanhã
 --   pronto-parado  todos, OS pronta há 7 dias ou mais sem retirada
 --   peca-chegou    estoque (p_estoque) e técnico da OS, OS aguardando peça cujas peças pendentes já têm estoque
---   estoque-baixo  estoque (p_estoque), um aviso só com os itens abaixo do mínimo
+--   estoque-baixo  estoque (p_estoque), um aviso só com os itens abaixo do mínimo (mesmo critério de Insumos)
 --   venda-aprovada financeiro (p_financeiro), venda de insumos aprovada nos últimos 7 dias
 -- Função pura sobre as tabelas da empresa; o Rust só resolve empresa, perfil e permissões.
 CREATE OR REPLACE FUNCTION public.avisos_internos(
@@ -81,7 +81,13 @@ avisos AS (
 
     UNION ALL
     -- Peça chegou: todas as peças pendentes da OS já têm estoque
-    SELECT 'peca-chegou:' || e.id || ':' || to_char(CURRENT_DATE, 'YYYY-MM-DD'), 'peca-chegou',
+    -- A chave é o estado das peças pendentes: só muda (e volta a avisar) quando elas mudam.
+    SELECT 'peca-chegou:' || e.id || ':' || (
+               SELECT md5(string_agg(c.produto_id || '=' || (c.quantidade_aprovada - c.quantidade_baixada), ',' ORDER BY c.produto_id, c.servico_id))
+               FROM orcamento_consumos c
+               JOIN verificacoes v ON v.id = c.verificacao_id AND v.empresa_id = c.empresa_id
+               WHERE v.equipamento_id = e.id AND c.empresa_id = e.empresa_id AND c.quantidade_baixada < c.quantidade_aprovada
+           ), 'peca-chegou',
            'Peça disponível: ' || btrim(e.marca || ' ' || COALESCE(e.modelo, '')),
            'As peças que faltavam já estão no estoque',
            e.id, NULL, NOW()
@@ -114,8 +120,8 @@ avisos AS (
     WHERE p_estoque
       AND pr.empresa_id = p_empresa_id
       AND pr.ativo
-      AND pr.quantidade_minima > 0
-      AND pr.quantidade_estoque <= pr.quantidade_minima
+      -- Mesmo critério do filtro "estoque baixo" de Insumos (produtos.rs): abaixo do mínimo.
+      AND pr.quantidade_estoque < pr.quantidade_minima
     HAVING COUNT(*) > 0
 
     UNION ALL

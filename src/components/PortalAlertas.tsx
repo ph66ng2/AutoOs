@@ -155,12 +155,18 @@ export function encaixePainelNotificacoes(
   };
 }
 
-export function PortalAlertasSino() {
+/**
+ * `perfilId`: perfil ativo. Ao trocar de perfil, o sino esquece os avisos e o "lido" do anterior
+ * e consulta de novo; respostas de consultas da sessão anterior são descartadas.
+ */
+export function PortalAlertasSino({ perfilId = null }: { perfilId?: number | null } = {}) {
   const navigate = useNavigate();
   const erros = useErrosRegistrados();
   const [naoLidosPortal, setNaoLidosPortal] = useState(0);
   const [avisos, setAvisos] = useState<AvisoInterno[]>([]);
   const avisosVistos = useRef<Set<string> | null>(null);
+  /** Muda a cada troca de perfil: resposta que volta com outro número é da sessão anterior. */
+  const geracao = useRef(0);
   const [aberto, setAberto] = useState(false);
   const [encaixe, setEncaixe] = useState<CSSProperties>({});
   const ultimoVisto = useRef<number | null>(null);
@@ -182,12 +188,14 @@ export function PortalAlertasSino() {
 
   /** Avisos internos: contam no sino; os que aparecem depois da primeira consulta viram aviso rápido. */
   const verificarAvisos = useCallback(async () => {
+    const minhaGeracao = geracao.current;
     let lista: AvisoInterno[] = [];
     try {
       lista = (await db.listarAvisosInternos()) ?? [];
     } catch {
       // Sem sessão ou banco sem a migration 0053: nenhum aviso interno.
     }
+    if (minhaGeracao !== geracao.current) return;
     setAvisos(lista);
     const vistos = avisosVistos.current;
     const novos = vistos ? lista.filter((aviso) => !aviso.lido && !vistos.has(aviso.chave)) : [];
@@ -221,8 +229,10 @@ export function PortalAlertasSino() {
 
   const verificar = useCallback(async () => {
     void verificarAvisos();
+    const minhaGeracao = geracao.current;
     try {
       const total = Number(await db.contarAlertasPortalNaoLidos()) || 0;
+      if (minhaGeracao !== geracao.current) return;
       setNaoLidosPortal(total);
       if (total === 0) {
         ultimoVisto.current ??= 0;
@@ -258,6 +268,20 @@ export function PortalAlertasSino() {
   }, [abrirAtendimento, verificarAvisos]);
   const verificarRef = useRef(verificar);
   verificarRef.current = verificar;
+
+  // Troca de perfil: o que o sino mostrava era do perfil anterior (permissões e "lido").
+  const perfilAnterior = useRef(perfilId);
+  useEffect(() => {
+    if (perfilAnterior.current === perfilId) return;
+    perfilAnterior.current = perfilId;
+    geracao.current += 1;
+    setAvisos([]);
+    setNaoLidosPortal(0);
+    avisosVistos.current = null;
+    ultimoVisto.current = null;
+    setAberto(false);
+    void verificarRef.current();
+  }, [perfilId]);
 
   useEffect(() => {
     void verificar();
