@@ -2406,11 +2406,36 @@ fn validar_personalizacao(input: &PersonalizacaoPerfilInput) -> Result<(), Strin
         }
     }
     if let Some(tema) = input.tema.as_deref() {
-        if tema != "light" && tema != "dark" {
-            return Err("Tema inválido.".to_string());
-        }
+        validar_tema(tema)?;
     }
     Ok(())
+}
+
+fn validar_tema(tema: &str) -> Result<(), String> {
+    if TEMAS_PERFIL.contains(&tema) {
+        Ok(())
+    } else {
+        Err("Tema inválido.".to_string())
+    }
+}
+
+/// Valores aceitos em `security_profiles.tema` (0056): claro, escuro ou o do sistema operacional.
+const TEMAS_PERFIL: [&str; 3] = ["light", "dark", "system"];
+
+/// Troca só o tema do perfil da sessão (Configurações › Geral). Não mexe em nome, e-mail nem visual.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn salvar_tema_perfil(tema: String) -> Result<SensitiveAccessStatus, String> {
+    let perfil = require_sensitive_access()?;
+    validar_tema(&tema)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE security_profiles SET tema = $1, atualizado_em = NOW() WHERE id = $2 AND ativo = true")
+        .bind(&tema)
+        .bind(perfil.id)
+        .execute(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    status_snapshot().await
 }
 
 /// Revoga os códigos abertos do perfil e emite um novo dentro da transação recebida.

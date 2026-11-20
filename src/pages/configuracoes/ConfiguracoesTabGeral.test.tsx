@@ -6,6 +6,17 @@ import { Tabs } from "@/components/ui/tabs";
 
 vi.mock("@/components/UpdateChecker", () => ({ UpdateChecker: () => <p>painel de versão</p> }));
 
+const m = vi.hoisted(() => ({
+  status: null as null | { unlocked: boolean; active_profile_id: number; profiles: { id: number; tema: string | null }[] },
+  refreshStatus: vi.fn(async () => undefined),
+  saveTheme: vi.fn(),
+  setTheme: vi.fn(),
+}));
+vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ status: m.status, refreshStatus: m.refreshStatus }) }));
+vi.mock("@/lib/sensitive-access", () => ({ SensitiveAccessService: { saveTheme: m.saveTheme } }));
+vi.mock("next-themes", () => ({ useTheme: () => ({ setTheme: m.setTheme }) }));
+vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
+
 import { ConfiguracoesTabGeral } from "./ConfiguracoesTabGeral";
 
 function renderizar(conectado = true) {
@@ -21,6 +32,10 @@ function renderizar(conectado = true) {
 describe("ConfiguracoesTabGeral", () => {
   beforeEach(() => {
     localStorage.clear();
+    m.status = null;
+    m.saveTheme.mockReset().mockResolvedValue({});
+    m.setTheme.mockReset();
+    m.refreshStatus.mockClear();
     document.documentElement.style.fontSize = "";
     delete document.documentElement.dataset.movimento;
   });
@@ -61,6 +76,31 @@ describe("ConfiguracoesTabGeral", () => {
     renderizar();
     expect(screen.queryByRole("radiogroup", { name: "Abrir o app em" })).toBeNull();
     expect(screen.getByRole("radio", { name: "Balcão" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("tema só aparece com a sessão aberta e salva no perfil", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderizar();
+    expect(screen.queryByRole("radiogroup", { name: "Tema" })).toBeNull();
+    unmount();
+
+    m.status = { unlocked: true, active_profile_id: 7, profiles: [{ id: 7, tema: "dark" }] };
+    renderizar();
+    expect(screen.getByRole("radio", { name: "Escuro" })).toHaveAttribute("aria-checked", "true");
+    await user.click(screen.getByRole("radio", { name: "Sistema" }));
+    expect(m.setTheme).toHaveBeenCalledWith("system");
+    expect(m.saveTheme).toHaveBeenCalledWith("system");
+    expect(m.refreshStatus).toHaveBeenCalled();
+  });
+
+  it("se salvar o tema falhar, volta ao anterior", async () => {
+    const user = userEvent.setup();
+    m.status = { unlocked: true, active_profile_id: 7, profiles: [{ id: 7, tema: "light" }] };
+    m.saveTheme.mockRejectedValue(new Error("Sem conexão"));
+    renderizar();
+    await user.click(screen.getByRole("radio", { name: "Escuro" }));
+    expect(m.setTheme).toHaveBeenLastCalledWith("light");
+    expect(screen.getByRole("radio", { name: "Claro" })).toHaveAttribute("aria-checked", "true");
   });
 
   it("mostra a conexão sem endereço nem credencial", () => {

@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useTheme } from "next-themes";
+import { toast } from "sonner";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TabsContent } from "@/components/ui/tabs";
 import { UpdateChecker } from "@/components/UpdateChecker";
@@ -18,13 +20,24 @@ import {
 } from "@/lib/preferencias-computador";
 import { setUiSoundsEnabled, uiSoundsEnabled } from "@/lib/ui-sounds";
 import { cn } from "@/lib/utils";
+import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
+import { profileAppearance, type ProfileTheme } from "@/lib/profile-appearance";
+import { SensitiveAccessService } from "@/lib/sensitive-access";
+import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 
 /**
- * Configurações › Geral: o que é deste computador, aberto a qualquer perfil.
- * Nada aqui vai para o banco nem muda os outros computadores.
+ * Configurações › Geral, aberta a qualquer perfil. Tudo aqui é deste computador (localStorage),
+ * menos o tema, que é do perfil (o mesmo de Perfil › Personalizar) e por isso só aparece com a
+ * sessão aberta.
  */
 export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
   const navigate = useNavigate();
+  const { status, refreshStatus } = useSensitiveAccess();
+  const { setTheme } = useTheme();
+  const perfil = status?.unlocked ? status.profiles.find((item) => item.id === status.active_profile_id) : undefined;
+  const [tema, setTema] = useState<ProfileTheme | null>(null);
+  const temaAtual: ProfileTheme = tema ?? (perfil ? profileAppearance(perfil).theme : "light");
+  const [salvandoTema, setSalvandoTema] = useState(false);
   const [modo, setModo] = useState<AppMode>(() => getAppMode() ?? "standard");
   const [texto, setTexto] = useState<TamanhoTexto>(tamanhoTexto);
   const [reduzidas, setReduzidas] = useState(animacoesReduzidasAqui);
@@ -32,37 +45,38 @@ export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
   const [sons, setSons] = useState(uiSoundsEnabled);
   const [windows, setWindows] = useState(avisosWindowsLigados);
 
+  async function trocarTema(proximo: ProfileTheme) {
+    const anterior = temaAtual;
+    setTema(proximo);
+    setTheme(proximo);
+    setSalvandoTema(true);
+    try {
+      await SensitiveAccessService.saveTheme(proximo);
+      await refreshStatus();
+    } catch (causa) {
+      setTema(anterior);
+      setTheme(anterior);
+      toast.error(mensagemVisivelAoOperador(causa) ?? "Não foi possível salvar o tema.");
+    } finally {
+      setSalvandoTema(false);
+    }
+  }
+
   return (
     <TabsContent value="geral" className="mt-0 space-y-4 p-5 md:p-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Este computador</CardTitle>
-          <CardDescription>Vale só aqui. Os outros computadores continuam como estão.</CardDescription>
+          <CardTitle className="text-base">Aparência</CardTitle>
         </CardHeader>
         <CardContent className="divide-y">
-          <Linha titulo="Modo" detalhe="Balcão é a tela simplificada da recepção.">
-            <Segmentos
-              rotulo="Modo deste computador"
-              dataTour="config-modo"
-              valor={modo}
-              opcoes={[["standard", "Sistema completo"], ["counter", "Balcão"]]}
-              aoMudar={(proximo) => {
-                setModo(proximo);
-                setAppMode(proximo);
-                if (proximo === "counter") navigate("/balcao");
-              }}
-            />
-          </Linha>
-          {modo === "standard" && (
-            <Linha titulo="Abrir o app em" detalhe="Tela que aparece depois de entrar.">
+          {perfil && (
+            <Linha titulo="Tema">
               <Segmentos
-                rotulo="Abrir o app em"
-                valor={inicial}
-                opcoes={[["inicio", "Início"], ["equipamentos", "Equipamentos"]]}
-                aoMudar={(proxima) => {
-                  setInicial(proxima);
-                  definirTelaInicial(proxima);
-                }}
+                rotulo="Tema"
+                valor={temaAtual}
+                desabilitado={salvandoTema}
+                opcoes={[["light", "Claro"], ["dark", "Escuro"], ["system", "Sistema"]]}
+                aoMudar={(proximo) => void trocarTema(proximo)}
               />
             </Linha>
           )}
@@ -80,17 +94,49 @@ export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
           <Opcao
             id="geral-animacoes"
             titulo="Reduzir animações"
-            detalhe="Telas mudam sem transição. Ajuda em computador mais lento."
             marcado={reduzidas}
             aoMudar={(valor) => {
               setReduzidas(valor);
               definirAnimacoesReduzidas(valor);
             }}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Este computador</CardTitle>
+        </CardHeader>
+        <CardContent className="divide-y">
+          <Linha titulo="Modo">
+            <Segmentos
+              rotulo="Modo deste computador"
+              dataTour="config-modo"
+              valor={modo}
+              opcoes={[["standard", "Sistema completo"], ["counter", "Balcão"]]}
+              aoMudar={(proximo) => {
+                setModo(proximo);
+                setAppMode(proximo);
+                if (proximo === "counter") navigate("/balcao");
+              }}
+            />
+          </Linha>
+          {modo === "standard" && (
+            <Linha titulo="Abrir o app em">
+              <Segmentos
+                rotulo="Abrir o app em"
+                valor={inicial}
+                opcoes={[["inicio", "Início"], ["equipamentos", "Equipamentos"]]}
+                aoMudar={(proxima) => {
+                  setInicial(proxima);
+                  definirTelaInicial(proxima);
+                }}
+              />
+            </Linha>
+          )}
           <Opcao
             id="geral-sons"
             titulo="Sons da interface"
-            detalhe="Sons curtos ao entrar e concluir o primeiro acesso."
             marcado={sons}
             aoMudar={(valor) => {
               setSons(valor);
@@ -100,7 +146,6 @@ export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
           <Opcao
             id="geral-windows"
             titulo="Avisar no Windows"
-            detalhe="Quando o AutoOS estiver minimizado ou atrás de outra janela."
             marcado={windows}
             aoMudar={(valor) => {
               setWindows(valor);
@@ -127,9 +172,9 @@ export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
           />
           <div>
             <p className="text-sm font-semibold">{conectado ? "Conectado ao servidor" : "Sem conexão com o servidor"}</p>
-            <p className="text-xs text-muted-foreground">
-              {conectado ? "Os dados estão sendo lidos e gravados normalmente." : "Verifique a internet. Se continuar, chame quem administra o sistema."}
-            </p>
+            {!conectado && (
+              <p className="text-xs text-muted-foreground">Verifique a internet. Se continuar, chame quem administra o sistema.</p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -158,7 +203,7 @@ function Opcao({
 }: {
   id: string;
   titulo: string;
-  detalhe: string;
+  detalhe?: string;
   marcado: boolean;
   aoMudar: (valor: boolean) => void;
 }) {
@@ -166,7 +211,7 @@ function Opcao({
     <label htmlFor={id} className="flex cursor-pointer items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
       <span className="min-w-0">
         <span className="block text-sm font-medium">{titulo}</span>
-        <span className="block text-xs text-muted-foreground">{detalhe}</span>
+        {detalhe && <span className="block text-xs text-muted-foreground">{detalhe}</span>}
       </span>
       <Checkbox id={id} aria-label={titulo} checked={marcado} onCheckedChange={(valor) => aoMudar(valor === true)} />
     </label>
@@ -179,8 +224,10 @@ function Segmentos<T extends string>({
   opcoes,
   aoMudar,
   dataTour,
+  desabilitado = false,
 }: {
   rotulo: string;
+  desabilitado?: boolean;
   valor: T;
   opcoes: ReadonlyArray<readonly [T, string]>;
   aoMudar: (valor: T) => void;
@@ -194,6 +241,7 @@ function Segmentos<T extends string>({
           type="button"
           role="radio"
           aria-checked={valor === opcao}
+          disabled={desabilitado}
           onClick={() => valor !== opcao && aoMudar(opcao)}
           className={cn(
             "h-8 rounded-md px-3 text-sm transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",

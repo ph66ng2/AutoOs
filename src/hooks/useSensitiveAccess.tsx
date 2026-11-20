@@ -288,8 +288,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const activeProfileForTheme = status?.unlocked
     ? status.profiles.find((profile) => profile.id === status.active_profile_id)
     : undefined;
-  const profileTheme: "light" | "dark" | null = activeProfileForTheme
-    ? (activeProfileForTheme.tema === "dark" ? "dark" : "light")
+  const profileTheme: "light" | "dark" | "system" | null = activeProfileForTheme
+    ? (activeProfileForTheme.tema === "dark" || activeProfileForTheme.tema === "system" ? activeProfileForTheme.tema : "light")
     : null;
   useEffect(() => {
     if (profileTheme) setTheme(profileTheme);

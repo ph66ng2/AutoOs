@@ -907,7 +907,7 @@ export interface SecurityProfile {
   ativo: boolean;
   avatar_icone?: string | null;
   avatar_cor?: string | null;
-  tema?: "light" | "dark" | null;
+  tema?: "light" | "dark" | "system" | null;
   /** Ainda não passou pelo primeiro acesso (nome, visual). */
   onboarding_pendente?: boolean;
   /** Permissões que o tour já apresentou; `null` = nunca viu o tour. */
@@ -934,7 +934,7 @@ export interface PersonalizacaoPerfilInput {
   email_profissional?: string;
   avatar_icone: string | null;
   avatar_cor: string | null;
-  tema: "light" | "dark" | null;
+  tema: "light" | "dark" | "system" | null;
   concluir_onboarding: boolean;
 }
 

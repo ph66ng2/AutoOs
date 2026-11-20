@@ -756,10 +756,9 @@ export default function Configuracoes() {
               <TabsTrigger
                 key={valor}
                 value={valor}
-                className="flex min-h-11 shrink-0 flex-col items-start justify-center gap-0 whitespace-nowrap rounded-xl border border-transparent px-3 py-2 text-left font-semibold text-foreground shadow-none data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:shadow-sm lg:w-full lg:data-[state=active]:border-l-2 lg:data-[state=active]:border-l-primary"
+                className="flex min-h-11 shrink-0 items-center justify-start whitespace-nowrap rounded-xl border border-transparent px-3 py-2 text-left font-semibold text-foreground shadow-none data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:shadow-sm lg:w-full lg:data-[state=active]:border-l-2 lg:data-[state=active]:border-l-primary"
               >
-                <span className="text-sm">{ROTULO_ABA[valor].rotulo}</span>
-                <span className="hidden text-xs font-normal text-muted-foreground lg:block">{ROTULO_ABA[valor].detalhe}</span>
+                <span className="text-sm">{ROTULO_ABA[valor]}</span>
               </TabsTrigger>
             ))}
           {podeDesbloquear && (
@@ -898,11 +897,11 @@ const CONFIGURACOES_DA_EMPRESA: SensitivePermission[] = [
   SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
 ];
 
-const ROTULO_ABA: Record<AbaConfiguracoesId, { rotulo: string; detalhe: string }> = {
-  geral: { rotulo: "Geral", detalhe: "Este computador e versão" },
-  smtp: { rotulo: "Integrações", detalhe: "E-mail, WhatsApp, fotos" },
-  portal: { rotulo: "Portal do Cliente", detalhe: "Acesso e respostas" },
-  infra: { rotulo: "Banco de dados", detalhe: "Esquema e backup" },
-  seguranca: { rotulo: "Segurança", detalhe: "PIN, bloqueio e perfis" },
-  observabilidade: { rotulo: "Suporte e logs", detalhe: "Pacote de suporte e auditoria" },
+const ROTULO_ABA: Record<AbaConfiguracoesId, string> = {
+  geral: "Geral",
+  smtp: "Integrações",
+  portal: "Portal do Cliente",
+  infra: "Banco de dados",
+  seguranca: "Segurança",
+  observabilidade: "Suporte e logs",
 };

@@ -32,7 +32,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>
       {/* O tema é do perfil (salvo no banco); o último aplicado fica guardado para a próxima abertura. */}
-      <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="autoos-theme" disableTransitionOnChange>
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem storageKey="autoos-theme" disableTransitionOnChange>
         <MovimentoDoComputador>
           <BootUiProvider>
             <SensitiveAccessProvider>

@@ -43,6 +43,7 @@ import { BuscaGlobal } from "@/components/busca/BuscaGlobal";
 import type { TelaBuscavel } from "@/hooks/useBuscaGlobal";
 import { AjudaAtalhos } from "@/components/busca/AjudaAtalhos";
 import { useAtalhosGlobais } from "@/hooks/useAtalhosGlobais";
+import { useRotuloCabe } from "@/hooks/useRotuloCabe";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -126,6 +127,8 @@ export function Layout() {
   const sessaoAtiva = Boolean(status?.pin_configured && status.unlocked);
   const telaLarga = useLarguraMinima(768);
   const { versao: versaoNova } = useAtualizacaoDisponivel();
+  // Borda (2) + padding (24) + ícone (18) + espaço (12) do link do pé do menu.
+  const rodapeConfig = useRotuloCabe<HTMLElement, HTMLSpanElement>(56);
   const empresa = useEmpresaAtiva(`${status?.active_profile_id ?? ""}-${status?.unlocked ?? ""}`);
   // O selo só aparece quando há algo fora do normal (sem banco, sem perfil, sem PIN).
   // Desbloqueado vira o ✓ ao lado do nome; bloqueado aparece na linha de baixo do cartão.
@@ -164,30 +167,34 @@ export function Layout() {
       }).then((liberado) => { if (liberado) navigate("/vendas/novo"); });
     },
   });
-  // `semSeta`: no pé do menu a seta de "ativo" toma o espaço do rótulo (Configurações dividia a linha com Balcão e o sino).
-  const renderItem = (item: NavItem, semSeta = false) => (
-    <NavLink
-      key={item.path}
-      to={item.path}
-      end={item.path === "/"}
-      aria-label={item.label}
-      title={collapsed ? item.label : undefined}
-      data-tour={`nav-${item.path}`}
-      onClick={() => {
-        setMobileOpen(false);
-        if (item.modo) setAppMode(item.modo);
-      }}
-      className={navLinkClass(collapsed)}
-    >
-      {({ isActive }) => (
-        <>
-          <item.icon className="h-[18px] w-[18px] shrink-0" />
-          {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-          {!collapsed && isActive && !semSeta && <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />}
-        </>
-      )}
-    </NavLink>
-  );
+  // `rodape`: item do pé do menu (Configurações), que divide a linha com Balcão e o sino. Sem a
+  // seta de "ativo" e, quando o nome não cabe inteiro (tela de 720p, texto maior), só o ícone.
+  const renderItem = (item: NavItem, rodape?: { soIcone: boolean }) => {
+    const soIcone = collapsed || Boolean(rodape?.soIcone);
+    return (
+      <NavLink
+        key={item.path}
+        to={item.path}
+        end={item.path === "/"}
+        aria-label={item.label}
+        title={soIcone ? item.label : undefined}
+        data-tour={`nav-${item.path}`}
+        onClick={() => {
+          setMobileOpen(false);
+          if (item.modo) setAppMode(item.modo);
+        }}
+        className={(estado) => cn(navLinkClass(soIcone)(estado), rodape?.soIcone && !collapsed && "w-[42px]")}
+      >
+        {({ isActive }) => (
+          <>
+            <item.icon className="h-[18px] w-[18px] shrink-0" />
+            {!soIcone && <span className="flex-1 truncate">{item.label}</span>}
+            {!soIcone && isActive && !rodape && <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />}
+          </>
+        )}
+      </NavLink>
+    );
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -292,7 +299,13 @@ export function Layout() {
           )}
           {/* No computador não há barra no topo (canvas): as notificações ficam ao lado de Configurações. */}
           <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
-            <nav aria-label="Sistema" className="min-w-0 flex-1">{renderItem(configuracoesItem, true)}</nav>
+            <nav ref={rodapeConfig.conteinerRef} aria-label="Sistema" className="relative min-w-0 flex-1">
+              {renderItem(configuracoesItem, { soIcone: !rodapeConfig.cabe })}
+              {/* Cópia invisível do nome, só para medir se ele cabe inteiro. */}
+              <span ref={rodapeConfig.medidaRef} aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 whitespace-nowrap text-sm font-semibold">
+                {configuracoesItem.label}
+              </span>
+            </nav>
             <Button
               type="button"
               variant="ghost"

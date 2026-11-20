@@ -125,6 +125,11 @@ export const SensitiveAccessService = {
     return sensitiveInvoke<SensitiveAccessStatus>("salvar_personalizacao_perfil", { input });
   },
 
+  /** Só o tema do perfil da sessão (Configurações › Geral) → Rust: salvar_tema_perfil */
+  async saveTheme(tema: "light" | "dark" | "system"): Promise<SensitiveAccessStatus> {
+    return sensitiveInvoke<SensitiveAccessStatus>("salvar_tema_perfil", { tema });
+  },
+
   /** Marca as permissões atuais como apresentadas pelo tour → Rust: registrar_tour_visto */
   async markTourSeen(): Promise<SensitiveAccessStatus> {
     return sensitiveInvoke<SensitiveAccessStatus>("registrar_tour_visto");
