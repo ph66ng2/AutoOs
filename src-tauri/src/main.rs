@@ -22,6 +22,7 @@
 //! ║  4. Registra todos os comandos IPC usados pelo frontend     ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
+mod ao_vivo;
 mod commands;
 mod db;
 mod release_highlights;
@@ -89,7 +90,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
-        .setup(|_app| {
+        .setup(|app| {
             info!("Inicializando banco de dados...");
             match tauri::async_runtime::block_on(db::init_database()) {
                 Ok(_pool) => {
@@ -100,6 +101,8 @@ fn main() {
                     info!("{}", msg);
                 }
             }
+            // Atualização ao vivo entre computadores: espera o banco ficar pronto sozinha.
+            ao_vivo::iniciar(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
