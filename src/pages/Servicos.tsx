@@ -1,6 +1,7 @@
 import { validarPecas } from "@/lib/orcamento-estoque";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { classeDestaque } from "@/lib/ao-vivo";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { Plus, Search, RefreshCw, Wrench, AlertTriangle } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -57,7 +58,7 @@ export default function Servicos() {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const { error: showError } = useNotification();
 
-  const { servicos, total: totalServicos, contagem, loading, error, criar, atualizar, deletar, reativar, recarregar } = useServicos({
+  const { servicos, total: totalServicos, contagem, loading, error, criar, atualizar, deletar, reativar, recarregar, destaques: destaquesAoVivo } = useServicos({
     busca: busca || undefined,
     situacao: mostrar,
     page: paginaServicos,
@@ -248,7 +249,7 @@ export default function Servicos() {
                 />
               ))}
             </div>
-            <Button variant="outline" size="icon" className="h-11 w-11 md:h-9 md:w-9" aria-label="Recarregar serviços" onClick={recarregar}>
+            <Button variant="outline" size="icon" className="h-11 w-11 md:h-9 md:w-9" aria-label="Recarregar serviços" onClick={() => void recarregar()}>
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
@@ -281,7 +282,7 @@ export default function Servicos() {
                 {servicosExibidos.map((servico) => {
                   const inativo = servico.ativo === false;
                   return (
-                    <li key={servico.id} className="relative flex flex-col gap-3 rounded-2xl border bg-card p-4 transition-colors duration-rapida hover:border-ctl">
+                    <li key={servico.id} className={cn("relative flex flex-col gap-3 rounded-2xl border bg-card p-4 transition-colors duration-lenta hover:border-ctl", servico.id != null ? classeDestaque(destaquesAoVivo?.get(servico.id)) : "")}>
                       <div className="flex items-start justify-between gap-3">
                         <div className={cn("min-w-0", inativo && "opacity-55")}>
                           {/* O cartão inteiro abre a edição (o botão se estica sobre ele); o interruptor fica por cima. */}

@@ -3,6 +3,8 @@
  * com busca e filtro de status. Editar é página; cada ação abre o seu modal (AcaoVendaDialog).
  */
 import { useEffect, useState, type ReactNode } from "react";
+import { classeDestaque } from "@/lib/ao-vivo";
+import { cn } from "@/lib/utils";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { Lock, Package, Plus, Search } from "lucide-react";
 import { TracosDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
@@ -90,7 +92,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
   // Abaixo de md (768px) a tabela vira cartões (V.6).
   const telaLarga = useLarguraMinima(768);
 
-  const { orcamentos, total, contagens, loading, error, recarregar } = useOrcamentosInsumos({
+  const { orcamentos, total, contagens, loading, error, recarregar, destaques: destaquesAoVivo } = useOrcamentosInsumos({
     busca: busca.trim() || undefined,
     status,
     page: pagina,
@@ -257,7 +259,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                             return (
                               <TableRow
                                 key={orcamento.id}
-                                className="h-14 cursor-pointer"
+                                className={`h-14 cursor-pointer transition-colors duration-lenta ${classeDestaque(destaquesAoVivo?.get(orcamento.id))}`}
                                 onClick={() => verPagina(orcamento.id)}
                                 tabIndex={0}
                                 onKeyDown={(event) => {
@@ -328,7 +330,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                         const acao = podeAgir ? proximaAcaoVenda(orcamento.status, vencido) : { rotulo: "Ver", tipo: "ver" as const };
                         const acaoNaJanela = acaoDaLista(acao.tipo);
                         return (
-                          <li key={orcamento.id} className="rounded-2xl border bg-card p-4">
+                          <li key={orcamento.id} className={cn("rounded-2xl border bg-card p-4 transition-colors duration-lenta", classeDestaque(destaquesAoVivo?.get(orcamento.id)))}>
                             <button
                               type="button"
                               className="block w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

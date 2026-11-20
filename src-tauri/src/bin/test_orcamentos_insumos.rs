@@ -216,7 +216,7 @@ async fn main() -> Result<()> {
     entrar(perfil_operador).await?;
     assert!(erro(criar_orcamento_insumos(base.clone()).await).contains("permissão"));
     assert!(erro(aprovar_orcamento_insumos(aprovar_input(&oi1, None)).await).contains("permissão"));
-    assert_eq!(listar_orcamentos_insumos(None).await.map_err(|e| anyhow!(e))?.total, 2, "consultar é liberado");
+    assert_eq!(listar_orcamentos_insumos(None, None).await.map_err(|e| anyhow!(e))?.total, 2, "consultar é liberado");
     entrar(perfil_a).await?;
 
     // ── Aprovar: baixa o estoque, grava pagamento e movimentos ────────────────
@@ -284,23 +284,23 @@ async fn main() -> Result<()> {
     assert_eq!(contar_movimentos(&pool, &corrida.orcamento.numero_exibicao, "SAIDA", empresa_a).await?, 1);
 
     // ── Listar e filtrar ──────────────────────────────────────────────────────
-    let todos = listar_orcamentos_insumos(None).await.map_err(|e| anyhow!(e))?;
+    let todos = listar_orcamentos_insumos(None, None).await.map_err(|e| anyhow!(e))?;
     assert_eq!(todos.total, 5);
     assert_eq!(todos.items[0].numero, 5, "mais novo primeiro");
     let filtro = |status: Option<&str>, cliente: Option<i32>, busca: Option<&str>| FiltrosOrcamentosInsumos {
         status: status.map(str::to_string), cliente_id: cliente, busca: busca.map(str::to_string), page: None,
     };
-    assert_eq!(listar_orcamentos_insumos(Some(filtro(Some("CANCELADO"), None, None))).await.map_err(|e| anyhow!(e))?.total, 2);
-    assert_eq!(listar_orcamentos_insumos(Some(filtro(None, Some(outro_cliente_a), None))).await.map_err(|e| anyhow!(e))?.total, 0);
-    assert_eq!(listar_orcamentos_insumos(Some(filtro(None, None, Some("oi-5")))).await.map_err(|e| anyhow!(e))?.total, 1);
-    assert_eq!(listar_orcamentos_insumos(Some(filtro(None, None, Some("Cliente A")))).await.map_err(|e| anyhow!(e))?.total, 5);
-    assert_eq!(listar_orcamentos_insumos(Some(filtro(Some("INVALIDO"), None, None))).await.map_err(|e| anyhow!(e))?.total, 5, "status desconhecido é ignorado");
-    let pagina2 = listar_orcamentos_insumos(Some(FiltrosOrcamentosInsumos { page: Some(1), ..Default::default() })).await.map_err(|e| anyhow!(e))?;
+    assert_eq!(listar_orcamentos_insumos(Some(filtro(Some("CANCELADO"), None, None)), None).await.map_err(|e| anyhow!(e))?.total, 2);
+    assert_eq!(listar_orcamentos_insumos(Some(filtro(None, Some(outro_cliente_a), None)), None).await.map_err(|e| anyhow!(e))?.total, 0);
+    assert_eq!(listar_orcamentos_insumos(Some(filtro(None, None, Some("oi-5"))), None).await.map_err(|e| anyhow!(e))?.total, 1);
+    assert_eq!(listar_orcamentos_insumos(Some(filtro(None, None, Some("Cliente A"))), None).await.map_err(|e| anyhow!(e))?.total, 5);
+    assert_eq!(listar_orcamentos_insumos(Some(filtro(Some("INVALIDO"), None, None)), None).await.map_err(|e| anyhow!(e))?.total, 5, "status desconhecido é ignorado");
+    let pagina2 = listar_orcamentos_insumos(Some(FiltrosOrcamentosInsumos { page: Some(1), ..Default::default() }), None).await.map_err(|e| anyhow!(e))?;
     assert_eq!(pagina2.items.len(), 0, "5 itens cabem na primeira página de 10");
 
     // ── Isolamento por empresa ────────────────────────────────────────────────
     entrar(perfil_b).await?;
-    assert_eq!(listar_orcamentos_insumos(None).await.map_err(|e| anyhow!(e))?.total, 0);
+    assert_eq!(listar_orcamentos_insumos(None, None).await.map_err(|e| anyhow!(e))?.total, 0);
     assert!(erro(obter_orcamento_insumos(oi1.orcamento.id).await).contains("não encontrado"));
     assert!(erro(aprovar_orcamento_insumos(aprovar_input(&para_reprovar, None)).await).contains("não encontrado"));
     assert!(erro(cancelar_orcamento_insumos(cancelar_input(&aprovado, true)).await).contains("não encontrado"));
@@ -312,7 +312,7 @@ async fn main() -> Result<()> {
     assert_eq!(aprovado_b.orcamento.status, "APROVADO");
     assert_eq!(saldo(produto_b).await?, 40);
     entrar(perfil_a).await?;
-    assert_eq!(listar_orcamentos_insumos(None).await.map_err(|e| anyhow!(e))?.total, 5);
+    assert_eq!(listar_orcamentos_insumos(None, None).await.map_err(|e| anyhow!(e))?.total, 5);
     assert!(erro(obter_orcamento_insumos(oi_b.orcamento.id).await).contains("não encontrado"));
     assert_eq!(saldo(etiqueta).await?, 7, "empresa A não foi afetada pela B");
 
@@ -341,7 +341,7 @@ async fn main() -> Result<()> {
         contar_movimentos(&pool, &referencia_cancelado, "ENTRADA", empresa_a).await?,
         contar_movimentos(&pool, &referencia_cancelado, "SAIDA", empresa_a).await?,
     );
-    let total_antes = listar_orcamentos_insumos(None).await.map_err(|e| anyhow!(e))?.total;
+    let total_antes = listar_orcamentos_insumos(None, None).await.map_err(|e| anyhow!(e))?.total;
     let maior_numero_antes: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(numero), 0)::BIGINT FROM orcamentos_insumos WHERE empresa_id = $1")
         .bind(empresa_a).fetch_one(&pool).await?;
 
@@ -363,7 +363,7 @@ async fn main() -> Result<()> {
         movs_antes,
         "movimentos de estoque preservados"
     );
-    let total_depois = listar_orcamentos_insumos(None).await.map_err(|e| anyhow!(e))?.total;
+    let total_depois = listar_orcamentos_insumos(None, None).await.map_err(|e| anyhow!(e))?.total;
     assert_eq!(total_depois, total_antes - 1);
     let novo = criar_orcamento_insumos(entrada(cliente_a, vec![item(etiqueta, 1, 5.0)])).await.map_err(|e| anyhow!(e))?;
     assert_eq!(i64::from(novo.orcamento.numero), maior_numero_antes + 1, "número excluído não é reaproveitado");

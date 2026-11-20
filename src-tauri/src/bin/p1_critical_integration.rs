@@ -226,7 +226,7 @@ async fn main() -> Result<()> {
     }
     // Lista e painel de Clientes: contato principal, OS abertas, filtros com contagem e resumo.
     let busca_cliente = cliente.nome.clone().unwrap_or_default();
-    let com_os = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("COM_OS_ABERTA".to_string()))
+    let com_os = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("COM_OS_ABERTA".to_string()), None)
         .await
         .map_err(|error| anyhow!(error))?;
     let linha = com_os
@@ -237,7 +237,7 @@ async fn main() -> Result<()> {
     if linha.os_abertas != Some(1) || linha.contato_principal.as_deref() != Some(format!("{} Responsável Original", prefix).as_str()) {
         return Err(anyhow!("lista de clientes com os_abertas/contato_principal errados: {:?} {:?}", linha.os_abertas, linha.contato_principal));
     }
-    let portal = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("PORTAL_ATIVO".to_string()))
+    let portal = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("PORTAL_ATIVO".to_string()), None)
         .await
         .map_err(|error| anyhow!(error))?;
     if portal.items.iter().any(|row| row.id == cliente.id) {
@@ -475,6 +475,7 @@ async fn main() -> Result<()> {
 
     let recent_page = equipamentos::listar_equipamentos_paginados(
         Some(0), None, Some("AGUARDANDO_APROVACAO".to_string()), Some("CADASTRO_RECENTE".to_string()), None,
+        None,
     ).await.map_err(|error| anyhow!(error))?;
     if !recent_page.items.iter().any(|item| item.id == equipamento.id) {
         return Err(anyhow!("recent equipment order omitted the expected record"));
@@ -819,7 +820,7 @@ async fn main() -> Result<()> {
     if adopted_company != Some(empresa_id) {
         return Err(anyhow!("successful approval did not adopt the legacy verification tenant"));
     }
-    let historico = equipamentos::listar_historico_equipamento(equipamento.id)
+    let historico = equipamentos::listar_historico_equipamento(equipamento.id, None)
         .await
         .map_err(|error| anyhow!(error))?;
     if !historico.iter().any(|evento| {
@@ -904,7 +905,7 @@ async fn main() -> Result<()> {
         .await
         .map_err(|error| anyhow!(error))?;
 
-    let equipamento_com_snapshot = equipamentos::buscar_equipamento(equipamento.id)
+    let equipamento_com_snapshot = equipamentos::buscar_equipamento(equipamento.id, None)
         .await
         .map_err(|error| anyhow!(error))?;
     if equipamento_com_snapshot.responsavel_nome.as_deref()
@@ -943,7 +944,7 @@ async fn main() -> Result<()> {
     .execute(&pool)
     .await
     .context("create legacy verification failed")?;
-    let legacy = equipamentos::buscar_equipamento(legacy_equipment_id)
+    let legacy = equipamentos::buscar_equipamento(legacy_equipment_id, None)
         .await
         .map_err(|error| anyhow!(error))?;
     let legacy_verification =
@@ -1227,7 +1228,7 @@ async fn assert_lista_tolera_telefone_nulo(
             return Err(anyhow!("search did not return the client with NULL telefone"));
         }
 
-        let pagina = clientes::listar_clientes_paginados(Some(0), Some(nome), None)
+        let pagina = clientes::listar_clientes_paginados(Some(0), Some(nome), None, None)
             .await
             .map_err(|error| anyhow!("paginated search failed with a NULL telefone row: {error}"))?;
         if !pagina.items.iter().any(|row| row.id == id) {

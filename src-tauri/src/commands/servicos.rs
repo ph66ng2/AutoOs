@@ -219,9 +219,10 @@ pub async fn listar_servicos_paginados(
     busca: Option<String>,
     apenas_ativos: Option<bool>,
     apenas_inativos: Option<bool>,
+    segundo_plano: Option<bool>,
 ) -> Result<PaginatedResult<ServicoCatalogoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     query_service_page(
         &pool,
         empresa_id,
@@ -236,9 +237,9 @@ pub async fn listar_servicos_paginados(
 /// Quantos serviços ativos e inativos a busca encontra (números dos filtros da tela).
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn contar_servicos(busca: Option<String>) -> Result<ContagemServicos, String> {
+pub async fn contar_servicos(busca: Option<String>, segundo_plano: Option<bool>) -> Result<ContagemServicos, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let mut query = QueryBuilder::<Postgres>::new(
         "SELECT COUNT(*) FILTER (WHERE ativo) AS ativos, COUNT(*) FILTER (WHERE NOT ativo) AS inativos FROM servicos_catalogo",
     );

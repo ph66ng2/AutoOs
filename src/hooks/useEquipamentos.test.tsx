@@ -19,6 +19,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import { useEquipamentos } from "@/hooks/useEquipamentos";
+import { distribuirMudancas } from "@/lib/ao-vivo";
 
 const novoEquipamento: Omit<Equipamento, "id"> = {
   serial_number: "SN-HOOK-1",
@@ -278,5 +279,23 @@ describe("useEquipamentos — registro", () => {
       "2026-10-27T10:00:00Z",
       "Correção solicitada",
     );
+  });
+
+  it("mudança de outro computador recarrega em silêncio (sem carregando) e destaca a OS nova", async () => {
+    mockListarPaginados.mockResolvedValueOnce({ items: [equipamentoBase], total: 1 });
+    const { result } = renderHook(() => useEquipamentos());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const recarga = deferred<{ items: Equipamento[]; total: number }>();
+    mockListarPaginados.mockReturnValueOnce(recarga.promise);
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 2, referencia: null, operacao: "I" }]));
+    expect(result.current.loading).toBe(false);
+    await act(async () => { recarga.resolve({ items: [{ ...equipamentoBase, id: 2 }, equipamentoBase], total: 2 }); });
+    await waitFor(() => expect(result.current.equipamentos).toHaveLength(2));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.destaques.get(2)).toBe("novo");
+    // Recarga ao vivo é leitura de segundo plano: não renova a sessão (estação abandonada ainda bloqueia).
+    expect(mockListarPaginados.mock.calls.at(-1)?.[5]).toBe(true);
+    expect(mockListarPaginados.mock.calls[0]).toHaveLength(5);
   });
 });

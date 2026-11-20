@@ -184,7 +184,7 @@ async fn main() -> Result<()> {
         return Err(anyhow!("pecas_necessarias not updated correctly: got {:?}", updated.pecas_necessarias));
     }
 
-    let equipamento_final = equipamentos::buscar_equipamento(equipamento.id).await.map_err(|e| anyhow!(e))?;
+    let equipamento_final = equipamentos::buscar_equipamento(equipamento.id, None).await.map_err(|e| anyhow!(e))?;
     if equipamento_final.valor_orcamento != Some(225.0) {
         return Err(anyhow!("expected valor_orcamento=225.0, got {:?}", equipamento_final.valor_orcamento));
     }

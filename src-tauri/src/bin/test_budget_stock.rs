@@ -99,7 +99,7 @@ async fn main() -> Result<()> {
             aprovado,resposta_esperada_id:esperada,motivo_divergencia:motivo }).await
     };
     // A lista mostra a resposta ainda não aplicada.
-    assert_eq!(equipamentos::buscar_equipamento(eq2).await.map_err(|e| anyhow!(e))?.resposta_cliente.as_deref(), Some("APROVAR"));
+    assert_eq!(equipamentos::buscar_equipamento(eq2, None).await.map_err(|e| anyhow!(e))?.resposta_cliente.as_deref(), Some("APROVAR"));
     // Tela antiga (não viu a resposta) e janela de correção ainda aberta: nada muda.
     assert!(atual(None, Some(true), None).await.unwrap_err().contains("alterou a resposta"));
     assert!(atual(Some(resposta_id), Some(true), None).await.unwrap_err().contains("ainda pode corrigir"));
@@ -413,7 +413,7 @@ async fn main() -> Result<()> {
         .bind(empresa).bind(cliente_busca).bind(format!("Inativo{suffix}")).execute(&pool).await?;
     let achados = clientes::listar_clientes(None, Some(nome_contato.clone())).await.map_err(|e| anyhow!("busca contato: {e}"))?;
     assert_eq!(achados.iter().map(|c| (c.id, c.contato_encontrado.clone())).collect::<Vec<_>>(), vec![(cliente_busca, Some(nome_contato.clone()))]);
-    let pagina = clientes::listar_clientes_paginados(None, Some(nome_contato.clone()), None).await.map_err(|e| anyhow!("busca paginada: {e}"))?;
+    let pagina = clientes::listar_clientes_paginados(None, Some(nome_contato.clone()), None, None).await.map_err(|e| anyhow!("busca paginada: {e}"))?;
     assert_eq!(pagina.total, 1);
     let pelo_telefone = clientes::listar_clientes(None, Some("(71) 98765-4321".into())).await.map_err(|e| anyhow!("busca telefone: {e}"))?;
     assert!(pelo_telefone.iter().any(|c| c.id == cliente_busca), "busca pelo celular do contato");

@@ -561,13 +561,14 @@ pub async fn listar_equipamentos(
     page: Option<i32>,
     busca: Option<String>,
     status: Option<String>,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<EquipamentoRow>, String> {
     debug!("Listando equipamentos");
     let pool = get_pool().await.map_err(|e| {
         error!("Erro ao obter pool: {}", e);
         e.to_string()
     })?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
 
     let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
     listar_equipamentos_on_connection(
@@ -695,9 +696,10 @@ pub async fn listar_equipamentos_paginados(
     status: Option<String>,
     ordenacao: Option<String>,
     tecnico: Option<String>,
+    segundo_plano: Option<bool>,
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
     query_equipment_page_filtered(
         &mut connection,
@@ -718,9 +720,10 @@ pub async fn listar_equipamentos_paginados(
 pub async fn contar_equipamentos_por_status(
     busca: Option<String>,
     tecnico: Option<String>,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<ContagemStatusRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let mut query = QueryBuilder::<Postgres>::new("SELECT COALESCE(status, '') AS status, COUNT(*) AS total FROM equipamentos");
     add_equipment_filters(&mut query, empresa_id, busca.as_deref(), None, tecnico.as_deref());
     query.push(" GROUP BY status");
@@ -752,10 +755,10 @@ pub async fn listar_nomes_tecnicos_verificacoes() -> Result<Vec<String>, String>
 /// Buscar equipamento por ID.
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
-pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
+pub async fn buscar_equipamento(id: i32, segundo_plano: Option<bool>) -> Result<EquipamentoRow, String> {
     debug!("Buscando equipamento {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
 
     let query = format!("{} WHERE id = $1 AND empresa_id = $2", EQUIPAMENTO_SELECT);
     let row = sqlx::query_as::<_, EquipamentoRow>(sqlx::AssertSqlSafe(&*query))
@@ -778,9 +781,10 @@ pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
 #[instrument(skip_all, fields(equipamento_id = equipamento_id))]
 pub async fn listar_historico_equipamento(
     equipamento_id: i32,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<EquipamentoHistoricoEvento>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
 
     let equipamento: Option<(
         Option<String>, String, Option<String>, Option<String>, Option<String>, Option<String>,
@@ -999,7 +1003,7 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
         .await;
     }
     info!("Equipamento criado: id={}", id);
-    buscar_equipamento(id).await
+    buscar_equipamento(id, None).await
 }
 
 /// Atualizar equipamento por ID.
@@ -1097,7 +1101,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     }
 
     info!("Equipamento {} atualizado", id);
-    buscar_equipamento(id).await
+    buscar_equipamento(id, None).await
 }
 
 /// Define o responsável de um equipamento a partir de um contato ativo do cliente da OS.
@@ -1171,7 +1175,7 @@ pub async fn definir_responsavel_equipamento(
     .await;
 
     info!("Responsável do equipamento {} definido", equipamento_id);
-    buscar_equipamento(equipamento_id).await
+    buscar_equipamento(equipamento_id, None).await
 }
 
 /// Deletar equipamento por ID.
@@ -1337,7 +1341,7 @@ pub async fn atualizar_status_equipamento(
     .await;
 
     info!("Status do equipamento {} atualizado para {}", id, normalized_status);
-    buscar_equipamento(id).await
+    buscar_equipamento(id, None).await
 }
 
 /// Aprova um orçamento atualizando pagamento, status e data de aprovação na

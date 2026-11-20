@@ -904,6 +904,17 @@ pub async fn require_active_session_company_id(pool: &PgPool) -> Result<i32, Str
     company_id_for_profile(pool, &profile).await
 }
 
+/// Empresa da sessão para uma leitura. `segundo_plano` = Some(true) é a recarga automática
+/// (atualização ao vivo, foco da janela): exige a sessão desbloqueada, mas não a renova, senão
+/// mudanças de outro computador manteriam aberta uma estação abandonada.
+pub async fn empresa_da_sessao(pool: &PgPool, segundo_plano: Option<bool>) -> Result<i32, String> {
+    if segundo_plano == Some(true) {
+        require_active_session_company_id_without_touch(pool).await
+    } else {
+        require_active_session_company_id(pool).await
+    }
+}
+
 /// Igual a `require_active_session_company_id`, para consultas de segundo plano: não renova a sessão.
 pub async fn require_active_session_company_id_without_touch(pool: &PgPool) -> Result<i32, String> {
     let profile = require_sensitive_access_without_touch()?;

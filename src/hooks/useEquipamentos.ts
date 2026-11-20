@@ -10,6 +10,8 @@
  * @usedBy pages/Equipamentos.tsx - página principal de equipamentos
  */
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { argSegundoPlano } from "@/lib/ao-vivo";
+import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import type { Equipamento } from "@/types";
 
@@ -91,13 +93,15 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
       const params = paramsRef.current;
       const tecnico = params?.tecnico || undefined;
       // A contagem é só enfeite das pílulas: se falhar, a lista continua.
-      const contagem = Promise.resolve().then(() => db.contarEquipamentosPorStatus(params?.busca, tecnico)).catch(() => null);
+      const contagem = Promise.resolve().then(() => db.contarEquipamentosPorStatus(params?.busca, tecnico, ...argSegundoPlano(silencioso))).catch(() => null);
       const data = await db.listarEquipamentosPaginados(
         params?.busca,
         params?.status === "TODOS" ? undefined : params?.status,
         Math.max((params?.page ?? 1) - 1, 0),
         params?.ordenacao ?? "ATUALIZACAO_RECENTE",
         tecnico,
+        // Recarga silenciosa (ao vivo, foco) não renova a sessão: estação abandonada ainda bloqueia.
+        ...argSegundoPlano(silencioso),
       );
       const numeros = await contagem;
       if (!atual()) return { status: "obsoleto" };
@@ -126,6 +130,13 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
 
   const recarregar = useCallback(() => carregar(), [carregar]);
   const atualizarEmSegundoPlano = useCallback(() => carregar({ silencioso: true }), [carregar]);
+
+  // Outro computador mudou uma OS (ou a verificação dela): recarrega em silêncio e destaca o que mudou.
+  const { destaques, lembrar } = useDestaquesAoVivo(equipamentos, (eq) => eq.id, (eq) => eq.atualizado_em);
+  useAtualizacaoAoVivo(["equipamentos", "verificacoes"], () => {
+    lembrar();
+    void carregar({ silencioso: true });
+  });
 
   const recarregarAposGravacao = async () => {
     const resultado = await carregar({ silencioso: true, aposGravacao: true });
@@ -233,5 +244,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     atualizarStatus,
     recarregar,
     atualizarEmSegundoPlano,
+    /** Itens novos ou alterados por outro computador, destacados por alguns segundos. */
+    destaques,
   };
 }

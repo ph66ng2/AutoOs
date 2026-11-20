@@ -204,7 +204,7 @@ async fn assert_company_isolation(pool: &PgPool, fixture: &Fixture) -> Result<()
     if !servicos::deletar_servico(service_a.id).await.map_err(|error| anyhow!(error))? {
         bail!("empresa A não conseguiu desativar o próprio serviço");
     }
-    let inativos = servicos::listar_servicos_paginados(None, Some(fixture.prefix.clone()), Some(false), Some(true))
+    let inativos = servicos::listar_servicos_paginados(None, Some(fixture.prefix.clone()), Some(false), Some(true), None)
         .await
         .map_err(|error| anyhow!(error))?;
     if inativos.items.iter().map(|s| s.id).collect::<Vec<_>>() != vec![service_a.id] {
@@ -235,7 +235,7 @@ async fn assert_company_isolation(pool: &PgPool, fixture: &Fixture) -> Result<()
     .await
     .context("seed service pagination records")?;
 
-    let page_seven = servicos::listar_servicos_paginados(Some(6), None, Some(true), None)
+    let page_seven = servicos::listar_servicos_paginados(Some(6), None, Some(true), None, None)
         .await
         .map_err(|error| anyhow!(error))?;
     if page_seven.total != 62 || page_seven.items.len() != 2 {

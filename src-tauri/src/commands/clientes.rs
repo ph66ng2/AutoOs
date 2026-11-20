@@ -481,9 +481,10 @@ pub async fn listar_clientes_paginados(
     page: Option<i32>,
     busca: Option<String>,
     filtro: Option<String>,
+    segundo_plano: Option<bool>,
 ) -> Result<PaginatedResult<ClienteRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     query_client_page(
         &pool,
         empresa_id,

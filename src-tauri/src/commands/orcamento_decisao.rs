@@ -893,7 +893,7 @@ pub async fn prorrogar_prazo_orcamento(input: ProrrogarPrazoInput) -> Result<Res
     } else {
         PortalAjusteInfo::nenhuma()
     };
-    let equipamento = buscar_equipamento(input.equipamento_id).await?;
+    let equipamento = buscar_equipamento(input.equipamento_id, None).await?;
     Ok(ResultadoProrrogacao {
         prorrogado: true,
         resposta_pendente: None,
