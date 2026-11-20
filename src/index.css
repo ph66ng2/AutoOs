@@ -125,6 +125,19 @@
   :root { --dur-rapida: 0ms; --dur-padrao: 0ms; --dur-lenta: 0ms; }
 }
 
+/* Configurações › Geral › Animações reduzidas: vale neste computador, além da opção do sistema.
+   As animações em CSS de cada tela terminam no primeiro quadro (os eventos de fim continuam). */
+:root[data-movimento="reduzido"] { --dur-rapida: 0ms; --dur-padrao: 0ms; --dur-lenta: 0ms; }
+:root[data-movimento="reduzido"] *,
+:root[data-movimento="reduzido"] *::before,
+:root[data-movimento="reduzido"] *::after {
+  animation-duration: 1ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0ms !important;
+  scroll-behavior: auto !important;
+}
+
 /* Barra de rolagem fina, trilho transparente (redesign, fase 1). */
 * {
   scrollbar-width: thin;

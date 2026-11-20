@@ -63,9 +63,9 @@ const BASE_TOUR: TourStep[] = [
   {
     id: "balcao",
     title: "Modo Balcão",
-    body: "Tela simplificada para a recepção: nova entrada, busca de equipamento e cliente, consulta de estoque. Troque em Perfil › Modo deste computador; a escolha vale só neste computador. Aprovar ou mudar valores ali pede a permissão de orçamentos.",
-    target: "perfil-modo",
-    route: "/perfil",
+    body: "Tela simplificada para a recepção: nova entrada, busca de equipamento e cliente, consulta de estoque. Troque em Configurações › Geral; a escolha vale só neste computador. Aprovar ou mudar valores ali pede a permissão de orçamentos.",
+    target: "config-modo",
+    route: "/configuracoes",
   },
 ];
 

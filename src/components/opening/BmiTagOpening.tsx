@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import "./bmi-tag-opening.css";
+import { movimentoReduzido } from "@/lib/preferencias-computador";
 
 /**
  * Abertura "leitura de tag".
@@ -51,11 +52,7 @@ function Part({ name, children }: { name: PartName; children?: ReactNode }) {
 }
 
 function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
+  return movimentoReduzido();
 }
 
 export interface BmiTagOpeningProps {

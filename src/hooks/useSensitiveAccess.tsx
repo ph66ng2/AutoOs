@@ -25,6 +25,7 @@ import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { isTemporaryDatabaseAccessMessage, sensitiveAccessErrorMessage } from "@/lib/sensitive-access-error";
 import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
 import { requestTour } from "@/lib/tour-request";
+import { movimentoReduzido } from "@/lib/preferencias-computador";
 import {
   SENSITIVE_PERMISSION_LABELS,
   type SensitiveAccessStatus,
@@ -354,7 +355,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const closeDialogRef = useRef(closeDialog);
   closeDialogRef.current = closeDialog;
   const acceptPinAndClose = useCallback(() => {
-    const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduced = movimentoReduzido();
     if (reduced) {
       closeDialogRef.current(true);
       return;
