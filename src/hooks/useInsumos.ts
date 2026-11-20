@@ -15,6 +15,7 @@
  * configurado, utilizada para alertas de estoque baixo no Dashboard.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import type { Produto, UsoProdutoOrcamentos } from "@/types";
 
@@ -65,8 +66,9 @@ export function useInsumos(params?: UseInsumosParams) {
    * É memoizada via `useCallback` e re-executada automaticamente quando
    * os parâmetros de filtro mudam.
    */
-  const carregar = useCallback(async () => {
-    setLoading(true);
+  const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
+    // Atualização ao vivo recarrega sem "carregando": a lista fica e só o que mudou troca.
+    if (opcoes?.silencioso !== true) setLoading(true);
     setError(null);
     try {
       const data = await db.listarProdutosPaginados(
@@ -89,6 +91,18 @@ export function useInsumos(params?: UseInsumosParams) {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  // Outro computador mudou algo desta lista: recarrega em silêncio e destaca o que mudou.
+
+  const { destaques, lembrar } = useDestaquesAoVivo(produtos, (item) => item.id, (item) => JSON.stringify(item));
+
+  useAtualizacaoAoVivo(["produtos"], () => {
+
+    lembrar();
+
+    void carregar({ silencioso: true });
+
+  });
 
   /**
    * Cria um novo produto no banco de dados.
@@ -210,6 +224,7 @@ export function useInsumos(params?: UseInsumosParams) {
    * de produtos é atualizada.
    */
   return {
+    destaques,
     produtos,
     total,
     loading,

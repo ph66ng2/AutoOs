@@ -18,7 +18,8 @@
  * ║  USADO POR: App.tsx (rota /)                                ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useState, useEffect, useMemo } from "react";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { useNavigate } from "react-router-dom";
 import {
   Plus,
@@ -79,8 +80,8 @@ export default function Dashboard() {
   const agora = new Date();
   const [mesSel, setMesSel] = useState({ ano: agora.getFullYear(), mes: agora.getMonth() + 1 });
 
-  useEffect(() => {
-    async function load() {
+  // Carrega o painel; a atualização ao vivo chama de novo em silêncio (os números só trocam).
+  const carregarPainel = useCallback(async () => {
       try {
         const [equipamentos, produtos] = await Promise.all([
           db.listarEquipamentos(),
@@ -116,9 +117,9 @@ export default function Dashboard() {
       } finally {
         setLoading(false);
       }
-    }
-    load();
   }, []);
+  useEffect(() => { void carregarPainel(); }, [carregarPainel]);
+  useAtualizacaoAoVivo(["equipamentos", "verificacoes", "produtos"], () => void carregarPainel());
 
   function getAcaoPendente(eq: Equipamento): { label: string; cor: string } {
     switch (eq.status) {

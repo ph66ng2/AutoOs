@@ -17,6 +17,7 @@
  *  componentes o utilizem imediatamente após a criação.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import type { Cliente, ContatoInicialInput, FiltroClientes } from "@/types";
 
@@ -57,8 +58,9 @@ export function useClientes(params?: UseClientesParams) {
    * de busca, se informado. É disparada automaticamente via useEffect sempre
    * que o valor de `busca` muda.
    */
-  const carregar = useCallback(async () => {
-    setLoading(true);
+  const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
+    // Atualização ao vivo recarrega sem "carregando": a lista fica e só o que mudou troca.
+    if (opcoes?.silencioso !== true) setLoading(true);
     setError(null);
     try {
       const data = await db.listarClientesPaginados(
@@ -79,6 +81,18 @@ export function useClientes(params?: UseClientesParams) {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  // Outro computador mudou algo desta lista: recarrega em silêncio e destaca o que mudou.
+
+  const { destaques, lembrar } = useDestaquesAoVivo(clientes, (item) => item.id, (item) => JSON.stringify(item));
+
+  useAtualizacaoAoVivo(["clientes", "cliente_contatos"], () => {
+
+    lembrar();
+
+    void carregar({ silencioso: true });
+
+  });
 
   /**
    * Cria um novo cliente (PF ou PJ) no banco de dados.
@@ -142,6 +156,7 @@ export function useClientes(params?: UseClientesParams) {
   };
 
   return {
+    destaques,
     clientes,
     total,
     loading,

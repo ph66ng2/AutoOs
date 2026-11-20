@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import type { ServicoCatalogo, SituacaoServico } from "@/types";
 
@@ -17,8 +18,9 @@ export function useServicos(params?: UseServicosParams) {
   /** Números dos filtros (ativos e inativos com a busca); null se a contagem falhar. */
   const [contagem, setContagem] = useState<{ ativos: number; inativos: number } | null>(null);
 
-  const carregar = useCallback(async () => {
-    setLoading(true);
+  const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
+    // Atualização ao vivo recarrega sem "carregando": a lista fica e só o que mudou troca.
+    if (opcoes?.silencioso !== true) setLoading(true);
     setError(null);
     try {
       const numeros = Promise.resolve().then(() => db.contarServicos(params?.busca)).catch(() => null);
@@ -41,6 +43,18 @@ export function useServicos(params?: UseServicosParams) {
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  // Outro computador mudou algo desta lista: recarrega em silêncio e destaca o que mudou.
+
+  const { destaques, lembrar } = useDestaquesAoVivo(servicos, (item) => item.id, (item) => JSON.stringify(item));
+
+  useAtualizacaoAoVivo(["servicos_catalogo"], () => {
+
+    lembrar();
+
+    void carregar({ silencioso: true });
+
+  });
 
   const criar = async (servico: Omit<ServicoCatalogo, "id">) => {
     try {
@@ -83,6 +97,7 @@ export function useServicos(params?: UseServicosParams) {
   };
 
   return {
+    destaques,
     servicos,
     total,
     contagem,

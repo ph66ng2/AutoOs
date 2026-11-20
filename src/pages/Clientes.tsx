@@ -21,6 +21,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { classeDestaque } from "@/lib/ao-vivo";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { useNavigate } from "react-router-dom";
 import { formatDatePtBr } from "@/lib/date-utils";
@@ -126,7 +127,7 @@ export default function Clientes() {
   const [previaVinculoEmpresa, setPreviaVinculoEmpresa] = useState<VinculoEmpresaPerfilPrevia | null>(null);
   const [regularizando, setRegularizando] = useState(false);
 
-  const { clientes, total: totalClientes, loading, error, criar, atualizar, deletar, recarregar } =
+  const { clientes, total: totalClientes, loading, error, criar, atualizar, deletar, recarregar, destaques: destaquesAoVivo } =
     useClientes({ busca: busca || undefined, page: abaAtual, filtro });
   const { data: contagem, recarregar: recarregarContagem } = useContagemClientes(busca || undefined);
   const { data: resumo } = useResumoCliente(contatosExpandido);
@@ -598,7 +599,7 @@ export default function Clientes() {
                         return (
                           <tr
                             key={c.id}
-                            className={`cursor-pointer transition-colors duration-rapida [&>td]:px-3 [&>td]:py-2.5 [&>td]:align-middle ${aberto ? "bg-muted shadow-[inset_3px_0_0_hsl(var(--primary))]" : "hover:bg-muted/50"}`}
+                            className={`cursor-pointer transition-colors duration-lenta [&>td]:px-3 [&>td]:py-2.5 [&>td]:align-middle ${aberto ? "bg-muted shadow-[inset_3px_0_0_hsl(var(--primary))]" : "hover:bg-muted/50"} ${c.id != null ? classeDestaque(destaquesAoVivo?.get(c.id)) : ""}`}
                             onClick={() => void selecionarCliente(c)}
                           >
                             <td className="min-w-0">

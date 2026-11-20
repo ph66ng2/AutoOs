@@ -10,6 +10,7 @@
  * @usedBy pages/Equipamentos.tsx - página principal de equipamentos
  */
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import type { Equipamento } from "@/types";
 
@@ -127,6 +128,13 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const recarregar = useCallback(() => carregar(), [carregar]);
   const atualizarEmSegundoPlano = useCallback(() => carregar({ silencioso: true }), [carregar]);
 
+  // Outro computador mudou uma OS (ou a verificação dela): recarrega em silêncio e destaca o que mudou.
+  const { destaques, lembrar } = useDestaquesAoVivo(equipamentos, (eq) => eq.id, (eq) => eq.atualizado_em);
+  useAtualizacaoAoVivo(["equipamentos", "verificacoes"], () => {
+    lembrar();
+    void carregar({ silencioso: true });
+  });
+
   const recarregarAposGravacao = async () => {
     const resultado = await carregar({ silencioso: true, aposGravacao: true });
     return {
@@ -233,5 +241,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     atualizarStatus,
     recarregar,
     atualizarEmSegundoPlano,
+    /** Itens novos ou alterados por outro computador, destacados por alguns segundos. */
+    destaques,
   };
 }

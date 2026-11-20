@@ -214,6 +214,9 @@ import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
 import { useNomesFiltroTecnico, useTecnicos } from "@/hooks/useTecnicos";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+import { classeDestaque } from "@/lib/ao-vivo";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
+import { cn } from "@/lib/utils";
 import { quandoRascunho, useRascunho } from "@/hooks/useRascunho";
 import { HistoricoDoSerial } from "@/components/equipamentos/HistoricoDoSerial";
 import { BotaoCopiar } from "@/components/ui/botao-copiar";
@@ -426,7 +429,7 @@ export default function Equipamentos() {
       setExportando(false);
     }
   }
-  const { equipamentos, total: totalEquipamentos, contagens: contagensStatus, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
+  const { equipamentos, total: totalEquipamentos, contagens: contagensStatus, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano, destaques: destaquesAoVivo } =
     useEquipamentos({ busca: busca || undefined, status: statusFiltro, tecnico: tecnicoFiltro === "TODOS" ? undefined : tecnicoFiltro, ordenacao, page: paginaEquipamentos });
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
@@ -541,6 +544,39 @@ export default function Equipamentos() {
         console.error("Erro ao buscar equipamento do estado de navegação:", err);
       });
   }, [location.state, edicaoEmAndamento]);
+
+  // Outro computador mudou a OS aberta. Só olhando: a tela mostra a versão nova. Editando: nada
+  // é trocado por baixo, aparece um aviso (salvar por cima já é barrado pelo controle de conflito).
+  // Uma mudança desta própria tela chega com o mesmo atualizado_em e é ignorada.
+  const edicaoEmAndamentoRef = useRef(edicaoEmAndamento);
+  edicaoEmAndamentoRef.current = edicaoEmAndamento;
+  const selecionadoAtualizadoEmRef = useRef<string | undefined>();
+  selecionadoAtualizadoEmRef.current = selecionado?.atualizado_em;
+  useAtualizacaoAoVivo(["equipamentos", "verificacoes"], (mudancas) => {
+    const abertoId = selecionadoIdRef.current;
+    if (!detalhesAbertoRef.current || !abertoId) return;
+    const tocaAberta = mudancas.length === 0 || mudancas.some((m) =>
+      (m.tabela === "equipamentos" && m.id === abertoId) || (m.tabela === "verificacoes" && m.referencia === abertoId));
+    if (!tocaAberta) return;
+    db.buscarEquipamento(abertoId)
+      .then((eq) => {
+        if (selecionadoIdRef.current !== eq.id) return;
+        const mudouVerificacao = mudancas.some((m) => m.tabela === "verificacoes");
+        if (eq.atualizado_em === selecionadoAtualizadoEmRef.current && !mudouVerificacao) return;
+        if (edicaoEmAndamentoRef.current) {
+          toast.warning("Esta OS foi alterada em outro computador", {
+            id: `os-alterada-${eq.id}`,
+            description: "O que você está preenchendo continua aqui. Se salvar por cima de algo que mudou, o app avisa.",
+            duration: Infinity,
+            action: { label: "Ver versão nova", onClick: () => { if (selecionadoIdRef.current === eq.id) setSelecionado(eq); } },
+          });
+          return;
+        }
+        setSelecionado(eq);
+        setSinalPortal((valor) => valor + 1);
+      })
+      .catch(() => undefined);
+  });
 
   // Cliente respondeu/pediu algo no portal: a lista reordena sem o operador recarregar, e o
   // atendimento aberto mostra o estado novo.
@@ -3044,7 +3080,7 @@ export default function Equipamentos() {
               {!telaLarga ? (
               <ul className="space-y-3" aria-label="Equipamentos">
                 {equipamentosExibidos.map(eq => (
-                  <li key={eq.id} className="space-y-3 rounded-xl border p-4">
+                  <li key={eq.id} className={cn("space-y-3 rounded-xl border p-4 transition-colors duration-lenta", classeDestaque(eq.id != null ? destaquesAoVivo?.get(eq.id) : undefined))}>
                     <div className="flex items-start justify-between gap-3">
                       <Checkbox
                         className="mt-1"
@@ -3102,7 +3138,7 @@ export default function Equipamentos() {
                   {equipamentosExibidos.map(eq => (
                     <TableRow
                       key={eq.id}
-                      className="group cursor-pointer"
+                      className={cn("group cursor-pointer transition-colors duration-lenta", classeDestaque(eq.id != null ? destaquesAoVivo?.get(eq.id) : undefined))}
                       onClick={() => void abrirDetalhes(eq)}
                     >
                       <TableCell className={`w-10 pr-0 ${EQUIPMENT_ROW_FOCUS_FIRST}`} onClick={(event) => event.stopPropagation()}>

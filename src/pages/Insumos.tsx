@@ -23,6 +23,7 @@ import { useEstadoNavegacao } from "@/hooks/useEstadoNavegacao";
 import { PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
 import { EscolherItemDialog } from "@/pages/insumos/EscolherItemDialog";
 import { useEffect, useRef, useState } from "react";
+import { classeDestaque } from "@/lib/ao-vivo";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import {
   Package,
@@ -124,6 +125,7 @@ export default function Insumos() {
     consultarUsoEmOrcamentos,
     buscarProduto,
     recarregar,
+    destaques: destaquesAoVivo,
   } = useInsumos({
     busca: busca || undefined,
     categoria: categoriaFiltro,
@@ -483,7 +485,7 @@ export default function Insumos() {
                     const proporcao = p.quantidade_minima > 0 ? Math.min(Math.max(p.quantidade_estoque, 0) / p.quantidade_minima, 1) : 1;
                     const ultima = textoUltimaMovimentacao(p);
                     return (
-                      <TableRow key={p.id} className="h-14">
+                      <TableRow key={p.id} className={`h-14 transition-colors duration-lenta ${p.id != null ? classeDestaque(destaquesAoVivo?.get(p.id)) : ""}`}>
                         <TableCell>
                           <p className="font-semibold leading-snug">{p.nome}</p>
                           <p className="font-mono text-xs text-muted-foreground">{p.codigo || "—"}</p>
