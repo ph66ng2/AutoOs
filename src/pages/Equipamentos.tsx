@@ -562,6 +562,12 @@ export default function Equipamentos() {
     ]);
     if (eq.status !== "fulfilled" || selecionadoIdRef.current !== id || !detalhesAbertoRef.current) return;
     if (!mesmoSemMudar && eq.value.atualizado_em === selecionadoAtualizadoEmRef.current) return;
+    // A edição pode ter aberto enquanto a recarga estava a caminho: não troca a OS por baixo
+    // dela (o token de concorrência da edição tem de continuar o de quando ela abriu).
+    if (edicaoEmAndamentoRef.current) {
+      recargaPendenteRef.current = id;
+      return;
+    }
     setSelecionado(eq.value);
     if (verif.status === "fulfilled") setVerificacaoDetalhes(verif.value);
     if (historico.status === "fulfilled") setHistoricoDetalhes(historico.value);
