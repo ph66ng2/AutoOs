@@ -17,6 +17,7 @@
  *  componentes o utilizem imediatamente após a criação.
  */
 import { useState, useEffect, useCallback } from "react";
+import { argSegundoPlano } from "@/lib/ao-vivo";
 import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import type { Cliente, ContatoInicialInput, FiltroClientes } from "@/types";
@@ -67,6 +68,7 @@ export function useClientes(params?: UseClientesParams) {
         params?.busca,
         Math.max((params?.page ?? 1) - 1, 0),
         params?.filtro,
+        ...argSegundoPlano(opcoes?.silencioso === true),
       );
       setClientes(data.items);
       setTotal(data.total);

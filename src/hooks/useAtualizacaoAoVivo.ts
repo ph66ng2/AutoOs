@@ -41,11 +41,15 @@ export function useDestaquesAoVivo<T>(
     if (!anterior || anterior === itens) return;
     antes.current = null;
     const novos = calcularDestaques(anterior, itens, chaveRef.current, versaoRef.current);
-    if (novos.size === 0) return;
-    setDestaques(novos);
+    if (novos.size > 0) setDestaques(novos);
+  }, [itens]);
+
+  // O destaque some sozinho; outra lista chegando no meio não cancela isso (o prazo é do destaque).
+  useEffect(() => {
+    if (destaques.size === 0) return;
     const timer = window.setTimeout(() => setDestaques(new Map()), DURACAO_DESTAQUE_MS);
     return () => window.clearTimeout(timer);
-  }, [itens]);
+  }, [destaques]);
 
   return { destaques, lembrar };
 }

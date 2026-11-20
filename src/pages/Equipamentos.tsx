@@ -545,38 +545,58 @@ export default function Equipamentos() {
       });
   }, [location.state, edicaoEmAndamento]);
 
-  // Outro computador mudou a OS aberta. Só olhando: a tela mostra a versão nova. Editando: nada
-  // é trocado por baixo, aparece um aviso (salvar por cima já é barrado pelo controle de conflito).
-  // Uma mudança desta própria tela chega com o mesmo atualizado_em e é ignorada.
+  // Outro computador mudou a OS aberta. Só olhando: a OS, a verificação e o histórico recarregam
+  // em silêncio. Editando: nada é trocado (o formulário e o token de concorrência da edição
+  // continuam os de quando ela abriu, então salvar por cima é barrado como conflito); a OS
+  // recarrega quando a edição fecha. Mudança desta própria tela chega com o mesmo atualizado_em.
   const edicaoEmAndamentoRef = useRef(edicaoEmAndamento);
   edicaoEmAndamentoRef.current = edicaoEmAndamento;
   const selecionadoAtualizadoEmRef = useRef<string | undefined>();
   selecionadoAtualizadoEmRef.current = selecionado?.atualizado_em;
+  const recargaPendenteRef = useRef<number | null>(null);
+  const recarregarOsAberta = useCallback(async (id: number, mesmoSemMudar: boolean) => {
+    const [eq, verif, historico] = await Promise.allSettled([
+      db.buscarEquipamento(id, true),
+      db.buscarVerificacao(id),
+      db.listarHistoricoEquipamento(id, true),
+    ]);
+    if (eq.status !== "fulfilled" || selecionadoIdRef.current !== id || !detalhesAbertoRef.current) return;
+    if (!mesmoSemMudar && eq.value.atualizado_em === selecionadoAtualizadoEmRef.current) return;
+    setSelecionado(eq.value);
+    if (verif.status === "fulfilled") setVerificacaoDetalhes(verif.value);
+    if (historico.status === "fulfilled") setHistoricoDetalhes(historico.value);
+    setSinalPortal((valor) => valor + 1);
+  }, []);
   useAtualizacaoAoVivo(["equipamentos", "verificacoes"], (mudancas) => {
     const abertoId = selecionadoIdRef.current;
     if (!detalhesAbertoRef.current || !abertoId) return;
-    const tocaAberta = mudancas.length === 0 || mudancas.some((m) =>
-      (m.tabela === "equipamentos" && m.id === abertoId) || (m.tabela === "verificacoes" && m.referencia === abertoId));
+    const mudouVerificacao = mudancas.some((m) => m.tabela === "verificacoes" && m.referencia === abertoId);
+    const tocaAberta = mudancas.length === 0 || mudouVerificacao || mudancas.some((m) => m.tabela === "equipamentos" && m.id === abertoId);
     if (!tocaAberta) return;
-    db.buscarEquipamento(abertoId)
-      .then((eq) => {
-        if (selecionadoIdRef.current !== eq.id) return;
-        const mudouVerificacao = mudancas.some((m) => m.tabela === "verificacoes");
-        if (eq.atualizado_em === selecionadoAtualizadoEmRef.current && !mudouVerificacao) return;
-        if (edicaoEmAndamentoRef.current) {
+    if (edicaoEmAndamentoRef.current) {
+      recargaPendenteRef.current = abertoId;
+      // Só avisa se mudou de fato (a própria gravação desta tela volta com o mesmo atualizado_em).
+      db.buscarEquipamento(abertoId, true)
+        .then((eq) => {
+          if (eq.atualizado_em === selecionadoAtualizadoEmRef.current && !mudouVerificacao) return;
           toast.warning("Esta OS foi alterada em outro computador", {
-            id: `os-alterada-${eq.id}`,
-            description: "O que você está preenchendo continua aqui. Se salvar por cima de algo que mudou, o app avisa.",
-            duration: Infinity,
-            action: { label: "Ver versão nova", onClick: () => { if (selecionadoIdRef.current === eq.id) setSelecionado(eq); } },
+            id: `os-alterada-${abertoId}`,
+            description: "O que você está preenchendo continua aqui. Ao fechar, a OS mostra a versão nova; se salvar por cima, o app avisa do conflito.",
+            duration: 15_000,
           });
-          return;
-        }
-        setSelecionado(eq);
-        setSinalPortal((valor) => valor + 1);
-      })
-      .catch(() => undefined);
+        })
+        .catch(() => undefined);
+      return;
+    }
+    void recarregarOsAberta(abertoId, mudouVerificacao || mudancas.length === 0);
   });
+  // Terminou a edição com uma mudança de outro computador pendente: mostra a versão nova.
+  useEffect(() => {
+    const pendente = recargaPendenteRef.current;
+    if (edicaoEmAndamento || pendente == null) return;
+    recargaPendenteRef.current = null;
+    if (selecionadoIdRef.current === pendente) void recarregarOsAberta(pendente, true);
+  }, [edicaoEmAndamento, recarregarOsAberta]);
 
   // Cliente respondeu/pediu algo no portal: a lista reordena sem o operador recarregar, e o
   // atendimento aberto mostra o estado novo.

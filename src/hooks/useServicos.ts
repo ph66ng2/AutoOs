@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { argSegundoPlano } from "@/lib/ao-vivo";
 import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import type { ServicoCatalogo, SituacaoServico } from "@/types";
@@ -23,11 +24,12 @@ export function useServicos(params?: UseServicosParams) {
     if (opcoes?.silencioso !== true) setLoading(true);
     setError(null);
     try {
-      const numeros = Promise.resolve().then(() => db.contarServicos(params?.busca)).catch(() => null);
+      const numeros = Promise.resolve().then(() => db.contarServicos(params?.busca, ...argSegundoPlano(opcoes?.silencioso === true))).catch(() => null);
       const data = await db.listarServicosPaginados(
         params?.busca,
         params?.situacao ?? "ATIVOS",
         Math.max((params?.page ?? 1) - 1, 0),
+        ...argSegundoPlano(opcoes?.silencioso === true),
       );
       setContagem(await numeros);
       setServicos(data.items);

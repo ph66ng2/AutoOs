@@ -315,6 +315,7 @@ pub async fn listar_produtos(
     busca: Option<String>,
     categoria: Option<String>,
     apenas_estoque_baixo: Option<bool>,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<ProdutoRow>, String> {
     debug!("Listando produtos");
     let pool = get_pool().await.map_err(|e| {
@@ -322,7 +323,7 @@ pub async fn listar_produtos(
         e.to_string()
     })?;
 
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     query_product_rows(
         &pool,
         empresa_id,
@@ -398,9 +399,10 @@ pub async fn listar_produtos_paginados(
     busca: Option<String>,
     categoria: Option<String>,
     apenas_estoque_baixo: Option<bool>,
+    segundo_plano: Option<bool>,
 ) -> Result<PaginatedResult<ProdutoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     query_product_page(
         &pool,
         empresa_id,

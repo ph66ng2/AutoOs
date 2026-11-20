@@ -15,6 +15,7 @@
  * configurado, utilizada para alertas de estoque baixo no Dashboard.
  */
 import { useState, useEffect, useCallback } from "react";
+import { argSegundoPlano } from "@/lib/ao-vivo";
 import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import type { Produto, UsoProdutoOrcamentos } from "@/types";
@@ -76,6 +77,7 @@ export function useInsumos(params?: UseInsumosParams) {
         params?.categoria === "TODOS" ? undefined : params?.categoria,
         params?.apenasEstoqueBaixo ?? false,
         Math.max((params?.page ?? 1) - 1, 0),
+        ...argSegundoPlano(opcoes?.silencioso === true),
       );
       setProdutos(data.items);
       setTotal(data.total);

@@ -9,6 +9,7 @@
  * dependem do token de concorrência do orçamento aberto; o diálogo avisa a lista por `recarregar`.
  */
 import { useCallback, useEffect, useState } from "react";
+import { argSegundoPlano } from "@/lib/ao-vivo";
 import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import type { OrcamentoInsumos, StatusOrcamentoInsumos } from "@/types";
@@ -33,12 +34,12 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
     if (opcoes?.silencioso !== true) setLoading(true);
     setError(null);
     try {
-      const contagem = Promise.resolve().then(() => db.contarOrcamentosInsumosPorStatus(params.busca)).catch(() => null);
+      const contagem = Promise.resolve().then(() => db.contarOrcamentosInsumosPorStatus(params.busca, ...argSegundoPlano(opcoes?.silencioso === true))).catch(() => null);
       const resultado = await db.listarOrcamentosInsumos({
         busca: params.busca,
         status: params.status,
         page: Math.max((params.page ?? 1) - 1, 0),
-      });
+      }, ...argSegundoPlano(opcoes?.silencioso === true));
       setContagens(await contagem);
       setOrcamentos(resultado.items);
       setTotal(resultado.total);

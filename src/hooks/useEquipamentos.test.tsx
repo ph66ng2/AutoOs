@@ -294,5 +294,8 @@ describe("useEquipamentos — registro", () => {
     await waitFor(() => expect(result.current.equipamentos).toHaveLength(2));
     expect(result.current.loading).toBe(false);
     expect(result.current.destaques.get(2)).toBe("novo");
+    // Recarga ao vivo é leitura de segundo plano: não renova a sessão (estação abandonada ainda bloqueia).
+    expect(mockListarPaginados.mock.calls.at(-1)?.[5]).toBe(true);
+    expect(mockListarPaginados.mock.calls[0]).toHaveLength(5);
   });
 });

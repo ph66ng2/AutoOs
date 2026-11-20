@@ -81,11 +81,11 @@ export default function Dashboard() {
   const [mesSel, setMesSel] = useState({ ano: agora.getFullYear(), mes: agora.getMonth() + 1 });
 
   // Carrega o painel; a atualização ao vivo chama de novo em silêncio (os números só trocam).
-  const carregarPainel = useCallback(async () => {
+  const carregarPainel = useCallback(async (segundoPlano = false) => {
       try {
         const [equipamentos, produtos] = await Promise.all([
-          db.listarEquipamentos(),
-          db.listarProdutos(),
+          segundoPlano ? db.listarEquipamentos(undefined, undefined, true) : db.listarEquipamentos(),
+          segundoPlano ? db.listarProdutos(undefined, undefined, undefined, 0, true) : db.listarProdutos(),
         ]);
         const estoqueBaixo = produtos.filter(p => p.quantidade_estoque < p.quantidade_minima);
 
@@ -119,7 +119,7 @@ export default function Dashboard() {
       }
   }, []);
   useEffect(() => { void carregarPainel(); }, [carregarPainel]);
-  useAtualizacaoAoVivo(["equipamentos", "verificacoes", "produtos"], () => void carregarPainel());
+  useAtualizacaoAoVivo(["equipamentos", "verificacoes", "produtos"], () => void carregarPainel(true));
 
   function getAcaoPendente(eq: Equipamento): { label: string; cor: string } {
     switch (eq.status) {

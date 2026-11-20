@@ -101,3 +101,8 @@ export function classeDestaque(destaque: Destaque | undefined): string {
   if (destaque === "alterado") return "bg-acc-soft";
   return "";
 }
+
+/** Argumento final de leitura em segundo plano: só existe quando vale (as chamadas comuns ficam iguais). */
+export function argSegundoPlano(ativo: boolean): [] | [true] {
+  return ativo ? [true] : [];
+}

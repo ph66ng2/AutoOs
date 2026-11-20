@@ -670,10 +670,11 @@ fn add_filtros(consulta: &mut QueryBuilder<Postgres>, empresa_id: i32, filtros: 
 #[instrument(skip_all)]
 pub async fn listar_orcamentos_insumos(
     filtros: Option<FiltrosOrcamentosInsumos>,
+    segundo_plano: Option<bool>,
 ) -> Result<PaginatedResult<OrcamentoInsumosRow>, String> {
     let filtros = filtros.unwrap_or_default();
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
 
     let mut contagem = QueryBuilder::<Postgres>::new(
         "SELECT COUNT(*) FROM orcamentos_insumos o JOIN clientes c ON c.id = o.cliente_id",
@@ -708,11 +709,12 @@ pub async fn listar_orcamentos_insumos(
 #[instrument(skip_all)]
 pub async fn contar_orcamentos_insumos_por_status(
     filtros: Option<FiltrosOrcamentosInsumos>,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<crate::commands::types::ContagemStatusRow>, String> {
     let mut filtros = filtros.unwrap_or_default();
     filtros.status = None;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let mut consulta = QueryBuilder::<Postgres>::new(
         "SELECT o.status AS status, COUNT(*) AS total FROM orcamentos_insumos o JOIN clientes c ON c.id = o.cliente_id",
     );

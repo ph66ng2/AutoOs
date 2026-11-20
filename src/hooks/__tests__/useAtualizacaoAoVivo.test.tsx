@@ -37,4 +37,17 @@ describe("useDestaquesAoVivo", () => {
     expect(result.current.destaques.size).toBe(0);
     vi.useRealTimers();
   });
+
+  it("outra lista chegando durante o destaque não o deixa preso na tela", () => {
+    vi.useFakeTimers();
+    const { result, rerender } = renderHook(({ itens }) => useDestaquesAoVivo(itens, chave, versao), { initialProps: { itens: [{ id: 1, v: "a" }] as Item[] } });
+    act(() => result.current.lembrar());
+    rerender({ itens: [{ id: 2, v: "a" }, { id: 1, v: "a" }] });
+    expect(result.current.destaques.get(2)).toBe("novo");
+    act(() => { vi.advanceTimersByTime(1000); });
+    rerender({ itens: [{ id: 2, v: "a" }, { id: 1, v: "a" }, { id: 9, v: "z" }] });
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(result.current.destaques.size).toBe(0);
+    vi.useRealTimers();
+  });
 });

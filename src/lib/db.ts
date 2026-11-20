@@ -144,6 +144,11 @@ function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
   };
 }
 
+/** Só leva o sinal de leitura em segundo plano quando ele vale (não renovar a sessão). */
+function seSegundoPlano(segundoPlano: boolean): { segundoPlano?: true } {
+  return segundoPlano ? { segundoPlano: true } : {};
+}
+
 export const db = {
   /** Reconecta com a configuração de banco já salva. `null` significa que conectou. */
   tentarReconectarBanco: () => invoke<DatabaseInitError | null>("tentar_reconectar_banco"),
@@ -156,8 +161,8 @@ export const db = {
   // ─── Equipamentos ─────────────────────────────────────
 
   /** Lista equipamentos com filtro opcional de busca e status → Rust: listar_equipamentos */
-  async listarEquipamentos(busca?: string, status?: string): Promise<Equipamento[]> {
-    return invoke<Equipamento[]>("listar_equipamentos", { busca, status });
+  async listarEquipamentos(busca?: string, status?: string, segundoPlano = false): Promise<Equipamento[]> {
+    return invoke<Equipamento[]>("listar_equipamentos", { busca, status, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Equipamentos de um cliente por cliente_id (nomes só para legados sem cliente_id) → Rust: listar_equipamentos_cliente */
@@ -165,8 +170,8 @@ export const db = {
     return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes });
   },
 
-  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE", tecnico?: string): Promise<PaginatedResult<Equipamento>> {
-    return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao, tecnico: tecnico ?? null });
+  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE", tecnico?: string, segundoPlano = false): Promise<PaginatedResult<Equipamento>> {
+    return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao, tecnico: tecnico ?? null, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Nome da empresa da sessão (topo do menu) → Rust: obter_empresa_ativa */
@@ -175,8 +180,8 @@ export const db = {
   },
 
   /** Total por status com a mesma busca/técnico da lista (números das pílulas) → Rust: contar_equipamentos_por_status */
-  async contarEquipamentosPorStatus(busca?: string, tecnico?: string): Promise<Record<string, number>> {
-    const linhas = await invoke<Array<{ status: string; total: number }>>("contar_equipamentos_por_status", { busca: busca ?? null, tecnico: tecnico ?? null });
+  async contarEquipamentosPorStatus(busca?: string, tecnico?: string, segundoPlano = false): Promise<Record<string, number>> {
+    const linhas = await invoke<Array<{ status: string; total: number }>>("contar_equipamentos_por_status", { busca: busca ?? null, tecnico: tecnico ?? null, ...seSegundoPlano(segundoPlano) });
     return Object.fromEntries(linhas.map((linha) => [linha.status, Number(linha.total)]));
   },
 
@@ -186,8 +191,8 @@ export const db = {
   },
 
   /** Busca equipamento por ID → Rust: buscar_equipamento */
-  async buscarEquipamento(id: number): Promise<Equipamento> {
-    return invoke<Equipamento>("buscar_equipamento", { id });
+  async buscarEquipamento(id: number, segundoPlano = false): Promise<Equipamento> {
+    return invoke<Equipamento>("buscar_equipamento", { id, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Busca equipamentos por número de série (case-insensitive) → Rust: buscar_equipamentos_por_serial */
@@ -241,11 +246,12 @@ export const db = {
     return invoke<Cliente[]>("listar_clientes", { busca: busca ?? null });
   },
 
-  async listarClientesPaginados(busca: string | undefined, page: number, filtro?: FiltroClientes): Promise<PaginatedResult<Cliente>> {
+  async listarClientesPaginados(busca: string | undefined, page: number, filtro?: FiltroClientes, segundoPlano = false): Promise<PaginatedResult<Cliente>> {
     return invoke<PaginatedResult<Cliente>>("listar_clientes_paginados", {
       busca: busca ?? null,
       page,
       filtro: filtro && filtro !== "TODOS" ? filtro : null,
+      ...seSegundoPlano(segundoPlano),
     });
   },
 
@@ -364,8 +370,8 @@ export const db = {
   },
 
   /** Lista etapas e mudanças de status auditadas no tenant do perfil ativo. */
-  async listarHistoricoEquipamento(equipamentoId: number): Promise<EquipamentoHistoricoEvento[]> {
-    return invoke<EquipamentoHistoricoEvento[]>("listar_historico_equipamento", { equipamentoId });
+  async listarHistoricoEquipamento(equipamentoId: number, segundoPlano = false): Promise<EquipamentoHistoricoEvento[]> {
+    return invoke<EquipamentoHistoricoEvento[]>("listar_historico_equipamento", { equipamentoId, ...seSegundoPlano(segundoPlano) });
   },
 
   async obterLinkStatusPublico(equipamentoId: number): Promise<PublicStatusLinkInfo | null> {
@@ -547,12 +553,14 @@ export const db = {
     categoria?: string,
     apenasEstoqueBaixo?: boolean,
     page = 0,
+    segundoPlano = false,
   ): Promise<Produto[]> {
     return invoke<Produto[]>("listar_produtos", {
       page,
       busca: busca ?? null,
       categoria: categoria ?? null,
       apenasEstoqueBaixo: apenasEstoqueBaixo || false,
+      ...seSegundoPlano(segundoPlano),
     });
   },
 
@@ -566,12 +574,14 @@ export const db = {
     categoria: string | undefined,
     apenasEstoqueBaixo: boolean,
     page: number,
+    segundoPlano = false,
   ): Promise<PaginatedResult<Produto>> {
     return invoke<PaginatedResult<Produto>>("listar_produtos_paginados", {
       page,
       busca: busca ?? null,
       categoria: categoria ?? null,
       apenasEstoqueBaixo,
+      ...seSegundoPlano(segundoPlano),
     });
   },
 
@@ -625,7 +635,7 @@ export const db = {
   // ─── Orçamento de venda avulsa de insumos (OI-<n>) ───────────
 
   /** Lista orçamentos de insumos da empresa → Rust: listar_orcamentos_insumos */
-  async listarOrcamentosInsumos(filtros: FiltrosOrcamentosInsumos = {}): Promise<PaginatedResult<OrcamentoInsumos>> {
+  async listarOrcamentosInsumos(filtros: FiltrosOrcamentosInsumos = {}, segundoPlano = false): Promise<PaginatedResult<OrcamentoInsumos>> {
     return invoke<PaginatedResult<OrcamentoInsumos>>("listar_orcamentos_insumos", {
       filtros: {
         status: filtros.status && filtros.status !== "TODOS" ? filtros.status : null,
@@ -633,13 +643,15 @@ export const db = {
         busca: filtros.busca?.trim() || null,
         page: filtros.page ?? 0,
       },
+      ...seSegundoPlano(segundoPlano),
     });
   },
 
   /** Total por situação com a mesma busca da lista (números das pílulas) → Rust: contar_orcamentos_insumos_por_status */
-  async contarOrcamentosInsumosPorStatus(busca?: string): Promise<Record<string, number>> {
+  async contarOrcamentosInsumosPorStatus(busca?: string, segundoPlano = false): Promise<Record<string, number>> {
     const linhas = await invoke<Array<{ status: string; total: number }>>("contar_orcamentos_insumos_por_status", {
       filtros: { status: null, cliente_id: null, busca: busca?.trim() || null, page: 0 },
+      ...seSegundoPlano(segundoPlano),
     });
     return Object.fromEntries(linhas.map((linha) => [linha.status, Number(linha.total)]));
   },
@@ -729,12 +741,13 @@ export const db = {
   },
 
   /** Lista o catálogo por situação: ativos, só os inativos (para reativar) ou todos. */
-  async listarServicosPaginados(busca: string | undefined, situacao: SituacaoServico, page: number): Promise<PaginatedResult<ServicoCatalogo>> {
+  async listarServicosPaginados(busca: string | undefined, situacao: SituacaoServico, page: number, segundoPlano = false): Promise<PaginatedResult<ServicoCatalogo>> {
     return invoke<PaginatedResult<ServicoCatalogo>>("listar_servicos_paginados", {
       busca: busca ?? null,
       apenasAtivos: situacao === "ATIVOS",
       apenasInativos: situacao === "INATIVOS",
       page,
+      ...seSegundoPlano(segundoPlano),
     });
   },
 
@@ -759,8 +772,8 @@ export const db = {
   },
 
   /** Números dos filtros de Serviços → Rust: contar_servicos. */
-  async contarServicos(busca?: string): Promise<{ ativos: number; inativos: number }> {
-    const contagem = await invoke<{ ativos: number; inativos: number }>("contar_servicos", { busca: busca ?? null });
+  async contarServicos(busca?: string, segundoPlano = false): Promise<{ ativos: number; inativos: number }> {
+    const contagem = await invoke<{ ativos: number; inativos: number }>("contar_servicos", { busca: busca ?? null, ...seSegundoPlano(segundoPlano) });
     return { ativos: Number(contagem.ativos), inativos: Number(contagem.inativos) };
   },
 
