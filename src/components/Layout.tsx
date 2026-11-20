@@ -33,6 +33,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Store,
+  Download,
 } from "lucide-react";
 import { setAppMode, type AppMode } from "@/lib/app-mode";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
@@ -52,6 +53,7 @@ import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { TourController } from "@/components/tour/TourController";
 import { profileAppearance } from "@/lib/profile-appearance";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
+import { abrirPainelAtualizacao, useAtualizacaoDisponivel } from "@/lib/atualizacao-disponivel";
 
 /** Permissões que abrem a rota /configuracoes (mesmas de App.tsx). */
 const CONFIGURACOES_PERMISSIONS: SensitivePermission[] = [
@@ -131,6 +133,7 @@ export function Layout() {
   const portalDesligado = Boolean(status?.profiles.find((p) => p.id === status.active_profile_id)?.avisos_desligados?.includes("portal"));
   const sessaoAtiva = Boolean(status?.pin_configured && status.unlocked);
   const telaLarga = useLarguraMinima(768);
+  const { versao: versaoNova } = useAtualizacaoDisponivel();
   const empresa = useEmpresaAtiva(`${status?.active_profile_id ?? ""}-${status?.unlocked ?? ""}`);
   // O selo só aparece quando há algo fora do normal (sem banco, sem perfil, sem PIN).
   // Desbloqueado vira o ✓ ao lado do nome; bloqueado aparece na linha de baixo do cartão.
@@ -267,6 +270,34 @@ export function Layout() {
 
         {/* Pé: Configurações e o cartão do perfil */}
         <div className="mt-auto space-y-2 px-3 pb-3 pt-2">
+          {/* Só existe quando há versão nova; abre o mesmo painel do aviso flutuante. */}
+          {versaoNova && (
+            <button
+              type="button"
+              onClick={() => {
+                setMobileOpen(false);
+                abrirPainelAtualizacao();
+              }}
+              aria-label={`Atualizar o AutoOS para a versão ${versaoNova}`}
+              title={collapsed ? `Atualizar o AutoOS (versão ${versaoNova})` : undefined}
+              className={cn(
+                "relative flex w-full items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-left text-sm font-medium text-foreground transition-colors duration-rapida hover:bg-primary/15",
+                collapsed && "h-9 w-9 justify-center self-center px-0 py-0",
+              )}
+            >
+              <Download className="h-[18px] w-[18px] shrink-0 text-primary" aria-hidden="true" />
+              {!collapsed && (
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">Atualizar o AutoOS</span>
+                  <span className="block truncate text-xs font-normal text-muted-foreground">Versão {versaoNova} disponível</span>
+                </span>
+              )}
+              <span
+                aria-hidden="true"
+                className={cn("h-2 w-2 shrink-0 rounded-full bg-primary", collapsed && "absolute right-1 top-1")}
+              />
+            </button>
+          )}
           {/* No computador não há barra no topo (canvas): as notificações ficam ao lado de Configurações. */}
           <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
             {mostrarConfiguracoes ? <nav aria-label="Sistema" className="min-w-0 flex-1">{renderItem(configuracoesItem)}</nav> : <span className="flex-1" />}

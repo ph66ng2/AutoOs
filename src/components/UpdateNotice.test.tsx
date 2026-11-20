@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UPDATE_NOTICE_FIRST_CHECK_MS, UPDATE_NOTICE_INTERVAL_MS, UpdateNotice } from "@/components/UpdateNotice";
+import { abrirPainelAtualizacao, reiniciarAtualizacaoParaTeste } from "@/lib/atualizacao-disponivel";
 
 const { mockIsTauri, mockCheck } = vi.hoisted(() => ({
   mockIsTauri: vi.fn(() => true),
@@ -31,6 +32,8 @@ describe("UpdateNotice", () => {
     vi.useFakeTimers();
     mockIsTauri.mockReturnValue(true);
     mockCheck.mockReset();
+    reiniciarAtualizacaoParaTeste();
+    window.localStorage.clear();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -61,6 +64,35 @@ describe("UpdateNotice", () => {
     await passar(UPDATE_NOTICE_FIRST_CHECK_MS);
     fireEvent.click(screen.getByRole("button", { name: "Depois" }));
     expect(screen.queryByText("AutoOS 0.6.3 disponível")).toBeNull();
+  });
+
+  it("o aviso flutuante aparece uma vez por versão", async () => {
+    mockCheck.mockResolvedValue(update());
+    const { unmount } = render(<UpdateNotice />);
+    await passar(UPDATE_NOTICE_FIRST_CHECK_MS);
+    fireEvent.click(screen.getByRole("button", { name: "Depois" }));
+    unmount();
+    reiniciarAtualizacaoParaTeste();
+
+    const segunda = render(<UpdateNotice />);
+    await passar(UPDATE_NOTICE_FIRST_CHECK_MS);
+    expect(screen.queryByText("AutoOS 0.6.3 disponível")).toBeNull();
+    segunda.unmount();
+    reiniciarAtualizacaoParaTeste();
+
+    mockCheck.mockResolvedValue(update("0.6.4"));
+    render(<UpdateNotice />);
+    await passar(UPDATE_NOTICE_FIRST_CHECK_MS);
+    expect(screen.getByText("AutoOS 0.6.4 disponível")).toBeInTheDocument();
+  });
+
+  it("o botão do menu abre o painel mesmo depois de dispensar o aviso", async () => {
+    mockCheck.mockResolvedValue(update());
+    render(<UpdateNotice />);
+    await passar(UPDATE_NOTICE_FIRST_CHECK_MS);
+    fireEvent.click(screen.getByRole("button", { name: "Depois" }));
+    act(() => abrirPainelAtualizacao());
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("Ver e atualizar abre o painel de instalação com aviso para salvar o trabalho", async () => {

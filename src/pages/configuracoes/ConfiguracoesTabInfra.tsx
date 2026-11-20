@@ -4,7 +4,6 @@ import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TabsContent } from "@/components/ui/tabs";
-import { UpdateChecker } from "@/components/UpdateChecker";
 import type { DatabaseSchemaStatus, PostgresBackupToolsStatus } from "@/types";
 import type { RestoreMode } from "./detect-restore-mode";
 
@@ -120,15 +119,6 @@ export function ConfiguracoesTabInfra({
             </Button>
           </div>
 
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Atualizações do aplicativo</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <UpdateChecker />
         </CardContent>
       </Card>
 
