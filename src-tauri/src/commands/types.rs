@@ -259,6 +259,9 @@ pub struct VerificacaoInput {
     pub forma_pagamento_detalhe: Option<String>,
     /// Confirma auto-aprovação de OS só de garantia (R$ 0,00 → APROVADO).
     pub confirmar_garantia: bool,
+    /// Prazo de aprovação (YYYY-MM-DD). Com ele, a verificação concluída já leva a OS para
+    /// AGUARDANDO_APROVACAO com `valor_orcamento` = `custo_total`, na mesma transação dos itens.
+    pub enviar_para_aprovacao_prazo: Option<String>,
 }
 
 /// Input para cadastro e edição de contato de cliente.

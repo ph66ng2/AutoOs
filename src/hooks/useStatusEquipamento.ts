@@ -35,7 +35,7 @@ export interface ResultadoFinalizarVerificacao extends ResultadoAutomacao {
  * Hook que gerencia transições de status com automação de comunicações.
  *
  * Transições automáticas:
- * 1. Finalizar Verificação  → salva verificação + muda para VERIFICADO → AGUARDANDO_APROVACAO
+ * 1. Finalizar Verificação  → salva verificação e muda para AGUARDANDO_APROVACAO (uma transação)
  *    → dispara WhatsApp
  * 2. Marcar como Pronto     → muda para PRONTO
  *    → dispara WhatsApp
@@ -45,7 +45,7 @@ export function useStatusEquipamento() {
 
   /**
    * Finaliza verificação e envia orçamento automaticamente.
-   * Fluxo: EM_VERIFICACAO → VERIFICADO → AGUARDANDO_APROVACAO + notificações
+   * Fluxo: EM_VERIFICACAO → AGUARDANDO_APROVACAO (uma transação no backend) + notificações
    */
   async function finalizarVerificacao(
     equipamento: Equipamento,
@@ -55,8 +55,10 @@ export function useStatusEquipamento() {
   ): Promise<ResultadoFinalizarVerificacao> {
     setLoading(true);
     try {
-      // 1. Salvar verificação no banco (OS só de garantia já sai APROVADO na mesma transação).
-      await db.salvarVerificacao(dadosVerificacao);
+      // 1. Uma gravação só: itens da verificação + AGUARDANDO_APROVACAO com valor e prazo (3 dias
+      //    úteis). Se algo falha, nada fica pela metade (antes, itens gravados com valor_orcamento 0).
+      //    OS só de garantia já sai APROVADO na mesma transação.
+      await db.salvarVerificacao({ ...dadosVerificacao, enviar_para_aprovacao_prazo: calcularPrazoAprovacao(3) });
       const equipamentoAposVerificacao = await db.buscarEquipamento(equipamento.id!);
 
       if (equipamentoAposVerificacao.status === "APROVADO") {
@@ -70,33 +72,8 @@ export function useStatusEquipamento() {
         };
       }
 
-      // 2. Atualizar para VERIFICADO
-      await db.atualizarStatusEquipamento(
-        equipamento.id!,
-        "VERIFICADO",
-        undefined,
-        undefined,
-        undefined,
-        equipamentoAposVerificacao.atualizado_em
-      );
-
-      const equipamentoVerificado = await db.buscarEquipamento(equipamento.id!);
-
-      // 3. Calcular prazo (3 dias úteis)
-      const prazo = calcularPrazoAprovacao(3);
-
-      // 4. Atualizar para AGUARDANDO_APROVACAO com valor e prazo
-      await db.atualizarStatusEquipamento(
-        equipamento.id!,
-        "AGUARDANDO_APROVACAO",
-        dadosVerificacao.custo_total || undefined,
-        prazo,
-        undefined,
-        equipamentoVerificado.atualizado_em
-      );
-
-      // 5. Buscar dados atualizados
-      const eqAtualizado = await db.buscarEquipamento(equipamento.id!);
+      // 2. Dados atualizados para o envio
+      const eqAtualizado = equipamentoAposVerificacao;
       const verificacao = await db.buscarVerificacao(equipamento.id!);
 
       if (!verificacao) {
