@@ -49,7 +49,9 @@ export function ContatoResponsavelSelector({
   useEffect(() => {
     if (clienteAnterior.current !== cliente?.id) {
       clienteAnterior.current = cliente?.id;
-      onChange(null);
+      // Troca de cliente limpa o contato do cliente anterior. Um contato que já chega junto com
+      // o novo cliente (ex.: copiado da passagem anterior da impressora) fica.
+      if (valorAtual.current && valorAtual.current.cliente_id !== cliente?.id) onChange(null);
     }
     setBusca("");
     if (!cliente?.id || !empresaId) {

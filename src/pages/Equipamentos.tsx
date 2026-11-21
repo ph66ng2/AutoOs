@@ -722,7 +722,15 @@ export default function Equipamentos() {
   const novaEntradaAberta = dialogOpen && !editando;
   // Nova entrada não pergunta ao sair: o rascunho guarda. A edição pela metade pergunta
   // (pelo mesmo aviso da verificação: o roteador só confere o último bloqueio registrado).
-  const edicaoSuja = dialogOpen && Boolean(editando) && form.formState.isDirty;
+  // Cliente, contato, técnico e fotos ficam fora do react-hook-form: entram na conta à parte.
+  const tecnicoBaseEdicaoRef = useRef<string>("");
+  const edicaoSuja = dialogOpen && Boolean(editando) && (
+    form.formState.isDirty
+    || (clienteVinculado?.id ?? null) !== (editando?.cliente_id ?? null)
+    || (responsavelVinculado?.id ?? null) !== (editando?.responsavel_contato_id ?? null)
+    || tecnicoNovoEquipamento !== tecnicoBaseEdicaoRef.current
+    || (baselineFotosRef.current != null && !imagensPersistidasIguais(imagensFormulario, baselineFotosRef.current.fotos))
+  );
   /** Autossalvamento do rascunho suspenso enquanto um rascunho é restaurado de propósito. */
   const rascunhoPausadoRef = useRef(false);
   useEffect(() => {
@@ -875,7 +883,11 @@ export default function Equipamentos() {
       .finally(() => { if (seq === consultaSerieSeq.current) setConferindoSerie(false); });
     if (base.cliente_id) {
       setClienteVinculado({ id: base.cliente_id, empresa_id: base.empresa_id, nome: base.cliente_nome, telefone: base.cliente_telefone || "", email: base.cliente_email || undefined } as Cliente);
-      db.buscarCliente(base.cliente_id).then((c) => { if (c && seq === consultaSerieSeq.current) setClienteVinculado(c); }).catch(() => undefined);
+      const clienteId = base.cliente_id;
+      // Só completa o cadastro se ninguém trocou o cliente enquanto a consulta corria.
+      db.buscarCliente(clienteId)
+        .then((c) => { if (c && seq === consultaSerieSeq.current) setClienteVinculado((atual) => (atual?.id === clienteId ? c : atual)); })
+        .catch(() => undefined);
     }
     if (base.responsavel_contato_id) {
       setResponsavelVinculado({
@@ -894,6 +906,9 @@ export default function Equipamentos() {
   function fecharFormulario(navegar = true) {
     if (!formularioAbertoRef.current) return;
     formularioAbertoRef.current = false;
+    // Consultas da entrada (série, cliente da passagem anterior) não valem para o próximo formulário.
+    consultaSerieSeq.current += 1;
+    setConferindoSerie(false);
     fotoEdicaoSeq.current += 1;
     fotoEdicaoEquipamentoId.current = null;
     baselineFotosRef.current = null;
@@ -993,6 +1008,7 @@ export default function Equipamentos() {
   /** Abre a página de edição (/equipamentos/:id/editar). Carrega cliente vinculado do banco */
   function abrirEditar(eq: Equipamento, origem?: string) {
     origemEntradaRef.current = origem ?? pathnameAtualRef.current;
+    consultaSerieSeq.current += 1;
     const sequencia = ++fotoEdicaoSeq.current;
     fotoEdicaoEquipamentoId.current = eq.id ?? null;
     baselineFotosRef.current = null;
@@ -1010,7 +1026,9 @@ export default function Equipamentos() {
     setErroImagens(null);
     setImagensFormulario([]);
     setCarregandoImagensFormulario(true);
-    setTecnicoNovoEquipamento(extrairTecnicoInicialDeObservacoes(eq.observacoes) || primeiroTecnico);
+    const tecnicoDaEdicao = extrairTecnicoInicialDeObservacoes(eq.observacoes) || primeiroTecnico;
+    tecnicoBaseEdicaoRef.current = tecnicoDaEdicao;
+    setTecnicoNovoEquipamento(tecnicoDaEdicao);
     if (eq.id) void carregarFotosDaEdicao(eq.id, sequencia);
     else setCarregandoImagensFormulario(false);
     // Se o equipamento tem cliente_id, carregar do banco; senão, montar objeto parcial
