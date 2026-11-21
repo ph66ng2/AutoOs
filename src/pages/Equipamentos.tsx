@@ -1405,12 +1405,13 @@ export default function Equipamentos() {
 
   // Esc sai das páginas de formulário (como o botão marcado "(Esc)"). Com algo pela metade que
   // não tem rascunho, a saída passa pelo aviso "Sair sem salvar?" em vez de descartar direto.
+  // Nova entrada: Esc volta guardando o rascunho (só o Cancelar descarta). Edição: Esc é o
+  // Cancelar, e com alteração passa pelo aviso "Sair sem salvar?".
   useEscSai(dialogOpen, () => {
     if (editando && edicaoSuja) {
       navigate(origemEntradaRef.current);
       return;
     }
-    if (!editando) descartarEntrada();
     fecharFormulario();
   });
   useEscSai(verificacaoDialogOpen, () => {
@@ -1472,8 +1473,13 @@ export default function Equipamentos() {
           navigate("/equipamentos", { replace: true });
         });
     } else if (idVerificacaoRota == null && anterior != null && paginaVerificacaoAbertaRef.current) {
-      // Saiu da página pelo navegador: a verificação não finalizada é descartada.
+      // Saiu da página pelo navegador (ou Esc + "Sair sem salvar"): a verificação não finalizada
+      // é descartada. Voltando aos detalhes da mesma OS, eles são carregados de novo.
       setVerificacaoDialogOpen(false);
+      paginaVerificacaoAbertaRef.current = false;
+      if (idDetalhesRota === anterior) {
+        db.buscarEquipamento(anterior).then((eq) => { if (ativo) void abrirDetalhes(eq); }).catch(() => undefined);
+      }
     }
     return () => {
       ativo = false;
@@ -3605,6 +3611,7 @@ export default function Equipamentos() {
               <span className="[overflow-wrap:anywhere]">
                 {editando ? `${editando.marca} ${editando.modelo} · ${editando.serial_number}` : "Equipamentos"}
               </span>
+              {!editando && <TeclaNoBotao tecla="Esc" />}
             </button>
             <div className="mt-1 flex flex-wrap items-center gap-3">
               <h1 id="entrada-titulo" className="text-[26px] font-bold leading-tight tracking-tight">{editando ? "Editar equipamento" : "Nova entrada"}</h1>
@@ -3907,7 +3914,7 @@ export default function Equipamentos() {
                   fecharFormulario();
                 }}
               >
-                Cancelar<TeclaNoBotao tecla="Esc" />
+                Cancelar{editando && <TeclaNoBotao tecla="Esc" />}
               </Button>
               <Button type="submit" disabled={salvando || conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
                 {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}

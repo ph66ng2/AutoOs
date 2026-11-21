@@ -19,10 +19,18 @@ describe("useEscSai", () => {
     const janela = render(<div role="dialog" data-state="open" />);
     fireEvent.keyDown(document.body, { key: "Escape" });
     janela.unmount();
-    const lista = render(<div role="listbox" />);
+    const lista = render(<div role="listbox" data-state="open" />);
     fireEvent.keyDown(document.body, { key: "Escape" });
     lista.unmount();
     expect(aoSair).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(aoSair).toHaveBeenCalledTimes(1);
+  });
+
+  it("lista de resultados que fica na página (sem data-state) não segura o Esc", () => {
+    const aoSair = vi.fn();
+    renderHook(() => useEscSai(true, aoSair));
+    render(<ul role="listbox"><li>Produto</li></ul>);
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(aoSair).toHaveBeenCalledTimes(1);
   });

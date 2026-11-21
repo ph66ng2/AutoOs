@@ -3,7 +3,9 @@ import { useEffect, useRef } from "react";
 /** Algo por cima da página que o próprio Esc deve fechar primeiro (janela, lista, menu). */
 function camadaAberta(): boolean {
   return document.querySelector(
-    '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]',
+    // Só camadas que se fecham sozinhas com o Esc (Radix marcam data-state="open"). Uma lista de
+    // resultados de busca que fica na página (ex.: produtos na venda) não segura o Esc.
+    '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="listbox"][data-state="open"], [role="menu"][data-state="open"], [data-radix-popper-content-wrapper]',
   ) != null;
 }
 
