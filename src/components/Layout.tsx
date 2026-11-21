@@ -101,6 +101,10 @@ const configuracoesItem: NavItem = {
   icon: Settings,
 };
 
+/** Tela baixa: menos de 900 px de altura (720p, 768p), onde o menu não tem folga vertical. */
+const TELA_BAIXA_ESCONDE = "[@media(max-height:899px)]:hidden";
+const TELA_BAIXA_MOSTRA = "hidden [@media(max-height:899px)]:inline-flex";
+
 function navLinkClass(collapsed: boolean) {
   return ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -216,6 +220,23 @@ export function Layout() {
             </span>
           )}
 
+            {versaoNova && !collapsed && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={`Atualizar o AutoOS para a versão ${versaoNova}`}
+                title={`Atualizar o AutoOS (versão ${versaoNova})`}
+                className={cn("relative h-8 w-8 shrink-0 text-primary hover:text-primary", TELA_BAIXA_MOSTRA)}
+                onClick={() => {
+                  setMobileOpen(false);
+                  abrirPainelAtualizacao();
+                }}
+              >
+                <Download className="h-[18px] w-[18px]" />
+                <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary" />
+              </Button>
+            )}
           <Button
             type="button"
             variant="ghost"
@@ -271,7 +292,8 @@ export function Layout() {
 
         {/* Pé: Configurações e o cartão do perfil */}
         <div className="mt-auto space-y-2 px-3 pb-3 pt-2">
-          {/* Só existe quando há versão nova; abre o mesmo painel do aviso flutuante. */}
+          {/* Só existe quando há versão nova; abre o mesmo painel do aviso flutuante. Em tela baixa
+              (720p, 768p) o cartão tomaria o espaço do menu: vira o ícone no topo, ao lado de recolher. */}
           {versaoNova && (
             <button
               type="button"
@@ -283,7 +305,7 @@ export function Layout() {
               title={collapsed ? `Atualizar o AutoOS (versão ${versaoNova})` : undefined}
               className={cn(
                 "relative flex w-full items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-left text-sm font-medium text-foreground transition-colors duration-rapida hover:bg-primary/15",
-                collapsed && "h-9 w-9 justify-center self-center px-0 py-0",
+                collapsed ? "h-9 w-9 justify-center self-center px-0 py-0" : TELA_BAIXA_ESCONDE,
               )}
             >
               <Download className="h-[18px] w-[18px] shrink-0 text-primary" aria-hidden="true" />
