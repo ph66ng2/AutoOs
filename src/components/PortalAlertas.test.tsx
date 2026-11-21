@@ -304,6 +304,22 @@ describe("PortalAlertasSino", () => {
     expect(JSON.parse(localStorage.getItem("autoos:sino-visto:7") ?? "{}").chaves).toContain("aviso:estoque-baixo:abc");
   });
 
+  it("busca de avisos internos que falha não apaga o visto salvo deles ao abrir o sino", async () => {
+    localStorage.setItem("autoos:sino-visto:7", JSON.stringify({ chaves: ["aviso:estoque-baixo:abc"], portalAte: 0 }));
+    mocks.contar.mockResolvedValue(0);
+    mocks.listar.mockResolvedValue([]);
+    mocks.avisos.mockRejectedValue(new Error("sem conexão"));
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes><Route path="/" element={<PortalAlertasSino perfilId={7} />} /></Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(mocks.avisos).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole("button", { name: /^Notificações/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Notificações/ }));
+    expect(JSON.parse(localStorage.getItem("autoos:sino-visto:7") ?? "{}").chaves).toContain("aviso:estoque-baixo:abc");
+  });
+
   it("trocar de perfil esquece os avisos do anterior e ignora a resposta atrasada dele", async () => {
     mocks.contar.mockResolvedValue(0);
     mocks.listar.mockResolvedValue([]);

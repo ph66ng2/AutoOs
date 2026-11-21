@@ -181,6 +181,8 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const aberturas = useRef(0);
   const [avisos, setAvisos] = useState<AvisoInterno[]>([]);
   const avisosVistos = useRef<Set<string> | null>(null);
+  /** A lista de avisos internos já veio do banco com sucesso (falha não conta como lista vazia). */
+  const avisosCarregadosOk = useRef(false);
   /** Muda a cada troca de perfil: resposta que volta com outro número é da sessão anterior. */
   const geracao = useRef(0);
   const [aberto, setAberto] = useState(false);
@@ -203,9 +205,9 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     const chaves = [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos];
     const minhaGeracao = geracao.current;
     aberturas.current += 1;
-    // Avisos internos ainda carregando: as chaves já vistas ficam (a lista vazia de agora não quer
+    // Avisos internos ainda carregando ou com a busca falhando: as chaves já vistas ficam (a lista vazia de agora não quer
     // dizer que foram lidas); a poda acontece numa abertura com a lista carregada.
-    const avisosCarregados = avisosVistos.current !== null;
+    const avisosCarregados = avisosCarregadosOk.current;
     setVistos((atual) => marcarVistos(
       perfilId,
       atual,
@@ -249,12 +251,15 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const verificarAvisos = useCallback(async () => {
     const minhaGeracao = geracao.current;
     let lista: AvisoInterno[] = [];
+    let ok = false;
     try {
       lista = (await db.listarAvisosInternos()) ?? [];
+      ok = true;
     } catch {
       // Sem sessão ou banco sem a migration 0053: nenhum aviso interno.
     }
     if (minhaGeracao !== geracao.current) return;
+    if (ok) avisosCarregadosOk.current = true;
     setAvisos(lista);
     const vistos = avisosVistos.current;
     const novos = vistos ? lista.filter((aviso) => !aviso.lido && !vistos.has(aviso.chave)) : [];
@@ -357,6 +362,7 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     vistosRef.current = vistosDoPerfil;
     setVistos(vistosDoPerfil);
     avisosVistos.current = null;
+    avisosCarregadosOk.current = false;
     ultimoVisto.current = null;
     setAberto(false);
     void verificarRef.current();
