@@ -162,6 +162,8 @@ import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPage
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
 import { AnteriorEmAtendimentoAviso } from "@/components/equipamentos/AnteriorEmAtendimentoAviso";
 import { AvisoSerieRepetida } from "@/components/equipamentos/AvisoSerieRepetida";
+import { WhatsappComMensagem } from "@/components/whatsapp/WhatsappComMensagem";
+import { telefoneParaWhatsapp } from "@/lib/contato-cliente";
 import { useGarantiaServicos } from "@/hooks/useGarantiaServicos";
 import {
   atendimentoEncerrado,
@@ -169,6 +171,7 @@ import {
   MENSAGEM_DADOS_PREENCHIDOS,
   preencherVaziosComAnterior,
   retornoNaGarantia,
+  rotuloStatusEquipamento,
   ultimaPassagem,
   usarEquipamentoAnteriorNoCadastro,
 } from "@/pages/equipamentos/equipamento-anterior";
@@ -4120,7 +4123,24 @@ export default function Equipamentos() {
                         }
                       : null,
                   }}
-                  rodape={<div className="flex justify-end"><PortalClienteBotao /></div>}
+                  rodape={
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {/* Mensagem pronta para o contato da OS (ou o telefone do cliente). */}
+                      <WhatsappComMensagem
+                        telefone={telefoneParaWhatsapp(selecionado.responsavel_telefone) ? selecionado.responsavel_telefone : selecionado.cliente_telefone}
+                        dados={{
+                          cliente: selecionado.cliente_nome,
+                          contato: selecionado.responsavel_nome || selecionado.cliente_nome,
+                          equipamento: `${selecionado.marca} ${selecionado.modelo}`.trim(),
+                          os: selecionado.id != null ? String(selecionado.id) : "",
+                          status: rotuloStatusEquipamento(selecionado.status),
+                        }}
+                        className="h-9"
+                        onErro={(err) => showError("Equipamentos", "Abrir WhatsApp", err)}
+                      />
+                      <PortalClienteBotao />
+                    </div>
+                  }
                 />
 
                 <Card className="rounded-2xl">

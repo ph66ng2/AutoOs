@@ -98,6 +98,8 @@ import type {
   SituacaoServico,
   SupabaseStorageConfig,
   Verificacao,
+  ModeloMensagem,
+  ModeloMensagemInput,
 } from "@/types";
 
 export interface ImpressoraWindows {
@@ -944,6 +946,21 @@ export const db = {
   },
 
   /** Abre URL no navegador padrão do sistema → Rust: abrir_url */
+  /** Mensagens prontas de WhatsApp da empresa → Rust: listar_modelos_mensagem */
+  async listarModelosMensagem(segundoPlano = false): Promise<ModeloMensagem[]> {
+    return invoke<ModeloMensagem[]>("listar_modelos_mensagem", seSegundoPlano(segundoPlano));
+  },
+
+  /** Cria ou altera uma mensagem pronta (permissão de comunicação) → Rust: salvar_modelo_mensagem */
+  async salvarModeloMensagem(input: ModeloMensagemInput): Promise<ModeloMensagem> {
+    return invoke<ModeloMensagem>("salvar_modelo_mensagem", { input: { id: input.id ?? null, titulo: input.titulo, texto: input.texto, ordem: input.ordem ?? null, atualizado_em: input.atualizado_em ?? null } });
+  },
+
+  /** Exclui uma mensagem pronta (permissão de comunicação) → Rust: excluir_modelo_mensagem */
+  async excluirModeloMensagem(id: number): Promise<void> {
+    return invoke<void>("excluir_modelo_mensagem", { id });
+  },
+
   async abrirUrl(url: string): Promise<void> {
     return invoke<void>("abrir_url", { url });
   },
