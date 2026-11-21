@@ -42,6 +42,12 @@ import { ROTA_TELA_INICIAL, telaInicial } from "@/lib/preferencias-computador";
  * AvisoRapido do DS: fundo de cartão, borda e sombra de menu, sem cor de fundo por tipo
  * (sem as cores ricas do sonner). A cor da família fica só no ícone.
  */
+/**
+ * Avisos no canto de baixo à esquerda da área de conteúdo (logo depois do menu): em cima,
+ * cobriam a ação principal das páginas; à direita, os botões da barra fixa dos formulários.
+ */
+const AVISOS_POSICAO = { bottom: 24, left: "calc(16.5rem + 24px)" };
+
 const AVISO_RAPIDO_OPCOES = {
   classNames: {
     toast: "!rounded-[14px] !border-border !bg-card !text-card-foreground !shadow-[0_12px_32px_rgba(0,0,0,0.18)]",
@@ -281,7 +287,7 @@ function App() {
   if (!dbReady) {
     return (
       <>
-        <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} closeButton duration={5000} toastOptions={AVISO_RAPIDO_OPCOES} />
+        <Toaster theme={toastTheme} position="bottom-left" offset={AVISOS_POSICAO} mobileOffset={{ bottom: 16, left: 16 }} visibleToasts={3} closeButton duration={5000} toastOptions={AVISO_RAPIDO_OPCOES} />
         <ErrorBoundary>
           <DatabaseFallback onConnected={() => setDbReady(true)} />
         </ErrorBoundary>
@@ -291,7 +297,7 @@ function App() {
 
   return (
     <>
-      <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} closeButton duration={5000} toastOptions={AVISO_RAPIDO_OPCOES} />
+      <Toaster theme={toastTheme} position="bottom-left" offset={AVISOS_POSICAO} mobileOffset={{ bottom: 16, left: 16 }} visibleToasts={3} closeButton duration={5000} toastOptions={AVISO_RAPIDO_OPCOES} />
       <ErrorBoundary>
         <AppContent />
       </ErrorBoundary>
