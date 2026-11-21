@@ -3216,7 +3216,11 @@ mod tests {
         assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_icone: Some("shape-orb".to_string()), ..valida_clone(&valida) }).is_ok());
         assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_icone: Some("shape-block".to_string()), ..valida_clone(&valida) }).is_ok());
         assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_cor: Some("#123456".to_string()), ..valida_clone(&valida) }).is_err());
-        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { tema: Some("system".to_string()), ..valida_clone(&valida) }).is_err());
+        // "system" segue o tema do sistema operacional (0056); valor fora da lista continua recusado.
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { tema: Some("system".to_string()), ..valida_clone(&valida) }).is_ok());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { tema: Some("sepia".to_string()), ..valida_clone(&valida) }).is_err());
+        assert!(validar_tema("light").is_ok() && validar_tema("dark").is_ok() && validar_tema("system").is_ok());
+        assert!(validar_tema("auto").is_err());
     }
 
     fn valida_clone(input: &PersonalizacaoPerfilInput) -> PersonalizacaoPerfilInput {
