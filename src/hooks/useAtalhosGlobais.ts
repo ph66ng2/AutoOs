@@ -5,6 +5,8 @@ export interface AcoesAtalho {
   abrirAjuda: () => void;
   novaEntrada: () => void;
   novaVenda: () => void;
+  /** Ctrl+L: tranca a sessão na hora (sair do balcão). */
+  bloquear?: () => void;
 }
 
 function editavel(alvo: EventTarget | null) {
@@ -31,6 +33,13 @@ export function useAtalhosGlobais(acoes: AcoesAtalho) {
   useEffect(() => {
     const aoTeclar = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return;
+      const ctrlL = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.code === "KeyL";
+      // Bloquear vale até com uma janela aberta: é para quem precisa sair do computador agora.
+      if (ctrlL && ref.current.bloquear) {
+        event.preventDefault();
+        ref.current.bloquear();
+        return;
+      }
       const janelaAberta = document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]') != null;
       if (janelaAberta) return;
       const ctrl = event.ctrlKey || event.metaKey;

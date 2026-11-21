@@ -288,7 +288,7 @@ async fn main() -> Result<()> {
     assert_eq!(todos.total, 5);
     assert_eq!(todos.items[0].numero, 5, "mais novo primeiro");
     let filtro = |status: Option<&str>, cliente: Option<i32>, busca: Option<&str>| FiltrosOrcamentosInsumos {
-        status: status.map(str::to_string), cliente_id: cliente, busca: busca.map(str::to_string), page: None,
+        status: status.map(str::to_string), cliente_id: cliente, busca: busca.map(str::to_string), page: None, criado_por_profile_id: None,
     };
     assert_eq!(listar_orcamentos_insumos(Some(filtro(Some("CANCELADO"), None, None)), None).await.map_err(|e| anyhow!(e))?.total, 2);
     assert_eq!(listar_orcamentos_insumos(Some(filtro(None, Some(outro_cliente_a), None)), None).await.map_err(|e| anyhow!(e))?.total, 0);

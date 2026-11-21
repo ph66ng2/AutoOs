@@ -642,15 +642,16 @@ export const db = {
         cliente_id: filtros.cliente_id ?? null,
         busca: filtros.busca?.trim() || null,
         page: filtros.page ?? 0,
+        criado_por_profile_id: filtros.criado_por_profile_id ?? null,
       },
       ...seSegundoPlano(segundoPlano),
     });
   },
 
   /** Total por situação com a mesma busca da lista (números das pílulas) → Rust: contar_orcamentos_insumos_por_status */
-  async contarOrcamentosInsumosPorStatus(busca?: string, segundoPlano = false): Promise<Record<string, number>> {
+  async contarOrcamentosInsumosPorStatus(busca?: string, segundoPlano = false, criadoPor: number | null = null): Promise<Record<string, number>> {
     const linhas = await invoke<Array<{ status: string; total: number }>>("contar_orcamentos_insumos_por_status", {
-      filtros: { status: null, cliente_id: null, busca: busca?.trim() || null, page: 0 },
+      filtros: { status: null, cliente_id: null, busca: busca?.trim() || null, page: 0, criado_por_profile_id: criadoPor },
       ...seSegundoPlano(segundoPlano),
     });
     return Object.fromEntries(linhas.map((linha) => [linha.status, Number(linha.total)]));

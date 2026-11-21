@@ -217,7 +217,7 @@ import { acoesPorStatus, type AcaoStatus } from "@/lib/acoes-por-status";
 import { PageHeader } from "@/components/PageHeader";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
-import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
+import { FiltroDeStatus, PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
 import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
 import { useNomesFiltroTecnico, useTecnicos } from "@/hooks/useTecnicos";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
@@ -367,6 +367,10 @@ export default function Equipamentos() {
   const tecnicos = useTecnicos();
   const primeiroTecnico = tecnicos[0]?.nome ?? "";
   const nomesFiltroTecnico = useNomesFiltroTecnico();
+  const { status: sessaoAtual } = useSensitiveAccess();
+  // O técnico das OS é gravado com o nome do perfil: "Minhas" existe se esse nome já aparece.
+  const nomePerfilSessao = sessaoAtual?.unlocked ? sessaoAtual.active_profile_name?.trim() ?? "" : "";
+  const meuNomeTecnico = nomePerfilSessao && nomesFiltroTecnico.includes(nomePerfilSessao) ? nomePerfilSessao : null;
   // Seleção para ações em lote: guarda a OS inteira, então sobrevive à troca de página.
   // As ações releem cada OS antes de agir; aqui a seleção só acompanha a lista recarregada.
   const [selecaoLote, setSelecaoLote] = useState<Map<number, Equipamento>>(() => new Map());
@@ -3333,15 +3337,26 @@ export default function Equipamentos() {
       {/* Lista: filtros, tabela e paginação num painel só */}
       <Card className="rounded-2xl">
         <CardContent className="space-y-4 p-5">
-          <FiltroDeStatus
-            rotulo="Filtrar equipamentos por status"
-            principais={FILTRO_STATUS_PRINCIPAIS}
-            outros={FILTRO_STATUS_OUTROS}
-            valor={statusFiltro}
-            contagens={contagensStatus}
-            onChange={setStatusFiltro}
-            multiplo
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <FiltroDeStatus
+              rotulo="Filtrar equipamentos por status"
+              principais={FILTRO_STATUS_PRINCIPAIS}
+              outros={FILTRO_STATUS_OUTROS}
+              valor={statusFiltro}
+              contagens={contagensStatus}
+              onChange={setStatusFiltro}
+              multiplo
+            />
+            {/* "Minhas": as OS em que este perfil é o técnico. Só aparece para quem já tem alguma. */}
+            {meuNomeTecnico && (
+              <PilulaFiltro
+                rotulo="Minhas"
+                ligado={tecnicoFiltro === meuNomeTecnico}
+                titulo="Só as OS em que você é o técnico"
+                onClick={() => setTecnicoFiltro(tecnicoFiltro === meuNomeTecnico ? "TODOS" : meuNomeTecnico)}
+              />
+            )}
+          </div>
           <div className="flex flex-col gap-3 lg:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

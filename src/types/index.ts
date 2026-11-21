@@ -1343,6 +1343,8 @@ export interface FiltrosOrcamentosInsumos {
   busca?: string;
   /** Página iniciando em 0. */
   page?: number;
+  /** "Minhas": só os orçamentos criados por este perfil. */
+  criado_por_profile_id?: number | null;
 }
 
 /** Onde uma peça ainda é usada antes de ser excluída (inativada). */

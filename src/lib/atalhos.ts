@@ -9,5 +9,6 @@ export const ATALHOS: Atalho[] = [
   { teclas: ["Alt", "N"], acao: "Nova entrada" },
   { teclas: ["Alt", "V"], acao: "Novo orçamento de venda" },
   { teclas: ["/"], acao: "Ir para a busca da tela" },
+  { teclas: ["Ctrl", "L"], acao: "Bloquear (sair do computador)" },
   { teclas: ["Ctrl", "/"], acao: "Ver atalhos" },
 ];

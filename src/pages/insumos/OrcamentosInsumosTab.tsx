@@ -11,7 +11,7 @@ import { TracosDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
-import { FiltroDeStatus, type OpcaoFiltroStatus } from "@/components/equipamentos/FiltroDeStatus";
+import { FiltroDeStatus, PilulaFiltro, type OpcaoFiltroStatus } from "@/components/equipamentos/FiltroDeStatus";
 import { menuVenda } from "@/components/vendas/menu-venda";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
@@ -86,22 +86,29 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
   const [pagina, setPagina] = useEstadoLembrado("vendas:pagina", 1);
   const [orcamentoId, setOrcamentoId] = useState<number | null>(null);
   const [acaoInicial, setAcaoInicial] = useState<AcaoInicialOrcamentoInsumos | null>(null);
-  const { ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
+  const { ensureSensitiveAccess, hasPermission, status: sessao } = useSensitiveAccess();
+  const perfilId = sessao?.unlocked ? sessao.active_profile_id ?? null : null;
+  // "Minhas" fica lembrada como a busca e a situação.
+  const [minhasEscolha, setMinhasEscolha] = useEstadoLembrado<"sim" | "nao">("vendas:minhas", "nao");
+  const soMinhas = minhasEscolha === "sim";
   const navigate = useNavigate();
   const podeAgir = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
   // Abaixo de md (768px) a tabela vira cartões (V.6).
   const telaLarga = useLarguraMinima(768);
 
-  const { orcamentos, total, contagens, loading, error, recarregar, destaques: destaquesAoVivo } = useOrcamentosInsumos({
+  const minhasLigado = soMinhas && perfilId != null;
+  const { orcamentos, total, contagens, minhasTotal, loading, error, recarregar, destaques: destaquesAoVivo } = useOrcamentosInsumos({
     busca: busca.trim() || undefined,
     status,
     page: pagina,
+    criadoPor: minhasLigado ? perfilId : null,
+    perfilId,
   });
   const paginas = totalPages(total);
   const totalGeral = contagemPorStatus?.reduce((soma, c) => soma + c.total, 0);
-  const filtrando = Boolean(busca.trim()) || status !== "TODOS";
+  const filtrando = Boolean(busca.trim()) || status !== "TODOS" || minhasLigado;
 
-  usePrimeiraPaginaAoFiltrar([busca, status], () => setPagina(1));
+  usePrimeiraPaginaAoFiltrar([busca, status, minhasLigado], () => setPagina(1));
   useEffect(() => {
     if (loading) return;
     setPagina((atual) => Math.min(atual, paginas));
@@ -182,13 +189,25 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
             </p>
           )}
 
-          <FiltroDeStatus
-            rotulo="Filtrar por situação"
-            principais={FILTRO_PRINCIPAIS}
-            valor={status}
-            contagens={contagens}
-            onChange={(valor) => setStatus(valor as StatusOrcamentoInsumos | "TODOS")}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <FiltroDeStatus
+              rotulo="Filtrar por situação"
+              principais={FILTRO_PRINCIPAIS}
+              valor={status}
+              contagens={contagens}
+              onChange={(valor) => setStatus(valor as StatusOrcamentoInsumos | "TODOS")}
+            />
+            {/* Só aparece para quem já criou algum orçamento (ou com o filtro ligado). */}
+            {perfilId != null && (minhasLigado || (minhasTotal ?? 0) > 0) && (
+              <PilulaFiltro
+                rotulo="Minhas"
+                ligado={minhasLigado}
+                numero={minhasTotal ?? undefined}
+                titulo="Só os orçamentos que você criou"
+                onClick={() => setMinhasEscolha(minhasLigado ? "nao" : "sim")}
+              />
+            )}
+          </div>
 
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
