@@ -1,3 +1,6 @@
+import { db } from "@/lib/db";
+import { linkPermitido } from "@/lib/suporte-links";
+
 /**
  * Ponte entre os avisos de erro (fora dos componentes) e a página Suporte. O Layout registra
  * a função de abrir só enquanto o banco está conectado: sem banco o chamado não pode ser
@@ -36,4 +39,13 @@ export function aoEnviarAoSuporte(ouvinte: () => void): () => void {
 /** 10 s nos 3 minutos depois de um envio (o atendimento automático responde em ~30 s); 60 s fora disso. */
 export function intervaloDeBusca(agora = Date.now()): number {
   return agora - ultimoEnvio < 3 * 60_000 ? 10_000 : 60_000;
+}
+
+/**
+ * Abre um link da resposta do suporte no navegador padrão (`abrir_url`), nunca no app. Confere a
+ * allowlist de novo aqui: quem chama não decide sozinho o que pode abrir.
+ */
+export async function abrirLinkDoSuporte(url: string): Promise<void> {
+  if (!linkPermitido(url)) throw new Error("Link fora dos endereços permitidos.");
+  await db.abrirUrl(url);
 }

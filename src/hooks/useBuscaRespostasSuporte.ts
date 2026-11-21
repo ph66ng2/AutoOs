@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { notificarSistema } from "@/lib/notificacao-sistema";
+import { textoSimplesDoSuporte } from "@/lib/suporte-links";
 import { aoEnviarAoSuporte, intervaloDeBusca } from "@/lib/suporte-ponte";
 import type { RespostaNovaSuporte } from "@/types";
 
@@ -13,7 +14,7 @@ export function avisosDeResposta(novas: RespostaNovaSuporte[]): { chamadoId: num
   const porChamado = new Map<number, RespostaNovaSuporte>();
   novas.forEach((nova) => porChamado.set(nova.chamado_id, nova));
   return [...porChamado.values()].map((nova) => {
-    const texto = nova.texto.replace(/[*_]/g, "").replace(/\s+/g, " ").trim();
+    const texto = textoSimplesDoSuporte(nova.texto).replace(/[*_]/g, "").replace(/\s+/g, " ").trim();
     return {
       chamadoId: nova.chamado_id,
       titulo: `Suporte respondeu o chamado #${nova.chamado_id}`,

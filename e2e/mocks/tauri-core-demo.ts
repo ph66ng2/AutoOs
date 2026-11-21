@@ -202,6 +202,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return [
         { id: 1, autor: "pessoa", autor_nome: "Atendente", texto: "A OS do Mercado Bom Preço não salva, fica girando.", automatica: false, criado_em: agora },
         { id: 2, autor: "suporte", autor_nome: "Erykah", texto: "Isso costuma ser outro computador alterando a mesma OS. Recarregue a OS e salve de novo.", automatica: true, criado_em: agora },
+        { id: 3, autor: "suporte", autor_nome: "Erykah", texto: "Achei a causa e já corrigi. Instale a versão nova:\n<https://github.com/ph66ng2/AutoOs/releases/download/v0.6.4/AutoOS_0.6.4_x64-setup.exe|Baixar AutoOS 0.6.4>\nDepois de instalar, abra a OS de novo.", automatica: true, criado_em: agora },
       ] as T;
     case "sincronizar_suporte":
       return [] as T;

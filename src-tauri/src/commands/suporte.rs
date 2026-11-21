@@ -450,9 +450,10 @@ pub async fn listar_mensagens_chamado(id: i32, segundo_plano: Option<bool>) -> R
 
 // ─── Respostas da thread, resposta pelo app e encerramento ─────────────
 
-/// Texto do Slack para mostrar no AutoOS: tira o rodapé "Sent using <@app>", menções e marcações
-/// de canal, troca links pelo texto deles, desfaz os escapes e troca os emojis mais comuns.
-/// Negrito (`*x*`) e itálico (`_x_`) ficam: a tela sabe mostrar.
+/// Texto do Slack para mostrar no AutoOS: tira o rodapé "Sent using <@app>" e as menções, troca
+/// marcação de canal pelo nome, desfaz os escapes e troca os emojis mais comuns. Links
+/// (`<url|rótulo>`, `<url>`) ficam como vieram: a tela decide (allowlist) se viram clicáveis.
+/// Negrito (`*x*`) e itálico (`_x_`) também ficam: a tela sabe mostrar.
 pub(crate) fn limpar_texto_slack(texto: &str) -> String {
     let mut base = texto.trim_end();
     if let Some(pos) = base.rfind("*Sent using*") {
@@ -461,10 +462,11 @@ pub(crate) fn limpar_texto_slack(texto: &str) -> String {
             base = base[..pos].trim_end();
         }
     }
+    let desfazer = |trecho: &str| trecho.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
     let mut saida = String::with_capacity(base.len());
     let mut resto = base;
     while let Some(inicio) = resto.find('<') {
-        saida.push_str(&resto[..inicio]);
+        saida.push_str(&desfazer(&resto[..inicio]));
         let depois = &resto[inicio + 1..];
         match depois.find('>') {
             Some(fim) => {
@@ -472,9 +474,12 @@ pub(crate) fn limpar_texto_slack(texto: &str) -> String {
                 let (alvo, rotulo) = dentro.split_once('|').map_or((dentro, None), |(a, r)| (a, Some(r)));
                 if alvo.starts_with('#') {
                     saida.push('#');
-                    saida.push_str(rotulo.unwrap_or("canal"));
+                    saida.push_str(&desfazer(rotulo.unwrap_or("canal")));
                 } else if !(alvo.starts_with('@') || alvo.starts_with('!')) {
-                    saida.push_str(rotulo.unwrap_or(alvo));
+                    // Link: fica no formato do Slack (escapes inclusos) para a tela.
+                    saida.push('<');
+                    saida.push_str(dentro);
+                    saida.push('>');
                 }
                 resto = &depois[fim + 1..];
             }
@@ -484,8 +489,7 @@ pub(crate) fn limpar_texto_slack(texto: &str) -> String {
             }
         }
     }
-    saida.push_str(resto);
-    let mut saida = saida.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
+    saida.push_str(&desfazer(resto));
     for (codigo, emoji) in [
         (":slightly_smiling_face:", "🙂"), (":smile:", "😄"), (":blush:", "😊"), (":wink:", "😉"),
         (":+1:", "👍"), (":thumbsup:", "👍"), (":pray:", "🙏"), (":white_check_mark:", "✅"),
@@ -831,7 +835,11 @@ mod tests {
             limpar_texto_slack("Olá! Recebi o chamado #101. :slightly_smiling_face: *Sent using* <@U0CE678ML79>"),
             "Olá! Recebi o chamado #101. 🙂"
         );
-        assert_eq!(limpar_texto_slack("Veja <https://x.com/a|o guia> e <https://y.com>"), "Veja o guia e https://y.com");
+        // Links ficam no formato do Slack: quem decide se viram clicáveis é a tela (allowlist).
+        assert_eq!(
+            limpar_texto_slack("Baixe <https://github.com/ph66ng2/AutoOs/releases/download/v0.6.4/x.exe|Baixar AutoOS 0.6.4> e <https://y.com?a=1&amp;b=2>"),
+            "Baixe <https://github.com/ph66ng2/AutoOs/releases/download/v0.6.4/x.exe|Baixar AutoOS 0.6.4> e <https://y.com?a=1&amp;b=2>"
+        );
         assert_eq!(limpar_texto_slack("<@U123> confere &lt;isto&gt; &amp; aquilo em <#C1|suporte>"), "confere <isto> & aquilo em #suporte");
         assert_eq!(limpar_texto_slack("_não envie_ ainda\n*1.* reabra"), "_não envie_ ainda\n*1.* reabra");
         // "Sent using" no meio do texto não é rodapé.

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
   abrirChamado: vi.fn(),
   responder: vi.fn(),
   retorno: vi.fn(),
+  abrirUrl: vi.fn(),
   mensagens: [] as unknown[],
   admin: false,
 }));
@@ -17,6 +18,7 @@ vi.mock("@/hooks/useSuporte", () => ({
   useMensagensChamado: () => m.mensagens,
 }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ hasPermission: () => m.admin }) }));
+vi.mock("@/lib/db", () => ({ db: { abrirUrl: m.abrirUrl } }));
 vi.mock("@/lib/error-utils", () => ({ versaoDoApp: () => "0.6.4" }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -170,5 +172,43 @@ describe("Suporte", () => {
     await user.type(screen.getByLabelText("O que aconteceu?"), " mais coisa");
     expect(screen.getByLabelText("O que aconteceu?")).toHaveValue("Primeira versão");
     expect(screen.getByRole("button", { name: "Anexar print" })).toBeDisabled();
+  });
+
+  describe("links nas respostas (hotfix)", () => {
+    const RELEASE = "https://github.com/ph66ng2/AutoOs/releases/download/v0.6.4/AutoOS_0.6.4_x64-setup.exe";
+    const abrirConversa = async (texto: string) => {
+      const user = userEvent.setup();
+      m.chamados = [aberto12];
+      m.mensagens = [{ id: 1, autor: "suporte", autor_nome: "Erykah", texto, automatica: true, criado_em: "2026-11-21 10:00:00+00" }];
+      m.abrirUrl.mockReset().mockResolvedValue(undefined);
+      renderizar();
+      await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+      return user;
+    };
+
+    it("<url|rótulo> do release vira o link com o rótulo e o clique abre no navegador", async () => {
+      const user = await abrirConversa(`Corrigido! <${RELEASE}|Baixar 0.6.4>`);
+      await user.click(screen.getByRole("link", { name: "Baixar 0.6.4" }));
+      await waitFor(() => expect(m.abrirUrl).toHaveBeenCalledWith(RELEASE));
+    });
+
+    it("URL solta da allowlist é clicável e o ponto final não entra", async () => {
+      const user = await abrirConversa(`Baixe em ${RELEASE}.`);
+      await user.click(screen.getByRole("link", { name: RELEASE }));
+      await waitFor(() => expect(m.abrirUrl).toHaveBeenCalledWith(RELEASE));
+    });
+
+    it("fora da allowlist e javascript: ficam só texto", async () => {
+      await abrirConversa("Baixe https://exemplo.com/x.exe ou <javascript:alert(1)|clique>");
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.getByText(/https:\/\/exemplo\.com\/x\.exe ou clique/)).toBeInTheDocument();
+    });
+
+    it("mensagem com várias linhas mantém as quebras", async () => {
+      await abrirConversa(`Linha 1\nLinha 2 <${RELEASE}|Baixar>\nLinha 3`);
+      const bolha = screen.getByRole("link", { name: "Baixar" }).parentElement!;
+      expect(bolha.textContent).toBe("Linha 1\nLinha 2 Baixar\nLinha 3");
+      expect(bolha.className).toContain("whitespace-pre-wrap");
+    });
   });
 });

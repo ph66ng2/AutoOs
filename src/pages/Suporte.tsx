@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Check, ChevronLeft, FileWarning, Headphones, ImagePlus, Plus, Send, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronLeft, Download, ExternalLink, FileWarning, Headphones, ImagePlus, Plus, Send, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
@@ -13,6 +13,8 @@ import { imagensDaAreaDeTransferencia } from "@/lib/equipamento-imagem-utils";
 import { versaoDoApp } from "@/lib/error-utils";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import { cn } from "@/lib/utils";
+import { linkDeDownload, segmentosDoSuporte } from "@/lib/suporte-links";
+import { abrirLinkDoSuporte } from "@/lib/suporte-ponte";
 import { SENSITIVE_PERMISSIONS, type ChamadoSuporte } from "@/types";
 
 const MAX_PRINTS = 3;
@@ -288,7 +290,7 @@ function ItemDaLista({ chamado, ativo, onEscolher }: { chamado: ChamadoSuporte; 
 }
 
 /** Negrito (`*x*`) e itálico (`_x_`) do Slack, sem interpretar HTML. */
-export function TextoDoSlack({ texto }: { texto: string }) {
+function Enfase({ texto }: { texto: string }) {
   const partes = texto.split(/(\*[^*\n]+\*|_[^_\n]+_)/g);
   return (
     <>
@@ -297,6 +299,40 @@ export function TextoDoSlack({ texto }: { texto: string }) {
         if (parte.length > 2 && parte.startsWith("_") && parte.endsWith("_")) return <em key={i}>{parte.slice(1, -1)}</em>;
         return parte;
       })}
+    </>
+  );
+}
+
+/**
+ * Resposta do suporte: ênfase do Slack e links da allowlist (`suporte-links.ts`), montados com
+ * elementos React. O link abre no navegador padrão (`abrir_url`), nunca dentro do app.
+ */
+export function TextoDoSlack({ texto }: { texto: string }) {
+  return (
+    <>
+      {segmentosDoSuporte(texto).map((segmento, i) =>
+        segmento.tipo === "texto" ? (
+          <Enfase key={i} texto={segmento.texto} />
+        ) : (
+          <button
+            key={i}
+            type="button"
+            role="link"
+            title={segmento.url}
+            className="inline-flex items-baseline gap-1 rounded-sm font-semibold text-primary underline underline-offset-2 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              abrirLinkDoSuporte(segmento.url).catch((causa) => {
+                toast.error("Não foi possível abrir o link.", { description: mensagemVisivelAoOperador(causa) ?? String(causa) });
+              });
+            }}
+          >
+            {linkDeDownload(segmento.url)
+              ? <Download className="h-3.5 w-3.5 shrink-0 self-center" aria-hidden="true" />
+              : <ExternalLink className="h-3.5 w-3.5 shrink-0 self-center" aria-hidden="true" />}
+            {segmento.texto}
+          </button>
+        ),
+      )}
     </>
   );
 }
