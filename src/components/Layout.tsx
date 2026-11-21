@@ -157,7 +157,8 @@ export function Layout() {
   useAtalhosGlobais({
     abrirBusca: () => setBuscaAberta(true),
     abrirAjuda: () => setAjudaAberta(true),
-    novaEntrada: () => navigate("/equipamentos", { state: { novaEntrada: true } }),
+    // A Nova entrada é página: Cancelar e salvar voltam para a tela em que a pessoa estava.
+    novaEntrada: () => navigate("/equipamentos/nova", { state: { origem: `${window.location.pathname}${window.location.search}` } }),
     // Mesma liberação do botão "+ Novo orçamento" de Vendas.
     novaVenda: () => {
       void ensureSensitiveAccess({

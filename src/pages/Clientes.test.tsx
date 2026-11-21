@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import Clientes from "@/pages/Clientes";
 
 const mocks = vi.hoisted(() => ({
@@ -105,6 +105,25 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(screen.getByRole("button", { name: "Copiar telefone" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copiar e-mail" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copiar CPF/CNPJ" })).toBeInTheDocument();
+  });
+
+  it("painel do cliente: Nova entrada abre a página já com este cliente e volta para Clientes", async () => {
+    mocks.clientes = [clienteSalvo()];
+    function EstadoDaRota() {
+      const location = useLocation();
+      return <pre data-testid="estado">{JSON.stringify(location.state)}</pre>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/clientes"]}>
+        <Routes>
+          <Route path="/clientes" element={<Clientes />} />
+          <Route path="/equipamentos/nova" element={<EstadoDaRota />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Nova entrada" }));
+    expect(JSON.parse(screen.getByTestId("estado").textContent ?? "{}")).toEqual({ origem: "/clientes", clienteId: 7 });
   });
 
   it("abrir o cliente pelo nome mostra os contatos no painel e clicar de novo fecha", async () => {

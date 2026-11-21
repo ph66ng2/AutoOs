@@ -79,6 +79,15 @@ describe("ContatoResponsavelSelector", () => {
     expect(mockListar).toHaveBeenLastCalledWith(12, 7);
   });
 
+  it("mantém o contato que chega junto com o novo cliente (cópia da passagem anterior)", async () => {
+    const onChange = vi.fn();
+    const contatoB = { ...contatoA, id: 30, cliente_id: 12, nome: "Bia" };
+    const view = render(<ContatoResponsavelSelector cliente={null} empresaId={7} value={null} onChange={onChange} />);
+    view.rerender(<ContatoResponsavelSelector cliente={clienteB} empresaId={7} value={contatoB} onChange={onChange} />);
+    await waitFor(() => expect(mockListar).toHaveBeenLastCalledWith(12, 7));
+    expect(onChange).not.toHaveBeenCalledWith(null);
+  });
+
   it("oferece ficar sem responsável específico", async () => {
     const onChange = vi.fn();
     render(<ContatoResponsavelSelector cliente={clienteA} empresaId={7} value={contatoA} onChange={onChange} />);
