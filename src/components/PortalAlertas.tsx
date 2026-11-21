@@ -21,6 +21,7 @@ import {
   CircleAlert,
   CircleX,
   Copy,
+  Headphones,
   Hourglass,
   MailX,
   MessageCircleQuestion,
@@ -33,12 +34,14 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
-import { copyErrorDetails } from "@/lib/error-utils";
+import { copyErrorDetails, formatErrorForCopy, versaoDoApp } from "@/lib/error-utils";
+import { enviarErroAoSuporte, suporteDisponivel } from "@/lib/suporte-ponte";
 import { marcarErrosLidos, useErrosRegistrados, type ErroRegistrado } from "@/lib/error-log";
 import { PREFIXO_TOAST_ERRO } from "@/hooks/useNotification";
 import { cn } from "@/lib/utils";
 import { destinoDoAviso, ROTULO_ABRIR_AVISO, VISUAL_AVISO } from "@/lib/avisos-internos";
 import { notificarSistema } from "@/lib/notificacao-sistema";
+import { contarNovos, lerVistos, marcarVistos } from "@/lib/sino-visto";
 import type { AvisoInterno } from "@/types";
 import type { AlertaPortal } from "@/types";
 
@@ -169,6 +172,9 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const navigate = useNavigate();
   const erros = useErrosRegistrados();
   const [naoLidosPortal, setNaoLidosPortal] = useState(0);
+  /** Ids dos alertas do portal não lidos mais recentes (para o "visto"). */
+  const [portalNaoLidosIds, setPortalNaoLidosIds] = useState<number[]>([]);
+  const [vistos, setVistos] = useState<Set<string>>(() => lerVistos(perfilId));
   const [avisos, setAvisos] = useState<AvisoInterno[]>([]);
   const avisosVistos = useRef<Set<string> | null>(null);
   /** Muda a cada troca de perfil: resposta que volta com outro número é da sessão anterior. */
@@ -184,6 +190,20 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   // Só avisos contam no número; erros do app ficam na aba Sistema (um ponto discreto no sino).
   const avisosNaoLidos = avisos.filter((aviso) => !aviso.lido).length;
   const naoLidos = (portalDesligado ? 0 : naoLidosPortal) + avisosNaoLidos;
+  // O número do sino conta só o não lido que chegou depois da última abertura (visto ≠ lido).
+  const chavesNaoLidasAvisos = [
+    ...avisos.filter((aviso) => !aviso.lido).map((aviso) => `aviso:${aviso.chave}`),
+    ...(portalDesligado ? [] : portalNaoLidosIds.map((id) => `portal:${id}`)),
+  ];
+  const chavesErrosNaoLidos = erros.filter((item) => !item.lido).map((item) => `erro:${item.id}`);
+  const novos = contarNovos(chavesNaoLidasAvisos, vistos);
+  const errosNovos = contarNovos(chavesErrosNaoLidos, vistos);
+  const abrirSino = () => {
+    setVistos((atual) => marcarVistos(perfilId, atual, [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos]));
+    setAberto(true);
+  };
+  const abrirSinoRef = useRef(abrirSino);
+  abrirSinoRef.current = abrirSino;
   const portalDesligadoRef = useRef(portalDesligado);
   portalDesligadoRef.current = portalDesligado;
   const errosAbertos = useRef<string[]>([]);
@@ -244,12 +264,14 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
       const total = Number(await db.contarAlertasPortalNaoLidos()) || 0;
       if (minhaGeracao !== geracao.current) return;
       setNaoLidosPortal(total);
+      if (total === 0) setPortalNaoLidosIds([]);
       if (total === 0) {
         ultimoVisto.current ??= 0;
         return;
       }
       const recentes = await db.listarAlertasPortal(true, 10);
       const maior = recentes.reduce((max, alerta) => Math.max(max, alerta.id), 0);
+      setPortalNaoLidosIds(recentes.filter((alerta) => !alerta.lidoEm).map((alerta) => alerta.id));
       // Na primeira consulta só o contador aparece; toasts são para o que chegar depois.
       if (ultimoVisto.current !== null) {
         const novos = recentes.filter((alerta) => alerta.id > (ultimoVisto.current ?? 0));
@@ -263,7 +285,7 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
               // "Ver" conta como leitura, igual a abrir pelo painel.
               void db.marcarAlertasPortalLidos(alerta.id).then(() => verificarRef.current()).catch(() => undefined);
               if (alerta.equipamentoId) abrirAtendimento(alerta.equipamentoId);
-              else setAberto(true);
+              else abrirSinoRef.current();
             });
           });
         const equipamentoIds = [...new Set(novos.map((alerta) => alerta.equipamentoId).filter((id): id is number => id != null))];
@@ -288,6 +310,8 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     geracao.current += 1;
     setAvisos([]);
     setNaoLidosPortal(0);
+    setPortalNaoLidosIds([]);
+    setVistos(lerVistos(perfilId));
     avisosVistos.current = null;
     ultimoVisto.current = null;
     setAberto(false);
@@ -349,17 +373,17 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
         variant="ghost"
         size="icon"
         className={cn("relative h-10 w-10 rounded-lg", aberto && "bg-acc-soft text-acc-soft-foreground hover:bg-acc-soft")}
-        onClick={() => setAberto((valor) => !valor)}
+        onClick={() => (aberto ? setAberto(false) : abrirSino())}
         aria-haspopup="dialog"
         aria-expanded={aberto}
-        aria-label={naoLidos > 0 ? `Notificações: ${naoLidos} não lida(s)` : errosNaoLidos > 0 ? "Notificações: erros novos em Sistema" : "Notificações"}
+        aria-label={novos > 0 ? `Notificações: ${novos} nova(s)` : errosNovos > 0 ? "Notificações: erros novos em Sistema" : naoLidos + errosNaoLidos > 0 ? "Notificações (há itens não lidos)" : "Notificações"}
       >
         <Bell className="h-5 w-5" />
-        {naoLidos > 0 ? (
+        {novos > 0 ? (
           <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-extrabold leading-none text-primary-foreground ring-2 ring-card">
-            {naoLidos > 99 ? "99+" : naoLidos}
+            {novos > 99 ? "99+" : novos}
           </span>
-        ) : errosNaoLidos > 0 ? (
+        ) : errosNovos > 0 ? (
           <span aria-hidden="true" title="Há erros novos em Sistema" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-muted-foreground ring-2 ring-card" />
         ) : null}
       </Button>
@@ -539,11 +563,6 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
           </button>
         )}
       </div>
-      {aba === "sistema" && (
-        <p className="mx-4 mb-2 rounded-lg bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-          “Copiar relatório” leva código, descrição técnica e referência do log — é o que você manda para o suporte.
-        </p>
-      )}
       <div className="flex-1 overflow-y-auto">
         {erro && aba === "avisos" && <p className="px-4 py-2 text-sm text-destructive" role="alert">{erro}</p>}
         {loading && itens.length === 0 && <p className="px-4 py-2 text-sm text-muted-foreground">Carregando…</p>}
@@ -679,6 +698,18 @@ function ItemErro({ registro }: { registro: ErroRegistrado }) {
             </span>
           </button>
           {copiado === "falhou" && <span className="text-[11px] text-destructive">Não foi possível copiar.</span>}
+          {suporteDisponivel() && (
+            <button
+              type="button"
+              className="flex items-center gap-1 text-[13px] font-semibold text-primary hover:underline"
+              onClick={() => {
+                marcarErrosLidos(registro.id);
+                enviarErroAoSuporte(formatErrorForCopy(erro, { versao: versaoDoApp() }));
+              }}
+            >
+              <Headphones className="h-3.5 w-3.5" aria-hidden="true" /> Enviar ao suporte
+            </button>
+          )}
           {!registro.lido && (
             <button type="button" className="text-[13px] text-muted-foreground hover:text-foreground hover:underline" onClick={() => marcarErrosLidos(registro.id)}>
               Marcar como lido

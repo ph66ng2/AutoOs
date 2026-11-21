@@ -1390,3 +1390,58 @@ export interface ResumoCliente {
   noAno: number;
   faturado?: number | null;
 }
+
+/** Mensagem pronta de WhatsApp da empresa (0058). */
+export interface ModeloMensagem {
+  id: number;
+  titulo: string;
+  texto: string;
+  ordem: number;
+  /** Token de concorrência (edição só grava se ninguém mudou depois). */
+  atualizado_em: string;
+}
+
+export interface ModeloMensagemInput {
+  id?: number | null;
+  titulo: string;
+  texto: string;
+  ordem?: number | null;
+  /** Obrigatório ao alterar: o `atualizado_em` de quando a edição abriu. */
+  atualizado_em?: string | null;
+}
+
+/** Suporte pelo Slack (0059). */
+export interface ConfigSuporte {
+  /** Este computador tem o token do bot guardado. */
+  token_neste_computador: boolean;
+  canal: string | null;
+}
+
+export interface ChamadoSuporte {
+  id: number;
+  texto: string;
+  situacao: "aberto" | "resolvido";
+  criado_em: string;
+  atualizado_em: string;
+  /** Quantas respostas do suporte já chegaram. */
+  respostas: number;
+}
+
+export interface MensagemSuporte {
+  id: number;
+  autor: "pessoa" | "suporte";
+  autor_nome: string | null;
+  texto: string;
+  /** Resposta do atendimento automático. */
+  automatica: boolean;
+  criado_em: string;
+}
+
+export interface AbrirChamadoInput {
+  texto: string;
+  tela?: string | null;
+  versao?: string | null;
+  relatorio_erro?: string | null;
+  /** Prints em base64 (sem o prefixo data:), até 3. */
+  imagens: { nome: string; base64: string }[];
+}

@@ -32,13 +32,14 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
+  Headphones,
   Store,
   Download,
 } from "lucide-react";
 import { setAppMode, type AppMode } from "@/lib/app-mode";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { useEmpresaAtiva } from "@/hooks/useEmpresaAtiva";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { BuscaGlobal } from "@/components/busca/BuscaGlobal";
 import type { TelaBuscavel } from "@/hooks/useBuscaGlobal";
 import { AjudaAtalhos } from "@/components/busca/AjudaAtalhos";
@@ -55,6 +56,7 @@ import { TourController } from "@/components/tour/TourController";
 import { profileAppearance } from "@/lib/profile-appearance";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { abrirPainelAtualizacao, useAtualizacaoDisponivel } from "@/lib/atualizacao-disponivel";
+import { registrarAbrirSuporte } from "@/lib/suporte-ponte";
 
 
 interface NavItem {
@@ -88,11 +90,16 @@ const navGroups: { titulo?: string; itens: NavItem[] }[] = [
       { label: "Serviços", path: "/servicos", icon: Wrench },
     ],
   },
+  // Um grupo só para o que tinha um item cada (Financeiro, Administração): menos títulos,
+  // e o menu inteiro cabe em 720p.
   {
-    titulo: "Financeiro",
-    itens: [{ label: "Finanças", path: "/gastos", icon: DollarSign, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES }],
+    titulo: "Gestão",
+    itens: [
+      { label: "Finanças", path: "/gastos", icon: DollarSign, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES },
+      { label: "Equipe e acessos", path: "/equipe", icon: Shield },
+      { label: "Suporte", path: "/suporte", icon: Headphones },
+    ],
   },
-  { titulo: "Administração", itens: [{ label: "Equipe e acessos", path: "/equipe", icon: Shield }] },
 ];
 
 const configuracoesItem: NavItem = {
@@ -109,6 +116,8 @@ function navLinkClass(collapsed: boolean) {
   return ({ isActive }: { isActive: boolean }) =>
     cn(
       "relative flex h-[42px] items-center gap-3 rounded-lg border px-3 text-sm font-medium transition-colors duration-rapida",
+      // Tela baixa (720p, 768p): itens um pouco mais baixos para o menu caber sem rolar.
+      "[@media(max-height:899px)]:h-9",
       collapsed && "justify-center px-0",
       isActive
         ? "border-sidebar-border bg-card font-semibold text-foreground shadow-sm before:absolute before:-left-3 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-primary"
@@ -142,6 +151,15 @@ export function Layout() {
     .map((grupo) => ({ ...grupo, itens: grupo.itens.filter((item) => navItemVisible(item, status)) }))
     .filter((grupo) => grupo.itens.length > 0);
   const navigate = useNavigate();
+  // "Enviar ao suporte" nos avisos de erro: só com o banco conectado (o chamado é gravado).
+  useEffect(() => {
+    if (connectionUnavailable) {
+      registrarAbrirSuporte(null);
+      return;
+    }
+    registrarAbrirSuporte((relatorioErro) => navigate("/suporte", { state: { relatorioErro, tela: window.location.pathname } }));
+    return () => registrarAbrirSuporte(null);
+  }, [connectionUnavailable, navigate]);
   const abrirModoBalcao = () => {
     setMobileOpen(false);
     setAppMode("counter");
@@ -282,9 +300,9 @@ export function Layout() {
           {visibleGroups.map((grupo) => (
             <div key={grupo.titulo ?? "inicio"} className="space-y-0.5">
               {grupo.titulo && !collapsed && (
-                <h4 className="mx-3 mb-1.5 mt-5 text-[13px] font-medium text-muted-foreground">{grupo.titulo}</h4>
+                <h4 className="mx-3 mb-1.5 mt-5 text-[13px] font-medium text-muted-foreground [@media(max-height:899px)]:mb-1 [@media(max-height:899px)]:mt-3">{grupo.titulo}</h4>
               )}
-              {grupo.titulo && collapsed && <div className="mx-2 my-3 border-t border-sidebar-border" aria-hidden="true" />}
+              {grupo.titulo && collapsed && <div className="mx-2 my-3 border-t border-sidebar-border [@media(max-height:899px)]:my-2" aria-hidden="true" />}
               {grupo.itens.map((item) => renderItem(item))}
             </div>
           ))}
@@ -336,7 +354,8 @@ export function Layout() {
               size="icon"
               aria-label="Abrir o Modo Balcão"
               title="Modo Balcão (tela de toque da recepção)"
-              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+              // Recolhido em tela baixa não cabe: o Balcão continua no menu aberto e no Ctrl+K.
+              className={cn("h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground", collapsed && TELA_BAIXA_ESCONDE)}
               onClick={() => abrirModoBalcao()}
             >
               <Store className="h-[18px] w-[18px]" />
@@ -377,7 +396,8 @@ export function Layout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+                  // Recolhido em tela baixa não cabe: bloquear continua no Ctrl+L e no menu aberto.
+                  className={cn("h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground", collapsed && TELA_BAIXA_ESCONDE)}
                   aria-label="Bloquear acesso sensível"
                   title="Bloquear acesso sensível (Ctrl+L)"
                   aria-keyshortcuts="Control+L"
