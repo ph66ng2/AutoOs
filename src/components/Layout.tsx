@@ -162,7 +162,7 @@ export function Layout() {
     return () => registrarAbrirSuporte(null);
   }, [connectionUnavailable, navigate]);
   // Respostas do suporte (thread do Slack) com a sessão aberta e o banco conectado.
-  useBuscaRespostasSuporte(sessaoAtiva && !connectionUnavailable);
+  useBuscaRespostasSuporte(sessaoAtiva && !connectionUnavailable, status?.active_profile_id ?? null);
   const abrirModoBalcao = () => {
     setMobileOpen(false);
     setAppMode("counter");

@@ -28,8 +28,9 @@ export function avisosDeResposta(novas: RespostaNovaSuporte[]): { chamadoId: num
  * logo depois de um envio, a cada 60 s fora disso. Resposta nova vira aviso no app ("Ver" abre o
  * chamado) e no Windows. Na própria página Suporte a conversa já atualiza sozinha: sem aviso.
  * A busca é de segundo plano (não renova a sessão) e não faz nada sem token neste computador.
+ * Trocar de perfil reinicia a busca: o que chegar da busca do perfil anterior é descartado.
  */
-export function useBuscaRespostasSuporte(ativo: boolean) {
+export function useBuscaRespostasSuporte(ativo: boolean, perfilId: number | null) {
   const navigate = useNavigate();
   const location = useLocation();
   const rota = useRef(location.pathname);
@@ -71,5 +72,5 @@ export function useBuscaRespostasSuporte(ativo: boolean) {
       clearTimeout(timer);
       pararDeOuvir();
     };
-  }, [ativo]);
+  }, [ativo, perfilId]);
 }

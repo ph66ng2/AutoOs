@@ -628,18 +628,14 @@ pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<Resp
     let bot = bot_proprio(&client, &token).await;
     let mut novas = Vec::new();
     for (chamado_id, canal, thread_ts) in abertos {
-        let resposta = client
-            .get(format!("{}/conversations.replies", api_base()))
-            .bearer_auth(&token)
-            .query(&[("channel", canal.as_str()), ("ts", thread_ts.as_str()), ("limit", "200")])
-            .send()
-            .await
-            .map_err(|e| format!("Sem conexão com o Slack: {e}"))?
-            .json::<Value>()
-            .await
-            .map_err(|e| format!("Resposta inválida do Slack: {e}"))?;
-        let resposta = conferir(resposta, "conversations.replies")?;
-        let mensagens = resposta.get("messages").and_then(Value::as_array).cloned().unwrap_or_default();
+        // Uma thread com problema (apagada, sem acesso) não para as outras nem perde o que já entrou.
+        let mensagens = match mensagens_da_thread(&client, &token, &canal, &thread_ts).await {
+            Ok(mensagens) => mensagens,
+            Err(erro) => {
+                error!("Respostas do chamado #{} não puderam ser lidas: {}", chamado_id, erro);
+                continue;
+            }
+        };
         let mut entrou = false;
         for mensagem in &mensagens {
             let Some(item) = resposta_da_thread(mensagem, &thread_ts, bot.as_deref()) else { continue };
@@ -686,6 +682,42 @@ pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<Resp
         }
     }
     Ok(novas)
+}
+
+/// Todas as mensagens da thread, página por página (o Slack devolve as mais antigas primeiro e
+/// pagina por cursor: sem seguir o cursor, respostas depois da primeira página nunca chegariam).
+async fn mensagens_da_thread(client: &Client, token: &str, canal: &str, thread_ts: &str) -> Result<Vec<Value>, String> {
+    const MAX_PAGINAS: usize = 20;
+    let mut mensagens = Vec::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..MAX_PAGINAS {
+        let mut consulta = vec![("channel", canal.to_string()), ("ts", thread_ts.to_string()), ("limit", "200".to_string())];
+        if let Some(cursor) = cursor.as_ref() {
+            consulta.push(("cursor", cursor.clone()));
+        }
+        let resposta = client
+            .get(format!("{}/conversations.replies", api_base()))
+            .bearer_auth(token)
+            .query(&consulta)
+            .send()
+            .await
+            .map_err(|e| format!("Sem conexão com o Slack: {e}"))?
+            .json::<Value>()
+            .await
+            .map_err(|e| format!("Resposta inválida do Slack: {e}"))?;
+        let resposta = conferir(resposta, "conversations.replies")?;
+        mensagens.extend(resposta.get("messages").and_then(Value::as_array).cloned().unwrap_or_default());
+        cursor = resposta
+            .get("response_metadata")
+            .and_then(|m| m.get("next_cursor"))
+            .and_then(Value::as_str)
+            .filter(|c| !c.is_empty())
+            .map(str::to_string);
+        if cursor.is_none() {
+            break;
+        }
+    }
+    Ok(mensagens)
 }
 
 /// Chamado aberto do perfil da sessão, com o que é preciso para escrever na thread.

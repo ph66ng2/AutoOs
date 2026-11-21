@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, useNavigate } from "react-router-dom";
+import { MemoryRouter, RouterProvider, createMemoryRouter, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const m = vi.hoisted(() => ({
@@ -210,5 +210,18 @@ describe("Suporte", () => {
       expect(bolha.textContent).toBe("Linha 1\nLinha 2 Baixar\nLinha 3");
       expect(bolha.className).toContain("whitespace-pre-wrap");
     });
+  });
+
+  it("sair de /suporte com rascunho pede confirmação", async () => {
+    const user = userEvent.setup();
+    const router = createMemoryRouter(
+      [{ path: "/suporte", element: <Suporte /> }, { path: "/clientes", element: <p>Tela de clientes</p> }],
+      { initialEntries: ["/suporte"] },
+    );
+    render(<RouterProvider router={router} />);
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Ainda escrevendo");
+    await act(async () => { void router.navigate("/clientes"); });
+    expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+    expect(screen.queryByText("Tela de clientes")).not.toBeInTheDocument();
   });
 });

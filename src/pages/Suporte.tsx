@@ -8,6 +8,7 @@ import { TeclaNoBotao } from "@/components/ui/tecla-no-botao";
 import { useMensagensChamado, useSuporte } from "@/hooks/useSuporte";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { formatDateTimeSalvador, parseTimestampPostgres } from "@/lib/date-utils";
 import { imagensDaAreaDeTransferencia } from "@/lib/equipamento-imagem-utils";
 import { versaoDoApp } from "@/lib/error-utils";
@@ -82,6 +83,9 @@ function SuporteDoPerfil() {
   // O envio em andamento também fica aqui: trocar de tela e voltar não libera um segundo envio.
   const [enviando, setEnviando] = useState<string | null>(null);
   const enviandoRef = useRef<string | null>(null);
+  // Sair de /suporte com algo escrito ou print anexado e não enviado pede confirmação.
+  const temRascunho = Object.values(rascunhos).some((r) => r.texto.trim() !== "" || r.prints.length > 0);
+  const avisoAoSair = useAvisoAoSair(temRascunho);
 
   async function comTrava(chave: string, acao: () => Promise<void>, erro: string) {
     if (enviandoRef.current) return;
@@ -141,6 +145,7 @@ function SuporteDoPerfil() {
         )}
       </PageHeader>
 
+      {avisoAoSair.dialogo}
       <div className="grid min-h-0 flex-1 overflow-hidden rounded-2xl border bg-card lg:grid-cols-[300px_minmax(0,1fr)]">
         {mostrarLista && (
           <aside aria-label="Chamados" className="flex min-h-0 flex-col border-b bg-muted/30 lg:border-b-0 lg:border-r">

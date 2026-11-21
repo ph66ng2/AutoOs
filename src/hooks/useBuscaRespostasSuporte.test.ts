@@ -1,5 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { avisosDeResposta } from "./useBuscaRespostasSuporte";
+import { act, renderHook } from "@testing-library/react";
+import { createElement, type ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({ sincronizar: vi.fn(), toast: Object.assign(vi.fn(), { info: vi.fn() }) }));
+vi.mock("@/lib/db", () => ({ db: { sincronizarSuporte: mocks.sincronizar } }));
+vi.mock("sonner", () => ({ toast: mocks.toast }));
+vi.mock("@/lib/notificacao-sistema", () => ({ notificarSistema: vi.fn() }));
+import { avisosDeResposta, useBuscaRespostasSuporte } from "./useBuscaRespostasSuporte";
 import { intervaloDeBusca, marcarEnvioAoSuporte } from "@/lib/suporte-ponte";
 
 describe("respostas do suporte", () => {
@@ -20,5 +28,19 @@ describe("respostas do suporte", () => {
     marcarEnvioAoSuporte(1_000_000);
     expect(intervaloDeBusca(1_000_000 + 60_000)).toBe(10_000);
     expect(intervaloDeBusca(1_000_000 + 3 * 60_000 + 1)).toBe(60_000);
+  });
+
+  it("resposta que chega depois de trocar de perfil é descartada (não vira aviso do perfil novo)", async () => {
+    vi.useFakeTimers();
+    let soltar: (v: unknown) => void = () => undefined;
+    mocks.sincronizar.mockReturnValueOnce(new Promise((r) => { soltar = r; })).mockResolvedValue([]);
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(MemoryRouter, null, children);
+    const { rerender } = renderHook(({ perfil }) => useBuscaRespostasSuporte(true, perfil), { wrapper, initialProps: { perfil: 1 } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(mocks.sincronizar).toHaveBeenCalledTimes(1);
+    rerender({ perfil: 2 });
+    await act(async () => { soltar([{ chamado_id: 7, autor_nome: null, texto: "Do perfil 1", automatica: true }]); });
+    expect(mocks.toast.info).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
