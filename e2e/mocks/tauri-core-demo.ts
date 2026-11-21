@@ -191,6 +191,24 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     }
     case "obter_garantia_servicos_dias":
       return 90 as T;
+    case "obter_config_suporte":
+      return { token_neste_computador: true, canal: "C0CE5M6GTRV" } as T;
+    case "listar_chamados_suporte":
+      return [
+        { id: 12, texto: "A OS do Mercado Bom Preço não salva, fica girando.", situacao: "aberto", criado_em: agora, atualizado_em: agora, respostas: 1 },
+        { id: 9, texto: "Como reenviar o orçamento por e-mail?", situacao: "resolvido", criado_em: "2026-09-10T12:00:00Z", atualizado_em: "2026-09-10T12:20:00Z", respostas: 2 },
+      ] as T;
+    case "listar_mensagens_chamado":
+      return [
+        { id: 1, autor: "pessoa", autor_nome: "Atendente", texto: "A OS do Mercado Bom Preço não salva, fica girando.", automatica: false, criado_em: agora },
+        { id: 2, autor: "suporte", autor_nome: "Erykah", texto: "Isso costuma ser outro computador alterando a mesma OS. Recarregue a OS e salve de novo.", automatica: true, criado_em: agora },
+        { id: 3, autor: "suporte", autor_nome: "Erykah", texto: "Achei a causa e já corrigi. Instale a versão nova:\n<https://github.com/ph66ng2/AutoOs/releases/download/v0.6.4/AutoOS_0.6.4_x64-setup.exe|Baixar AutoOS 0.6.4>\nDepois de instalar, abra a OS de novo.", automatica: true, criado_em: agora },
+      ] as T;
+    case "sincronizar_suporte":
+      return [] as T;
+    case "responder_chamado_suporte":
+    case "retorno_chamado_suporte":
+      return { id: 12, texto: "A OS do Mercado Bom Preço não salva, fica girando.", situacao: args?.resolvido ? "resolvido" : "aberto", criado_em: agora, atualizado_em: agora, respostas: 1 } as T;
     case "listar_modelos_mensagem":
       return [
         { id: 1, titulo: "Equipamento pronto", texto: "Olá, {contato}! O equipamento {equipamento} (OS {os}) está pronto para retirada.", ordem: 1, atualizado_em: agora },

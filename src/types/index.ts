@@ -1411,3 +1411,55 @@ export interface ModeloMensagemInput {
   /** Obrigatório ao alterar: o `atualizado_em` de quando a edição abriu. */
   atualizado_em?: string | null;
 }
+
+/** Suporte pelo Slack (0059). */
+export interface ConfigSuporte {
+  /** Este computador tem o token do bot guardado. */
+  token_neste_computador: boolean;
+  canal: string | null;
+}
+
+export interface ChamadoSuporte {
+  id: number;
+  texto: string;
+  situacao: "aberto" | "resolvido";
+  criado_em: string;
+  atualizado_em: string;
+  /** Quantas respostas do suporte já chegaram. */
+  respostas: number;
+  /** Só no envio: posições dos prints que não chegaram ao Slack (a mensagem chegou). */
+  prints_nao_enviados?: number[];
+}
+
+/** Resposta da thread do Slack que acabou de entrar (para o aviso). */
+export interface RespostaNovaSuporte {
+  chamado_id: number;
+  autor_nome: string | null;
+  texto: string;
+  automatica: boolean;
+}
+
+export interface ResponderChamadoInput {
+  id: number;
+  texto: string;
+  imagens: { nome: string; base64: string }[];
+}
+
+export interface MensagemSuporte {
+  id: number;
+  autor: "pessoa" | "suporte";
+  autor_nome: string | null;
+  texto: string;
+  /** Resposta do atendimento automático. */
+  automatica: boolean;
+  criado_em: string;
+}
+
+export interface AbrirChamadoInput {
+  texto: string;
+  tela?: string | null;
+  versao?: string | null;
+  relatorio_erro?: string | null;
+  /** Prints em base64 (sem o prefixo data:), até 3. */
+  imagens: { nome: string; base64: string }[];
+}

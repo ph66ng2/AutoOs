@@ -100,6 +100,12 @@ import type {
   Verificacao,
   ModeloMensagem,
   ModeloMensagemInput,
+  ConfigSuporte,
+  ChamadoSuporte,
+  MensagemSuporte,
+  RespostaNovaSuporte,
+  ResponderChamadoInput,
+  AbrirChamadoInput,
 } from "@/types";
 
 export interface ImpressoraWindows {
@@ -960,6 +966,46 @@ export const db = {
   /** Exclui uma mensagem pronta (permissão de comunicação) → Rust: excluir_modelo_mensagem */
   async excluirModeloMensagem(id: number): Promise<void> {
     return invoke<void>("excluir_modelo_mensagem", { id });
+  },
+
+  /** Suporte: canal (empresa) e se este computador tem o token → Rust: obter_config_suporte */
+  async obterConfigSuporte(): Promise<ConfigSuporte> {
+    return invoke<ConfigSuporte>("obter_config_suporte");
+  },
+
+  /** Grava canal e, se informado, o token do bot neste computador → Rust: salvar_config_suporte */
+  async salvarConfigSuporte(canal: string, token?: string | null): Promise<ConfigSuporte> {
+    return invoke<ConfigSuporte>("salvar_config_suporte", { input: { canal, token: token?.trim() || null } });
+  },
+
+  /** Abre um chamado no canal do Slack → Rust: abrir_chamado_suporte */
+  async abrirChamadoSuporte(input: AbrirChamadoInput): Promise<ChamadoSuporte> {
+    return invoke<ChamadoSuporte>("abrir_chamado_suporte", { input });
+  },
+
+  /** Chamados do perfil da sessão → Rust: listar_chamados_suporte */
+  async listarChamadosSuporte(segundoPlano = false): Promise<ChamadoSuporte[]> {
+    return invoke<ChamadoSuporte[]>("listar_chamados_suporte", seSegundoPlano(segundoPlano));
+  },
+
+  /** Conversa de um chamado → Rust: listar_mensagens_chamado */
+  /** Traz da thread do Slack as respostas novas dos chamados abertos do perfil (segundo plano) → Rust: sincronizar_suporte */
+  async sincronizarSuporte(): Promise<RespostaNovaSuporte[]> {
+    return invoke<RespostaNovaSuporte[]>("sincronizar_suporte", seSegundoPlano(true));
+  },
+
+  /** Responde na thread do chamado → Rust: responder_chamado_suporte */
+  async responderChamadoSuporte(input: ResponderChamadoInput): Promise<ChamadoSuporte> {
+    return invoke<ChamadoSuporte>("responder_chamado_suporte", { input });
+  },
+
+  /** "Resolveu" (encerra) ou "Não resolveu" (avisa na thread) → Rust: retorno_chamado_suporte */
+  async retornoChamadoSuporte(id: number, resolvido: boolean): Promise<ChamadoSuporte> {
+    return invoke<ChamadoSuporte>("retorno_chamado_suporte", { id, resolvido });
+  },
+
+  async listarMensagensChamado(id: number, segundoPlano = false): Promise<MensagemSuporte[]> {
+    return invoke<MensagemSuporte[]>("listar_mensagens_chamado", { id, ...seSegundoPlano(segundoPlano) });
   },
 
   async abrirUrl(url: string): Promise<void> {

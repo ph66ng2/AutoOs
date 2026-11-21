@@ -32,13 +32,14 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
+  Headphones,
   Store,
   Download,
 } from "lucide-react";
 import { setAppMode, type AppMode } from "@/lib/app-mode";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { useEmpresaAtiva } from "@/hooks/useEmpresaAtiva";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { BuscaGlobal } from "@/components/busca/BuscaGlobal";
 import type { TelaBuscavel } from "@/hooks/useBuscaGlobal";
 import { AjudaAtalhos } from "@/components/busca/AjudaAtalhos";
@@ -55,6 +56,8 @@ import { TourController } from "@/components/tour/TourController";
 import { profileAppearance } from "@/lib/profile-appearance";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { abrirPainelAtualizacao, useAtualizacaoDisponivel } from "@/lib/atualizacao-disponivel";
+import { registrarAbrirSuporte } from "@/lib/suporte-ponte";
+import { useBuscaRespostasSuporte } from "@/hooks/useBuscaRespostasSuporte";
 
 
 interface NavItem {
@@ -95,6 +98,7 @@ const navGroups: { titulo?: string; itens: NavItem[] }[] = [
     itens: [
       { label: "Finanças", path: "/gastos", icon: DollarSign, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES },
       { label: "Equipe e acessos", path: "/equipe", icon: Shield },
+      { label: "Suporte", path: "/suporte", icon: Headphones },
     ],
   },
 ];
@@ -148,6 +152,17 @@ export function Layout() {
     .map((grupo) => ({ ...grupo, itens: grupo.itens.filter((item) => navItemVisible(item, status)) }))
     .filter((grupo) => grupo.itens.length > 0);
   const navigate = useNavigate();
+  // "Enviar ao suporte" nos avisos de erro: só com o banco conectado (o chamado é gravado).
+  useEffect(() => {
+    if (connectionUnavailable) {
+      registrarAbrirSuporte(null);
+      return;
+    }
+    registrarAbrirSuporte((relatorioErro) => navigate("/suporte", { state: { relatorioErro, tela: window.location.pathname } }));
+    return () => registrarAbrirSuporte(null);
+  }, [connectionUnavailable, navigate]);
+  // Respostas do suporte (thread do Slack) com a sessão aberta e o banco conectado.
+  useBuscaRespostasSuporte(sessaoAtiva && !connectionUnavailable, status?.active_profile_id ?? null);
   const abrirModoBalcao = () => {
     setMobileOpen(false);
     setAppMode("counter");
