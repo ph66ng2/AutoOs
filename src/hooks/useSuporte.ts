@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "@/lib/db";
 import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
-import type { AbrirChamadoInput, ChamadoSuporte, ConfigSuporte, MensagemSuporte } from "@/types";
+import { marcarEnvioAoSuporte } from "@/lib/suporte-ponte";
+import type { AbrirChamadoInput, ChamadoSuporte, ConfigSuporte, MensagemSuporte, ResponderChamadoInput } from "@/types";
 
 /** Suporte pelo Slack: configuração deste computador e os chamados do perfil da sessão. */
 export function useSuporte() {
@@ -33,11 +34,26 @@ export function useSuporte() {
 
   const abrirChamado = useCallback(async (input: AbrirChamadoInput) => {
     const chamado = await db.abrirChamadoSuporte(input);
+    marcarEnvioAoSuporte();
     await carregar(true);
     return chamado;
   }, [carregar]);
 
-  return { config, chamados, loading, error, abrirChamado, recarregar: carregar };
+  const responder = useCallback(async (input: ResponderChamadoInput) => {
+    const chamado = await db.responderChamadoSuporte(input);
+    marcarEnvioAoSuporte();
+    await carregar(true);
+    return chamado;
+  }, [carregar]);
+
+  const retorno = useCallback(async (id: number, resolvido: boolean) => {
+    const chamado = await db.retornoChamadoSuporte(id, resolvido);
+    if (!resolvido) marcarEnvioAoSuporte();
+    await carregar(true);
+    return chamado;
+  }, [carregar]);
+
+  return { config, chamados, loading, error, abrirChamado, responder, retorno, recarregar: carregar };
 }
 
 /**

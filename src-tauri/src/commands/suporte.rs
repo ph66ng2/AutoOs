@@ -448,10 +448,423 @@ pub async fn listar_mensagens_chamado(id: i32, segundo_plano: Option<bool>) -> R
     .map_err(super::operator_errors::mapear_erro_sql)
 }
 
+// ─── Respostas da thread, resposta pelo app e encerramento ─────────────
+
+/// Texto do Slack para mostrar no AutoOS: tira o rodapé "Sent using <@app>", menções e marcações
+/// de canal, troca links pelo texto deles, desfaz os escapes e troca os emojis mais comuns.
+/// Negrito (`*x*`) e itálico (`_x_`) ficam: a tela sabe mostrar.
+pub(crate) fn limpar_texto_slack(texto: &str) -> String {
+    let mut base = texto.trim_end();
+    if let Some(pos) = base.rfind("*Sent using*") {
+        let resto = base[pos + "*Sent using*".len()..].trim();
+        if resto.starts_with("<@") && resto.ends_with('>') && resto.matches('>').count() == 1 {
+            base = base[..pos].trim_end();
+        }
+    }
+    let mut saida = String::with_capacity(base.len());
+    let mut resto = base;
+    while let Some(inicio) = resto.find('<') {
+        saida.push_str(&resto[..inicio]);
+        let depois = &resto[inicio + 1..];
+        match depois.find('>') {
+            Some(fim) => {
+                let dentro = &depois[..fim];
+                let (alvo, rotulo) = dentro.split_once('|').map_or((dentro, None), |(a, r)| (a, Some(r)));
+                if alvo.starts_with('#') {
+                    saida.push('#');
+                    saida.push_str(rotulo.unwrap_or("canal"));
+                } else if !(alvo.starts_with('@') || alvo.starts_with('!')) {
+                    saida.push_str(rotulo.unwrap_or(alvo));
+                }
+                resto = &depois[fim + 1..];
+            }
+            None => {
+                saida.push('<');
+                resto = depois;
+            }
+        }
+    }
+    saida.push_str(resto);
+    let mut saida = saida.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
+    for (codigo, emoji) in [
+        (":slightly_smiling_face:", "🙂"), (":smile:", "😄"), (":blush:", "😊"), (":wink:", "😉"),
+        (":+1:", "👍"), (":thumbsup:", "👍"), (":pray:", "🙏"), (":white_check_mark:", "✅"),
+        (":heavy_check_mark:", "✔️"), (":warning:", "⚠️"), (":x:", "❌"), (":sos:", "🆘"),
+        (":wave:", "👋"), (":eyes:", "👀"), (":tada:", "🎉"), (":point_right:", "👉"),
+    ] {
+        saida = saida.replace(codigo, emoji);
+    }
+    saida.lines().map(str::trim_end).collect::<Vec<_>>().join("\n").trim().to_string()
+}
+
+/// Resposta que veio da thread, já pronta para gravar.
+#[derive(Debug, PartialEq)]
+pub(crate) struct RespostaDaThread {
+    pub ts: String,
+    pub usuario: Option<String>,
+    pub texto: String,
+    pub automatica: bool,
+}
+
+/// Mensagem da thread que entra na conversa: não é a abertura, não é do nosso bot (a pessoa já
+/// tem as próprias mensagens e os prints), e tem texto ou anexo.
+pub(crate) fn resposta_da_thread(mensagem: &Value, thread_ts: &str, bot_proprio: Option<&str>) -> Option<RespostaDaThread> {
+    let ts = mensagem.get("ts")?.as_str()?;
+    if ts == thread_ts {
+        return None;
+    }
+    let bot_id = mensagem.get("bot_id").and_then(Value::as_str);
+    if bot_id.is_some() && bot_id == bot_proprio {
+        return None;
+    }
+    if matches!(
+        mensagem.get("subtype").and_then(Value::as_str),
+        Some("channel_join" | "channel_leave" | "message_deleted" | "message_changed" | "tombstone")
+    ) {
+        return None;
+    }
+    let mut texto = limpar_texto_slack(mensagem.get("text").and_then(Value::as_str).unwrap_or(""));
+    let tem_anexo = mensagem.get("files").and_then(Value::as_array).is_some_and(|f| !f.is_empty());
+    if texto.is_empty() {
+        if !tem_anexo {
+            return None;
+        }
+        texto = "(Enviou um anexo. Veja no Slack.)".to_string();
+    }
+    Some(RespostaDaThread {
+        ts: ts.to_string(),
+        usuario: mensagem.get("user").and_then(Value::as_str).map(str::to_string),
+        texto: texto.chars().take(MAX_TEXTO).collect(),
+        // Bot ou app (ex.: o atendente automático responde "em nome" de um usuário, via app).
+        automatica: bot_id.is_some() || mensagem.get("app_id").and_then(Value::as_str).is_some(),
+    })
+}
+
+static BOT_PROPRIO: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+static NOMES_SLACK: std::sync::Mutex<Option<std::collections::HashMap<String, Option<String>>>> = std::sync::Mutex::new(None);
+
+async fn bot_proprio(client: &Client, token: &str) -> Option<String> {
+    if let Some(id) = BOT_PROPRIO.lock().ok().and_then(|g| g.clone()) {
+        return Some(id);
+    }
+    let resposta = slack_post(client, token, "auth.test", &json!({})).await.ok()?;
+    let id = resposta.get("bot_id").and_then(Value::as_str)?.to_string();
+    if let Ok(mut guarda) = BOT_PROPRIO.lock() {
+        *guarda = Some(id.clone());
+    }
+    Some(id)
+}
+
+/// Nome de quem respondeu. Precisa do escopo `users:read` no app do Slack; sem ele, `None`
+/// (a tela mostra "Suporte"). Fica guardado enquanto o app estiver aberto.
+async fn nome_no_slack(client: &Client, token: &str, usuario: &str) -> Option<String> {
+    if let Some(nome) = NOMES_SLACK.lock().ok().and_then(|g| g.as_ref().and_then(|m| m.get(usuario).cloned())) {
+        return nome;
+    }
+    let nome = client
+        .get(format!("{}/users.info", api_base()))
+        .bearer_auth(token)
+        .query(&[("user", usuario)])
+        .send()
+        .await
+        .ok()?
+        .json::<Value>()
+        .await
+        .ok()
+        .filter(|r| r.get("ok").and_then(Value::as_bool) == Some(true))
+        .and_then(|r| {
+            let perfil = r.get("user")?.get("profile")?;
+            ["display_name", "real_name"]
+                .iter()
+                .filter_map(|campo| perfil.get(*campo).and_then(Value::as_str))
+                .map(str::trim)
+                .find(|nome| !nome.is_empty())
+                .map(|nome| nome.chars().take(80).collect::<String>())
+        });
+    if let Ok(mut guarda) = NOMES_SLACK.lock() {
+        guarda.get_or_insert_with(Default::default).insert(usuario.to_string(), nome.clone());
+    }
+    nome
+}
+
+#[derive(Debug, Serialize)]
+pub struct RespostaNova {
+    pub chamado_id: i32,
+    pub autor_nome: Option<String>,
+    pub texto: String,
+    pub automatica: bool,
+}
+
+/// Busca na thread de cada chamado aberto do perfil as respostas que ainda não estão no banco.
+/// Chamado em segundo plano (a cada poucos segundos): não renova a sessão. Devolve só o que
+/// entrou agora, para o aviso; os outros computadores veem pela atualização ao vivo.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<RespostaNova>, String> {
+    let perfil = perfil_da_leitura(segundo_plano)?;
+    let Some(token) = token_suporte() else { return Ok(Vec::new()) };
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    let abertos: Vec<(i32, String, String)> = sqlx::query_as(
+        "SELECT id, slack_canal, slack_thread_ts FROM suporte_chamados
+         WHERE empresa_id = $1 AND profile_id = $2 AND situacao = 'aberto'
+           AND slack_canal IS NOT NULL AND slack_thread_ts IS NOT NULL
+           AND criado_em > NOW() - INTERVAL '30 days'
+         ORDER BY id DESC LIMIT 10",
+    )
+    .bind(empresa_id)
+    .bind(perfil.id)
+    .fetch_all(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    if abertos.is_empty() {
+        return Ok(Vec::new());
+    }
+    let client = cliente_slack()?;
+    let bot = bot_proprio(&client, &token).await;
+    let mut novas = Vec::new();
+    for (chamado_id, canal, thread_ts) in abertos {
+        let resposta = client
+            .get(format!("{}/conversations.replies", api_base()))
+            .bearer_auth(&token)
+            .query(&[("channel", canal.as_str()), ("ts", thread_ts.as_str()), ("limit", "200")])
+            .send()
+            .await
+            .map_err(|e| format!("Sem conexão com o Slack: {e}"))?
+            .json::<Value>()
+            .await
+            .map_err(|e| format!("Resposta inválida do Slack: {e}"))?;
+        let resposta = conferir(resposta, "conversations.replies")?;
+        let mensagens = resposta.get("messages").and_then(Value::as_array).cloned().unwrap_or_default();
+        let mut entrou = false;
+        for mensagem in &mensagens {
+            let Some(item) = resposta_da_thread(mensagem, &thread_ts, bot.as_deref()) else { continue };
+            let ja_existe: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM suporte_mensagens WHERE chamado_id = $1 AND slack_ts = $2)")
+                .bind(chamado_id)
+                .bind(&item.ts)
+                .fetch_one(&pool)
+                .await
+                .map_err(super::operator_errors::mapear_erro_sql)?;
+            if ja_existe {
+                continue;
+            }
+            let nome = match item.usuario.as_deref() {
+                Some(usuario) => nome_no_slack(&client, &token, usuario).await,
+                None => None,
+            };
+            let inserida: Option<i32> = sqlx::query_scalar(
+                "INSERT INTO suporte_mensagens (empresa_id, chamado_id, autor, autor_nome, texto, automatica, slack_ts, criado_em)
+                 VALUES ($1, $2, 'suporte', $3, $4, $5, $6, COALESCE(to_timestamp(NULLIF($6, '')::DOUBLE PRECISION), NOW()))
+                 ON CONFLICT (chamado_id, slack_ts) DO NOTHING
+                 RETURNING id",
+            )
+            .bind(empresa_id)
+            .bind(chamado_id)
+            .bind(&nome)
+            .bind(&item.texto)
+            .bind(item.automatica)
+            .bind(&item.ts)
+            .fetch_optional(&pool)
+            .await
+            .map_err(super::operator_errors::mapear_erro_sql)?;
+            if inserida.is_some() {
+                entrou = true;
+                novas.push(RespostaNova { chamado_id, autor_nome: nome, texto: item.texto, automatica: item.automatica });
+            }
+        }
+        if entrou {
+            sqlx::query("UPDATE suporte_chamados SET atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2")
+                .bind(chamado_id)
+                .bind(empresa_id)
+                .execute(&pool)
+                .await
+                .map_err(super::operator_errors::mapear_erro_sql)?;
+        }
+    }
+    Ok(novas)
+}
+
+/// Chamado aberto do perfil da sessão, com o que é preciso para escrever na thread.
+async fn thread_do_chamado(pool: &sqlx::PgPool, empresa_id: i32, profile_id: i32, id: i32) -> Result<(String, String, String), String> {
+    let linha: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT situacao, slack_canal, slack_thread_ts FROM suporte_chamados WHERE id = $1 AND empresa_id = $2 AND profile_id = $3",
+    )
+    .bind(id)
+    .bind(empresa_id)
+    .bind(profile_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    let (situacao, canal, thread_ts) = linha.ok_or("Chamado não encontrado.")?;
+    let (Some(canal), Some(thread_ts)) = (canal, thread_ts) else {
+        return Err("Este chamado não chegou ao Slack. Abra um novo.".to_string());
+    };
+    Ok((situacao, canal, thread_ts))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResponderChamadoInput {
+    pub id: i32,
+    pub texto: String,
+    #[serde(default)]
+    pub imagens: Vec<ImagemChamado>,
+}
+
+/// Responde na thread do chamado, pelo AutoOS. Só o dono do chamado e só com ele aberto.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn responder_chamado_suporte(input: ResponderChamadoInput) -> Result<ChamadoSuporte, String> {
+    let perfil = require_sensitive_access()?;
+    let texto = input.texto.trim().to_string();
+    if texto.is_empty() || texto.chars().count() > MAX_TEXTO {
+        return Err("Escreva a mensagem (até 4000 caracteres).".to_string());
+    }
+    let imagens = decodificar_imagens(&input.imagens)?;
+    let token = token_suporte().ok_or("Suporte não configurado neste computador. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let (situacao, canal, thread_ts) = thread_do_chamado(&pool, empresa_id, perfil.id, input.id).await?;
+    if situacao != "aberto" {
+        return Err("Este chamado já foi resolvido. Abra um novo para outro assunto.".to_string());
+    }
+    let client = cliente_slack()?;
+    let postado = slack_post(&client, &token, "chat.postMessage", &json!({ "channel": canal, "thread_ts": thread_ts, "text": texto })).await?;
+    let ts = postado.get("ts").and_then(Value::as_str).ok_or("Slack não devolveu a mensagem.")?.to_string();
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    sqlx::query(
+        "INSERT INTO suporte_mensagens (empresa_id, chamado_id, autor, autor_nome, texto, slack_ts) VALUES ($1, $2, 'pessoa', $3, $4, $5)
+         ON CONFLICT (chamado_id, slack_ts) DO NOTHING",
+    )
+    .bind(empresa_id)
+    .bind(input.id)
+    .bind(&perfil.nome)
+    .bind(&texto)
+    .bind(&ts)
+    .execute(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    sqlx::query("UPDATE suporte_chamados SET atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2")
+        .bind(input.id)
+        .bind(empresa_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    for (nome, bytes) in imagens {
+        if let Err(erro) = slack_enviar_arquivo(&client, &token, &canal, &thread_ts, &nome, bytes).await {
+            error!("Print da resposta do chamado #{} não foi enviado: {}", input.id, erro);
+            let _ = slack_post(
+                &client,
+                &token,
+                "chat.postMessage",
+                &json!({ "channel": canal, "thread_ts": thread_ts, "text": format!("(Um print não pôde ser enviado: {erro})") }),
+            )
+            .await;
+        }
+    }
+    buscar_chamado(&pool, empresa_id, perfil.id, input.id).await
+}
+
+/// Texto que vai para a thread quando a pessoa responde "Resolveu" ou "Não resolveu" no AutoOS.
+/// Sem menção a ninguém: quem acompanha o canal decide.
+pub(crate) fn texto_do_retorno(resolvido: bool, perfil: &str) -> String {
+    if resolvido {
+        format!("✅ {perfil} marcou no AutoOS que o problema foi resolvido. Chamado encerrado.")
+    } else {
+        format!("↩️ {perfil} disse no AutoOS que o problema continua.")
+    }
+}
+
+/// "Resolveu": encerra o chamado e avisa na thread. "Não resolveu": mantém aberto e avisa na
+/// thread (a resposta fica na conversa, como as outras mensagens da pessoa).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn retorno_chamado_suporte(id: i32, resolvido: bool) -> Result<ChamadoSuporte, String> {
+    let perfil = require_sensitive_access()?;
+    let token = token_suporte().ok_or("Suporte não configurado neste computador. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let (situacao, canal, thread_ts) = thread_do_chamado(&pool, empresa_id, perfil.id, id).await?;
+    if situacao != "aberto" {
+        return Err("Este chamado já foi resolvido.".to_string());
+    }
+    let texto = texto_do_retorno(resolvido, &perfil.nome);
+    let client = cliente_slack()?;
+    let postado = slack_post(&client, &token, "chat.postMessage", &json!({ "channel": canal, "thread_ts": thread_ts, "text": texto })).await?;
+    let ts = postado.get("ts").and_then(Value::as_str).map(str::to_string);
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    sqlx::query(
+        "INSERT INTO suporte_mensagens (empresa_id, chamado_id, autor, autor_nome, texto, slack_ts) VALUES ($1, $2, 'pessoa', $3, $4, $5)
+         ON CONFLICT (chamado_id, slack_ts) DO NOTHING",
+    )
+    .bind(empresa_id)
+    .bind(id)
+    .bind(&perfil.nome)
+    .bind(if resolvido { "Resolveu." } else { "Não resolveu." })
+    .bind(&ts)
+    .execute(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    sqlx::query(
+        "UPDATE suporte_chamados SET situacao = CASE WHEN $3 THEN 'resolvido' ELSE situacao END, atualizado_em = NOW()
+         WHERE id = $1 AND empresa_id = $2",
+    )
+    .bind(id)
+    .bind(empresa_id)
+    .bind(resolvido)
+    .execute(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    buscar_chamado(&pool, empresa_id, perfil.id, id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::{canal_valido, conferir, decodificar_imagens, montar_mensagem, ImagemChamado};
     use serde_json::json;
+
+    #[test]
+    fn texto_do_slack_fica_legivel() {
+        use super::limpar_texto_slack;
+        assert_eq!(
+            limpar_texto_slack("Olá! Recebi o chamado #101. :slightly_smiling_face: *Sent using* <@U0CE678ML79>"),
+            "Olá! Recebi o chamado #101. 🙂"
+        );
+        assert_eq!(limpar_texto_slack("Veja <https://x.com/a|o guia> e <https://y.com>"), "Veja o guia e https://y.com");
+        assert_eq!(limpar_texto_slack("<@U123> confere &lt;isto&gt; &amp; aquilo em <#C1|suporte>"), "confere <isto> & aquilo em #suporte");
+        assert_eq!(limpar_texto_slack("_não envie_ ainda\n*1.* reabra"), "_não envie_ ainda\n*1.* reabra");
+        // "Sent using" no meio do texto não é rodapé.
+        assert_eq!(limpar_texto_slack("*Sent using* o app, segue"), "*Sent using* o app, segue");
+    }
+
+    #[test]
+    fn so_entram_respostas_dos_outros() {
+        use super::resposta_da_thread;
+        let thread = "1795260633.779869";
+        let abertura = json!({"ts": thread, "bot_id": "B0CKWBZTPJM", "text": ":sos: *Chamado #101*"});
+        let nosso_print = json!({"ts": "1795260635.1", "bot_id": "B0CKWBZTPJM", "text": "", "files": [{"id": "F1"}]});
+        let erykah = json!({"ts": "1795260665.590929", "user": "U0CE63D6T2B", "app_id": "A08SKDT6QUW",
+            "text": "Recebi o chamado. *Sent using* <@U0CE678ML79>"});
+        let humano = json!({"ts": "1795260700.1", "user": "U0CFFDEPXDW", "text": "Vou olhar, Paulo aqui."});
+        let so_anexo = json!({"ts": "1795260701.1", "user": "U0CFFDEPXDW", "text": "", "files": [{"id": "F2"}]});
+        let entrou = json!({"ts": "1795260702.1", "user": "U9", "subtype": "channel_join", "text": "entrou"});
+        assert!(resposta_da_thread(&abertura, thread, Some("B0CKWBZTPJM")).is_none());
+        assert!(resposta_da_thread(&nosso_print, thread, Some("B0CKWBZTPJM")).is_none());
+        assert!(resposta_da_thread(&entrou, thread, Some("B0CKWBZTPJM")).is_none());
+        let r = resposta_da_thread(&erykah, thread, Some("B0CKWBZTPJM")).unwrap();
+        assert_eq!((r.texto.as_str(), r.automatica, r.usuario.as_deref()), ("Recebi o chamado.", true, Some("U0CE63D6T2B")));
+        let r = resposta_da_thread(&humano, thread, Some("B0CKWBZTPJM")).unwrap();
+        assert!(!r.automatica);
+        assert_eq!(resposta_da_thread(&so_anexo, thread, Some("B0CKWBZTPJM")).unwrap().texto, "(Enviou um anexo. Veja no Slack.)");
+    }
+
+    #[test]
+    fn retorno_sem_mencao() {
+        use super::texto_do_retorno;
+        assert!(!texto_do_retorno(true, "Ana").contains("<@"));
+        assert!(texto_do_retorno(false, "Ana").contains("continua"));
+    }
 
     #[test]
     fn canal_do_slack() {

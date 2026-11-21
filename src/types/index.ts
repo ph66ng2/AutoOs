@@ -1429,6 +1429,20 @@ export interface ChamadoSuporte {
   respostas: number;
 }
 
+/** Resposta da thread do Slack que acabou de entrar (para o aviso). */
+export interface RespostaNovaSuporte {
+  chamado_id: number;
+  autor_nome: string | null;
+  texto: string;
+  automatica: boolean;
+}
+
+export interface ResponderChamadoInput {
+  id: number;
+  texto: string;
+  imagens: { nome: string; base64: string }[];
+}
+
 export interface MensagemSuporte {
   id: number;
   autor: "pessoa" | "suporte";

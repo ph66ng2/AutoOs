@@ -103,6 +103,8 @@ import type {
   ConfigSuporte,
   ChamadoSuporte,
   MensagemSuporte,
+  RespostaNovaSuporte,
+  ResponderChamadoInput,
   AbrirChamadoInput,
 } from "@/types";
 
@@ -987,6 +989,21 @@ export const db = {
   },
 
   /** Conversa de um chamado → Rust: listar_mensagens_chamado */
+  /** Traz da thread do Slack as respostas novas dos chamados abertos do perfil (segundo plano) → Rust: sincronizar_suporte */
+  async sincronizarSuporte(): Promise<RespostaNovaSuporte[]> {
+    return invoke<RespostaNovaSuporte[]>("sincronizar_suporte", seSegundoPlano(true));
+  },
+
+  /** Responde na thread do chamado → Rust: responder_chamado_suporte */
+  async responderChamadoSuporte(input: ResponderChamadoInput): Promise<ChamadoSuporte> {
+    return invoke<ChamadoSuporte>("responder_chamado_suporte", { input });
+  },
+
+  /** "Resolveu" (encerra) ou "Não resolveu" (avisa na thread) → Rust: retorno_chamado_suporte */
+  async retornoChamadoSuporte(id: number, resolvido: boolean): Promise<ChamadoSuporte> {
+    return invoke<ChamadoSuporte>("retorno_chamado_suporte", { id, resolvido });
+  },
+
   async listarMensagensChamado(id: number, segundoPlano = false): Promise<MensagemSuporte[]> {
     return invoke<MensagemSuporte[]>("listar_mensagens_chamado", { id, ...seSegundoPlano(segundoPlano) });
   },

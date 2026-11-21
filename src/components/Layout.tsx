@@ -57,6 +57,7 @@ import { profileAppearance } from "@/lib/profile-appearance";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { abrirPainelAtualizacao, useAtualizacaoDisponivel } from "@/lib/atualizacao-disponivel";
 import { registrarAbrirSuporte } from "@/lib/suporte-ponte";
+import { useBuscaRespostasSuporte } from "@/hooks/useBuscaRespostasSuporte";
 
 
 interface NavItem {
@@ -160,6 +161,8 @@ export function Layout() {
     registrarAbrirSuporte((relatorioErro) => navigate("/suporte", { state: { relatorioErro, tela: window.location.pathname } }));
     return () => registrarAbrirSuporte(null);
   }, [connectionUnavailable, navigate]);
+  // Respostas do suporte (thread do Slack) com a sessão aberta e o banco conectado.
+  useBuscaRespostasSuporte(sessaoAtiva && !connectionUnavailable);
   const abrirModoBalcao = () => {
     setMobileOpen(false);
     setAppMode("counter");

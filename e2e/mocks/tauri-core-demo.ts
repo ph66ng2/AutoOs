@@ -203,6 +203,11 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
         { id: 1, autor: "pessoa", autor_nome: "Atendente", texto: "A OS do Mercado Bom Preço não salva, fica girando.", automatica: false, criado_em: agora },
         { id: 2, autor: "suporte", autor_nome: "Erykah", texto: "Isso costuma ser outro computador alterando a mesma OS. Recarregue a OS e salve de novo.", automatica: true, criado_em: agora },
       ] as T;
+    case "sincronizar_suporte":
+      return [] as T;
+    case "responder_chamado_suporte":
+    case "retorno_chamado_suporte":
+      return { id: 12, texto: "A OS do Mercado Bom Preço não salva, fica girando.", situacao: args?.resolvido ? "resolvido" : "aberto", criado_em: agora, atualizado_em: agora, respostas: 1 } as T;
     case "listar_modelos_mensagem":
       return [
         { id: 1, titulo: "Equipamento pronto", texto: "Olá, {contato}! O equipamento {equipamento} (OS {os}) está pronto para retirada.", ordem: 1, atualizado_em: agora },
