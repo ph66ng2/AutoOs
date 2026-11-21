@@ -268,6 +268,8 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
         return;
       }
       const recentes = await db.listarAlertasPortal(true, 10);
+      // Trocou de perfil enquanto a lista chegava: a resposta é do perfil anterior.
+      if (minhaGeracao !== geracao.current) return;
       const maior = recentes.reduce((max, alerta) => Math.max(max, alerta.id), 0);
       setPortalNaoLidosIds(recentes.filter((alerta) => !alerta.lidoEm).map((alerta) => alerta.id));
       // Na primeira consulta só o contador aparece; toasts são para o que chegar depois.
