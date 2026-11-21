@@ -393,8 +393,9 @@ export const db = {
     return invoke<AlertaPortal[]>("listar_alertas_portal", { apenasNaoLidos, limite });
   },
 
-  async contarAlertasPortalNaoLidos(): Promise<number> {
-    return invoke<number>("contar_alertas_portal_nao_lidos");
+  /** `aposId`: só os alertas com id maior (chegaram depois da última abertura do sino). */
+  async contarAlertasPortalNaoLidos(aposId?: number): Promise<number> {
+    return invoke<number>("contar_alertas_portal_nao_lidos", aposId != null ? { aposId } : {});
   },
 
   /** Sem `alertaId`, marca todos os não lidos da empresa ativa. */

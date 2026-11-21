@@ -39,6 +39,7 @@ import { PREFIXO_TOAST_ERRO } from "@/hooks/useNotification";
 import { cn } from "@/lib/utils";
 import { destinoDoAviso, ROTULO_ABRIR_AVISO, VISUAL_AVISO } from "@/lib/avisos-internos";
 import { notificarSistema } from "@/lib/notificacao-sistema";
+import { contarNovos, lerVistos, marcarVistos, type Vistos } from "@/lib/sino-visto";
 import type { AvisoInterno } from "@/types";
 import type { AlertaPortal } from "@/types";
 
@@ -169,8 +170,19 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const navigate = useNavigate();
   const erros = useErrosRegistrados();
   const [naoLidosPortal, setNaoLidosPortal] = useState(0);
+  /** Maior id de alerta do portal não lido: vira a marca do "visto" ao abrir o sino. */
+  const [portalMaiorId, setPortalMaiorId] = useState(0);
+  /** Alertas do portal não lidos que chegaram depois da última abertura (conta do banco). */
+  const [novosPortal, setNovosPortal] = useState(0);
+  const [vistos, setVistos] = useState<Vistos>(() => lerVistos(perfilId));
+  const vistosRef = useRef(vistos);
+  vistosRef.current = vistos;
+  /** Sobe a cada abertura do sino: conta do portal pedida antes dela não vale mais. */
+  const aberturas = useRef(0);
   const [avisos, setAvisos] = useState<AvisoInterno[]>([]);
   const avisosVistos = useRef<Set<string> | null>(null);
+  /** A lista de avisos internos já veio do banco com sucesso (falha não conta como lista vazia). */
+  const avisosCarregadosOk = useRef(false);
   /** Muda a cada troca de perfil: resposta que volta com outro número é da sessão anterior. */
   const geracao = useRef(0);
   const [aberto, setAberto] = useState(false);
@@ -184,6 +196,47 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   // Só avisos contam no número; erros do app ficam na aba Sistema (um ponto discreto no sino).
   const avisosNaoLidos = avisos.filter((aviso) => !aviso.lido).length;
   const naoLidos = (portalDesligado ? 0 : naoLidosPortal) + avisosNaoLidos;
+  // O número do sino conta só o não lido que chegou depois da última abertura (visto ≠ lido).
+  const chavesNaoLidasAvisos = avisos.filter((aviso) => !aviso.lido).map((aviso) => `aviso:${aviso.chave}`);
+  const chavesErrosNaoLidos = erros.filter((item) => !item.lido).map((item) => `erro:${item.id}`);
+  const novos = contarNovos(chavesNaoLidasAvisos, vistos) + (portalDesligado ? 0 : novosPortal);
+  const errosNovos = contarNovos(chavesErrosNaoLidos, vistos);
+  const abrirSino = () => {
+    const chaves = [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos];
+    const minhaGeracao = geracao.current;
+    aberturas.current += 1;
+    // Avisos internos ainda carregando ou com a busca falhando: as chaves já vistas ficam (a lista vazia de agora não quer
+    // dizer que foram lidas); a poda acontece numa abertura com a lista carregada.
+    const avisosCarregados = avisosCarregadosOk.current;
+    setVistos((atual) => marcarVistos(
+      perfilId,
+      atual,
+      avisosCarregados ? chaves : [...new Set([...[...atual.chaves].filter((chave) => chave.startsWith("aviso:")), ...chaves])],
+      portalMaiorId,
+    ));
+    setNovosPortal(0);
+    // A marca do portal pode estar atrasada (a lista da última consulta ainda não chegou): busca o
+    // maior não lido de agora, que é o que o painel mostra, e sobe a marca até ele.
+    if (!portalDesligado) {
+      void db.listarAlertasPortal(true, 1).then((lista) => {
+        const maior = lista[0]?.id ?? 0;
+        if (minhaGeracao !== geracao.current || maior <= vistosRef.current.portalAte) return;
+        setVistos((atual) => marcarVistos(perfilId, atual, [...atual.chaves], maior));
+      }).catch(() => undefined);
+    }
+    setAberto(true);
+  };
+  // Com o sino aberto, aviso ou erro que chega (ex.: a lista ainda carregava ao abrir) já está à
+  // vista no painel: entra no "visto" sem virar lido.
+  const chavesAbertas = [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos].join("|");
+  useEffect(() => {
+    if (!aberto || !chavesAbertas) return;
+    const chaves = chavesAbertas.split("|");
+    if (chaves.every((chave) => vistos.chaves.has(chave))) return;
+    setVistos((atual) => marcarVistos(perfilId, atual, [...new Set([...atual.chaves, ...chaves])], atual.portalAte));
+  }, [aberto, chavesAbertas, perfilId, vistos]);
+  const abrirSinoRef = useRef(abrirSino);
+  abrirSinoRef.current = abrirSino;
   const portalDesligadoRef = useRef(portalDesligado);
   portalDesligadoRef.current = portalDesligado;
   const errosAbertos = useRef<string[]>([]);
@@ -198,12 +251,15 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const verificarAvisos = useCallback(async () => {
     const minhaGeracao = geracao.current;
     let lista: AvisoInterno[] = [];
+    let ok = false;
     try {
       lista = (await db.listarAvisosInternos()) ?? [];
+      ok = true;
     } catch {
       // Sem sessão ou banco sem a migration 0053: nenhum aviso interno.
     }
     if (minhaGeracao !== geracao.current) return;
+    if (ok) avisosCarregadosOk.current = true;
     setAvisos(lista);
     const vistos = avisosVistos.current;
     const novos = vistos ? lista.filter((aviso) => !aviso.lido && !vistos.has(aviso.chave)) : [];
@@ -241,15 +297,26 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     void verificarAvisos();
     const minhaGeracao = geracao.current;
     try {
-      const total = Number(await db.contarAlertasPortalNaoLidos()) || 0;
+      const marca = vistosRef.current.portalAte;
+      const aberturaDaConsulta = aberturas.current;
+      const [total, depoisDaMarca] = await Promise.all([
+        db.contarAlertasPortalNaoLidos(),
+        db.contarAlertasPortalNaoLidos(marca),
+      ]);
       if (minhaGeracao !== geracao.current) return;
-      setNaoLidosPortal(total);
-      if (total === 0) {
+      setNaoLidosPortal(Number(total) || 0);
+      // Abriu o sino enquanto a conta chegava: ela é de antes da abertura.
+      if (marca === vistosRef.current.portalAte && aberturaDaConsulta === aberturas.current) setNovosPortal(Number(depoisDaMarca) || 0);
+      if (!total) setPortalMaiorId(0);
+      if (!total) {
         ultimoVisto.current ??= 0;
         return;
       }
       const recentes = await db.listarAlertasPortal(true, 10);
+      // Trocou de perfil enquanto a lista chegava: a resposta é do perfil anterior.
+      if (minhaGeracao !== geracao.current) return;
       const maior = recentes.reduce((max, alerta) => Math.max(max, alerta.id), 0);
+      setPortalMaiorId(recentes.filter((alerta) => !alerta.lidoEm).reduce((max, alerta) => Math.max(max, alerta.id), 0));
       // Na primeira consulta só o contador aparece; toasts são para o que chegar depois.
       if (ultimoVisto.current !== null) {
         const novos = recentes.filter((alerta) => alerta.id > (ultimoVisto.current ?? 0));
@@ -263,7 +330,7 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
               // "Ver" conta como leitura, igual a abrir pelo painel.
               void db.marcarAlertasPortalLidos(alerta.id).then(() => verificarRef.current()).catch(() => undefined);
               if (alerta.equipamentoId) abrirAtendimento(alerta.equipamentoId);
-              else setAberto(true);
+              else abrirSinoRef.current();
             });
           });
         const equipamentoIds = [...new Set(novos.map((alerta) => alerta.equipamentoId).filter((id): id is number => id != null))];
@@ -288,7 +355,14 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     geracao.current += 1;
     setAvisos([]);
     setNaoLidosPortal(0);
+    setPortalMaiorId(0);
+    setNovosPortal(0);
+    // O ref já recebe o "visto" do perfil novo: a consulta logo abaixo usa a marca dele.
+    const vistosDoPerfil = lerVistos(perfilId);
+    vistosRef.current = vistosDoPerfil;
+    setVistos(vistosDoPerfil);
     avisosVistos.current = null;
+    avisosCarregadosOk.current = false;
     ultimoVisto.current = null;
     setAberto(false);
     void verificarRef.current();
@@ -349,17 +423,17 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
         variant="ghost"
         size="icon"
         className={cn("relative h-10 w-10 rounded-lg", aberto && "bg-acc-soft text-acc-soft-foreground hover:bg-acc-soft")}
-        onClick={() => setAberto((valor) => !valor)}
+        onClick={() => (aberto ? setAberto(false) : abrirSino())}
         aria-haspopup="dialog"
         aria-expanded={aberto}
-        aria-label={naoLidos > 0 ? `Notificações: ${naoLidos} não lida(s)` : errosNaoLidos > 0 ? "Notificações: erros novos em Sistema" : "Notificações"}
+        aria-label={novos > 0 ? `Notificações: ${novos} nova(s)` : errosNovos > 0 ? "Notificações: erros novos em Sistema" : naoLidos + errosNaoLidos > 0 ? "Notificações (há itens não lidos)" : "Notificações"}
       >
         <Bell className="h-5 w-5" />
-        {naoLidos > 0 ? (
+        {novos > 0 ? (
           <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-extrabold leading-none text-primary-foreground ring-2 ring-card">
-            {naoLidos > 99 ? "99+" : naoLidos}
+            {novos > 99 ? "99+" : novos}
           </span>
-        ) : errosNaoLidos > 0 ? (
+        ) : errosNovos > 0 ? (
           <span aria-hidden="true" title="Há erros novos em Sistema" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-muted-foreground ring-2 ring-card" />
         ) : null}
       </Button>
@@ -539,11 +613,6 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
           </button>
         )}
       </div>
-      {aba === "sistema" && (
-        <p className="mx-4 mb-2 rounded-lg bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-          “Copiar relatório” leva código, descrição técnica e referência do log — é o que você manda para o suporte.
-        </p>
-      )}
       <div className="flex-1 overflow-y-auto">
         {erro && aba === "avisos" && <p className="px-4 py-2 text-sm text-destructive" role="alert">{erro}</p>}
         {loading && itens.length === 0 && <p className="px-4 py-2 text-sm text-muted-foreground">Carregando…</p>}
