@@ -160,9 +160,15 @@ import {
 import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
 import { AnteriorEmAtendimentoAviso } from "@/components/equipamentos/AnteriorEmAtendimentoAviso";
+import { AvisoSerieRepetida } from "@/components/equipamentos/AvisoSerieRepetida";
+import { useGarantiaServicos } from "@/hooks/useGarantiaServicos";
 import {
   atendimentoEncerrado,
+  linhaRetornoGarantia,
   MENSAGEM_DADOS_PREENCHIDOS,
+  preencherVaziosComAnterior,
+  retornoNaGarantia,
+  ultimaPassagem,
   usarEquipamentoAnteriorNoCadastro,
 } from "@/pages/equipamentos/equipamento-anterior";
 import {
@@ -219,7 +225,6 @@ import { classeDestaque } from "@/lib/ao-vivo";
 import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { cn } from "@/lib/utils";
 import { quandoRascunho, useRascunho } from "@/hooks/useRascunho";
-import { HistoricoDoSerial } from "@/components/equipamentos/HistoricoDoSerial";
 import { BotaoCopiar } from "@/components/ui/botao-copiar";
 import { AcoesEmLote, type RelatorioLote } from "@/components/equipamentos/AcoesEmLote";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -720,6 +725,7 @@ export default function Equipamentos() {
    */
   const consultaSerieSeq = useRef(0);
   const novaEntradaAberta = dialogOpen && !editando;
+  const garantiaServicos = useGarantiaServicos();
   // Nova entrada não pergunta ao sair: o rascunho guarda. A edição pela metade pergunta
   // (pelo mesmo aviso da verificação: o roteador só confere o último bloqueio registrado).
   // Cliente, contato, técnico e fotos ficam fora do react-hook-form: entram na conta à parte.
@@ -1200,6 +1206,36 @@ export default function Equipamentos() {
     toast.success(MENSAGEM_DADOS_PREENCHIDOS, { duration: 3000 });
   }
 
+  /**
+   * "Sim, nova manutenção" (ou "Começar outra mesmo assim") no aviso de série repetida: confirma
+   * o novo ciclo e completa o que está vazio com a última passagem. Cliente e contato só entram
+   * se ainda não foram escolhidos.
+   */
+  function usarUltimaPassagem(ultima: Equipamento) {
+    preencherVaziosComAnterior(form, ultima);
+    if (!clienteVinculado && (ultima.cliente_id || ultima.cliente_nome)) {
+      const seq = consultaSerieSeq.current;
+      setClienteVinculado({ id: ultima.cliente_id, empresa_id: ultima.empresa_id, nome: ultima.cliente_nome, telefone: ultima.cliente_telefone || "", email: ultima.cliente_email || undefined } as Cliente);
+      if (ultima.responsavel_contato_id) {
+        setResponsavelVinculado({
+          id: ultima.responsavel_contato_id,
+          empresa_id: ultima.empresa_id || 0,
+          cliente_id: ultima.cliente_id || 0,
+          nome: ultima.responsavel_nome || "Responsável pelo equipamento",
+          email: ultima.responsavel_email,
+          telefone: ultima.responsavel_telefone,
+          ativo: true,
+        });
+      }
+      if (ultima.cliente_id) {
+        db.buscarCliente(ultima.cliente_id)
+          .then((c) => { if (c && seq === consultaSerieSeq.current) setClienteVinculado(c); })
+          .catch(() => undefined);
+      }
+    }
+    setConfirmouNovoCiclo(true);
+  }
+
   async function handleSerialInput(value: string) {
     const serial = value.trim();
     if (serial.length < 2) { setSugestoesSerial([]); setMostrarSugestoes(false); return; }
@@ -1656,7 +1692,12 @@ export default function Equipamentos() {
       const observacoesSemTecnico = removerTecnicoInicialDasObservacoes(data.observacoes || "");
       const emailTecnicoInicial = emailDoTecnico(tecnicoNovoEquipamento);
       const linhaTecnicoInicial = `Técnico inicial: ${tecnicoNovoEquipamento}${emailTecnicoInicial ? ` (${emailTecnicoInicial})` : ""}`;
-      const observacoesComTecnico = [linhaTecnicoInicial, observacoesSemTecnico]
+      // Retorno dentro da garantia: a OS nova registra de onde veio (só avisa; ninguém marca garantia sozinho).
+      const ultimaAnterior = !editando && confirmouNovoCiclo ? ultimaPassagem(registrosAnteriores) : null;
+      const linhaGarantia = ultimaAnterior && garantiaServicos.dias != null && retornoNaGarantia(ultimaAnterior, garantiaServicos.dias, todayLocalIsoDate())
+        ? linhaRetornoGarantia(ultimaAnterior, garantiaServicos.dias)
+        : "";
+      const observacoesComTecnico = [linhaTecnicoInicial, linhaGarantia && !observacoesSemTecnico.includes(linhaGarantia) ? linhaGarantia : "", observacoesSemTecnico]
         .filter(Boolean)
         .join("\n");
 
@@ -3553,16 +3594,6 @@ export default function Equipamentos() {
                     )}
                   </div>
                   <FormValidationError message={form.formState.errors.serial_number?.message} />
-                  {registrosAnteriores.length > 0 && (
-                    <HistoricoDoSerial
-                      registros={registrosAnteriores}
-                      confirmado={confirmouNovoCiclo}
-                      onConfirmar={setConfirmouNovoCiclo}
-                      // Fecha a Nova entrada antes (o rascunho guarda o que foi digitado): a OS
-                      // anterior nunca abre por baixo de um cadastro em andamento.
-                      onAbrir={(eq) => { fecharFormulario(false); avisoEdicao.liberarProximaSaida(); navigate(`/equipamentos/${eq.id}`); }}
-                    />
-                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Patrimônio</Label>
@@ -3570,6 +3601,18 @@ export default function Equipamentos() {
                   <FormValidationError message={form.formState.errors.patrimonio?.message} />
                 </div>
               </div>
+              {registrosAnteriores.length > 0 && (
+                <AvisoSerieRepetida
+                  registros={registrosAnteriores}
+                  confirmado={confirmouNovoCiclo}
+                  garantiaDias={garantiaServicos.dias}
+                  hojeIso={todayLocalIsoDate()}
+                  onNovaManutencao={usarUltimaPassagem}
+                  // Fecha a Nova entrada antes (o rascunho guarda o que foi digitado): a OS
+                  // anterior nunca abre por baixo de um cadastro em andamento.
+                  onAbrir={(eq) => { fecharFormulario(false); avisoEdicao.liberarProximaSaida(); navigate(`/equipamentos/${eq.id}`); }}
+                />
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Marca *</Label>

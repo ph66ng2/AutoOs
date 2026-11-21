@@ -24,6 +24,10 @@ import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import { profileAppearance, type ProfileTheme } from "@/lib/profile-appearance";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { useGarantiaServicos } from "@/hooks/useGarantiaServicos";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { SENSITIVE_PERMISSIONS } from "@/types";
 
 /**
  * Configurações › Geral, aberta a qualquer perfil. Tudo aqui é deste computador (localStorage),
@@ -32,7 +36,8 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
  */
 export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
   const navigate = useNavigate();
-  const { status, refreshStatus } = useSensitiveAccess();
+  const { status, refreshStatus, hasPermission } = useSensitiveAccess();
+  const administra = hasPermission(SENSITIVE_PERMISSIONS.MANAGE_PROFILES);
   const { setTheme } = useTheme();
   const perfil = status?.unlocked ? status.profiles.find((item) => item.id === status.active_profile_id) : undefined;
   const [tema, setTema] = useState<ProfileTheme | null>(null);
@@ -162,6 +167,8 @@ export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
         </CardContent>
       </Card>
 
+      {administra && <GarantiaDaEmpresa />}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Versão do AutoOS</CardTitle>
@@ -186,6 +193,57 @@ export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
         </CardContent>
       </Card>
     </TabsContent>
+  );
+}
+
+/** Configuração da empresa (não deste computador): só administrador vê e altera. */
+function GarantiaDaEmpresa() {
+  const { dias, salvar } = useGarantiaServicos();
+  const [valor, setValor] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => {
+    if (dias != null) setValor(String(dias));
+  }, [dias]);
+  const numero = Number(valor);
+  const valido = valor.trim() !== "" && Number.isInteger(numero) && numero >= 0 && numero <= 3650;
+
+  async function gravar() {
+    if (!valido) return;
+    setSalvando(true);
+    try {
+      await salvar(numero);
+      toast.success("Prazo de garantia salvo.");
+    } catch (causa) {
+      toast.error(mensagemVisivelAoOperador(causa) ?? "Não foi possível salvar o prazo de garantia.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Empresa</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Linha titulo="Garantia dos serviços" detalhe="Contada da entrega. A Nova entrada avisa quando a impressora volta dentro dela.">
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="Garantia dos serviços em dias"
+              inputMode="numeric"
+              className="h-9 w-20 text-right tabular-nums"
+              value={valor}
+              disabled={dias == null || salvando}
+              onChange={(evento) => setValor(evento.target.value.replace(/\D/g, "").slice(0, 4))}
+            />
+            <span className="text-sm text-muted-foreground">dias</span>
+            <Button type="button" size="sm" variant="outline" disabled={!valido || numero === dias || salvando} onClick={() => void gravar()}>
+              {salvando ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
+        </Linha>
+      </CardContent>
+    </Card>
   );
 }
 
