@@ -143,6 +143,7 @@ import { carregarProdutosOrcamento, LABEL_CONFIRMAR_OS_GARANTIA, MENSAGEM_CONFIR
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
+  imagensDaAreaDeTransferencia,
   bytesParaDataUrl,
   imagemPersistidaParaDraft,
   imagensPersistidasIguais,
@@ -1093,9 +1094,22 @@ export default function Equipamentos() {
     event: React.ChangeEvent<HTMLInputElement>,
     categoria: EquipamentoImagemCategoria,
   ) {
-    const sequenciaEdicao = fotoEdicaoSeq.current;
     const arquivos = Array.from(event.target.files || []);
     event.target.value = "";
+    await adicionarImagensFormulario(arquivos, categoria);
+  }
+
+  /** Ctrl+V na Nova entrada ou na edição: imagem colada entra nas fotos da entrada. */
+  function colarNoFormulario(evento: React.ClipboardEvent) {
+    const arquivos = imagensDaAreaDeTransferencia(evento.clipboardData);
+    if (arquivos.length === 0) return;
+    evento.preventDefault();
+    if (salvando || carregandoImagensFormulario) return;
+    void adicionarImagensFormulario(arquivos, "ENTRADA");
+  }
+
+  async function adicionarImagensFormulario(arquivos: File[], categoria: EquipamentoImagemCategoria) {
+    const sequenciaEdicao = fotoEdicaoSeq.current;
     if (arquivos.length === 0) return;
 
     const vagasRestantes = LIMITE_IMAGENS_POR_EQUIPAMENTO - imagensFormulario.length;
@@ -1269,6 +1283,43 @@ export default function Equipamentos() {
           : img
       ))
     );
+  }
+
+  /**
+   * Ctrl+V num bloco da aba Fotos dos detalhes: a imagem colada entra naquela categoria. Grava
+   * pelo mesmo caminho da entrega (fotos atuais + novas, conferindo que ninguém mexeu antes).
+   */
+  const [colandoFotos, setColandoFotos] = useState(false);
+  async function colarNosDetalhes(evento: React.ClipboardEvent, categoria: EquipamentoImagemCategoria) {
+    const arquivos = imagensDaAreaDeTransferencia(evento.clipboardData);
+    if (arquivos.length === 0 || !selecionado?.id) return;
+    evento.preventDefault();
+    if (colandoFotos) return;
+    const equipamentoId = selecionado.id;
+    setColandoFotos(true);
+    try {
+      const atuais = await carregarImagensComPreview(equipamentoId);
+      const vagas = LIMITE_IMAGENS_POR_EQUIPAMENTO - atuais.length;
+      if (vagas <= 0) {
+        showError("Equipamentos", "Colar foto", new Error(`Limite de ${LIMITE_IMAGENS_POR_EQUIPAMENTO} fotos por equipamento já atingido.`));
+        return;
+      }
+      const novas = await Promise.all(arquivos.slice(0, vagas).map((arquivo, indice) =>
+        arquivoParaImagemEquipamento(arquivo, filtrarImagensPorCategoria(atuais, categoria).length + indice, categoria)));
+      const payload: EquipamentoImagemInput[] = normalizarOrdemPorCategoria([...atuais, ...novas])
+        .map(({ local_id, preview_url, ...imagem }) => imagem);
+      await db.substituirImagensEquipamento(
+        equipamentoId,
+        payload,
+        atuais.flatMap((foto) => typeof foto.id === "number" ? [foto.id] : []),
+      );
+      if (selecionadoIdRef.current === equipamentoId) setImagensDetalhes(await carregarImagensComPreview(equipamentoId));
+      success("Equipamentos", novas.length === 1 ? "Foto colada." : `${novas.length} fotos coladas.`, "Colar foto");
+    } catch (err) {
+      showError("Equipamentos", "Colar foto", err);
+    } finally {
+      setColandoFotos(false);
+    }
   }
 
   async function removerImagemDetalhes(imagem: EquipamentoImagemDraft) {
@@ -3524,7 +3575,7 @@ export default function Equipamentos() {
               {editando && <StatusBadge status={editando.status} completo />}
             </div>
           </div>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-1 flex-col gap-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} onPaste={colarNoFormulario} className="flex flex-1 flex-col gap-4">
             <div className="space-y-6 rounded-2xl border bg-card p-5 md:p-6">
             {!editando && rascunhoRecuperadoEm && (
               <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-status-work-bg px-4 py-3 text-sm">
@@ -3742,7 +3793,7 @@ export default function Equipamentos() {
                          <div className="flex items-center gap-2">
                           <div>
                             <Label htmlFor="equipamento-imagens-entrada">Fotos da entrada</Label>
-                            <p className="text-xs text-muted-foreground">Use para registrar avarias e estado no recebimento.</p>
+                            <p className="text-xs text-muted-foreground">Avarias e estado no recebimento. Ctrl+V cola uma imagem.</p>
                           </div>
                           <div className="flex flex-col gap-1">
                             <Button
@@ -3801,7 +3852,7 @@ export default function Equipamentos() {
                     ) : (
                       <GaleriaImagensEquipamento
                         imagens={filtrarImagensPorCategoria(imagensFormulario, "ENTRADA")}
-                        mensagemVazia="Nenhuma foto cadastrada para registrar o estado de entrada deste equipamento."
+                        mensagemVazia="Nenhuma foto ainda. Ctrl+V cola uma imagem copiada."
                         onRemover={removerImagemFormulario}
                         onLegendaChange={atualizarLegendaImagem}
                       />
@@ -3946,7 +3997,13 @@ export default function Equipamentos() {
                   <TabsContent value="fotos" className="mt-0 p-5">
                     <div className="grid gap-4 lg:grid-cols-2">
                       {(["ENTRADA", "SAIDA"] as const).map((categoria) => (
-                        <div key={categoria} className="space-y-2">
+                        <div
+                          key={categoria}
+                          tabIndex={0}
+                          aria-label={categoria === "ENTRADA" ? "Fotos da entrada (Ctrl+V cola uma imagem)" : "Fotos da saída (Ctrl+V cola uma imagem)"}
+                          onPaste={(evento) => void colarNosDetalhes(evento, categoria)}
+                          className="space-y-2 rounded-xl p-1 -m-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-semibold">{categoria === "ENTRADA" ? "Fotos da entrada" : "Fotos da saída"}</p>
                             <div className="flex items-center gap-1">
@@ -3976,8 +4033,8 @@ export default function Equipamentos() {
                             <GaleriaImagensEquipamento
                               imagens={filtrarImagensPorCategoria(imagensDetalhes, categoria)}
                               mensagemVazia={categoria === "ENTRADA"
-                                ? "Nenhuma foto de entrada foi registrada para este equipamento."
-                                : "Nenhuma foto de saída foi registrada para este equipamento."}
+                                ? "Nenhuma foto da entrada. Clique aqui e use Ctrl+V para colar uma imagem."
+                                : "Nenhuma foto da saída. Clique aqui e use Ctrl+V para colar uma imagem."}
                               onVisualizar={setImagemExpandida}
                               onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
                               onRemover={(imagem) => void removerImagemDetalhes(imagem)}
