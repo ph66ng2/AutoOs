@@ -103,6 +103,25 @@ describe("ConfiguracoesTabGeral", () => {
     expect(screen.getByRole("radio", { name: "Claro" })).toHaveAttribute("aria-checked", "true");
   });
 
+  it("depois de salvar, o controle segue o tema do perfil ativo (troca de perfil sem sair da tela)", async () => {
+    const user = userEvent.setup();
+    m.status = { unlocked: true, active_profile_id: 7, profiles: [{ id: 7, tema: "light" }, { id: 8, tema: "light" }] };
+    const { rerender } = renderizar();
+    await user.click(screen.getByRole("radio", { name: "Escuro" }));
+    m.status = { unlocked: true, active_profile_id: 8, profiles: [{ id: 7, tema: "dark" }, { id: 8, tema: "light" }] };
+    rerender(
+      <MemoryRouter>
+        <Tabs value="geral">
+          <ConfiguracoesTabGeral conectado />
+        </Tabs>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("radio", { name: "Claro" })).toHaveAttribute("aria-checked", "true");
+    await user.click(screen.getByRole("radio", { name: "Escuro" }));
+    expect(m.saveTheme).toHaveBeenLastCalledWith("dark");
+    expect(m.saveTheme).toHaveBeenCalledTimes(2);
+  });
+
   it("mostra a conexão sem endereço nem credencial", () => {
     renderizar(false);
     expect(screen.getByText("Sem conexão com o servidor")).toBeInTheDocument();

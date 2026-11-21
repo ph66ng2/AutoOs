@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
@@ -45,6 +45,13 @@ export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
   const [sons, setSons] = useState(uiSoundsEnabled);
   const [windows, setWindows] = useState(avisosWindowsLigados);
 
+  // `tema` só segura a escolha enquanto ela é gravada; depois vale o que está no perfil.
+  // Trocar de perfil sem sair da tela também descarta a escolha pendente do perfil anterior.
+  const perfilId = perfil?.id ?? null;
+  useEffect(() => {
+    setTema(null);
+  }, [perfilId]);
+
   async function trocarTema(proximo: ProfileTheme) {
     const anterior = temaAtual;
     setTema(proximo);
@@ -54,10 +61,10 @@ export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
       await SensitiveAccessService.saveTheme(proximo);
       await refreshStatus();
     } catch (causa) {
-      setTema(anterior);
       setTheme(anterior);
       toast.error(mensagemVisivelAoOperador(causa) ?? "Não foi possível salvar o tema.");
     } finally {
+      setTema(null);
       setSalvandoTema(false);
     }
   }
