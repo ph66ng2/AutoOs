@@ -40,6 +40,7 @@ pub mod orcamento_correcao;
 pub mod orcamento_decisao;
 pub mod notificacoes;
 pub mod modelos_mensagem;
+pub mod suporte;
 pub mod portal_cliente;
 pub mod public_status;
 pub mod image_migration;
