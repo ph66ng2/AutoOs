@@ -118,6 +118,23 @@ describe("PortalAlertasSino", () => {
     expect(screen.getByRole("button", { name: "Notificações (há itens não lidos)" })).toBeInTheDocument();
   });
 
+  it("conta do portal que estava a caminho quando o sino abriu não devolve o número", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderSino();
+    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 1 nova(s)" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Notificações/ }));
+    await screen.findByRole("button", { name: "Notificações (há itens não lidos)" });
+    // Chega o alerta 4; a consulta começa e a conta fica no caminho enquanto o sino abre.
+    let soltarConta: (n: number) => void = () => undefined;
+    mocks.listar.mockResolvedValue([{ ...alerta, id: 4 }, alerta]);
+    mocks.contar.mockImplementation((aposId?: number) => (aposId ? new Promise((r) => { soltarConta = r; }) : Promise.resolve(2)));
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    fireEvent.click(screen.getByRole("button", { name: /^Notificações/ }));
+    await act(async () => { soltarConta(1); });
+    fireEvent.click(screen.getByRole("button", { name: /^Notificações/ }));
+    expect(await screen.findByRole("button", { name: "Notificações (há itens não lidos)" })).toBeInTheDocument();
+  });
+
   it("na primeira consulta não dispara toast (só o contador)", async () => {
     renderSino();
     await screen.findByRole("button", { name: /1 nova/ });

@@ -177,6 +177,8 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const [vistos, setVistos] = useState<Vistos>(() => lerVistos(perfilId));
   const vistosRef = useRef(vistos);
   vistosRef.current = vistos;
+  /** Sobe a cada abertura do sino: conta do portal pedida antes dela não vale mais. */
+  const aberturas = useRef(0);
   const [avisos, setAvisos] = useState<AvisoInterno[]>([]);
   const avisosVistos = useRef<Set<string> | null>(null);
   /** Muda a cada troca de perfil: resposta que volta com outro número é da sessão anterior. */
@@ -200,6 +202,7 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const abrirSino = () => {
     const chaves = [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos];
     const minhaGeracao = geracao.current;
+    aberturas.current += 1;
     setVistos((atual) => marcarVistos(perfilId, atual, chaves, portalMaiorId));
     setNovosPortal(0);
     // A marca do portal pode estar atrasada (a lista da última consulta ainda não chegou): busca o
@@ -282,6 +285,7 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     const minhaGeracao = geracao.current;
     try {
       const marca = vistosRef.current.portalAte;
+      const aberturaDaConsulta = aberturas.current;
       const [total, depoisDaMarca] = await Promise.all([
         db.contarAlertasPortalNaoLidos(),
         db.contarAlertasPortalNaoLidos(marca),
@@ -289,7 +293,7 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
       if (minhaGeracao !== geracao.current) return;
       setNaoLidosPortal(Number(total) || 0);
       // Abriu o sino enquanto a conta chegava: ela é de antes da abertura.
-      if (marca === vistosRef.current.portalAte) setNovosPortal(Number(depoisDaMarca) || 0);
+      if (marca === vistosRef.current.portalAte && aberturaDaConsulta === aberturas.current) setNovosPortal(Number(depoisDaMarca) || 0);
       if (!total) setPortalMaiorId(0);
       if (!total) {
         ultimoVisto.current ??= 0;
