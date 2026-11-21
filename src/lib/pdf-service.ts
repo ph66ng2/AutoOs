@@ -705,6 +705,22 @@ function garantirEspacoVertical(doc: jsPDF, y: number, alturaEstimada: number): 
   return y;
 }
 
+/** Prazo prometido no orçamento quando a configuração não pode ser lida (padrão da 0057). */
+const GARANTIA_SERVICOS_DIAS_PADRAO = 90;
+
+/**
+ * O prazo de garantia do orçamento é o mesmo que a Nova entrada usa para avisar retorno
+ * (Configurações › Segurança). Sem banco, o PDF sai com o padrão.
+ */
+async function garantiaServicosDias(): Promise<number> {
+  try {
+    const dias = await db.obterGarantiaServicosDias();
+    return Number.isInteger(dias) && dias >= 0 ? dias : GARANTIA_SERVICOS_DIAS_PADRAO;
+  } catch {
+    return GARANTIA_SERVICOS_DIAS_PADRAO;
+  }
+}
+
 /**
  * Renderiza os termos comerciais no padrão da imagem anexada ao orçamento.
  * Inclui prazo, faturamento, garantia, validade, taxa de diagnóstico e assinatura.
@@ -714,6 +730,7 @@ function renderizarCondicoesComerciais(
   y: number,
   formaPagamento: string,
   prazoExecucao?: PrazoExecucaoPdf,
+  garantiaDias = GARANTIA_SERVICOS_DIAS_PADRAO,
 ): number {
   const centerX = PAGE_WIDTH / 2;
   const espacoTitulo = 6;
@@ -788,7 +805,7 @@ function renderizarCondicoesComerciais(
   const garantiaItens = [
     "O equipamento terá garantia em bancada na nossa assistência técnica.",
     "Caso seja necessário o envio, os custos de frete (ida e volta) serão de responsabilidade do cliente.",
-    "Os serviços aprovados terão garantia de 90 dias, contados a partir da disponibilidade do equipamento para retirada em nosso laboratório.",
+    `Os serviços aprovados terão garantia de ${garantiaDias} dias, contados a partir da disponibilidade do equipamento para retirada em nosso laboratório.`,
   ];
   const bulletIndent = MARGIN_LEFT + 4;
   const textIndent = bulletIndent + 4;
@@ -1091,6 +1108,7 @@ export const PdfService = {
           y,
           obterFormaPagamento(equipamento, verificacao),
           prazoExecucao,
+          await garantiaServicosDias(),
         );
       }
 
@@ -1309,6 +1327,7 @@ export const PdfService = {
           y,
           obterFormaPagamento(equipamento, verificacao),
           prazoExecucao,
+          await garantiaServicosDias(),
         );
       }
 
