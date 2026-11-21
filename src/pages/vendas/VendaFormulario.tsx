@@ -16,6 +16,8 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { OrcamentoInsumosItensEditor } from "@/pages/insumos/OrcamentoInsumosItensEditor";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+import { useEscSai } from "@/hooks/useEscSai";
+import { TeclaNoBotao } from "@/components/ui/tecla-no-botao";
 
 function Secao({ titulo, nota, children }: { titulo: string; nota?: string; children: React.ReactNode }) {
   return (
@@ -48,6 +50,8 @@ export default function VendaFormulario() {
   const destino = orcamentoId != null ? `/vendas/${orcamentoId}` : "/vendas";
   // Menu, Ctrl+K ou voltar com a venda pela metade: pergunta antes. Voltar/Cancelar também avisa.
   const aviso = useAvisoAoSair(alterado && editavel);
+  // Esc volta como o botão "(Esc)"; com alterações, o aviso de saída pergunta antes.
+  useEscSai(true, () => navigate(destino));
 
   // "Renovar validade" chega com ?foco=validade.
   useEffect(() => {
@@ -250,6 +254,7 @@ export default function VendaFormulario() {
         <div className="flex gap-2">
           <Button variant="outline" className="h-10" onClick={() => navigate(destino)}>
             {alterado ? "Descartar alterações" : "Voltar"}
+            <TeclaNoBotao tecla="Esc" />
           </Button>
           <Button className="h-10" disabled={!podeSalvar} onClick={() => void salvarEVoltar()}>
             Salvar orçamento
