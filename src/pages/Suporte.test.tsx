@@ -10,6 +10,7 @@ const m = vi.hoisted(() => ({
   responder: vi.fn(),
   retorno: vi.fn(),
   abrirUrl: vi.fn(),
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
   mensagens: [] as unknown[],
   admin: false,
 }));
@@ -20,7 +21,7 @@ vi.mock("@/hooks/useSuporte", () => ({
 vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ hasPermission: () => m.admin }) }));
 vi.mock("@/lib/db", () => ({ db: { abrirUrl: m.abrirUrl } }));
 vi.mock("@/lib/error-utils", () => ({ versaoDoApp: () => "0.6.4" }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("sonner", () => ({ toast: m.toast }));
 
 import Suporte from "./Suporte";
 
@@ -42,6 +43,7 @@ describe("Suporte", () => {
   beforeEach(() => {
     m.config = { token_neste_computador: true, canal: "C0CE5M6GTRV" };
     m.chamados = [];
+    Object.values(m.toast).forEach((fn) => fn.mockReset());
     m.abrirChamado.mockReset().mockResolvedValue({ id: 12 });
     m.responder.mockReset().mockResolvedValue({ id: 12 });
     m.retorno.mockReset().mockResolvedValue({ id: 12 });
@@ -223,5 +225,23 @@ describe("Suporte", () => {
     await act(async () => { void router.navigate("/clientes"); });
     expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
     expect(screen.queryByText("Tela de clientes")).not.toBeInTheDocument();
+  });
+
+  it("print que não chegou ao Slack volta para a caixa de resposta do chamado e avisa", async () => {
+    const user = userEvent.setup();
+    m.chamados = [aberto12];
+    m.mensagens = [];
+    m.abrirChamado.mockReset().mockResolvedValue({ ...aberto12, prints_nao_enviados: [0] });
+    renderizar();
+    const arquivo = new File(["x"], "tela.png", { type: "image/png" });
+    await user.upload(screen.getByLabelText("O que aconteceu?").closest("div.border-t")!.querySelector("input[type=file]") as HTMLInputElement, arquivo);
+    await screen.findByAltText("Print 1");
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Com print");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await waitFor(() => expect(m.toast.warning).toHaveBeenCalledWith(expect.stringContaining("1 print não chegou"), expect.anything()));
+    expect(m.toast.success).not.toHaveBeenCalled();
+    // Já está no chamado #12, com o print na caixa de resposta.
+    expect(await screen.findByLabelText("Responder")).toBeInTheDocument();
+    expect(screen.getByAltText("Print 1")).toBeInTheDocument();
   });
 });

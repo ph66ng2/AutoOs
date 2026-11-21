@@ -241,6 +241,11 @@ pub struct ChamadoSuporte {
     pub atualizado_em: String,
     /// Quantas respostas do suporte já chegaram.
     pub respostas: i64,
+    /// Só no envio: posições (na ordem enviada) dos prints que não chegaram ao Slack (a mensagem
+    /// chegou). A tela devolve esses prints à caixa de resposta do chamado para reenviar.
+    #[sqlx(skip)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prints_nao_enviados: Vec<usize>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -377,9 +382,11 @@ pub async fn abrir_chamado_suporte(input: AbrirChamadoInput) -> Result<ChamadoSu
     tx.commit().await.map_err(|e| e.to_string())?;
 
     // A mensagem já está no canal: um print que falhe não desfaz o chamado, só avisa na thread.
-    for (nome, bytes) in imagens {
+    let mut nao_enviados = Vec::new();
+    for (posicao, (nome, bytes)) in imagens.into_iter().enumerate() {
         if let Err(erro) = slack_enviar_arquivo(&client, &token, &canal, &thread_ts, &nome, bytes).await {
             error!("Print do chamado #{} não foi enviado: {}", id, erro);
+            nao_enviados.push(posicao);
             let _ = slack_post(
                 &client,
                 &token,
@@ -391,7 +398,9 @@ pub async fn abrir_chamado_suporte(input: AbrirChamadoInput) -> Result<ChamadoSu
     }
 
     record_security_event("SUPORTE_CHAMADO_ABERTO", Some(&perfil), format!("chamado={id}"), true).await;
-    buscar_chamado(&pool, empresa_id, perfil.id, id).await
+    let mut chamado = buscar_chamado(&pool, empresa_id, perfil.id, id).await?;
+    chamado.prints_nao_enviados = nao_enviados;
+    Ok(chamado)
 }
 
 async fn buscar_chamado(pool: &sqlx::PgPool, empresa_id: i32, profile_id: i32, id: i32) -> Result<ChamadoSuporte, String> {
@@ -786,9 +795,11 @@ pub async fn responder_chamado_suporte(input: ResponderChamadoInput) -> Result<C
         .await
         .map_err(super::operator_errors::mapear_erro_sql)?;
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
-    for (nome, bytes) in imagens {
+    let mut nao_enviados = Vec::new();
+    for (posicao, (nome, bytes)) in imagens.into_iter().enumerate() {
         if let Err(erro) = slack_enviar_arquivo(&client, &token, &canal, &thread_ts, &nome, bytes).await {
             error!("Print da resposta do chamado #{} não foi enviado: {}", input.id, erro);
+            nao_enviados.push(posicao);
             let _ = slack_post(
                 &client,
                 &token,
@@ -798,7 +809,9 @@ pub async fn responder_chamado_suporte(input: ResponderChamadoInput) -> Result<C
             .await;
         }
     }
-    buscar_chamado(&pool, empresa_id, perfil.id, input.id).await
+    let mut chamado = buscar_chamado(&pool, empresa_id, perfil.id, input.id).await?;
+    chamado.prints_nao_enviados = nao_enviados;
+    Ok(chamado)
 }
 
 /// Texto que vai para a thread quando a pessoa responde "Resolveu" ou "Não resolveu" no AutoOS.

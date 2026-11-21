@@ -41,6 +41,19 @@ function lerComoDataUrl(arquivo: File): Promise<string> {
   });
 }
 
+/** Prints que o Slack não recebeu (pelas posições que o backend devolve). */
+function printsNaoEnviados(resultado: ChamadoSuporte | undefined, enviados: Print[]): Print[] {
+  return (resultado?.prints_nao_enviados ?? []).map((posicao) => enviados[posicao]).filter((print): print is Print => Boolean(print));
+}
+
+function avisarPrintsNaoEnviados(falhos: Print[], inicio = "Mensagem enviada") {
+  if (falhos.length === 0) return;
+  toast.warning(`${inicio}, mas ${falhos.length === 1 ? "1 print não chegou" : `${falhos.length} prints não chegaram`} ao suporte.`, {
+    description: `${falhos.length === 1 ? "Ele ficou" : "Eles ficaram"} na caixa de resposta do chamado. Envie de novo.`,
+    duration: 15_000,
+  });
+}
+
 /** "17/09/2026, 12:00" (sem segundos: numa conversa eles só pesam). */
 function quando(valor: string) {
   return formatDateTimeSalvador(parseTimestampPostgres(valor), "").replace(/(\d{2}:\d{2}):\d{2}$/, "$1");
@@ -209,8 +222,10 @@ function SuporteDoPerfil() {
                 onResponder={(texto, prints) => {
                   const chave = `c${chamadoAberto.id}`;
                   void comTrava(chave, async () => {
-                    await responder({ id: chamadoAberto.id, texto, imagens: prints.map(({ nome, base64 }) => ({ nome, base64 })) });
-                    setRascunhos((atual) => ({ ...atual, [chave]: RASCUNHO_VAZIO }));
+                    const resposta = await responder({ id: chamadoAberto.id, texto, imagens: prints.map(({ nome, base64 }) => ({ nome, base64 })) });
+                    const falhos = printsNaoEnviados(resposta, prints);
+                    setRascunhos((atual) => ({ ...atual, [chave]: { texto: "", prints: falhos } }));
+                    avisarPrintsNaoEnviados(falhos);
                   }, "Não foi possível enviar a mensagem.");
                 }}
                 onRetorno={(resolvido) => {
@@ -243,9 +258,12 @@ function SuporteDoPerfil() {
                       setRelatorio(null);
                       setTelaDoErro(null);
                     }
-                    setRascunhos((atual) => ({ ...atual, novo: RASCUNHO_VAZIO }));
+                    const falhos = printsNaoEnviados(chamado, prints);
+                    // Prints que não chegaram ficam na caixa de resposta do chamado, para reenviar.
+                    setRascunhos((atual) => ({ ...atual, novo: RASCUNHO_VAZIO, [`c${chamado.id}`]: { texto: "", prints: falhos } }));
                     setSelecionado(chamado.id);
-                    toast.success(`Chamado #${chamado.id} enviado.`);
+                    if (falhos.length === 0) toast.success(`Chamado #${chamado.id} enviado.`);
+                    else avisarPrintsNaoEnviados(falhos, `Chamado #${chamado.id} enviado`);
                   }, "Não foi possível enviar o chamado.");
                 }}
               />

@@ -1427,6 +1427,8 @@ export interface ChamadoSuporte {
   atualizado_em: string;
   /** Quantas respostas do suporte já chegaram. */
   respostas: number;
+  /** Só no envio: posições dos prints que não chegaram ao Slack (a mensagem chegou). */
+  prints_nao_enviados?: number[];
 }
 
 /** Resposta da thread do Slack que acabou de entrar (para o aviso). */
