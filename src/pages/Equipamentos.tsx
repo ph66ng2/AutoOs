@@ -494,6 +494,14 @@ export default function Equipamentos() {
   })();
   /** De onde a pessoa abriu a Nova entrada ou a edição: Cancelar e salvar voltam para lá. */
   const origemEntradaRef = useRef<string>("/equipamentos");
+  /** Origem fora de Equipamentos guardada até o diálogo da ordem de entrada fechar. */
+  const origemAposEmailRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (emailDialogOpen || !origemAposEmailRef.current) return;
+    const origem = origemAposEmailRef.current;
+    origemAposEmailRef.current = null;
+    navigate(origem);
+  }, [emailDialogOpen, navigate]);
   const rotaNovaEntradaRef = useRef(rotaNovaEntrada);
   rotaNovaEntradaRef.current = rotaNovaEntrada;
   /** Página de cadastro/edição aberta (o estado `dialogOpen` chega um render depois). */
@@ -712,11 +720,15 @@ export default function Equipamentos() {
    */
   const consultaSerieSeq = useRef(0);
   const novaEntradaAberta = dialogOpen && !editando;
-  // Nova entrada não pergunta ao sair: o rascunho guarda. A edição pela metade pergunta.
-  const avisoEdicao = useAvisoAoSair(dialogOpen && Boolean(editando) && form.formState.isDirty);
+  // Nova entrada não pergunta ao sair: o rascunho guarda. A edição pela metade pergunta
+  // (pelo mesmo aviso da verificação: o roteador só confere o último bloqueio registrado).
+  const edicaoSuja = dialogOpen && Boolean(editando) && form.formState.isDirty;
+  /** Autossalvamento do rascunho suspenso enquanto um rascunho é restaurado de propósito. */
+  const rascunhoPausadoRef = useRef(false);
   useEffect(() => {
     if (!novaEntradaAberta) return;
     const guardar = () => {
+      if (rascunhoPausadoRef.current) return;
       const valores = form.getValues();
       const temAlgo = entradaTemAlgo(valores, clienteVinculado);
       // Formulário vazio não tem rascunho (e cancela um salvamento antigo pendente, como o
@@ -803,7 +815,19 @@ export default function Equipamentos() {
       // A entrada preenchida grava por cima do rascunho: a cópia fica oferecida por alguns segundos.
       const copia = rascunhoGuardado.dados;
       toast("Havia outra entrada em rascunho", {
-        action: { label: "Recuperar", onClick: () => { rascunhoEntrada.salvarAgora(copia); abrirNovo({ origem: origemEntradaRef.current }); } },
+        action: {
+          label: "Recuperar",
+          onClick: () => {
+            // O reset do formulário aberto dispararia o autossalvamento por cima da cópia.
+            rascunhoPausadoRef.current = true;
+            try {
+              rascunhoEntrada.salvarAgora(copia);
+              abrirNovo({ origem: origemEntradaRef.current });
+            } finally {
+              rascunhoPausadoRef.current = false;
+            }
+          },
+        },
       });
     }
     if (opcoes.cliente) setClienteVinculado(opcoes.cliente);
@@ -896,6 +920,10 @@ export default function Equipamentos() {
     const anterior = rotaFormularioAnterior.current;
     rotaFormularioAnterior.current = chaveRotaFormulario;
     let ativo = true;
+    // De um formulário para outro (ex.: Alt+N com a edição aberta): o anterior fecha antes.
+    if (anterior != null && chaveRotaFormulario != null && anterior !== chaveRotaFormulario && formularioAbertoRef.current) {
+      fecharFormulario(false);
+    }
     if (chaveRotaFormulario === "nova" && !formularioAbertoRef.current) {
       const pedido = (location.state ?? {}) as { origem?: string; clienteId?: number; baseId?: number };
       if (pedido.clienteId || pedido.baseId) navigate(location.pathname, { replace: true, state: {} });
@@ -1253,7 +1281,9 @@ export default function Equipamentos() {
   // Verificação pela metade: menu, Ctrl+K ou voltar perguntam antes. Só Cancelar e
   // Finalizar (fecharPaginaVerificacao) passam direto.
   const [verificacaoSuja, setVerificacaoSuja] = useState(false);
-  const avisoVerificacao = useAvisoAoSair(verificacaoDialogOpen && verificacaoSuja);
+  // Um bloqueio só para a tela inteira: verificação pela metade ou edição de equipamento suja.
+  const avisoVerificacao = useAvisoAoSair((verificacaoDialogOpen && verificacaoSuja) || edicaoSuja);
+  const avisoEdicao = avisoVerificacao;
   const paginaVerificacaoAbertaRef = useRef(false);
   paginaVerificacaoAbertaRef.current = verificacaoDialogOpen;
   /** Abre a página de verificação técnica (VerificacaoTecnica.tsx, /equipamentos/:id/verificacao). */
@@ -1736,6 +1766,13 @@ export default function Equipamentos() {
             onSkip: () => undefined,
           });
           setEmailDialogOpen(true);
+          // A origem pode ser outra tela (Início, Clientes): sair agora desmontaria o envio.
+          // Fica na lista de equipamentos e volta para a origem quando o e-mail for decidido.
+          const origem = origemEntradaRef.current;
+          if (!origem.startsWith("/equipamentos")) {
+            origemAposEmailRef.current = origem;
+            origemEntradaRef.current = "/equipamentos";
+          }
         }
       }
 
@@ -3724,7 +3761,6 @@ export default function Equipamentos() {
               </Button>
             </div>
           </form>
-          {avisoEdicao.dialogo}
         </section>
       )}
 
