@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "@/lib/db";
 import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import type { AbrirChamadoInput, ChamadoSuporte, ConfigSuporte, MensagemSuporte } from "@/types";
@@ -14,7 +14,8 @@ export function useSuporte() {
     if (!silencioso) setLoading(true);
     setError(null);
     try {
-      const [cfg, lista] = await Promise.all([db.obterConfigSuporte(), db.listarChamadosSuporte()]);
+      // Silencioso = atualização ao vivo: lê em segundo plano, sem renovar a sessão.
+      const [cfg, lista] = await Promise.all([db.obterConfigSuporte(), db.listarChamadosSuporte(silencioso)]);
       setConfig(cfg);
       setChamados(lista);
     } catch (causa) {
@@ -39,18 +40,24 @@ export function useSuporte() {
   return { config, chamados, loading, error, abrirChamado, recarregar: carregar };
 }
 
-/** Conversa de um chamado; só carrega com `ativo` (chamado aberto na lista). `versao` recarrega. */
+/**
+ * Conversa de um chamado; só carrega com `ativo` (chamado aberto na lista). `versao` recarrega.
+ * Trocar de chamado volta a "carregando" (null) em vez de mostrar a conversa do anterior; a recarga
+ * por `versao` (atualização ao vivo) é de segundo plano e não renova a sessão.
+ */
 export function useMensagensChamado(id: number, ativo: boolean, versao: string) {
-  const [mensagens, setMensagens] = useState<MensagemSuporte[] | null>(null);
+  const [carregadas, setCarregadas] = useState<{ id: number; lista: MensagemSuporte[] } | null>(null);
+  const idCarregado = useRef<number | null>(null);
   useEffect(() => {
     if (!ativo) return;
     let vivo = true;
-    db.listarMensagensChamado(id)
-      .then((lista) => { if (vivo) setMensagens(lista); })
-      .catch(() => { if (vivo) setMensagens([]); });
+    const segundoPlano = idCarregado.current === id;
+    db.listarMensagensChamado(id, segundoPlano)
+      .then((lista) => { if (vivo) { idCarregado.current = id; setCarregadas({ id, lista }); } })
+      .catch(() => { if (vivo) { idCarregado.current = id; setCarregadas({ id, lista: [] }); } });
     return () => { vivo = false; };
   }, [id, ativo, versao]);
-  return mensagens;
+  return carregadas?.id === id ? carregadas.lista : null;
 }
 
 /** Configuração do suporte (Configurações › Integrações). */

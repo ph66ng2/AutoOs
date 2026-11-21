@@ -982,13 +982,13 @@ export const db = {
   },
 
   /** Chamados do perfil da sessão → Rust: listar_chamados_suporte */
-  async listarChamadosSuporte(): Promise<ChamadoSuporte[]> {
-    return invoke<ChamadoSuporte[]>("listar_chamados_suporte");
+  async listarChamadosSuporte(segundoPlano = false): Promise<ChamadoSuporte[]> {
+    return invoke<ChamadoSuporte[]>("listar_chamados_suporte", seSegundoPlano(segundoPlano));
   },
 
   /** Conversa de um chamado → Rust: listar_mensagens_chamado */
-  async listarMensagensChamado(id: number): Promise<MensagemSuporte[]> {
-    return invoke<MensagemSuporte[]>("listar_mensagens_chamado", { id });
+  async listarMensagensChamado(id: number, segundoPlano = false): Promise<MensagemSuporte[]> {
+    return invoke<MensagemSuporte[]>("listar_mensagens_chamado", { id, ...seSegundoPlano(segundoPlano) });
   },
 
   async abrirUrl(url: string): Promise<void> {

@@ -61,6 +61,26 @@ async fn canal_configurado(pool: &sqlx::PgPool) -> Result<Option<String>, String
 // ─── API do Slack ──────────────────────────────────────────
 
 /// Resposta do Slack: `ok` falso vira erro com o código que o Slack devolveu.
+/// Cliente HTTP do Slack com prazo: um Slack que aceita a conexão e para de responder não pode
+/// deixar o chamado (e a transação aberta durante o envio da mensagem) pendurado para sempre.
+fn cliente_slack() -> Result<Client, String> {
+    Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Não foi possível preparar a conexão com o Slack: {e}"))
+}
+
+/// Perfil da sessão para uma leitura. Em segundo plano (atualização ao vivo) não renova a sessão:
+/// senão mudanças de outro computador manteriam aberta uma estação abandonada.
+fn perfil_da_leitura(segundo_plano: Option<bool>) -> Result<crate::commands::auth::SecurityProfileSummary, String> {
+    if segundo_plano == Some(true) {
+        super::auth::require_sensitive_access_without_touch()
+    } else {
+        require_sensitive_access()
+    }
+}
+
 fn conferir(resposta: Value, acao: &str) -> Result<Value, String> {
     if resposta.get("ok").and_then(Value::as_bool) == Some(true) {
         return Ok(resposta);
@@ -324,7 +344,7 @@ pub async fn abrir_chamado_suporte(input: AbrirChamadoInput) -> Result<ChamadoSu
     .await
     .map_err(super::operator_errors::mapear_erro_sql)?;
 
-    let client = Client::new();
+    let client = cliente_slack()?;
     let mensagem = montar_mensagem(
         id,
         &perfil.nome,
@@ -392,10 +412,10 @@ async fn buscar_chamado(pool: &sqlx::PgPool, empresa_id: i32, profile_id: i32, i
 /// Chamados do perfil da sessão, do mais recente para o mais antigo.
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn listar_chamados_suporte() -> Result<Vec<ChamadoSuporte>, String> {
-    let perfil = require_sensitive_access()?;
+pub async fn listar_chamados_suporte(segundo_plano: Option<bool>) -> Result<Vec<ChamadoSuporte>, String> {
+    let perfil = perfil_da_leitura(segundo_plano)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     sqlx::query_as::<_, ChamadoSuporte>(
         "SELECT c.id, c.texto, c.situacao, c.criado_em::TEXT AS criado_em, c.atualizado_em::TEXT AS atualizado_em,
                 (SELECT COUNT(*) FROM suporte_mensagens m WHERE m.chamado_id = c.id AND m.autor = 'suporte') AS respostas
@@ -412,10 +432,10 @@ pub async fn listar_chamados_suporte() -> Result<Vec<ChamadoSuporte>, String> {
 /// Conversa de um chamado do perfil da sessão.
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
-pub async fn listar_mensagens_chamado(id: i32) -> Result<Vec<MensagemSuporte>, String> {
-    let perfil = require_sensitive_access()?;
+pub async fn listar_mensagens_chamado(id: i32, segundo_plano: Option<bool>) -> Result<Vec<MensagemSuporte>, String> {
+    let perfil = perfil_da_leitura(segundo_plano)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     buscar_chamado(&pool, empresa_id, perfil.id, id).await?;
     sqlx::query_as::<_, MensagemSuporte>(
         "SELECT id, autor, autor_nome, texto, automatica, criado_em::TEXT AS criado_em

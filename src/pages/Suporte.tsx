@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ChevronLeft, FileWarning, Headphones, ImagePlus, Plus, Send, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
@@ -54,16 +54,26 @@ export default function Suporte() {
   const telaLarga = useLarguraMinima(1024);
   const [selecionado, setSelecionado] = useState<number | "novo">("novo");
   const [relatorio, setRelatorio] = useState<string | null>(pedido.relatorioErro ?? null);
-  // A tela de onde veio o erro é guardada já na abertura (o estado da navegação é limpo logo depois).
-  const [telaDoErro] = useState<string | null>(pedido.tela ?? null);
+  // A tela de onde veio o erro é guardada ao chegar (o estado da navegação é limpo logo depois).
+  const [telaDoErro, setTelaDoErro] = useState<string | null>(pedido.tela ?? null);
   // No celular, a lista e a conversa não cabem lado a lado: uma de cada vez.
   const [conversaNoCelular, setConversaNoCelular] = useState(Boolean(pedido.relatorioErro));
+  // O rascunho fica aqui, acima da conversa: olhar a lista ou outro chamado não apaga o que foi escrito.
+  const [rascunho, setRascunho] = useState("");
+  const [prints, setPrints] = useState<Print[]>([]);
 
-  // O relatório veio pelo estado da navegação: limpa o estado para um F5 não anexar de novo.
+  // Relatório de erro pelo estado da navegação, inclusive com a página já aberta ("Enviar ao suporte"
+  // no sino estando em /suporte): troca o anexo, abre o novo chamado e limpa o estado para um F5
+  // não anexar de novo.
   useEffect(() => {
-    if (pedido.relatorioErro) navigate(location.pathname, { replace: true, state: {} });
+    if (!pedido.relatorioErro) return;
+    setRelatorio(pedido.relatorioErro);
+    setTelaDoErro(pedido.tela ?? null);
+    setSelecionado("novo");
+    setConversaNoCelular(true);
+    navigate(location.pathname, { replace: true, state: {} });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [location.key]);
 
   const configurado = Boolean(config?.token_neste_computador && config.canal);
   const abertos = chamados.filter((c) => c.situacao === "aberto").length;
@@ -148,6 +158,10 @@ export default function Suporte() {
               <NovoChamado
                 configurado={configurado}
                 relatorio={relatorio}
+                texto={rascunho}
+                onTexto={setRascunho}
+                prints={prints}
+                onPrints={setPrints}
                 onRemoverRelatorio={() => setRelatorio(null)}
                 onEnviar={async (texto, prints) => {
                   const chamado = await abrirChamado({
@@ -158,6 +172,9 @@ export default function Suporte() {
                     imagens: prints.map(({ nome, base64 }) => ({ nome, base64 })),
                   });
                   setRelatorio(null);
+                  setTelaDoErro(null);
+                  setRascunho("");
+                  setPrints([]);
                   setSelecionado(chamado.id);
                   toast.success(`Chamado #${chamado.id} enviado.`);
                 }}
@@ -252,16 +269,22 @@ function Conversa({ chamado }: { chamado: ChamadoSuporte }) {
 function NovoChamado({
   configurado,
   relatorio,
+  texto,
+  onTexto: setTexto,
+  prints,
+  onPrints: setPrints,
   onRemoverRelatorio,
   onEnviar,
 }: {
   configurado: boolean;
   relatorio: string | null;
+  texto: string;
+  onTexto: (texto: string) => void;
+  prints: Print[];
+  onPrints: Dispatch<SetStateAction<Print[]>>;
   onRemoverRelatorio: () => void;
   onEnviar: (texto: string, prints: Print[]) => Promise<void>;
 }) {
-  const [texto, setTexto] = useState("");
-  const [prints, setPrints] = useState<Print[]>([]);
   const [verRelatorio, setVerRelatorio] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erroPrint, setErroPrint] = useState<string | null>(null);
@@ -294,8 +317,6 @@ function NovoChamado({
     setEnviando(true);
     try {
       await onEnviar(texto.trim(), prints);
-      setTexto("");
-      setPrints([]);
     } catch (causa) {
       toast.error("Não foi possível enviar o chamado.", { description: mensagemVisivelAoOperador(causa) ?? String(causa) });
     } finally {

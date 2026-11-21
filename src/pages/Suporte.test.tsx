@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const m = vi.hoisted(() => ({
@@ -19,9 +19,15 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import Suporte from "./Suporte";
 
+function EnviarErro() {
+  const navigate = useNavigate();
+  return <button type="button" onClick={() => navigate("/suporte", { state: { relatorioErro: "Relatório novo", tela: "/clientes" } })}>Simular erro do sino</button>;
+}
+
 function renderizar(state?: unknown) {
   return render(
     <MemoryRouter initialEntries={[{ pathname: "/suporte", state }]}>
+      <EnviarErro />
       <Suporte />
     </MemoryRouter>,
   );
@@ -66,5 +72,27 @@ describe("Suporte", () => {
     expect(screen.getByText("Recarregue a OS.")).toBeInTheDocument();
     // "+00" sem minutos, como o PostgreSQL devolve TIMESTAMPTZ em texto: a data não pode sumir.
     expect(screen.getByText(/Erykah · resposta automática · 21\/11\/2026, 07:00/)).toBeInTheDocument();
+  });
+
+  it("o rascunho continua ao olhar outro chamado e voltar para o Novo", async () => {
+    const user = userEvent.setup();
+    m.chamados = [{ id: 12, texto: "Não salva a OS", situacao: "aberto", criado_em: "2026-11-21 09:00:00+00", atualizado_em: "2026-11-21 10:00:00+00", respostas: 1 }];
+    renderizar();
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Meio escrito");
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    await user.click(screen.getByRole("button", { name: /Novo/ }));
+    expect(screen.getByLabelText("O que aconteceu?")).toHaveValue("Meio escrito");
+  });
+
+  it("erro enviado com a página já aberta troca o relatório anexado e leva a tela dele", async () => {
+    const user = userEvent.setup();
+    m.chamados = [{ id: 12, texto: "Não salva a OS", situacao: "aberto", criado_em: "2026-11-21 09:00:00+00", atualizado_em: "2026-11-21 10:00:00+00", respostas: 1 }];
+    renderizar();
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    await user.click(screen.getByRole("button", { name: "Simular erro do sino" }));
+    expect(screen.getByText("Relatório do erro anexado")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Erro na lista");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(m.abrirChamado).toHaveBeenCalledWith(expect.objectContaining({ relatorio_erro: "Relatório novo", tela: "/clientes" }));
   });
 });
