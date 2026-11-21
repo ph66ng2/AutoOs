@@ -11,7 +11,7 @@ const m = vi.hoisted(() => ({
 }));
 vi.mock("@/hooks/useSuporte", () => ({
   useSuporte: () => ({ config: m.config, chamados: m.chamados, loading: false, error: null, abrirChamado: m.abrirChamado, recarregar: vi.fn() }),
-  useMensagensChamado: () => [{ id: 1, autor: "suporte", autor_nome: "Erykah", texto: "Recarregue a OS.", automatica: true, criado_em: "2026-11-21 10:00:00+00" }],
+  useMensagensChamado: () => [{ id: 1, autor: "suporte", autor_nome: "Erykah", texto: "Recarregue a OS.", automatica: true, criado_em: "2026-11-21 10:00:00.123456+00" }],
 }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ hasPermission: () => m.admin }) }));
 vi.mock("@/lib/error-utils", () => ({ versaoDoApp: () => "0.6.4" }));
@@ -64,6 +64,7 @@ describe("Suporte", () => {
     renderizar();
     await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
     expect(screen.getByText("Recarregue a OS.")).toBeInTheDocument();
-    expect(screen.getByText(/Erykah · resposta automática/)).toBeInTheDocument();
+    // "+00" sem minutos, como o PostgreSQL devolve TIMESTAMPTZ em texto: a data não pode sumir.
+    expect(screen.getByText(/Erykah · resposta automática · 21\/11\/2026, 07:00/)).toBeInTheDocument();
   });
 });

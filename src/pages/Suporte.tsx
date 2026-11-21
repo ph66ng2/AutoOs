@@ -8,7 +8,7 @@ import { TeclaNoBotao } from "@/components/ui/tecla-no-botao";
 import { useMensagensChamado, useSuporte } from "@/hooks/useSuporte";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
-import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
+import { formatDateTimeSalvador, parseTimestampPostgres } from "@/lib/date-utils";
 import { imagensDaAreaDeTransferencia } from "@/lib/equipamento-imagem-utils";
 import { versaoDoApp } from "@/lib/error-utils";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
@@ -37,7 +37,7 @@ function lerComoDataUrl(arquivo: File): Promise<string> {
 
 /** "17/09/2026, 12:00" (sem segundos: numa conversa eles só pesam). */
 function quando(valor: string) {
-  return formatDateTimeSalvador(parseDbTimestampUtc(valor), "").replace(/(\d{2}:\d{2}):\d{2}$/, "$1");
+  return formatDateTimeSalvador(parseTimestampPostgres(valor), "").replace(/(\d{2}:\d{2}):\d{2}$/, "$1");
 }
 
 /**
