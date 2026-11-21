@@ -203,7 +203,15 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     const chaves = [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos];
     const minhaGeracao = geracao.current;
     aberturas.current += 1;
-    setVistos((atual) => marcarVistos(perfilId, atual, chaves, portalMaiorId));
+    // Avisos internos ainda carregando: as chaves já vistas ficam (a lista vazia de agora não quer
+    // dizer que foram lidas); a poda acontece numa abertura com a lista carregada.
+    const avisosCarregados = avisosVistos.current !== null;
+    setVistos((atual) => marcarVistos(
+      perfilId,
+      atual,
+      avisosCarregados ? chaves : [...new Set([...[...atual.chaves].filter((chave) => chave.startsWith("aviso:")), ...chaves])],
+      portalMaiorId,
+    ));
     setNovosPortal(0);
     // A marca do portal pode estar atrasada (a lista da última consulta ainda não chegou): busca o
     // maior não lido de agora, que é o que o painel mostra, e sobe a marca até ele.

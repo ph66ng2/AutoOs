@@ -283,6 +283,27 @@ describe("PortalAlertasSino", () => {
     expect(await screen.findByRole("button", { name: "Notificações (há itens não lidos)" })).toBeInTheDocument();
   });
 
+  it("abrir e fechar antes de os avisos internos carregarem não apaga o visto salvo deles", async () => {
+    localStorage.setItem("autoos:sino-visto:7", JSON.stringify({ chaves: ["aviso:estoque-baixo:abc"], portalAte: 0 }));
+    mocks.contar.mockResolvedValue(0);
+    mocks.listar.mockResolvedValue([]);
+    let soltarAvisos: (v: unknown) => void = () => undefined;
+    mocks.avisos.mockReturnValue(new Promise((resolver) => { soltarAvisos = resolver; }));
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes><Route path="/" element={<PortalAlertasSino perfilId={7} />} /></Routes>
+      </MemoryRouter>,
+    );
+    const sino = await screen.findByRole("button", { name: /^Notificações/ });
+    fireEvent.click(sino);
+    fireEvent.click(screen.getByRole("button", { name: /^Notificações/ }));
+    await act(async () => {
+      soltarAvisos([{ chave: "estoque-baixo:abc", tipo: "estoque-baixo", titulo: "2 itens com estoque baixo", detalhe: "Ribbon", lido: false, quando: "2026-11-19T10:00:00Z" }]);
+    });
+    expect(await screen.findByRole("button", { name: "Notificações (há itens não lidos)" })).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem("autoos:sino-visto:7") ?? "{}").chaves).toContain("aviso:estoque-baixo:abc");
+  });
+
   it("trocar de perfil esquece os avisos do anterior e ignora a resposta atrasada dele", async () => {
     mocks.contar.mockResolvedValue(0);
     mocks.listar.mockResolvedValue([]);
