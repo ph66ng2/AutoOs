@@ -95,4 +95,19 @@ describe("Suporte", () => {
     await user.keyboard("{Control>}{Enter}{/Control}");
     expect(m.abrirChamado).toHaveBeenCalledWith(expect.objectContaining({ relatorio_erro: "Relatório novo", tela: "/clientes" }));
   });
+
+  it("envio em andamento continua travado depois de olhar outro chamado e voltar ao Novo", async () => {
+    const user = userEvent.setup();
+    m.chamados = [{ id: 12, texto: "Não salva a OS", situacao: "aberto", criado_em: "2026-11-21 09:00:00+00", atualizado_em: "2026-11-21 10:00:00+00", respostas: 1 }];
+    m.abrirChamado.mockReset().mockReturnValue(new Promise(() => undefined));
+    renderizar();
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Uma vez só");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    await user.click(screen.getByRole("button", { name: /Novo/ }));
+    expect(screen.getByRole("button", { name: /Enviando/ })).toBeDisabled();
+    await user.click(screen.getByLabelText("O que aconteceu?"));
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(m.abrirChamado).toHaveBeenCalledTimes(1);
+  });
 });

@@ -61,6 +61,9 @@ export default function Suporte() {
   // O rascunho fica aqui, acima da conversa: olhar a lista ou outro chamado não apaga o que foi escrito.
   const [rascunho, setRascunho] = useState("");
   const [prints, setPrints] = useState<Print[]>([]);
+  // O envio em andamento também fica aqui: trocar de tela e voltar ao Novo não libera um segundo envio.
+  const [enviando, setEnviando] = useState(false);
+  const enviandoRef = useRef(false);
 
   // Relatório de erro pelo estado da navegação, inclusive com a página já aberta ("Enviar ao suporte"
   // no sino estando em /suporte): troca o anexo, abre o novo chamado e limpa o estado para um F5
@@ -163,20 +166,31 @@ export default function Suporte() {
                 prints={prints}
                 onPrints={setPrints}
                 onRemoverRelatorio={() => setRelatorio(null)}
+                enviando={enviando}
                 onEnviar={async (texto, prints) => {
-                  const chamado = await abrirChamado({
-                    texto,
-                    tela: telaDoErro,
-                    versao: versaoDoApp() ?? null,
-                    relatorio_erro: relatorio,
-                    imagens: prints.map(({ nome, base64 }) => ({ nome, base64 })),
-                  });
-                  setRelatorio(null);
-                  setTelaDoErro(null);
-                  setRascunho("");
-                  setPrints([]);
-                  setSelecionado(chamado.id);
-                  toast.success(`Chamado #${chamado.id} enviado.`);
+                  if (enviandoRef.current) return;
+                  enviandoRef.current = true;
+                  setEnviando(true);
+                  try {
+                    const chamado = await abrirChamado({
+                      texto,
+                      tela: telaDoErro,
+                      versao: versaoDoApp() ?? null,
+                      relatorio_erro: relatorio,
+                      imagens: prints.map(({ nome, base64 }) => ({ nome, base64 })),
+                    });
+                    setRelatorio(null);
+                    setTelaDoErro(null);
+                    setRascunho("");
+                    setPrints([]);
+                    setSelecionado(chamado.id);
+                    toast.success(`Chamado #${chamado.id} enviado.`);
+                  } catch (causa) {
+                    toast.error("Não foi possível enviar o chamado.", { description: mensagemVisivelAoOperador(causa) ?? String(causa) });
+                  } finally {
+                    enviandoRef.current = false;
+                    setEnviando(false);
+                  }
                 }}
               />
             )}
@@ -269,6 +283,7 @@ function Conversa({ chamado }: { chamado: ChamadoSuporte }) {
 function NovoChamado({
   configurado,
   relatorio,
+  enviando,
   texto,
   onTexto: setTexto,
   prints,
@@ -278,6 +293,7 @@ function NovoChamado({
 }: {
   configurado: boolean;
   relatorio: string | null;
+  enviando: boolean;
   texto: string;
   onTexto: (texto: string) => void;
   prints: Print[];
@@ -286,7 +302,6 @@ function NovoChamado({
   onEnviar: (texto: string, prints: Print[]) => Promise<void>;
 }) {
   const [verRelatorio, setVerRelatorio] = useState(false);
-  const [enviando, setEnviando] = useState(false);
   const [erroPrint, setErroPrint] = useState<string | null>(null);
   const arquivoRef = useRef<HTMLInputElement>(null);
   const textoRef = useRef<HTMLTextAreaElement>(null);
@@ -312,16 +327,9 @@ function NovoChamado({
     setPrints((atual) => [...atual, ...novos].slice(0, MAX_PRINTS));
   }
 
-  async function enviar() {
+  function enviar() {
     if (!texto.trim() || enviando || !configurado) return;
-    setEnviando(true);
-    try {
-      await onEnviar(texto.trim(), prints);
-    } catch (causa) {
-      toast.error("Não foi possível enviar o chamado.", { description: mensagemVisivelAoOperador(causa) ?? String(causa) });
-    } finally {
-      setEnviando(false);
-    }
+    void onEnviar(texto.trim(), prints);
   }
 
   return (
