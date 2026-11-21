@@ -73,7 +73,7 @@ export function AvisoSerieRepetida({
           )}
           {garantia && (
             <span className="mt-1 block text-xs font-semibold text-status-ok">
-              Entregue há {garantia.diasDesdeEntrega === 1 ? "1 dia" : `${garantia.diasDesdeEntrega} dias`}: ainda na garantia de {garantiaDias} dias dos serviços.
+              Pronta há {garantia.diasDesdePronto === 1 ? "1 dia" : `${garantia.diasDesdePronto} dias`}: ainda na garantia de {garantiaDias} dias dos serviços.
             </span>
           )}
         </p>

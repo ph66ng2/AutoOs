@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { db } from "@/lib/db";
 
 /**
- * Prazo de garantia dos serviços (dias contados da entrega), configuração da empresa.
+ * Prazo de garantia dos serviços (dias contados de quando ficou pronta), configuração da empresa.
  * `dias` fica `null` enquanto carrega ou se a leitura falhar: aí a Nova entrada só não fala de garantia.
  */
 export function useGarantiaServicos() {

@@ -791,7 +791,7 @@ pub async fn salvar_config_inatividade(enabled: bool) -> Result<bool, String> {
     Ok(enabled)
 }
 
-/// Prazo de garantia dos serviços, em dias contados da entrega (0057). Não é sensível: a Nova
+/// Prazo de garantia dos serviços, em dias contados de quando ficou pronta (0057). Não é sensível: a Nova
 /// entrada de qualquer perfil usa para avisar retorno dentro da garantia.
 #[tauri::command]
 #[instrument(skip_all)]

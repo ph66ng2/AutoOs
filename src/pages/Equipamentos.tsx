@@ -1228,8 +1228,10 @@ export default function Equipamentos() {
         });
       }
       if (ultima.cliente_id) {
-        db.buscarCliente(ultima.cliente_id)
-          .then((c) => { if (c && seq === consultaSerieSeq.current) setClienteVinculado(c); })
+        const clienteId = ultima.cliente_id;
+        // Só completa o cadastro se ninguém trocou o cliente enquanto a consulta corria.
+        db.buscarCliente(clienteId)
+          .then((c) => { if (c && seq === consultaSerieSeq.current) setClienteVinculado((atual) => (atual?.id === clienteId ? c : atual)); })
           .catch(() => undefined);
       }
     }

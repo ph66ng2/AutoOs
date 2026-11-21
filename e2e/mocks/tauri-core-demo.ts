@@ -184,7 +184,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
         const saida = new Date(Date.now() - 23 * 86_400_000).toISOString().slice(0, 10);
         return [{
           ...equipamento, id: 7, serial_number: "GC420T-0001", marca: "Zebra", modelo: "GC420T", patrimonio: "PAT-120",
-          status: "ENTREGUE", data_entrada: "2026-09-02", data_saida: saida, defeito_relatado: "Etiqueta saindo torta",
+          status: "ENTREGUE", data_entrada: "2026-09-02", data_pronto: saida, data_saida: saida, defeito_relatado: "Etiqueta saindo torta",
         }] as T;
       }
       return [equipamento] as T;

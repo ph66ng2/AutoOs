@@ -35,9 +35,14 @@ describe("AvisoSerieRepetida", () => {
     expect(props.onNovaManutencao).toHaveBeenCalledWith(expect.objectContaining({ id: 9 }));
   });
 
-  it("avisa retorno dentro da garantia", () => {
-    renderizar([eq(9, "2026-10-01", "ENTREGUE", { data_saida: "2026-10-29" })]);
-    expect(screen.getByText("Entregue há 23 dias: ainda na garantia de 90 dias dos serviços.")).toBeInTheDocument();
+  it("avisa retorno dentro da garantia, contada de quando ficou pronta", () => {
+    renderizar([eq(9, "2026-10-01", "ENTREGUE", { data_pronto: "2026-10-29", data_saida: "2026-11-03" })]);
+    expect(screen.getByText("Pronta há 23 dias: ainda na garantia de 90 dias dos serviços.")).toBeInTheDocument();
+  });
+
+  it("reprovado e devolvido não tem garantia de serviço", () => {
+    renderizar([eq(9, "2026-10-01", "ENTREGUE", { data_saida: "2026-11-03" })]);
+    expect(screen.queryByText(/garantia/)).not.toBeInTheDocument();
   });
 
   it("ainda em atendimento: oferece abrir a OS e, menor, começar outra mesmo assim", async () => {

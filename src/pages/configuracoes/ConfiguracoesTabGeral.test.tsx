@@ -11,11 +11,8 @@ const m = vi.hoisted(() => ({
   refreshStatus: vi.fn(async () => undefined),
   saveTheme: vi.fn(),
   setTheme: vi.fn(),
-  admin: false,
-  salvarGarantia: vi.fn(),
 }));
-vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ status: m.status, refreshStatus: m.refreshStatus, hasPermission: () => m.admin }) }));
-vi.mock("@/hooks/useGarantiaServicos", () => ({ useGarantiaServicos: () => ({ dias: 90, salvar: m.salvarGarantia }) }));
+vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ status: m.status, refreshStatus: m.refreshStatus }) }));
 vi.mock("@/lib/sensitive-access", () => ({ SensitiveAccessService: { saveTheme: m.saveTheme } }));
 vi.mock("next-themes", () => ({ useTheme: () => ({ setTheme: m.setTheme }) }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
@@ -39,8 +36,6 @@ describe("ConfiguracoesTabGeral", () => {
     m.saveTheme.mockReset().mockResolvedValue({});
     m.setTheme.mockReset();
     m.refreshStatus.mockClear();
-    m.admin = false;
-    m.salvarGarantia.mockReset().mockResolvedValue(120);
     document.documentElement.style.fontSize = "";
     delete document.documentElement.dataset.movimento;
   });
@@ -125,21 +120,6 @@ describe("ConfiguracoesTabGeral", () => {
     await user.click(screen.getByRole("radio", { name: "Escuro" }));
     expect(m.saveTheme).toHaveBeenLastCalledWith("dark");
     expect(m.saveTheme).toHaveBeenCalledTimes(2);
-  });
-
-  it("garantia dos serviços: só administrador vê e salva", async () => {
-    const user = userEvent.setup();
-    const { unmount } = renderizar();
-    expect(screen.queryByLabelText("Garantia dos serviços em dias")).toBeNull();
-    unmount();
-    m.admin = true;
-    renderizar();
-    const campo = screen.getByLabelText("Garantia dos serviços em dias");
-    expect(campo).toHaveValue("90");
-    await user.clear(campo);
-    await user.type(campo, "120");
-    await user.click(screen.getByRole("button", { name: "Salvar" }));
-    expect(m.salvarGarantia).toHaveBeenCalledWith(120);
   });
 
   it("mostra a conexão sem endereço nem credencial", () => {

@@ -87,21 +87,25 @@ export function ultimaPassagem(registros: Equipamento[]): Equipamento | null {
 }
 
 /**
- * Retorno dentro da garantia dos serviços: a última passagem foi entregue há no máximo `prazoDias`
- * dias. Conta da data de saída (o banco não guarda quando ficou pronta). Só avisa; quem decide
- * cobrar ou não é o técnico, na verificação.
+ * Retorno dentro da garantia dos serviços: a última passagem foi consertada e entregue, e o
+ * prazo conta de quando ficou pronta para retirada (`data_pronto`, como promete o orçamento).
+ * Sem `data_pronto` (cadastro antigo), vale a saída só se o orçamento foi aprovado. Reprovado e
+ * devolvido nunca passa por Pronto nem é aprovado: não tem garantia de serviço. Só avisa; quem
+ * decide cobrar ou não é o técnico, na verificação.
  */
 export function retornoNaGarantia(
-  ultima: Pick<Equipamento, "status" | "data_saida"> | null,
+  ultima: Pick<Equipamento, "status" | "data_saida" | "data_pronto" | "data_aprovacao"> | null,
   prazoDias: number | null,
   hojeIso: string,
-): { diasDesdeEntrega: number } | null {
-  if (!ultima || ultima.status !== "ENTREGUE" || !ultima.data_saida || prazoDias == null || prazoDias <= 0) return null;
-  const saida = Date.parse(`${ultima.data_saida.slice(0, 10)}T00:00:00Z`);
+): { diasDesdePronto: number } | null {
+  if (!ultima || ultima.status !== "ENTREGUE" || prazoDias == null || prazoDias <= 0) return null;
+  const inicio = ultima.data_pronto || (ultima.data_aprovacao ? ultima.data_saida : null);
+  if (!inicio) return null;
+  const desde = Date.parse(`${inicio.slice(0, 10)}T00:00:00Z`);
   const hoje = Date.parse(`${hojeIso.slice(0, 10)}T00:00:00Z`);
-  if (Number.isNaN(saida) || Number.isNaN(hoje)) return null;
-  const dias = Math.round((hoje - saida) / 86_400_000);
-  return dias >= 0 && dias <= prazoDias ? { diasDesdeEntrega: dias } : null;
+  if (Number.isNaN(desde) || Number.isNaN(hoje)) return null;
+  const dias = Math.round((hoje - desde) / 86_400_000);
+  return dias >= 0 && dias <= prazoDias ? { diasDesdePronto: dias } : null;
 }
 
 /** Linha que a OS nova ganha nas observações quando volta dentro da garantia. */

@@ -1,4 +1,4 @@
--- Prazo de garantia dos serviços (dias contados da entrega), por instalação. A Nova entrada usa
+-- Prazo de garantia dos serviços (dias contados de quando a impressora fica pronta), por instalação. A Nova entrada usa
 -- para avisar que uma impressora voltou dentro da garantia; nada é marcado sozinho como garantia.
 ALTER TABLE configuracoes_sistema ADD COLUMN IF NOT EXISTS garantia_servicos_dias INTEGER NOT NULL DEFAULT 90;
 
