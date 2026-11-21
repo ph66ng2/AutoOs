@@ -1,5 +1,6 @@
 import { toast } from 'sonner';
-import { formatAppError, copyErrorDetails, formatToastMessage } from '@/lib/error-utils';
+import { formatAppError, copyErrorDetails, formatErrorForCopy, formatToastMessage, versaoDoApp } from '@/lib/error-utils';
+import { enviarErroAoSuporte, suporteDisponivel } from '@/lib/suporte-ponte';
 import { registrarErro } from '@/lib/error-log';
 
 /** Prefixo do id dos toasts de erro; o painel de notificações recolhe esses avisos ao abrir. */
@@ -17,15 +18,21 @@ export function notificarErro(context: string, action: string, error: unknown) {
     id: `${PREFIXO_TOAST_ERRO}${registrado.id}`,
     description: errMsg,
     duration: Infinity,
-    action: {
-      label: 'Copiar detalhes',
-      onClick: () => {
-        void copyErrorDetails(appError).then((ok) => {
-          if (ok) toast.success('Relatório técnico do erro copiado', { duration: 2500 });
-          else toast.warning('Não foi possível copiar. Abra o sino > Erros e copie de lá.', { duration: 5000 });
-        });
-      },
-    },
+    // Com o banco conectado, o erro vai direto para um chamado de suporte; copiar continua no sino.
+    action: suporteDisponivel()
+      ? {
+          label: 'Enviar ao suporte',
+          onClick: () => enviarErroAoSuporte(formatErrorForCopy(appError, { versao: versaoDoApp() })),
+        }
+      : {
+          label: 'Copiar detalhes',
+          onClick: () => {
+            void copyErrorDetails(appError).then((ok) => {
+              if (ok) toast.success('Relatório técnico do erro copiado', { duration: 2500 });
+              else toast.warning('Não foi possível copiar. Abra o sino > Erros e copie de lá.', { duration: 5000 });
+            });
+          },
+        },
   });
   return registrado;
 }

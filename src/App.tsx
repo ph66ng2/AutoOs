@@ -78,6 +78,7 @@ const Perfil = lazy(() => import("@/pages/Perfil"));
 const Equipe = lazy(() => import("@/pages/Equipe"));
 const PowerSyncPOC = lazy(() => import("@/poc/PowerSyncPOC"));
 const Balcao = lazy(() => import("@/pages/Balcao"));
+const Suporte = lazy(() => import("@/pages/Suporte"));
 
 function AppContent() {
   const { loading, bootProgress, status, pinPromptDismissed, openProfileSelector, refreshStatus, firstAccessOpen } = useSensitiveAccess();
@@ -155,6 +156,7 @@ function AppContent() {
             <Route path="/vendas/:id" element={<VendaDetalhe />} />
             <Route path="/vendas/:id/editar" element={<VendaFormulario />} />
             <Route path="/servicos" element={<Servicos />} />
+            <Route path="/suporte" element={<Suporte />} />
             <Route path="/poc" element={<PowerSyncPOC />} />
             <Route
               path="/gastos"

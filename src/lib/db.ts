@@ -100,6 +100,10 @@ import type {
   Verificacao,
   ModeloMensagem,
   ModeloMensagemInput,
+  ConfigSuporte,
+  ChamadoSuporte,
+  MensagemSuporte,
+  AbrirChamadoInput,
 } from "@/types";
 
 export interface ImpressoraWindows {
@@ -959,6 +963,31 @@ export const db = {
   /** Exclui uma mensagem pronta (permissão de comunicação) → Rust: excluir_modelo_mensagem */
   async excluirModeloMensagem(id: number): Promise<void> {
     return invoke<void>("excluir_modelo_mensagem", { id });
+  },
+
+  /** Suporte: canal (empresa) e se este computador tem o token → Rust: obter_config_suporte */
+  async obterConfigSuporte(): Promise<ConfigSuporte> {
+    return invoke<ConfigSuporte>("obter_config_suporte");
+  },
+
+  /** Grava canal e, se informado, o token do bot neste computador → Rust: salvar_config_suporte */
+  async salvarConfigSuporte(canal: string, token?: string | null): Promise<ConfigSuporte> {
+    return invoke<ConfigSuporte>("salvar_config_suporte", { input: { canal, token: token?.trim() || null } });
+  },
+
+  /** Abre um chamado no canal do Slack → Rust: abrir_chamado_suporte */
+  async abrirChamadoSuporte(input: AbrirChamadoInput): Promise<ChamadoSuporte> {
+    return invoke<ChamadoSuporte>("abrir_chamado_suporte", { input });
+  },
+
+  /** Chamados do perfil da sessão → Rust: listar_chamados_suporte */
+  async listarChamadosSuporte(): Promise<ChamadoSuporte[]> {
+    return invoke<ChamadoSuporte[]>("listar_chamados_suporte");
+  },
+
+  /** Conversa de um chamado → Rust: listar_mensagens_chamado */
+  async listarMensagensChamado(id: number): Promise<MensagemSuporte[]> {
+    return invoke<MensagemSuporte[]>("listar_mensagens_chamado", { id });
   },
 
   async abrirUrl(url: string): Promise<void> {

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TabsContent } from "@/components/ui/tabs";
 import { MensagensProntasCard } from "@/components/configuracoes/MensagensProntasCard";
+import { SuporteSlackCard } from "@/components/configuracoes/SuporteSlackCard";
 import type { SmtpFormValues, WhatsappFormValues } from "./configuracoes-shared";
 
 export type ConfiguracoesTabIntegracoesProps = {
@@ -355,6 +356,7 @@ export function ConfiguracoesTabIntegracoes({
       </Card>
 
       {canConfigureSmtp && <MensagensProntasCard />}
+      {canConfigureSmtp && <SuporteSlackCard />}
     </TabsContent>
   );
 }

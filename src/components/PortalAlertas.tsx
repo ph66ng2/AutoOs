@@ -21,6 +21,7 @@ import {
   CircleAlert,
   CircleX,
   Copy,
+  Headphones,
   Hourglass,
   MailX,
   MessageCircleQuestion,
@@ -33,7 +34,8 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
-import { copyErrorDetails } from "@/lib/error-utils";
+import { copyErrorDetails, formatErrorForCopy, versaoDoApp } from "@/lib/error-utils";
+import { enviarErroAoSuporte, suporteDisponivel } from "@/lib/suporte-ponte";
 import { marcarErrosLidos, useErrosRegistrados, type ErroRegistrado } from "@/lib/error-log";
 import { PREFIXO_TOAST_ERRO } from "@/hooks/useNotification";
 import { cn } from "@/lib/utils";
@@ -696,6 +698,18 @@ function ItemErro({ registro }: { registro: ErroRegistrado }) {
             </span>
           </button>
           {copiado === "falhou" && <span className="text-[11px] text-destructive">Não foi possível copiar.</span>}
+          {suporteDisponivel() && (
+            <button
+              type="button"
+              className="flex items-center gap-1 text-[13px] font-semibold text-primary hover:underline"
+              onClick={() => {
+                marcarErrosLidos(registro.id);
+                enviarErroAoSuporte(formatErrorForCopy(erro, { versao: versaoDoApp() }));
+              }}
+            >
+              <Headphones className="h-3.5 w-3.5" aria-hidden="true" /> Enviar ao suporte
+            </button>
+          )}
           {!registro.lido && (
             <button type="button" className="text-[13px] text-muted-foreground hover:text-foreground hover:underline" onClick={() => marcarErrosLidos(registro.id)}>
               Marcar como lido
