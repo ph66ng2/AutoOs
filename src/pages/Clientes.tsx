@@ -789,11 +789,23 @@ export default function Clientes() {
                 <section id={`equipamentos-cliente-${clienteAberto.id}`} aria-label="Equipamentos deste cliente" className="space-y-1">
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-base font-bold">Equipamentos deste cliente</h3>
-                    {aparelhosCliente.length > 0 && (
-                      <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => navigate(`/clientes/${clienteAberto.id}/equipamentos`)}>
-                        {aparelhosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS ? `Ver todos (${aparelhosCliente.length})` : "Histórico"}
-                      </button>
-                    )}
+                    <span className="flex items-center gap-3">
+                      {aparelhosCliente.length > 0 && (
+                        <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => navigate(`/clientes/${clienteAberto.id}/equipamentos`)}>
+                          {aparelhosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS ? `Ver todos (${aparelhosCliente.length})` : "Histórico"}
+                        </button>
+                      )}
+                      {/* Nova entrada já com este cliente; Cancelar e salvar voltam para Clientes. */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate("/equipamentos/nova", { state: { origem: "/clientes", clienteId: clienteAberto.id } })}
+                      >
+                        <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                        Nova entrada
+                      </Button>
+                    </span>
                   </div>
                   {carregandoEquip ? (
                     <p className="py-2 text-sm text-muted-foreground">Carregando equipamentos...</p>

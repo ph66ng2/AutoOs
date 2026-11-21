@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ChevronDown, Printer, RefreshCw } from "lucide-react";
+import { ArrowLeft, ChevronDown, Plus, Printer, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ErrorAlert } from "@/components/ui/error-alert";
@@ -58,9 +58,17 @@ export default function ClienteEquipamentos() {
         titulo={cliente ? `Equipamentos de ${nome}` : "Equipamentos do cliente"}
         descricao={loading || !cliente ? undefined : `${plural(aparelhos.length, "equipamento", "equipamentos")} · ${plural(totalOs, "passagem", "passagens")} pela assistência · ${plural(servicos, "serviço feito", "serviços feitos")}`}
       >
-        <Button variant="outline" size="icon" className="h-10 w-10" aria-label="Atualizar" onClick={() => void recarregar()}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" className="h-10 w-10" aria-label="Atualizar" onClick={() => void recarregar()}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          {clienteId != null && (
+            <Button onClick={() => navigate("/equipamentos/nova", { state: { origem: `/clientes/${clienteId}/equipamentos`, clienteId } })}>
+              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+              Nova entrada
+            </Button>
+          )}
+        </div>
       </PageHeader>
 
       {error && <ErrorAlert variant="error" context="Equipamentos do cliente" message={error} action="Carregar" />}

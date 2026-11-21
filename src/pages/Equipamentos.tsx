@@ -161,6 +161,7 @@ import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPage
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
 import { AnteriorEmAtendimentoAviso } from "@/components/equipamentos/AnteriorEmAtendimentoAviso";
 import {
+  atendimentoEncerrado,
   MENSAGEM_DADOS_PREENCHIDOS,
   usarEquipamentoAnteriorNoCadastro,
 } from "@/pages/equipamentos/equipamento-anterior";
@@ -485,6 +486,18 @@ export default function Equipamentos() {
     const encontrado = /^\/equipamentos\/(\d+)\/verificacao\/?$/.exec(location.pathname);
     return encontrado ? Number(encontrado[1]) : null;
   })();
+  // Nova entrada e edição em página (decisão 27): /equipamentos/nova e /equipamentos/:id/editar.
+  const rotaNovaEntrada = /^\/equipamentos\/nova\/?$/.test(location.pathname);
+  const idEdicaoRota = (() => {
+    const encontrado = /^\/equipamentos\/(\d+)\/editar\/?$/.exec(location.pathname);
+    return encontrado ? Number(encontrado[1]) : null;
+  })();
+  /** De onde a pessoa abriu a Nova entrada ou a edição: Cancelar e salvar voltam para lá. */
+  const origemEntradaRef = useRef<string>("/equipamentos");
+  const rotaNovaEntradaRef = useRef(rotaNovaEntrada);
+  rotaNovaEntradaRef.current = rotaNovaEntrada;
+  /** Página de cadastro/edição aberta (o estado `dialogOpen` chega um render depois). */
+  const formularioAbertoRef = useRef(false);
   /** De onde a pessoa abriu a verificação: Cancelar e finalizar voltam para lá. */
   const origemVerificacaoRef = useRef<string>("/equipamentos");
   /** De onde a pessoa abriu o ajuste: Cancelar e salvar voltam para lá. */
@@ -521,7 +534,7 @@ export default function Equipamentos() {
     // "+ Nova entrada" do Início: abre o cadastro direto.
     if (state?.novaEntrada) {
       navigate(location.pathname, { replace: true, state: {} });
-      void abrirNovo();
+      abrirNovo();
       return;
     }
     if (!state?.equipamentoId) return;
@@ -699,6 +712,8 @@ export default function Equipamentos() {
    */
   const consultaSerieSeq = useRef(0);
   const novaEntradaAberta = dialogOpen && !editando;
+  // Nova entrada não pergunta ao sair: o rascunho guarda. A edição pela metade pergunta.
+  const avisoEdicao = useAvisoAoSair(dialogOpen && Boolean(editando) && form.formState.isDirty);
   useEffect(() => {
     if (!novaEntradaAberta) return;
     const guardar = () => {
@@ -751,8 +766,14 @@ export default function Equipamentos() {
 
   // ─── Handlers ─────────────────────────────────────────
 
-  /** Abre dialog para criar novo equipamento. Reseta form e limpa cliente */
-  function abrirNovo() {
+  /**
+   * Abre a página de Nova entrada (/equipamentos/nova). `origem` é para onde Cancelar e salvar
+   * voltam. `cliente` ou `base` (OS encerrada do mesmo aparelho) chegam já preenchidos; nesse
+   * caso o rascunho guardado não é carregado, mas pode ser recuperado pelo aviso.
+   */
+  function abrirNovo(opcoes: { origem?: string; cliente?: Cliente | null; base?: Equipamento } = {}) {
+    origemEntradaRef.current = opcoes.origem ?? (rotaNovaEntradaRef.current ? origemEntradaRef.current : pathnameAtualRef.current);
+    const preenchido = Boolean(opcoes.cliente || opcoes.base);
     fotoEdicaoSeq.current += 1;
     fotoEdicaoEquipamentoId.current = null;
     baselineFotosRef.current = null;
@@ -775,8 +796,18 @@ export default function Equipamentos() {
     donoRascunhoEntrada.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     consultaSerieSeq.current += 1; // consulta de um formulário anterior não vale para este
     setConferindoSerie(false);
-    const rascunho = rascunhoEntrada.ler();
+    const rascunhoGuardado = rascunhoEntrada.ler();
+    const rascunho = preenchido ? null : rascunhoGuardado;
     setRascunhoRecuperadoEm(rascunho?.salvoEm ?? null);
+    if (preenchido && rascunhoGuardado && entradaTemAlgo(rascunhoGuardado.dados.form, rascunhoGuardado.dados.cliente)) {
+      // A entrada preenchida grava por cima do rascunho: a cópia fica oferecida por alguns segundos.
+      const copia = rascunhoGuardado.dados;
+      toast("Havia outra entrada em rascunho", {
+        action: { label: "Recuperar", onClick: () => { rascunhoEntrada.salvarAgora(copia); abrirNovo({ origem: origemEntradaRef.current }); } },
+      });
+    }
+    if (opcoes.cliente) setClienteVinculado(opcoes.cliente);
+    if (opcoes.base) aplicarBaseNaEntrada(opcoes.base);
     if (rascunho) {
       form.reset({ ...form.getValues(), ...rascunho.dados.form, status: "RECEBIDO" });
       setClienteVinculado(rascunho.dados.cliente);
@@ -796,7 +827,108 @@ export default function Equipamentos() {
       }
     }
     setDialogOpen(true);
+    formularioAbertoRef.current = true;
+    if (!rotaNovaEntradaRef.current) navigate("/equipamentos/nova");
   }
+
+  /**
+   * "Nova entrada deste equipamento" (detalhes de uma OS encerrada): aparelho, cliente e contato
+   * vêm da OS anterior e o novo ciclo já sai confirmado. Defeito, técnico e fotos são da entrada nova.
+   */
+  function aplicarBaseNaEntrada(base: Equipamento) {
+    const seq = ++consultaSerieSeq.current;
+    setConferindoSerie(true);
+    void usarEquipamentoAnteriorNoCadastro(form, base, (serial) => db.buscarEquipamentosPorSerial(serial))
+      .then((resultado) => {
+        if (seq !== consultaSerieSeq.current) return;
+        if (resultado.tipo === "em_atendimento") {
+          setAnteriorEmAtendimento(base);
+          return;
+        }
+        setRegistrosAnteriores(resultado.registros);
+        setConfirmouNovoCiclo(resultado.confirmarNovoCiclo);
+      })
+      .finally(() => { if (seq === consultaSerieSeq.current) setConferindoSerie(false); });
+    if (base.cliente_id) {
+      setClienteVinculado({ id: base.cliente_id, empresa_id: base.empresa_id, nome: base.cliente_nome, telefone: base.cliente_telefone || "", email: base.cliente_email || undefined } as Cliente);
+      db.buscarCliente(base.cliente_id).then((c) => { if (c && seq === consultaSerieSeq.current) setClienteVinculado(c); }).catch(() => undefined);
+    }
+    if (base.responsavel_contato_id) {
+      setResponsavelVinculado({
+        id: base.responsavel_contato_id,
+        empresa_id: base.empresa_id || 0,
+        cliente_id: base.cliente_id || 0,
+        nome: base.responsavel_nome || "Responsável pelo equipamento",
+        email: base.responsavel_email,
+        telefone: base.responsavel_telefone,
+        ativo: true,
+      });
+    }
+  }
+
+  /** Fecha a página de cadastro/edição sem salvar e volta para onde a pessoa estava. */
+  function fecharFormulario(navegar = true) {
+    if (!formularioAbertoRef.current) return;
+    formularioAbertoRef.current = false;
+    fotoEdicaoSeq.current += 1;
+    fotoEdicaoEquipamentoId.current = null;
+    baselineFotosRef.current = null;
+    setRegistrosAnteriores([]);
+    setConfirmouNovoCiclo(false);
+    setAnteriorEmAtendimento(null);
+    setDialogOpen(false);
+    if (!navegar) return;
+    const origem = origemEntradaRef.current;
+    avisoEdicao.liberarProximaSaida();
+    // Voltando aos detalhes, eles são carregados de novo (a edição pode ter mudado a OS).
+    const idOrigem = /^\/equipamentos\/(\d+)\/?$/.exec(origem);
+    if (idOrigem) {
+      db.buscarEquipamento(Number(idOrigem[1])).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
+      return;
+    }
+    if (pathnameAtualRef.current !== origem) navigate(origem);
+  }
+
+  // Link direto, voltar ou avançar até /equipamentos/nova ou /equipamentos/:id/editar.
+  const rotaFormularioAnterior = useRef<string | null>(null);
+  const chaveRotaFormulario = rotaNovaEntrada ? "nova" : idEdicaoRota != null ? `editar-${idEdicaoRota}` : null;
+  useEffect(() => {
+    const anterior = rotaFormularioAnterior.current;
+    rotaFormularioAnterior.current = chaveRotaFormulario;
+    let ativo = true;
+    if (chaveRotaFormulario === "nova" && !formularioAbertoRef.current) {
+      const pedido = (location.state ?? {}) as { origem?: string; clienteId?: number; baseId?: number };
+      if (pedido.clienteId || pedido.baseId) navigate(location.pathname, { replace: true, state: {} });
+      const origem = pedido.origem ?? "/equipamentos";
+      if (pedido.baseId) {
+        db.buscarEquipamento(pedido.baseId)
+          .then((base) => { if (ativo) abrirNovo({ origem, base }); })
+          .catch(() => { if (ativo) abrirNovo({ origem }); });
+      } else if (pedido.clienteId) {
+        db.buscarCliente(pedido.clienteId)
+          .then((cliente) => { if (ativo) abrirNovo({ origem, cliente }); })
+          .catch(() => { if (ativo) abrirNovo({ origem }); });
+      } else {
+        abrirNovo({ origem });
+      }
+    } else if (idEdicaoRota != null && !formularioAbertoRef.current) {
+      const origem = ((location.state ?? {}) as { origem?: string }).origem ?? `/equipamentos/${idEdicaoRota}`;
+      db.buscarEquipamento(idEdicaoRota)
+        .then((eq) => { if (ativo) abrirEditar(eq, origem); })
+        .catch((err) => {
+          if (!ativo) return;
+          showError("Equipamentos", "Abrir edição", err);
+          navigate("/equipamentos", { replace: true });
+        });
+    } else if (chaveRotaFormulario == null && anterior != null && formularioAbertoRef.current) {
+      // Saiu da página pelo menu ou pelo navegador: a Nova entrada fica no rascunho.
+      fecharFormulario(false);
+    }
+    return () => {
+      ativo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveRotaFormulario]);
 
   async function carregarFotosDaEdicao(equipamentoId: number, sequencia: number) {
     baselineFotosRef.current = null;
@@ -830,8 +962,9 @@ export default function Equipamentos() {
     void carregarFotosDaEdicao(editando.id, sequencia);
   }
 
-  /** Abre dialog para editar equipamento existente. Carrega cliente vinculado do banco */
-  function abrirEditar(eq: Equipamento) {
+  /** Abre a página de edição (/equipamentos/:id/editar). Carrega cliente vinculado do banco */
+  function abrirEditar(eq: Equipamento, origem?: string) {
+    origemEntradaRef.current = origem ?? pathnameAtualRef.current;
     const sequencia = ++fotoEdicaoSeq.current;
     fotoEdicaoEquipamentoId.current = eq.id ?? null;
     baselineFotosRef.current = null;
@@ -896,6 +1029,9 @@ export default function Equipamentos() {
       acessorios: eq.acessorios ? eq.acessorios.split(", ").filter(Boolean) : [], acessorios_outros: eq.acessorios_outros || "", observacoes: removerTecnicoInicialDasObservacoes(eq.observacoes || ""),
     });
     setDialogOpen(true);
+    formularioAbertoRef.current = true;
+    const destino = `/equipamentos/${eq.id}/editar`;
+    if (eq.id && pathnameAtualRef.current !== destino) navigate(destino);
   }
 
   async function handleSelecionarImagens(
@@ -1603,10 +1739,7 @@ export default function Equipamentos() {
         }
       }
 
-      fotoEdicaoSeq.current += 1;
-      fotoEdicaoEquipamentoId.current = null;
-      baselineFotosRef.current = null;
-      setDialogOpen(false);
+      fecharFormulario();
       setImagensFormulario([]);
       setErroImagens(null);
     } catch (err: any) {
@@ -2677,6 +2810,14 @@ export default function Equipamentos() {
       ...(secundaria && secundaria.id !== "status" ? [nesteStatus(secundaria)] : []),
       ...acoes.nesteStatus.map(nesteStatus),
       ...(secundaria?.id === "status" ? [acaoStatus] : []),
+      // Aparelho que voltou: abre a Nova entrada com aparelho, cliente e contato desta OS.
+      ...(atendimentoEncerrado(eq) ? [{
+        id: "nova_entrada_mesmo",
+        label: "Nova entrada deste equipamento",
+        icon: <Plus className="h-3.5 w-3.5" />,
+        variant: "outline" as const,
+        onClick: () => abrirNovo({ origem: pathnameAtualRef.current, base: eq }),
+      }] : []),
       acaoEditar,
       ...(podeExcluir ? [acaoExcluir] : []),
     ];
@@ -3010,7 +3151,8 @@ export default function Equipamentos() {
 
   return (
     <div className="space-y-6">
-      {!detalhesDialogOpen && idAjusteRota == null && !paginaAjusteAberta && idVerificacaoRota == null && !verificacaoDialogOpen && (<>
+      {/* A lista fica montada (só escondida) sob a Nova entrada: volta na mesma rolagem. */}
+      {!detalhesDialogOpen && idAjusteRota == null && !paginaAjusteAberta && idVerificacaoRota == null && !verificacaoDialogOpen && (<div className={cn("space-y-6", (dialogOpen || rotaNovaEntrada || idEdicaoRota != null) && "hidden")}>
       {/* Header */}
       <PageHeader
         titulo="Equipamentos"
@@ -3020,7 +3162,7 @@ export default function Equipamentos() {
       >
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => void baixarCsv()} disabled={exportando}>{exportando ? "Exportando…" : "Exportar"}</Button>
-          <Button onClick={abrirNovo} title="Nova entrada (Alt+N)" aria-keyshortcuts="Alt+N"><Plus className="h-4 w-4 mr-2" />Nova entrada</Button>
+          <Button onClick={() => abrirNovo({ origem: "/equipamentos" })} title="Nova entrada (Alt+N)" aria-keyshortcuts="Alt+N"><Plus className="h-4 w-4 mr-2" />Nova entrada</Button>
         </div>
       </PageHeader>
 
@@ -3254,26 +3396,35 @@ export default function Equipamentos() {
           )}
         </CardContent>
       </Card>
-      </>)}
+      </div>)}
 
-      {/* ═══ Dialog Criar/Editar ═══ */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => {
-        if (!open) {
-          fotoEdicaoSeq.current += 1;
-          fotoEdicaoEquipamentoId.current = null;
-          baselineFotosRef.current = null;
-          setRegistrosAnteriores([]);
-          setConfirmouNovoCiclo(false);
-          setAnteriorEmAtendimento(null);
-        }
-        setDialogOpen(open);
-      }}>
-        <DialogContent tamanho="g">
-          <DialogHeader>
-            <DialogTitle>{editando ? "Editar Equipamento" : "Novo Equipamento"}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
-            <DialogBody className="space-y-6">
+      {/* ═══ Nova entrada e edição em página (/equipamentos/nova e /equipamentos/:id/editar, decisão 27) ═══ */}
+      {(rotaNovaEntrada || idEdicaoRota != null) && !dialogOpen && (
+        <div role="status" aria-label="Carregando cadastro" className="flex h-64 items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      )}
+      {dialogOpen && (
+        <section aria-labelledby="entrada-titulo" className="-mb-4 flex min-h-[calc(100vh-8rem)] flex-col gap-4 lg:-mb-8">
+          <div>
+            <button
+              type="button"
+              onClick={() => fecharFormulario()}
+              aria-label="Voltar"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-rapida hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              <span className="[overflow-wrap:anywhere]">
+                {editando ? `${editando.marca} ${editando.modelo} · ${editando.serial_number}` : "Equipamentos"}
+              </span>
+            </button>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <h1 id="entrada-titulo" className="text-[26px] font-bold leading-tight tracking-tight">{editando ? "Editar equipamento" : "Nova entrada"}</h1>
+              {editando && <StatusBadge status={editando.status} completo />}
+            </div>
+          </div>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-1 flex-col gap-4">
+            <div className="space-y-6 rounded-2xl border bg-card p-5 md:p-6">
             {!editando && rascunhoRecuperadoEm && (
               <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-status-work-bg px-4 py-3 text-sm">
                 <span>Rascunho de {quandoRascunho(rascunhoRecuperadoEm)} recuperado. Fotos não ficam no rascunho.</span>
@@ -3292,7 +3443,7 @@ export default function Equipamentos() {
               {anteriorEmAtendimento && (
                 <AnteriorEmAtendimentoAviso
                   equipamento={anteriorEmAtendimento}
-                  onAbrirAtendimento={(eq) => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
+                  onAbrirAtendimento={(eq) => { fecharFormulario(false); navigate(`/equipamentos/${eq.id}`); }}
                 />
               )}
               <ContatoResponsavelSelector
@@ -3351,7 +3502,7 @@ export default function Equipamentos() {
                       onConfirmar={setConfirmouNovoCiclo}
                       // Fecha a Nova entrada antes (o rascunho guarda o que foi digitado): a OS
                       // anterior nunca abre por baixo de um cadastro em andamento.
-                      onAbrir={(eq) => { setDialogOpen(false); navigate(`/equipamentos/${eq.id}`); }}
+                      onAbrir={(eq) => { fecharFormulario(false); avisoEdicao.liberarProximaSaida(); navigate(`/equipamentos/${eq.id}`); }}
                     />
                   )}
                 </div>
@@ -3556,21 +3707,26 @@ export default function Equipamentos() {
                 </div>
               </div>
             </div>
-            </DialogBody>
-            <DialogFooter>
-              {!editando && (
-                <p className="mr-auto hidden self-center text-xs text-muted-foreground sm:block">
-                  <kbd className="rounded border bg-muted px-1 font-medium">Esc</kbd> fecha e guarda como rascunho
-                </p>
-              )}
-              <DialogClose asChild><Button variant="outline" type="button" onClick={editando ? undefined : descartarEntrada}>Cancelar</Button></DialogClose>
+            </div>
+            <div className="sticky bottom-0 z-20 -mx-4 mt-auto flex flex-wrap items-center justify-end gap-3 border-t bg-card px-4 py-3 lg:-mx-8 lg:px-8">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  if (!editando) descartarEntrada();
+                  fecharFormulario();
+                }}
+              >
+                Cancelar
+              </Button>
               <Button type="submit" disabled={salvando || conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
                 {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
-        </DialogContent>
-      </Dialog>
+          {avisoEdicao.dialogo}
+        </section>
+      )}
 
       {/* ═══ Detalhes da OS (rota /equipamentos/:id) ═══ */}
       {idVerificacaoRota != null && !verificacaoDialogOpen && (

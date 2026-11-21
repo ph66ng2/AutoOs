@@ -1126,7 +1126,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
     await waitFor(() => expect(mockSubstituirImagensEquipamento).toHaveBeenCalledOnce());
     expect(mockSubstituirImagensEquipamento).toHaveBeenCalledWith(10, [], [77]);
-    expect(screen.getByRole("heading", { name: "Editar Equipamento" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Editar equipamento" })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("texto mantido no conflito");
 
     mockListarImagensEquipamento.mockResolvedValueOnce([{
@@ -1151,15 +1151,15 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     mockListarImagensEquipamento.mockResolvedValue([]);
     render(<Equipamentos />);
     fireEvent.click(screen.getByTestId("action-editar"));
-    await screen.findByRole("heading", { name: "Editar Equipamento" });
+    await screen.findByRole("heading", { name: "Editar equipamento" });
     fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "gravação antiga" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mockAtualizarEquipamento).toHaveBeenCalledOnce());
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar Equipamento" })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar equipamento" })).not.toBeInTheDocument());
     fireEvent.click(screen.getByTestId("action-editar"));
-    await screen.findByRole("heading", { name: "Editar Equipamento" });
+    await screen.findByRole("heading", { name: "Editar equipamento" });
 
     await act(async () => {
       concluirGravacao({
@@ -1169,7 +1169,22 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     });
 
     expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("ZT230");
-    expect(screen.getByRole("heading", { name: "Editar Equipamento" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Editar equipamento" })).toBeInTheDocument();
+  });
+
+  it("Nova entrada e Editar abrem como página, com rota própria", async () => {
+    mockListarImagensEquipamento.mockResolvedValue([]);
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByRole("button", { name: "Nova entrada" }));
+    await screen.findByRole("heading", { name: "Nova entrada" });
+    expect(mockNavigate).toHaveBeenCalledWith("/equipamentos/nova");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Nova entrada" })).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("action-editar"));
+    await screen.findByRole("heading", { name: "Editar equipamento" });
+    expect(mockNavigate).toHaveBeenCalledWith(`/equipamentos/${equipamentoVerificado.id}/editar`);
   });
 
   it("ignora uma foto de celular convertida depois que o formulário original foi fechado", async () => {
@@ -1184,10 +1199,10 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     fireEvent.click(await screen.findByTestId("emitir-foto-celular"));
     expect(equipamentoImagemUtils.bytesParaDataUrl).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar Equipamento" })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar equipamento" })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Nova entrada" }));
-    await screen.findByRole("heading", { name: "Novo Equipamento" });
+    await screen.findByRole("heading", { name: "Nova entrada" });
 
     await act(async () => {
       concluirConversao("data:image/jpeg;base64,camera");
