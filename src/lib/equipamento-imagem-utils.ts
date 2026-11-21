@@ -184,3 +184,23 @@ export async function arquivoParaImagemEquipamento(
     preview_url: previewUrl,
   };
 }
+
+/**
+ * Imagens coladas com Ctrl+V (print, foto copiada do WhatsApp Web). Texto colado junto é
+ * ignorado aqui: sem imagem, a colagem segue normal no campo. O nome ganha um carimbo para
+ * não virar vários "image.png".
+ */
+export function imagensDaAreaDeTransferencia(dados: Pick<DataTransfer, "items"> | null, agora = new Date()): File[] {
+  if (!dados) return [];
+  const carimbo = agora.toISOString().replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-");
+  const arquivos: File[] = [];
+  for (const item of Array.from(dados.items ?? [])) {
+    if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+    const arquivo = item.getAsFile();
+    if (!arquivo) continue;
+    const extensao = item.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+    const sufixo = arquivos.length > 0 ? `-${arquivos.length + 1}` : "";
+    arquivos.push(new File([arquivo], `colada-${carimbo}${sufixo}.${extensao}`, { type: item.type }));
+  }
+  return arquivos;
+}
