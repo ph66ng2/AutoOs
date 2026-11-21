@@ -791,6 +791,44 @@ pub async fn salvar_config_inatividade(enabled: bool) -> Result<bool, String> {
     Ok(enabled)
 }
 
+/// Prazo de garantia dos serviços, em dias contados de quando ficou pronta (0057). Não é sensível: a Nova
+/// entrada de qualquer perfil usa para avisar retorno dentro da garantia.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn obter_garantia_servicos_dias() -> Result<i32, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let dias: Option<i32> = sqlx::query_scalar("SELECT garantia_servicos_dias FROM configuracoes_sistema WHERE id = 1")
+        .fetch_optional(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(dias.unwrap_or(GARANTIA_SERVICOS_DIAS_PADRAO))
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn salvar_garantia_servicos_dias(dias: i32) -> Result<i32, String> {
+    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+    validar_garantia_dias(dias)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE configuracoes_sistema SET garantia_servicos_dias = $1, updated_at = NOW() WHERE id = 1")
+        .bind(dias)
+        .execute(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    record_security_event("GARANTIA_SERVICOS_ALTERADA", Some(&actor), format!("garantia_servicos_dias={}", dias), true).await;
+    Ok(dias)
+}
+
+const GARANTIA_SERVICOS_DIAS_PADRAO: i32 = 90;
+
+fn validar_garantia_dias(dias: i32) -> Result<(), String> {
+    if (0..=3650).contains(&dias) {
+        Ok(())
+    } else {
+        Err("Informe um prazo de garantia entre 0 e 3650 dias.".to_string())
+    }
+}
+
 pub(crate) fn current_session_profile() -> Result<Option<(DateTime<Utc>, SecurityProfileSummary)>, String> {
     let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
     match (session.unlocked_until, session.profile_obfuscated.clone(), session.profile_key.clone()) {
@@ -3221,6 +3259,15 @@ mod tests {
         assert!(validar_personalizacao(&PersonalizacaoPerfilInput { tema: Some("sepia".to_string()), ..valida_clone(&valida) }).is_err());
         assert!(validar_tema("light").is_ok() && validar_tema("dark").is_ok() && validar_tema("system").is_ok());
         assert!(validar_tema("auto").is_err());
+    }
+
+    #[test]
+    fn garantia_aceita_de_zero_a_dez_anos() {
+        assert!(validar_garantia_dias(0).is_ok());
+        assert!(validar_garantia_dias(90).is_ok());
+        assert!(validar_garantia_dias(3650).is_ok());
+        assert!(validar_garantia_dias(-1).is_err());
+        assert!(validar_garantia_dias(3651).is_err());
     }
 
     fn valida_clone(input: &PersonalizacaoPerfilInput) -> PersonalizacaoPerfilInput {

@@ -134,6 +134,8 @@ fn main() {
             commands::auth::ativar_perfil_com_codigo,
             commands::auth::salvar_personalizacao_perfil,
             commands::auth::salvar_tema_perfil,
+            commands::auth::obter_garantia_servicos_dias,
+            commands::auth::salvar_garantia_servicos_dias,
             commands::auth::registrar_tour_visto,
             commands::auth::listar_minhas_acoes,
             // Util

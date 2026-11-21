@@ -177,8 +177,20 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     }
     case "buscar_equipamento":
       return equipamento as T;
-    case "buscar_equipamentos_por_serial":
+    case "buscar_equipamentos_por_serial": {
+      const serie = String(args?.serial ?? "").toUpperCase();
+      // Serial de impressora já entregue (retorno dentro da garantia) para a Nova entrada.
+      if (serie.startsWith("GC420")) {
+        const saida = new Date(Date.now() - 23 * 86_400_000).toISOString().slice(0, 10);
+        return [{
+          ...equipamento, id: 7, serial_number: "GC420T-0001", marca: "Zebra", modelo: "GC420T", patrimonio: "PAT-120",
+          status: "ENTREGUE", data_entrada: "2026-09-02", data_pronto: saida, data_saida: saida, defeito_relatado: "Etiqueta saindo torta",
+        }] as T;
+      }
       return [equipamento] as T;
+    }
+    case "obter_garantia_servicos_dias":
+      return 90 as T;
     case "listar_cliente_contatos":
       return contatos.filter((c) => c.ativo) as T;
     case "criar_cliente_contato": {

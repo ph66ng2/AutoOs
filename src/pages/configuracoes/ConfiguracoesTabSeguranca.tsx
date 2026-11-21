@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { TabsContent } from "@/components/ui/tabs";
 import { ProfileDeleteDialog } from "@/components/ProfileDeleteDialog";
+import { GarantiaServicosCard } from "@/components/configuracoes/GarantiaServicosCard";
 import { securityPermissionLabel, securityRoleLabel } from "@/lib/security-profile-labels";
 import type { SecurityProfile, SensitiveAccessStatus } from "@/types";
 
@@ -91,6 +92,9 @@ export function ConfiguracoesTabSeguranca({
           </div>
         </CardContent>
       </Card>
+
+      {/* Política da empresa (vale para todos os computadores): só administrador. */}
+      {canManageProfiles && <GarantiaServicosCard />}
 
       {canManageProfiles && (
         <Card>

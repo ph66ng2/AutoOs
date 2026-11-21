@@ -956,6 +956,16 @@ export const db = {
   },
 
   /** Salva configuração de bloqueio por inatividade → Rust: salvar_config_inatividade */
+  /** Prazo de garantia dos serviços em dias, contados de quando ficou pronta → Rust: obter_garantia_servicos_dias */
+  async obterGarantiaServicosDias(): Promise<number> {
+    return invoke<number>("obter_garantia_servicos_dias");
+  },
+
+  /** Altera o prazo de garantia (administrador) → Rust: salvar_garantia_servicos_dias */
+  async salvarGarantiaServicosDias(dias: number): Promise<number> {
+    return invoke<number>("salvar_garantia_servicos_dias", { dias });
+  },
+
   async salvarConfigInatividade(enabled: boolean): Promise<ConfigInatividade> {
     const result = await invoke<boolean>("salvar_config_inatividade", { enabled });
     return { inactivity_lock_enabled: result };
