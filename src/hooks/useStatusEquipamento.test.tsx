@@ -78,19 +78,12 @@ describe("useStatusEquipamento", () => {
   it("finaliza verificacao e envia o orcamento pela lib de envio", async () => {
     vi.mocked(db.salvarVerificacao).mockResolvedValue(1);
     vi.mocked(db.atualizarStatusEquipamento).mockResolvedValue();
-    vi.mocked(db.buscarEquipamento)
-      .mockResolvedValueOnce({ ...equipamentoBase, atualizado_em: "2026-04-28 12:00:00.5" })
-      .mockResolvedValueOnce({
-        ...equipamentoBase,
-        status: "VERIFICADO",
-        atualizado_em: "2026-04-28 12:00:01",
-      })
-      .mockResolvedValueOnce({
-        ...equipamentoBase,
-        status: "AGUARDANDO_APROVACAO",
-        valor_orcamento: 80,
-        atualizado_em: "2026-04-28 12:00:02",
-      });
+    vi.mocked(db.buscarEquipamento).mockResolvedValueOnce({
+      ...equipamentoBase,
+      status: "AGUARDANDO_APROVACAO",
+      valor_orcamento: 80,
+      atualizado_em: "2026-04-28 12:00:02",
+    });
     vi.mocked(db.buscarVerificacao).mockResolvedValue(verificacaoBase);
     const { result } = renderHook(() => useStatusEquipamento());
     let resposta: Awaited<ReturnType<typeof result.current.finalizarVerificacao>> | undefined;
@@ -114,24 +107,9 @@ describe("useStatusEquipamento", () => {
       expect.objectContaining({ status: "AGUARDANDO_APROVACAO", valor_orcamento: 80 }),
       verificacaoBase,
     );
-    expect(db.atualizarStatusEquipamento).toHaveBeenNthCalledWith(
-      1,
-      10,
-      "VERIFICADO",
-      undefined,
-      undefined,
-      undefined,
-      "2026-04-28 12:00:00.5",
-    );
-    expect(db.atualizarStatusEquipamento).toHaveBeenNthCalledWith(
-      2,
-      10,
-      "AGUARDANDO_APROVACAO",
-      80,
-      "2026-05-01",
-      undefined,
-      "2026-04-28 12:00:01",
-    );
+    // Itens, valor, prazo e status numa gravação só: nada de passos de status separados.
+    expect(db.salvarVerificacao).toHaveBeenCalledWith({ ...verificacaoBase, enviar_para_aprovacao_prazo: "2026-05-01" });
+    expect(db.atualizarStatusEquipamento).not.toHaveBeenCalled();
   });
 
   function prepararFluxoFinalizar() {
@@ -181,7 +159,7 @@ describe("useStatusEquipamento", () => {
       resposta = await result.current.finalizarVerificacao(equipamentoBase, { ...verificacaoBase });
     });
 
-    expect(db.atualizarStatusEquipamento).toHaveBeenCalledTimes(2);
+    expect(db.atualizarStatusEquipamento).not.toHaveBeenCalled();
     expect(resposta?.sucesso).toBe(true);
     expect(resposta?.canais?.whatsapp?.enviado).toBe(false);
     expect(resposta?.canais?.email?.enviado).toBe(false);

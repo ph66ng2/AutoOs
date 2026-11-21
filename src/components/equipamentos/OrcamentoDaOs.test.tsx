@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { OrcamentoDaOs, linhasDoOrcamento } from "./OrcamentoDaOs";
+import { OrcamentoDaOs, divergenciaDoOrcamento, linhasDoOrcamento } from "./OrcamentoDaOs";
 import type { Equipamento, Verificacao } from "@/types";
 
 const verificacao: Verificacao = {
@@ -80,5 +80,30 @@ describe("OrcamentoDaOs", () => {
     expect(screen.getByRole("heading", { name: "Orçamento" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Alterar Orçamento" })).toBeNull();
     expect(screen.queryByText("baixa pendente")).toBeNull();
+  });
+
+  it("soma dos itens diferente do total: avisa só depois que o orçamento saiu", () => {
+    const linhas = linhasDoOrcamento(verificacao);
+    // 90 + 210 + 40 (Calibração reprovada não conta) = 340.
+    expect(divergenciaDoOrcamento(linhas, 340, "APROVADO")).toBeNull();
+    expect(divergenciaDoOrcamento(linhas, 0, "EM_MANUTENCAO")).toBe(340);
+    expect(divergenciaDoOrcamento(linhas, 339.99, "AGUARDANDO_APROVACAO")).toBe(340);
+    // Em verificação ainda é rascunho: sem aviso.
+    expect(divergenciaDoOrcamento(linhas, 0, "EM_VERIFICACAO")).toBeNull();
+    expect(divergenciaDoOrcamento([], 0, "APROVADO")).toBeNull();
+  });
+
+  it("mostra o aviso de divergência e aponta Alterar Orçamento quando existe", () => {
+    const equipamento = { id: 1, status: "EM_MANUTENCAO", valor_orcamento: 0 } as Equipamento;
+    render(<OrcamentoDaOs equipamento={equipamento} verificacao={verificacao} onAlterar={vi.fn()} />);
+    const aviso = screen.getByRole("status");
+    expect(aviso).toHaveTextContent("A soma dos itens (R$ 340,00) não bate com o total do orçamento (R$ 0,00).");
+    expect(aviso).toHaveTextContent("Confira e corrija em Alterar Orçamento.");
+  });
+
+  it("sem divergência, sem aviso", () => {
+    const equipamento = { id: 1, status: "APROVADO", valor_orcamento: 340 } as Equipamento;
+    render(<OrcamentoDaOs equipamento={equipamento} verificacao={verificacao} />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

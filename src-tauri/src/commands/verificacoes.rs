@@ -123,6 +123,66 @@ async fn gravar_aprovacao_os_garantia(
     Ok(Some(actor))
 }
 
+/// Verificação concluída → AGUARDANDO_APROVACAO na mesma transação dos itens. Antes eram três
+/// gravações (verificação, VERIFICADO, AGUARDANDO_APROVACAO); se a segunda ou a terceira falhasse,
+/// os itens ficavam gravados e `valor_orcamento` em 0.
+async fn enviar_para_aprovacao_na_transacao(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    equipamento_id: i32,
+    empresa_id: i32,
+    status_atual: &str,
+    custo_total: Option<f64>,
+    prazo: &str,
+) -> Result<SecurityProfileSummary, String> {
+    if !matches!(status_atual, "RECEBIDO" | "EM_VERIFICACAO" | "VERIFICADO") {
+        return Err("Esta OS não está em verificação; o orçamento não foi enviado para aprovação.".to_string());
+    }
+    let prazo = prazo_de_aprovacao_valido(prazo)?;
+    let valor = custo_total.filter(|valor| valor_monetario_positivo(*valor))
+        .ok_or("O orçamento precisa de um total maior que zero para ir à aprovação.")?;
+    let actor = require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?;
+    let atualizados = sqlx::query(
+        "UPDATE equipamentos
+         SET status = 'AGUARDANDO_APROVACAO', data_verificacao = NOW(), valor_orcamento = $3,
+             prazo_aprovacao = $4, atualizado_em = NOW()
+         WHERE id = $1 AND empresa_id = $2",
+    )
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .bind(valor)
+    .bind(prazo)
+    .execute(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?
+    .rows_affected();
+    if atualizados == 0 {
+        return Err("Equipamento não encontrado na empresa ativa.".to_string());
+    }
+    Ok(actor)
+}
+
+fn prazo_de_aprovacao_valido(prazo: &str) -> Result<String, String> {
+    let prazo = prazo.trim();
+    chrono::NaiveDate::parse_from_str(prazo, "%Y-%m-%d")
+        .map(|_| prazo.to_string())
+        .map_err(|_| "Prazo de aprovação inválido.".to_string())
+}
+
+async fn auditar_envio_para_aprovacao(actor: Option<SecurityProfileSummary>, equipamento_id: i32, status_anterior: &str) {
+    if let Some(actor) = actor {
+        record_security_event(
+            "EQUIPMENT_STATUS_UPDATED",
+            Some(&actor),
+            format!(
+                "equipamento_id={}; status_anterior={}; status=AGUARDANDO_APROVACAO; correcao=false; motivo=Verificação concluída e enviada para aprovação.; valor_orcamento=true; prazo_aprovacao=true; valor_final=false",
+                equipamento_id, status_anterior,
+            ),
+            true,
+        )
+        .await;
+    }
+}
+
 async fn auditar_aprovacao_os_garantia(
     actor: Option<SecurityProfileSummary>,
     empresa_id: i32,
@@ -207,6 +267,9 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     input.empresa_id = Some(empresa_id);
     let servicos = parse_servicos(input.servicos_necessarios.as_deref().unwrap_or("[]"))?;
     let concluida = input.concluida.unwrap_or(false);
+    if input.enviar_para_aprovacao_prazo.is_some() && !concluida {
+        return Err("Conclua a verificação antes de enviar o orçamento para aprovação.".to_string());
+    }
     if concluida {
         if input.custo_total.is_none() {
             input.custo_total = Some(resolver_custo_total(None, &servicos));
@@ -297,6 +360,12 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
             concluida,
         )
         .await?;
+        let enviado_para_aprovacao = match (aprovador_garantia.is_none() && concluida, input.enviar_para_aprovacao_prazo.as_deref()) {
+            (true, Some(prazo)) => Some(
+                enviar_para_aprovacao_na_transacao(&mut tx, input.equipamento_id, empresa_id, &status, input.custo_total, prazo).await?,
+            ),
+            _ => None,
+        };
         tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
         auditar_aprovacao_os_garantia(
             aprovador_garantia,
@@ -306,6 +375,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
             &status,
         )
         .await;
+        auditar_envio_para_aprovacao(enviado_para_aprovacao, input.equipamento_id, &status).await;
         if let Some(actor) = financial_actor.as_ref() {
             record_security_event(
                 "VERIFICATION_FINANCIAL_SAVED",
@@ -369,6 +439,12 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         concluida,
     )
     .await?;
+    let enviado_para_aprovacao = match (aprovador_garantia.is_none() && concluida, input.enviar_para_aprovacao_prazo.as_deref()) {
+        (true, Some(prazo)) => Some(
+            enviar_para_aprovacao_na_transacao(&mut tx, input.equipamento_id, empresa_id, &status, input.custo_total, prazo).await?,
+        ),
+        _ => None,
+    };
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
     auditar_aprovacao_os_garantia(
         aprovador_garantia,
@@ -378,6 +454,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         &status,
     )
     .await;
+    auditar_envio_para_aprovacao(enviado_para_aprovacao, input.equipamento_id, &status).await;
     if let Some(actor) = financial_actor.as_ref() {
         record_security_event(
             "VERIFICATION_FINANCIAL_SAVED",

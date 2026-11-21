@@ -1,3 +1,4 @@
+import { CircleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDatePtBr, parseDbTimestampUtc } from "@/lib/date-utils";
 import { normalizarServicosOrcamento, pecasParaOrcamento } from "@/lib/orcamento-estoque";
@@ -55,6 +56,19 @@ export function linhasDoOrcamento(verificacao: Verificacao | null): LinhaOrcamen
   return linhas;
 }
 
+/** Status em que o total já saiu para o cliente (antes disso a verificação ainda é rascunho). */
+const ORCAMENTO_FECHADO = new Set(["AGUARDANDO_APROVACAO", "ORCAMENTO_VENCIDO", "APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE"]);
+
+/**
+ * Soma dos itens cobrados (serviços + peças, sem os reprovados) quando ela não bate com o total
+ * gravado na OS; `null` quando bate ou quando o orçamento ainda está em elaboração.
+ */
+export function divergenciaDoOrcamento(linhas: LinhaOrcamento[], total: number | null | undefined, status: string): number | null {
+  if (!ORCAMENTO_FECHADO.has(status) || linhas.length === 0) return null;
+  const soma = Math.round(linhas.filter((linha) => !linha.reprovado).reduce((acc, linha) => acc + linha.valor, 0) * 100) / 100;
+  return Math.abs(soma - (total ?? 0)) >= 0.005 ? soma : null;
+}
+
 function Condicao({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl bg-muted px-3 py-2">
@@ -105,6 +119,7 @@ export function OrcamentoDaOs({
   const horas = verificacao?.tempo_estimado ?? 0;
 
   const enviado = enviadoEm ? diaEHora(enviadoEm) : null;
+  const somaDivergente = divergenciaDoOrcamento(linhas, equipamento.valor_orcamento, equipamento.status);
 
   return (
     <section aria-label="Orçamento">
@@ -145,6 +160,17 @@ export function OrcamentoDaOs({
             </tbody>
           </table>
         </div>
+      )}
+      {somaDivergente != null && (
+        <p role="status" className="mt-3 flex items-start gap-2 rounded-xl bg-muted px-3 py-2 text-sm">
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-status-bad" aria-hidden="true" />
+          <span>
+            <span className="font-semibold">A soma dos itens ({formatCurrency(somaDivergente)}) não bate com o total do orçamento ({formatCurrency(equipamento.valor_orcamento ?? 0)}).</span>{" "}
+            <span className="text-muted-foreground">
+              {onAlterar ? "Confira e corrija em Alterar Orçamento." : "Peça a quem pode alterar o orçamento para conferir."}
+            </span>
+          </span>
+        </p>
       )}
       <dl className="ml-auto mt-3 grid max-w-xs grid-cols-[1fr_auto] items-baseline gap-x-6 border-t pt-2 text-sm">
         <dt className="font-bold">Total do orçamento</dt>

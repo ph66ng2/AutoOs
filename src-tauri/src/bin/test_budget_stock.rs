@@ -24,6 +24,35 @@ async fn main() -> Result<()> {
     auth::store_profile_pin(profile, "1357").map_err(|e| anyhow!(e))?;
     auth::set_active_security_profile(profile, "1357".into(), Some("1357".into())).await.map_err(|e| anyhow!(e))?;
     auth::unlock_sensitive_access("1357".into()).await.map_err(|e| anyhow!(e))?;
+    // Verificação concluída + envio para aprovação: itens, valor, prazo e status numa transação só.
+    {
+        let eq_env: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,status) VALUES ($1,'Zebra','ZD620','Impressora','2026-09-27','Teste',$2,'EM_VERIFICACAO') RETURNING id")
+            .bind(format!("ENV-{suffix}")).bind(empresa).fetch_one(&pool).await?;
+        let verificacao = |prazo: Option<&str>, concluida: bool| VerificacaoInput {
+            equipamento_id: eq_env, empresa_id: Some(empresa), tecnico_nome: "Teste".into(), problema_relatado: "Teste".into(),
+            servicos_necessarios: Some(r#"[{"id":"x","descricao":"Atualização do firmware","valor":120}]"#.into()),
+            pecas_necessarias: Some("[]".into()), custo_total: Some(120.0), concluida: Some(concluida),
+            enviar_para_aprovacao_prazo: prazo.map(String::from), ..VerificacaoInput::default()
+        };
+        // Falha no envio desfaz tudo: nem itens, nem valor, nem status.
+        assert!(verificacoes::salvar_verificacao_tecnica(verificacao(Some("amanhã"), true)).await.is_err());
+        assert!(verificacoes::salvar_verificacao_tecnica(verificacao(Some("2026-12-01"), false)).await.is_err());
+        let gravadas: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM verificacoes WHERE equipamento_id=$1").bind(eq_env).fetch_one(&pool).await?;
+        assert_eq!(gravadas, 0, "verificação ficou gravada sem o envio");
+        let antes: (String, Option<f64>) = sqlx::query_as("SELECT status, valor_orcamento::FLOAT8 FROM equipamentos WHERE id=$1").bind(eq_env).fetch_one(&pool).await?;
+        assert_eq!(antes.0, "EM_VERIFICACAO");
+        assert!(antes.1.unwrap_or(0.0) == 0.0);
+        verificacoes::salvar_verificacao_tecnica(verificacao(Some("2026-12-01"), true)).await.map_err(|e| anyhow!(e))?;
+        let depois: (String, Option<f64>, Option<String>, Option<String>) = sqlx::query_as(
+            "SELECT status, valor_orcamento::FLOAT8, prazo_aprovacao, data_verificacao FROM equipamentos WHERE id=$1",
+        ).bind(eq_env).fetch_one(&pool).await?;
+        assert_eq!(depois.0, "AGUARDANDO_APROVACAO");
+        assert_eq!(depois.1, Some(120.0));
+        assert_eq!(depois.2.as_deref(), Some("2026-12-01"));
+        assert!(depois.3.is_some_and(|d| !d.trim().is_empty()));
+        // Já em aprovação: não envia de novo por aqui (a verificação já foi concluída).
+        assert!(verificacoes::salvar_verificacao_tecnica(verificacao(Some("2026-12-02"), true)).await.is_err());
+    }
     let produto = produtos::criar_produto(ProdutoInput {
         codigo: format!("P-{suffix}"), nome: "Cabeça".into(), categoria: "PEÇA".into(),
         quantidade_estoque: 2, preco_custo: 1.0, preco_venda: 10.0, ..ProdutoInput::default()

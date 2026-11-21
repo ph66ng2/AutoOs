@@ -687,6 +687,8 @@ export interface Verificacao {
   forma_pagamento_detalhe?: string;
   adjusted_at?: string;
   confirmar_garantia?: boolean;
+  /** Só na gravação: com o prazo, a verificação concluída já vai para AGUARDANDO_APROVACAO na mesma transação. */
+  enviar_para_aprovacao_prazo?: string;
 }
 
 /** Contato operacional pertencente a um cliente dentro de uma empresa. */
