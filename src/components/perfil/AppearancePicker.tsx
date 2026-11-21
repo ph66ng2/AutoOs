@@ -78,9 +78,10 @@ export function AppearancePicker({
 
       <fieldset disabled={disabled}>
         <legend className="mb-3 text-sm font-medium">Tema</legend>
-        <div className="grid max-w-md grid-cols-2 gap-3">
+        <div className="grid max-w-md grid-cols-3 gap-3">
           <ThemeOption label="Claro" scope="light" selected={theme === "light"} onSelect={() => onThemeChange("light")} />
           <ThemeOption label="Escuro" scope="dark" selected={theme === "dark"} onSelect={() => onThemeChange("dark")} />
+          <ThemeOption label="Sistema" scope="system" selected={theme === "system"} onSelect={() => onThemeChange("system")} />
         </div>
       </fieldset>
     </div>
@@ -94,7 +95,7 @@ function ThemeOption({
   onSelect,
 }: {
   label: string;
-  scope: "light" | "dark";
+  scope: "light" | "dark" | "system";
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -105,20 +106,37 @@ function ThemeOption({
       onClick={onSelect}
       className="group flex h-12 items-center gap-3 rounded-xl text-left transition-[box-shadow,transform] duration-rapida ease-out active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none"
     >
-      <span aria-hidden="true" className={scope}>
-        <span
-          className={cn(
-            "flex h-7 w-10 overflow-hidden rounded-md bg-background p-0.5 ring-offset-2 ring-offset-background transition-[box-shadow] duration-rapida ease-out group-focus-visible:ring-2 group-focus-visible:ring-ring",
-            selected ? "ring-2 ring-primary" : "ring-1 ring-border",
-          )}
-        >
-          <span className="w-2.5 rounded-sm border border-sidebar-border bg-sidebar" />
-          <span className="flex flex-1 items-start p-0.5 pl-1">
-            <span className="h-full w-full rounded-sm bg-card" />
-          </span>
-        </span>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "relative block h-7 w-10 overflow-hidden rounded-md ring-offset-2 ring-offset-background transition-[box-shadow] duration-rapida ease-out group-focus-visible:ring-2 group-focus-visible:ring-ring",
+          selected ? "ring-2 ring-primary" : "ring-1 ring-border",
+        )}
+      >
+        {scope === "system" ? (
+          <>
+            <MiniTela escopo="light" />
+            {/* Metade escura por cima, cortada na diagonal: "segue o sistema". */}
+            <span className="absolute inset-0 [clip-path:polygon(100%_0,100%_100%,0_100%)]">
+              <MiniTela escopo="dark" />
+            </span>
+          </>
+        ) : (
+          <MiniTela escopo={scope} />
+        )}
       </span>
       <span className="text-sm">{label}</span>
     </button>
+  );
+}
+
+function MiniTela({ escopo }: { escopo: "light" | "dark" }) {
+  return (
+    <span className={cn(escopo, "absolute inset-0 flex bg-background p-0.5")}>
+      <span className="w-2.5 rounded-sm border border-sidebar-border bg-sidebar" />
+      <span className="flex flex-1 items-start p-0.5 pl-1">
+        <span className="h-full w-full rounded-sm bg-card" />
+      </span>
+    </span>
   );
 }

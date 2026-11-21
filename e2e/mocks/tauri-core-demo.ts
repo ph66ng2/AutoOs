@@ -131,6 +131,11 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return status as T;
     case "lock_sensitive_access":
       return true as T;
+    case "salvar_tema_perfil": {
+      const perfil = status.profiles.find((item: { id: number }) => item.id === status.active_profile_id) as { tema?: unknown } | undefined;
+      if (perfil) perfil.tema = args?.tema;
+      return status as T;
+    }
     case "verificar_config_inatividade":
       return false as T;
     case "listar_clientes":

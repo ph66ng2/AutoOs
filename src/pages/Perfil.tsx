@@ -1,11 +1,9 @@
 import { erroEmailProfissional } from "@/lib/email-profissional";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowRightLeft, Check, Lock, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,7 +11,6 @@ import { EVENT_LABELS } from "@/lib/eventos-auditoria";
 import { AppearancePicker } from "@/components/perfil/AppearancePicker";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
-import { getAppMode, setAppMode } from "@/lib/app-mode";
 import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import { profileAppearance, type ProfileTheme } from "@/lib/profile-appearance";
@@ -21,7 +18,6 @@ import { PERMISSION_DETAILS } from "@/lib/profile-presets";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { requestTour } from "@/lib/tour-request";
-import { setUiSoundsEnabled, uiSoundsEnabled } from "@/lib/ui-sounds";
 import { BASE_MODULES, newPermissions } from "@/lib/tour-steps";
 import { ListaAtalhos } from "@/components/busca/AjudaAtalhos";
 import { PreferenciasNotificacao } from "@/components/perfil/PreferenciasNotificacao";
@@ -43,7 +39,6 @@ function errorMessage(cause: unknown) {
 
 export default function Perfil() {
   const { status, openProfileSelector, refreshStatus } = useSensitiveAccess();
-  const navigate = useNavigate();
   const profile = status?.profiles.find((item) => item.id === status.active_profile_id) ?? null;
   const unlocked = Boolean(status?.unlocked);
 
@@ -103,10 +98,7 @@ export default function Perfil() {
           </TabsList>
 
           <TabsContent value="visao" className="mt-0">
-            <VisaoGeral profile={profile} permissions={status?.permissions ?? []} onModeChange={(mode) => {
-              setAppMode(mode);
-              navigate(mode === "counter" ? "/balcao" : "/");
-            }} />
+            <VisaoGeral profile={profile} permissions={status?.permissions ?? []} />
           </TabsContent>
           <TabsContent value="personalizar" className="mt-0">
             <Personalizar profile={profile} onSaved={refreshStatus} />
@@ -137,14 +129,11 @@ function formatWhen(value?: string | null) {
 function VisaoGeral({
   profile,
   permissions,
-  onModeChange,
 }: {
   profile: SecurityProfile;
   permissions: SensitivePermission[];
-  onModeChange: (mode: "standard" | "counter") => void;
 }) {
   const [activity, setActivity] = useState<SecurityAuditEvent[] | null>(null);
-  const mode = getAppMode() ?? "standard";
 
   useEffect(() => {
     let alive = true;
@@ -180,31 +169,6 @@ function VisaoGeral({
       </Card>
 
       <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Modo deste computador</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div role="radiogroup" aria-label="Modo" data-tour="perfil-modo" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
-              {([["standard", "Sistema completo"], ["counter", "Balcão"]] as const).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={mode === value}
-                  onClick={() => mode !== value && onModeChange(value)}
-                  className={cn(
-                    "h-9 rounded-md text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    mode === value ? "bg-background font-semibold shadow-sm" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Últimas ações</CardTitle>
@@ -308,31 +272,8 @@ function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved:
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</Button>
         </form>
-        <SonsDaInterface />
       </CardContent>
     </Card>
-  );
-}
-
-/** Preferência local, como o modo do computador: muda na hora, sem o botão Salvar. */
-function SonsDaInterface() {
-  const [enabled, setEnabled] = useState(uiSoundsEnabled);
-  return (
-    <div className="mt-7 flex items-start gap-3 border-t border-border pt-6">
-      <Checkbox
-        id="perfil-sons"
-        checked={enabled}
-        onCheckedChange={(value) => {
-          const next = value === true;
-          setUiSoundsEnabled(next);
-          setEnabled(next);
-        }}
-        className="mt-0.5"
-      />
-      <div className="space-y-1">
-        <Label htmlFor="perfil-sons">Sons da interface</Label>
-      </div>
-    </div>
   );
 }
 

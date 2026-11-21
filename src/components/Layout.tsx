@@ -43,6 +43,7 @@ import { BuscaGlobal } from "@/components/busca/BuscaGlobal";
 import type { TelaBuscavel } from "@/hooks/useBuscaGlobal";
 import { AjudaAtalhos } from "@/components/busca/AjudaAtalhos";
 import { useAtalhosGlobais } from "@/hooks/useAtalhosGlobais";
+import { useRotuloCabe } from "@/hooks/useRotuloCabe";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -55,12 +56,6 @@ import { profileAppearance } from "@/lib/profile-appearance";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { abrirPainelAtualizacao, useAtualizacaoDisponivel } from "@/lib/atualizacao-disponivel";
 
-/** Permissões que abrem a rota /configuracoes (mesmas de App.tsx). */
-const CONFIGURACOES_PERMISSIONS: SensitivePermission[] = [
-  SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
-  SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS,
-  SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
-];
 
 interface NavItem {
   label: string;
@@ -104,8 +99,6 @@ const configuracoesItem: NavItem = {
   label: "Configurações",
   path: "/configuracoes",
   icon: Settings,
-  permission: CONFIGURACOES_PERMISSIONS,
-  showWhenLocked: true,
 };
 
 function navLinkClass(collapsed: boolean) {
@@ -134,6 +127,8 @@ export function Layout() {
   const sessaoAtiva = Boolean(status?.pin_configured && status.unlocked);
   const telaLarga = useLarguraMinima(768);
   const { versao: versaoNova } = useAtualizacaoDisponivel();
+  // Borda (2) + padding (24) + ícone (18) + espaço (12) do link do pé do menu.
+  const rodapeConfig = useRotuloCabe<HTMLElement, HTMLSpanElement>(56);
   const empresa = useEmpresaAtiva(`${status?.active_profile_id ?? ""}-${status?.unlocked ?? ""}`);
   // O selo só aparece quando há algo fora do normal (sem banco, sem perfil, sem PIN).
   // Desbloqueado vira o ✓ ao lado do nome; bloqueado aparece na linha de baixo do cartão.
@@ -142,7 +137,6 @@ export function Layout() {
   const visibleGroups = navGroups
     .map((grupo) => ({ ...grupo, itens: grupo.itens.filter((item) => navItemVisible(item, status)) }))
     .filter((grupo) => grupo.itens.length > 0);
-  const mostrarConfiguracoes = navItemVisible(configuracoesItem, status);
   const navigate = useNavigate();
   const abrirModoBalcao = () => {
     setMobileOpen(false);
@@ -152,9 +146,9 @@ export function Layout() {
   const [buscaAberta, setBuscaAberta] = useState(false);
   const [ajudaAberta, setAjudaAberta] = useState(false);
   // Telas que o Ctrl+K encontra: as mesmas do menu, mais o Modo Balcão.
-  const chaveTelas = visibleGroups.flatMap((grupo) => grupo.itens.map((item) => item.path)).join("|") + (mostrarConfiguracoes ? "|cfg" : "");
+  const chaveTelas = visibleGroups.flatMap((grupo) => grupo.itens.map((item) => item.path)).join("|");
   const telasBuscaveis = useMemo(
-    () => [...visibleGroups.flatMap((grupo) => grupo.itens), ...(mostrarConfiguracoes ? [configuracoesItem] : [])]
+    () => [...visibleGroups.flatMap((grupo) => grupo.itens), configuracoesItem]
       .filter((item) => !item.modo)
       .map((item): TelaBuscavel => ({ label: item.label, path: item.path }))
       .concat({ label: "Modo Balcão", path: "/balcao", aoAbrir: () => setAppMode("counter") }),
@@ -173,36 +167,41 @@ export function Layout() {
       }).then((liberado) => { if (liberado) navigate("/vendas/novo"); });
     },
   });
-  const renderItem = (item: NavItem) => (
-    <NavLink
-      key={item.path}
-      to={item.path}
-      end={item.path === "/"}
-      aria-label={item.label}
-      title={collapsed ? item.label : undefined}
-      data-tour={`nav-${item.path}`}
-      onClick={() => {
-        setMobileOpen(false);
-        if (item.modo) setAppMode(item.modo);
-      }}
-      className={navLinkClass(collapsed)}
-    >
-      {({ isActive }) => (
-        <>
-          <item.icon className="h-[18px] w-[18px] shrink-0" />
-          {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-          {!collapsed && isActive && <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />}
-        </>
-      )}
-    </NavLink>
-  );
+  // `rodape`: item do pé do menu (Configurações), que divide a linha com Balcão e o sino. Sem a
+  // seta de "ativo" e, quando o nome não cabe inteiro (tela de 720p, texto maior), só o ícone.
+  const renderItem = (item: NavItem, rodape?: { soIcone: boolean }) => {
+    const soIcone = collapsed || Boolean(rodape?.soIcone);
+    return (
+      <NavLink
+        key={item.path}
+        to={item.path}
+        end={item.path === "/"}
+        aria-label={item.label}
+        title={soIcone ? item.label : undefined}
+        data-tour={`nav-${item.path}`}
+        onClick={() => {
+          setMobileOpen(false);
+          if (item.modo) setAppMode(item.modo);
+        }}
+        className={(estado) => cn(navLinkClass(soIcone)(estado), rodape?.soIcone && !collapsed && "w-[42px]")}
+      >
+        {({ isActive }) => (
+          <>
+            <item.icon className="h-[18px] w-[18px] shrink-0" />
+            {!soIcone && <span className="flex-1 truncate">{item.label}</span>}
+            {!soIcone && isActive && !rodape && <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />}
+          </>
+        )}
+      </NavLink>
+    );
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {mobileOpen && <button type="button" aria-label="Fechar menu" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-40 bg-black/60 md:hidden" /> }
       {/* Sidebar */}
       {/* z-50 só vale na gaveta do celular (acima do fundo z-40). Em md+ a sidebar é item de flex: com z-50 ela vencia o splash de abertura (z-40). */}
-      <aside id="main-sidebar" aria-label="Menu principal" className={cn("fixed inset-y-0 left-0 z-50 flex w-[264px] shrink-0 flex-col overflow-y-auto bg-sidebar transition-[width,transform,visibility] ease-saida md:overflow-visible duration-lenta md:static md:z-auto md:visible md:translate-x-0", mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full", collapsed ? "md:w-16" : "md:w-[264px]")}>
+      <aside id="main-sidebar" aria-label="Menu principal" className={cn("fixed inset-y-0 left-0 z-50 flex w-[16.5rem] shrink-0 flex-col overflow-y-auto bg-sidebar transition-[width,transform,visibility] ease-saida md:overflow-visible duration-lenta md:static md:z-auto md:visible md:translate-x-0", mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full", collapsed ? "md:w-16" : "md:w-[16.5rem]")}>
         {/* Marca */}
         <div className={cn("flex h-[88px] shrink-0 items-center gap-3 px-5", collapsed && "justify-center px-0")}>
           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-sidebar-border bg-card shadow-sm" aria-hidden="true">
@@ -263,7 +262,7 @@ export function Layout() {
                 <h4 className="mx-3 mb-1.5 mt-5 text-[13px] font-medium text-muted-foreground">{grupo.titulo}</h4>
               )}
               {grupo.titulo && collapsed && <div className="mx-2 my-3 border-t border-sidebar-border" aria-hidden="true" />}
-              {grupo.itens.map(renderItem)}
+              {grupo.itens.map((item) => renderItem(item))}
             </div>
           ))}
         </nav>
@@ -300,7 +299,13 @@ export function Layout() {
           )}
           {/* No computador não há barra no topo (canvas): as notificações ficam ao lado de Configurações. */}
           <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
-            {mostrarConfiguracoes ? <nav aria-label="Sistema" className="min-w-0 flex-1">{renderItem(configuracoesItem)}</nav> : <span className="flex-1" />}
+            <nav ref={rodapeConfig.conteinerRef} aria-label="Sistema" className="relative min-w-0 flex-1">
+              {renderItem(configuracoesItem, { soIcone: !rodapeConfig.cabe })}
+              {/* Cópia invisível do nome, só para medir se ele cabe inteiro. */}
+              <span ref={rodapeConfig.medidaRef} aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 whitespace-nowrap text-sm font-semibold">
+                {configuracoesItem.label}
+              </span>
+            </nav>
             <Button
               type="button"
               variant="ghost"

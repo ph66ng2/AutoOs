@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion, type Variants } from "motion/react";
+import { AnimatePresence, motion, type Variants } from "motion/react";
+import { useMovimentoReduzido } from "@/hooks/useMovimentoReduzido";
 import { AlertCircle, ArrowLeft, ArrowRight, Check, Printer, ShieldCheck, Users, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,7 +74,7 @@ export function PrimeiroAcessoWizard({
   /** Limite de espera ao salvar o perfil (testes usam um valor curto). */
   saveTimeoutMs?: number;
 }) {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useMovimentoReduzido();
   const rootRef = useRef<HTMLDivElement>(null);
   // Quem já concluiu o primeiro acesso em outro computador não escolhe nome e visual de novo:
   // só o código e o PIN deste computador (mesma etapa da recuperação de PIN).

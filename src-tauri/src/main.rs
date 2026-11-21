@@ -133,6 +133,7 @@ fn main() {
             commands::auth::gerar_codigo_primeiro_acesso,
             commands::auth::ativar_perfil_com_codigo,
             commands::auth::salvar_personalizacao_perfil,
+            commands::auth::salvar_tema_perfil,
             commands::auth::registrar_tour_visto,
             commands::auth::listar_minhas_acoes,
             // Util

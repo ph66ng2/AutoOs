@@ -10,7 +10,6 @@ import { PreferenciasNotificacao } from "./PreferenciasNotificacao";
 describe("PreferenciasNotificacao", () => {
   beforeEach(() => {
     m.salvar.mockReset().mockImplementation(async (tipos: string[]) => tipos);
-    localStorage.removeItem("autoos:avisos-windows");
   });
 
   it("desligar um tipo salva na hora e recarrega o perfil; religar tira da lista", async () => {
@@ -32,12 +31,5 @@ describe("PreferenciasNotificacao", () => {
     await user.click(screen.getByRole("checkbox", { name: "Nova OS para mim" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Sem conexão");
     expect(screen.getByRole("checkbox", { name: "Nova OS para mim" })).toBeChecked();
-  });
-
-  it("aviso do Windows é deste computador (localStorage)", async () => {
-    const user = userEvent.setup();
-    render(<PreferenciasNotificacao desligados={[]} onSaved={vi.fn()} />);
-    await user.click(screen.getByRole("checkbox", { name: "Avisar no Windows" }));
-    expect(localStorage.getItem("autoos:avisos-windows")).toBe("off");
   });
 });

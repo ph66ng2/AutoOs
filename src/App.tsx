@@ -36,6 +36,7 @@ import { CounterSessionGate } from "@/components/CounterSessionGate";
 import { ReleaseHighlightsDialog } from "@/components/ReleaseHighlightsDialog";
 import { UpdateNotice } from "@/components/UpdateNotice";
 import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
+import { ROTA_TELA_INICIAL, telaInicial } from "@/lib/preferencias-computador";
 
 /**
  * AvisoRapido do DS: fundo de cartão, borda e sombra de menu, sem cor de fundo por tipo
@@ -160,22 +161,8 @@ function AppContent() {
                 </SensitiveRoute>
               }
             />
-            <Route
-              path="/configuracoes"
-              element={
-                <SensitiveRoute
-                  title="Configurações protegidas"
-                  description="Desbloqueie o acesso para gerenciar integrações, banco e segurança."
-                  permission={[
-                    SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
-                    SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS,
-                    SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
-                  ]}
-                >
-                  <Configuracoes />
-                </SensitiveRoute>
-              }
-            />
+            {/* Aberta a todos: a aba Geral é deste computador; as abas da empresa checam permissão. */}
+            <Route path="/configuracoes" element={<Configuracoes />} />
           </Route>
           <Route element={<CounterSessionGate><CounterLayout onChangeMode={setCurrentAppMode} /></CounterSessionGate>}>
             <Route path="/balcao" element={<Balcao />} />
@@ -250,11 +237,18 @@ function AppModeChoice({ visible, onSelect }: { visible: boolean; onSelect: (mod
 function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
+  // "Abrir o app em" (Configurações › Geral) vale só na primeira entrada desta abertura.
+  const telaInicialAplicada = useRef(false);
   useEffect(() => {
     if (!ready || !mode) return;
     const isCounterRoute = location.pathname.startsWith("/balcao");
     if (mode === "counter" && !isCounterRoute) navigate("/balcao", { replace: true });
     if (mode === "standard" && isCounterRoute) navigate("/", { replace: true });
+    if (!telaInicialAplicada.current) {
+      telaInicialAplicada.current = true;
+      const destino = ROTA_TELA_INICIAL[telaInicial()];
+      if (mode === "standard" && location.pathname === "/" && destino !== "/") navigate(destino, { replace: true });
+    }
   }, [location.pathname, mode, navigate, ready]);
   return null;
 }

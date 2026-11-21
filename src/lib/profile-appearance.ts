@@ -34,7 +34,8 @@ export const AVATAR_COLORS: { hex: string; label: string }[] = [
   { hex: "#475569", label: "Grafite" },
 ];
 
-export type ProfileTheme = "light" | "dark";
+/** `system` segue o claro/escuro do sistema operacional (0056). */
+export type ProfileTheme = "light" | "dark" | "system";
 
 export interface ProfileAppearance {
   icon: string;
@@ -55,7 +56,7 @@ export function profileAppearance(profile: Pick<SecurityProfile, "id" | "avatar_
     color: AVATAR_COLORS.some((item) => item.hex === profile.avatar_cor)
       ? profile.avatar_cor!
       : AVATAR_COLORS[fallbackIndex % AVATAR_COLORS.length].hex,
-    theme: profile.tema === "dark" ? "dark" : "light",
+    theme: profile.tema === "dark" || profile.tema === "system" ? profile.tema : "light",
   };
 }
 

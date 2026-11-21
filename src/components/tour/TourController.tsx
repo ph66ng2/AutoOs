@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useMovimentoReduzido } from "@/hooks/useMovimentoReduzido";
 import { Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -62,7 +63,7 @@ export function TourController() {
   const { status, refreshStatus } = useSensitiveAccess();
   const navigate = useNavigate();
   const location = useLocation();
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useMovimentoReduzido();
   const [run, setRun] = useState<{ kind: TourKind; steps: TourStep[] } | null>(null);
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);

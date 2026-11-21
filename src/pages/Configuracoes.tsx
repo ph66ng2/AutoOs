@@ -30,6 +30,7 @@ import { WhatsappConfigService } from "@/lib/whatsapp-config";
 import { PhotoTunnelConfigService } from "@/lib/photo-tunnel-config";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { ConfiguracoesTabGeral } from "@/pages/configuracoes/ConfiguracoesTabGeral";
 import { ConfiguracoesTabInfra } from "@/pages/configuracoes/ConfiguracoesTabInfra";
 import { ConfiguracoesTabIntegracoes } from "@/pages/configuracoes/ConfiguracoesTabIntegracoes";
 import { ConfiguracoesTabObservabilidade } from "@/pages/configuracoes/ConfiguracoesTabObservabilidade";
@@ -39,8 +40,11 @@ import { SMTP_DEFAULTS, type SmtpFormValues, type WhatsappFormValues } from "@/p
 import { detectRestoreMode } from "@/pages/configuracoes/detect-restore-mode";
 import { ABAS_CONFIGURACOES, abasConfiguracoes, type AbaConfiguracoesId } from "@/pages/configuracoes/abas";
 import { PageHeader } from "@/components/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Lock } from "lucide-react";
 import {
   SENSITIVE_PERMISSIONS,
+  type SensitivePermission,
   type DatabaseSchemaStatus,
   type LocalSupportBundleResult,
   type LocalSupportStatus,
@@ -52,7 +56,7 @@ import {
 } from "@/types";
 
 export default function Configuracoes() {
-  const { status: accessStatus, refreshStatus, hasPermission, ensureSensitiveAccess } = useSensitiveAccess();
+  const { status: accessStatus, refreshStatus, hasPermission, ensureSensitiveAccess, connectionUnavailable } = useSensitiveAccess();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasPassword, setHasPassword] = useState(false);
@@ -87,6 +91,9 @@ export default function Configuracoes() {
     admin: canManageProfiles,
   });
   const [tab, setTab] = useState<string>(abas.inicial);
+  // Sessão bloqueada: o backend devolve permissões vazias, então quem tem acesso às abas da
+  // empresa precisa de um jeito de pedir o PIN daqui (a rota não pede mais, a Geral é de todos).
+  const podeDesbloquear = Boolean(accessStatus?.pin_configured && !accessStatus.unlocked);
   const [auditEvents, setAuditEvents] = useState<SecurityAuditEvent[]>([]);
   const [profilesCatalog, setProfilesCatalog] = useState<SecurityProfile[]>([]);
   const [securityBusy, setSecurityBusy] = useState(false);
@@ -356,7 +363,7 @@ export default function Configuracoes() {
   const abaPedida = new URLSearchParams(location.search).get("aba") as AbaConfiguracoesId | null;
   const abaPermitida = (aba: AbaConfiguracoesId | null) =>
     aba !== null && ABAS_CONFIGURACOES.includes(aba) &&
-    (aba === "smtp" ? abas.integracoes : aba === "portal" ? abas.portal : canManageProfiles);
+    (aba === "geral" || (aba === "smtp" ? abas.integracoes : aba === "portal" ? abas.portal : canManageProfiles));
 
   useEffect(() => {
     if (abaPermitida(abaPedida)) {
@@ -737,6 +744,7 @@ export default function Configuracoes() {
       >
         <TabsList className="flex h-auto flex-row items-stretch justify-start gap-1 overflow-x-auto rounded-none border-b bg-muted/40 p-3 lg:flex-col lg:border-b-0 lg:border-r">
           {([
+            ["geral", true],
             ["smtp", abas.integracoes],
             ["portal", abas.portal],
             ["infra", canManageProfiles],
@@ -748,13 +756,30 @@ export default function Configuracoes() {
               <TabsTrigger
                 key={valor}
                 value={valor}
-                className="flex min-h-11 shrink-0 flex-col items-start justify-center gap-0 whitespace-nowrap rounded-xl border border-transparent px-3 py-2 text-left font-semibold text-foreground shadow-none data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:shadow-sm lg:w-full lg:data-[state=active]:border-l-2 lg:data-[state=active]:border-l-primary"
+                className="flex min-h-11 shrink-0 items-center justify-start whitespace-nowrap rounded-xl border border-transparent px-3 py-2 text-left font-semibold text-foreground shadow-none data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:shadow-sm lg:w-full lg:data-[state=active]:border-l-2 lg:data-[state=active]:border-l-primary"
               >
-                <span className="text-sm">{ROTULO_ABA[valor].rotulo}</span>
-                <span className="hidden text-xs font-normal text-muted-foreground lg:block">{ROTULO_ABA[valor].detalhe}</span>
+                <span className="text-sm">{ROTULO_ABA[valor]}</span>
               </TabsTrigger>
             ))}
+          {podeDesbloquear && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 lg:mt-2 lg:w-full"
+              onClick={() => void ensureSensitiveAccess({
+                title: "Configurações da empresa",
+                description: "Informe o PIN para ver integrações, banco e segurança.",
+                anyPermission: CONFIGURACOES_DA_EMPRESA,
+              })}
+            >
+              <Lock className="mr-2 h-4 w-4" aria-hidden="true" />
+              Desbloquear as da empresa
+            </Button>
+          )}
         </TabsList>
+
+        <ConfiguracoesTabGeral conectado={!connectionUnavailable} />
 
         <ConfiguracoesTabIntegracoes
           canConfigureSmtp={canConfigureSmtp}
@@ -865,10 +890,18 @@ export default function Configuracoes() {
 }
 
 /** Itens da navegação lateral de Configurações: nome e o que tem dentro. */
-const ROTULO_ABA: Record<AbaConfiguracoesId, { rotulo: string; detalhe: string }> = {
-  smtp: { rotulo: "Integrações", detalhe: "E-mail, WhatsApp, fotos" },
-  portal: { rotulo: "Portal do Cliente", detalhe: "Acesso e respostas" },
-  infra: { rotulo: "Banco de dados", detalhe: "Esquema, atualização e backup" },
-  seguranca: { rotulo: "Segurança", detalhe: "PIN, bloqueio e perfis" },
-  observabilidade: { rotulo: "Suporte e logs", detalhe: "Pacote de suporte e auditoria" },
+/** Mesmas permissões que abriam a rota antes da aba Geral. */
+const CONFIGURACOES_DA_EMPRESA: SensitivePermission[] = [
+  SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+  SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS,
+  SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+];
+
+const ROTULO_ABA: Record<AbaConfiguracoesId, string> = {
+  geral: "Geral",
+  smtp: "Integrações",
+  portal: "Portal do Cliente",
+  infra: "Banco de dados",
+  seguranca: "Segurança",
+  observabilidade: "Suporte e logs",
 };

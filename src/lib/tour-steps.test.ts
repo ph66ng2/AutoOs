@@ -18,7 +18,7 @@ describe("tour por permissão", () => {
   });
 
   it("o tour completo inclui o passo do Modo Balcão apontando para o seletor em Perfil", () => {
-    expect(fullTour([])).toContainEqual(expect.objectContaining({ id: "balcao", route: "/perfil", target: "perfil-modo" }));
+    expect(fullTour([])).toContainEqual(expect.objectContaining({ id: "balcao", route: "/configuracoes", target: "config-modo" }));
   });
 
   it("depois de ver o tour, só permissões novas geram passos", () => {
