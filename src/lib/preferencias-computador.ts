@@ -6,10 +6,12 @@
 
 export type TamanhoTexto = "normal" | "grande" | "maior";
 export type TelaInicial = "inicio" | "equipamentos";
+export type Densidade = "confortavel" | "compacta";
 
 const CHAVE_TEXTO = "autoos:tamanho-texto";
 const CHAVE_ANIMACOES = "autoos:animacoes";
 const CHAVE_TELA_INICIAL = "autoos:tela-inicial";
+const CHAVE_DENSIDADE = "autoos:densidade";
 
 export const ESCALA_TEXTO: Record<TamanhoTexto, string> = {
   normal: "100%",
@@ -67,6 +69,16 @@ export function movimentoReduzido(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/** Listas compactas: linhas mais baixas nas tabelas (cabe mais em telas de 720p). */
+export function densidade(): Densidade {
+  return ler(CHAVE_DENSIDADE) === "compacta" ? "compacta" : "confortavel";
+}
+
+export function definirDensidade(valor: Densidade) {
+  gravar(CHAVE_DENSIDADE, valor === "compacta" ? "compacta" : null);
+  aplicarPreferenciasComputador();
+}
+
 export function telaInicial(): TelaInicial {
   return ler(CHAVE_TELA_INICIAL) === "equipamentos" ? "equipamentos" : "inicio";
 }
@@ -82,4 +94,6 @@ export function aplicarPreferenciasComputador() {
   raiz.style.fontSize = ESCALA_TEXTO[tamanhoTexto()];
   if (animacoesReduzidasAqui()) raiz.dataset.movimento = "reduzido";
   else delete raiz.dataset.movimento;
+  if (densidade() === "compacta") raiz.dataset.densidade = "compacta";
+  else delete raiz.dataset.densidade;
 }

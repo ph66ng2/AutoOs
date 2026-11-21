@@ -128,6 +128,12 @@
 /* Configurações › Geral › Animações reduzidas: vale neste computador, além da opção do sistema.
    As animações em CSS de cada tela terminam no primeiro quadro (os eventos de fim continuam). */
 :root[data-movimento="reduzido"] { --dur-rapida: 0ms; --dur-padrao: 0ms; --dur-lenta: 0ms; }
+
+/* Configurações › Geral › Listas compactas: menos respiro nas linhas das tabelas das telas. */
+:root[data-densidade="compacta"] main tbody > tr > td {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
 :root[data-movimento="reduzido"] *,
 :root[data-movimento="reduzido"] *::before,
 :root[data-movimento="reduzido"] *::after {
