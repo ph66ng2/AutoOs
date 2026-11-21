@@ -87,6 +87,22 @@ describe("PortalAlertasSino", () => {
     expect(await screen.findByRole("button", { name: "Notificações (há itens não lidos)" })).toBeInTheDocument();
   });
 
+  it("com mais de 10 alertas, o número vem da conta do banco e abrir sobe a marca d'água", async () => {
+    // 15 não lidos; a janela de toasts traz só os 10 mais novos (ids 6..15).
+    const janela = Array.from({ length: 10 }, (_, i) => ({ ...alerta, id: 15 - i }));
+    mocks.listar.mockResolvedValue(janela);
+    mocks.contar.mockImplementation(async (aposId?: number) => (aposId ? 15 - aposId : 15));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderSino();
+    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 15 nova(s)" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Notificações/ }));
+    expect(await screen.findByRole("button", { name: "Notificações (há itens não lidos)" })).toBeInTheDocument();
+    // Próxima consulta pede só o que veio depois do id 15: nada novo.
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await waitFor(() => expect(mocks.contar).toHaveBeenLastCalledWith(15));
+    expect(screen.getByRole("button", { name: "Notificações (há itens não lidos)" })).toBeInTheDocument();
+  });
+
   it("na primeira consulta não dispara toast (só o contador)", async () => {
     renderSino();
     await screen.findByRole("button", { name: /1 nova/ });

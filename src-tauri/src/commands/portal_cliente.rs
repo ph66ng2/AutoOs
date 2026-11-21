@@ -131,7 +131,8 @@ pub async fn listar_alertas_portal(
 }
 
 #[tauri::command]
-pub async fn contar_alertas_portal_nao_lidos() -> Result<i64, String> {
+/// `apos_id`: conta só os alertas com id maior (o que chegou depois da última abertura do sino).
+pub async fn contar_alertas_portal_nao_lidos(apos_id: Option<i64>) -> Result<i64, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     // Consulta de segundo plano (sino a cada 30 s): não renova a sessão sensível.
     let empresa_id = require_active_session_company_id_without_touch(&pool).await?;
@@ -139,10 +140,12 @@ pub async fn contar_alertas_portal_nao_lidos() -> Result<i64, String> {
         "SELECT COUNT(*) FROM portal_alertas a
          WHERE a.empresa_id = $1 AND a.lido_em IS NULL
            AND NOT EXISTS (SELECT 1 FROM notificacao_leituras l
-                           WHERE l.empresa_id = a.empresa_id AND l.profile_id = $2 AND l.chave = 'portal:' || a.id)",
+                           WHERE l.empresa_id = a.empresa_id AND l.profile_id = $2 AND l.chave = 'portal:' || a.id)
+           AND ($3::BIGINT IS NULL OR a.id > $3)",
     )
     .bind(empresa_id)
     .bind(perfil_do_sino())
+    .bind(apos_id)
     .fetch_one(&pool)
     .await
     .map_err(super::operator_errors::mapear_erro_sql)

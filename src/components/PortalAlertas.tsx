@@ -39,7 +39,7 @@ import { PREFIXO_TOAST_ERRO } from "@/hooks/useNotification";
 import { cn } from "@/lib/utils";
 import { destinoDoAviso, ROTULO_ABRIR_AVISO, VISUAL_AVISO } from "@/lib/avisos-internos";
 import { notificarSistema } from "@/lib/notificacao-sistema";
-import { contarNovos, lerVistos, marcarVistos } from "@/lib/sino-visto";
+import { contarNovos, lerVistos, marcarVistos, type Vistos } from "@/lib/sino-visto";
 import type { AvisoInterno } from "@/types";
 import type { AlertaPortal } from "@/types";
 
@@ -170,9 +170,13 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const navigate = useNavigate();
   const erros = useErrosRegistrados();
   const [naoLidosPortal, setNaoLidosPortal] = useState(0);
-  /** Ids dos alertas do portal não lidos mais recentes (para o "visto"). */
-  const [portalNaoLidosIds, setPortalNaoLidosIds] = useState<number[]>([]);
-  const [vistos, setVistos] = useState<Set<string>>(() => lerVistos(perfilId));
+  /** Maior id de alerta do portal não lido: vira a marca do "visto" ao abrir o sino. */
+  const [portalMaiorId, setPortalMaiorId] = useState(0);
+  /** Alertas do portal não lidos que chegaram depois da última abertura (conta do banco). */
+  const [novosPortal, setNovosPortal] = useState(0);
+  const [vistos, setVistos] = useState<Vistos>(() => lerVistos(perfilId));
+  const vistosRef = useRef(vistos);
+  vistosRef.current = vistos;
   const [avisos, setAvisos] = useState<AvisoInterno[]>([]);
   const avisosVistos = useRef<Set<string> | null>(null);
   /** Muda a cada troca de perfil: resposta que volta com outro número é da sessão anterior. */
@@ -189,15 +193,13 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const avisosNaoLidos = avisos.filter((aviso) => !aviso.lido).length;
   const naoLidos = (portalDesligado ? 0 : naoLidosPortal) + avisosNaoLidos;
   // O número do sino conta só o não lido que chegou depois da última abertura (visto ≠ lido).
-  const chavesNaoLidasAvisos = [
-    ...avisos.filter((aviso) => !aviso.lido).map((aviso) => `aviso:${aviso.chave}`),
-    ...(portalDesligado ? [] : portalNaoLidosIds.map((id) => `portal:${id}`)),
-  ];
+  const chavesNaoLidasAvisos = avisos.filter((aviso) => !aviso.lido).map((aviso) => `aviso:${aviso.chave}`);
   const chavesErrosNaoLidos = erros.filter((item) => !item.lido).map((item) => `erro:${item.id}`);
-  const novos = contarNovos(chavesNaoLidasAvisos, vistos);
+  const novos = contarNovos(chavesNaoLidasAvisos, vistos) + (portalDesligado ? 0 : novosPortal);
   const errosNovos = contarNovos(chavesErrosNaoLidos, vistos);
   const abrirSino = () => {
-    setVistos((atual) => marcarVistos(perfilId, atual, [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos]));
+    setVistos((atual) => marcarVistos(perfilId, atual, [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos], portalMaiorId));
+    setNovosPortal(0);
     setAberto(true);
   };
   const abrirSinoRef = useRef(abrirSino);
@@ -259,11 +261,17 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     void verificarAvisos();
     const minhaGeracao = geracao.current;
     try {
-      const total = Number(await db.contarAlertasPortalNaoLidos()) || 0;
+      const marca = vistosRef.current.portalAte;
+      const [total, depoisDaMarca] = await Promise.all([
+        db.contarAlertasPortalNaoLidos(),
+        db.contarAlertasPortalNaoLidos(marca),
+      ]);
       if (minhaGeracao !== geracao.current) return;
-      setNaoLidosPortal(total);
-      if (total === 0) setPortalNaoLidosIds([]);
-      if (total === 0) {
+      setNaoLidosPortal(Number(total) || 0);
+      // Abriu o sino enquanto a conta chegava: ela é de antes da abertura.
+      if (marca === vistosRef.current.portalAte) setNovosPortal(Number(depoisDaMarca) || 0);
+      if (!total) setPortalMaiorId(0);
+      if (!total) {
         ultimoVisto.current ??= 0;
         return;
       }
@@ -271,7 +279,7 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
       // Trocou de perfil enquanto a lista chegava: a resposta é do perfil anterior.
       if (minhaGeracao !== geracao.current) return;
       const maior = recentes.reduce((max, alerta) => Math.max(max, alerta.id), 0);
-      setPortalNaoLidosIds(recentes.filter((alerta) => !alerta.lidoEm).map((alerta) => alerta.id));
+      setPortalMaiorId(recentes.filter((alerta) => !alerta.lidoEm).reduce((max, alerta) => Math.max(max, alerta.id), 0));
       // Na primeira consulta só o contador aparece; toasts são para o que chegar depois.
       if (ultimoVisto.current !== null) {
         const novos = recentes.filter((alerta) => alerta.id > (ultimoVisto.current ?? 0));
@@ -310,7 +318,8 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     geracao.current += 1;
     setAvisos([]);
     setNaoLidosPortal(0);
-    setPortalNaoLidosIds([]);
+    setPortalMaiorId(0);
+    setNovosPortal(0);
     setVistos(lerVistos(perfilId));
     avisosVistos.current = null;
     ultimoVisto.current = null;
