@@ -97,6 +97,8 @@ pub struct FiltrosOrcamentosInsumos {
     pub cliente_id: Option<i32>,
     pub busca: Option<String>,
     pub page: Option<i32>,
+    /// "Minhas": só os orçamentos criados por este perfil.
+    pub criado_por_profile_id: Option<i32>,
 }
 
 /// Enviar, reprovar e entregar só precisam identificar o orçamento e a versão vista pela tela.
@@ -643,6 +645,9 @@ fn add_filtros(consulta: &mut QueryBuilder<Postgres>, empresa_id: i32, filtros: 
     }
     if let Some(cliente_id) = filtros.cliente_id.filter(|id| *id > 0) {
         consulta.push(" AND o.cliente_id = ").push_bind(cliente_id);
+    }
+    if let Some(perfil) = filtros.criado_por_profile_id.filter(|id| *id > 0) {
+        consulta.push(" AND o.criado_por_profile_id = ").push_bind(perfil);
     }
     if let Some(busca) = filtros.busca.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
         let padrao = format!("%{busca}%");

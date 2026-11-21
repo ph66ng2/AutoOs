@@ -158,6 +158,7 @@ export function Layout() {
     abrirBusca: () => setBuscaAberta(true),
     abrirAjuda: () => setAjudaAberta(true),
     // A Nova entrada é página: Cancelar e salvar voltam para a tela em que a pessoa estava.
+    bloquear: () => { if (status?.unlocked) void lockSensitiveAccess(); },
     novaEntrada: () => navigate("/equipamentos/nova", { state: { origem: `${window.location.pathname}${window.location.search}` } }),
     // Mesma liberação do botão "+ Novo orçamento" de Vendas.
     novaVenda: () => {
@@ -356,7 +357,8 @@ export function Layout() {
                   size="icon"
                   className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
                   aria-label="Bloquear acesso sensível"
-                  title="Bloquear acesso sensível"
+                  title="Bloquear acesso sensível (Ctrl+L)"
+                  aria-keyshortcuts="Control+L"
                   onClick={() => void lockSensitiveAccess()}
                 >
                   <Lock className="h-4 w-4" />

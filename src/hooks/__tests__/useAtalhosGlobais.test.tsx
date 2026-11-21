@@ -29,6 +29,16 @@ describe("useAtalhosGlobais", () => {
     expect(document.activeElement).toBe(campo);
   });
 
+  it("Ctrl+L bloqueia, até com uma janela aberta", () => {
+    const a = { ...acoes(), bloquear: vi.fn() };
+    renderHook(() => useAtalhosGlobais(a));
+    render(<div role="dialog" data-state="open"><input aria-label="Campo" /></div>);
+    fireEvent.keyDown(document.body, { key: "l", code: "KeyL", ctrlKey: true });
+    expect(a.bloquear).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(document.body, { key: "l", code: "KeyL" });
+    expect(a.bloquear).toHaveBeenCalledTimes(1);
+  });
+
   it("AltGr (Ctrl+Alt no Windows) não dispara Alt+N", () => {
     const a = acoes();
     renderHook(() => useAtalhosGlobais(a));

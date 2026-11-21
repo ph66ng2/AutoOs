@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   ensureSensitiveAccess: vi.fn(),
   modalProps: vi.fn(),
   navigate: vi.fn(),
+  sessao: null as null | { unlocked: boolean; active_profile_id: number },
 }));
 
 // A lista navega para a página do orçamento (/vendas/:id).
@@ -19,7 +20,7 @@ vi.mock("react-router-dom", async (original) => ({
 
 vi.mock("@/lib/db", () => ({ db: { listarOrcamentosInsumos: mocks.listar } }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
-  useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensureSensitiveAccess, hasPermission: mocks.hasPermission }),
+  useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensureSensitiveAccess, hasPermission: mocks.hasPermission, status: mocks.sessao }),
 }));
 // Cada ação abre o seu modal (AcaoVendaDialog, V.5).
 vi.mock("@/components/vendas/AcaoVendaDialog", () => ({
@@ -64,6 +65,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.sessao = null;
   mocks.ensureSensitiveAccess.mockResolvedValue(true);
   mocks.listar.mockResolvedValue({
     items: [linha(2, "APROVADO", 150), linha(1, "RASCUNHO", 20.5)],
@@ -123,6 +125,19 @@ describe("OrcamentosInsumosTab", () => {
     await screen.findByText("OI-2");
     await usuario.click(screen.getByRole("button", { name: /^Aprovado/ }));
     await waitFor(() => expect(mocks.listar).toHaveBeenLastCalledWith({ busca: undefined, status: "APROVADO", page: 0 }));
+  });
+
+  it("Minhas: só aparece para quem criou algum orçamento e filtra por quem criou", async () => {
+    const usuario = userEvent.setup();
+    const { unmount } = render(<OrcamentosInsumosTab />);
+    await screen.findByText("OI-2");
+    expect(screen.queryByRole("button", { name: /^Minhas/ })).not.toBeInTheDocument();
+    unmount();
+
+    mocks.sessao = { unlocked: true, active_profile_id: 5 };
+    render(<OrcamentosInsumosTab />);
+    await usuario.click(await screen.findByRole("button", { name: /^Minhas/ }));
+    await waitFor(() => expect(mocks.listar).toHaveBeenCalledWith({ busca: undefined, status: "TODOS", page: 0, criado_por_profile_id: 5 }));
   });
 
   it("clicar numa linha abre o orçamento", async () => {

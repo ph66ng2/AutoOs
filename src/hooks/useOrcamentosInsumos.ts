@@ -19,6 +19,10 @@ interface UseOrcamentosInsumosParams {
   status?: StatusOrcamentoInsumos | "TODOS";
   /** Página apresentada pela interface, iniciando em 1. */
   page?: number;
+  /** "Minhas": só os orçamentos criados por este perfil. */
+  criadoPor?: number | null;
+  /** Perfil da sessão: conta quantos orçamentos ele criou (a pílula "Minhas" só aparece com algum). */
+  perfilId?: number | null;
 }
 
 export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
@@ -28,19 +32,28 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
   const [error, setError] = useState<string | null>(null);
   /** Total por situação (pílulas do filtro); null se a contagem falhar. */
   const [contagens, setContagens] = useState<Record<string, number> | null>(null);
+  /** Orçamentos criados pelo perfil da sessão (todas as situações); null enquanto não sabe. */
+  const [minhasTotal, setMinhasTotal] = useState<number | null>(null);
 
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
     // Atualização ao vivo recarrega sem "carregando": a lista fica e só o que mudou troca.
     if (opcoes?.silencioso !== true) setLoading(true);
     setError(null);
     try {
-      const contagem = Promise.resolve().then(() => db.contarOrcamentosInsumosPorStatus(params.busca, ...argSegundoPlano(opcoes?.silencioso === true))).catch(() => null);
+      const segundoPlano = opcoes?.silencioso === true;
+      const criadoPor = params.criadoPor ?? null;
+      const contagem = Promise.resolve().then(() => (criadoPor ? db.contarOrcamentosInsumosPorStatus(params.busca, segundoPlano, criadoPor) : db.contarOrcamentosInsumosPorStatus(params.busca, ...argSegundoPlano(segundoPlano)))).catch(() => null);
+      const minhas = params.perfilId
+        ? Promise.resolve().then(() => db.listarOrcamentosInsumos({ criado_por_profile_id: params.perfilId, page: 0 }, ...argSegundoPlano(segundoPlano))).then((r) => r.total).catch(() => null)
+        : Promise.resolve(0);
       const resultado = await db.listarOrcamentosInsumos({
         busca: params.busca,
         status: params.status,
         page: Math.max((params.page ?? 1) - 1, 0),
-      }, ...argSegundoPlano(opcoes?.silencioso === true));
+        ...(criadoPor ? { criado_por_profile_id: criadoPor } : {}),
+      }, ...argSegundoPlano(segundoPlano));
       setContagens(await contagem);
+      setMinhasTotal(await minhas);
       setOrcamentos(resultado.items);
       setTotal(resultado.total);
     } catch (err: unknown) {
@@ -49,7 +62,7 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
     } finally {
       setLoading(false);
     }
-  }, [params.busca, params.status, params.page]);
+  }, [params.busca, params.status, params.page, params.criadoPor, params.perfilId]);
 
   useEffect(() => {
     void carregar();
@@ -67,5 +80,5 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
 
   });
 
-  return { orcamentos, total, contagens, loading, error, recarregar: carregar, destaques };
+  return { orcamentos, total, contagens, minhasTotal, loading, error, recarregar: carregar, destaques };
 }
