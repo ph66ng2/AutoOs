@@ -103,6 +103,21 @@ describe("PortalAlertasSino", () => {
     expect(screen.getByRole("button", { name: "Notificações (há itens não lidos)" })).toBeInTheDocument();
   });
 
+  it("abrir antes de a lista chegar ainda sobe a marca até o não lido de agora", async () => {
+    // A lista da consulta (10 itens) nunca chega; abrir busca o maior não lido (1 item).
+    mocks.listar.mockImplementation((_apenasNaoLidos: boolean, limite: number) =>
+      limite === 1 ? Promise.resolve([{ ...alerta, id: 15 }]) : new Promise(() => undefined));
+    mocks.contar.mockImplementation(async (aposId?: number) => (aposId ? 15 - aposId : 15));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderSino();
+    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 15 nova(s)" }));
+    await waitFor(() => expect(mocks.listar).toHaveBeenCalledWith(true, 1));
+    fireEvent.click(screen.getByRole("button", { name: /^Notificações/ }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await waitFor(() => expect(mocks.contar).toHaveBeenLastCalledWith(15));
+    expect(screen.getByRole("button", { name: "Notificações (há itens não lidos)" })).toBeInTheDocument();
+  });
+
   it("na primeira consulta não dispara toast (só o contador)", async () => {
     renderSino();
     await screen.findByRole("button", { name: /1 nova/ });

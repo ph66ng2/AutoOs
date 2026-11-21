@@ -198,8 +198,19 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const novos = contarNovos(chavesNaoLidasAvisos, vistos) + (portalDesligado ? 0 : novosPortal);
   const errosNovos = contarNovos(chavesErrosNaoLidos, vistos);
   const abrirSino = () => {
-    setVistos((atual) => marcarVistos(perfilId, atual, [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos], portalMaiorId));
+    const chaves = [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos];
+    const minhaGeracao = geracao.current;
+    setVistos((atual) => marcarVistos(perfilId, atual, chaves, portalMaiorId));
     setNovosPortal(0);
+    // A marca do portal pode estar atrasada (a lista da última consulta ainda não chegou): busca o
+    // maior não lido de agora, que é o que o painel mostra, e sobe a marca até ele.
+    if (!portalDesligado) {
+      void db.listarAlertasPortal(true, 1).then((lista) => {
+        const maior = lista[0]?.id ?? 0;
+        if (minhaGeracao !== geracao.current || maior <= vistosRef.current.portalAte) return;
+        setVistos((atual) => marcarVistos(perfilId, atual, [...atual.chaves], maior));
+      }).catch(() => undefined);
+    }
     setAberto(true);
   };
   const abrirSinoRef = useRef(abrirSino);
@@ -320,7 +331,10 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     setNaoLidosPortal(0);
     setPortalMaiorId(0);
     setNovosPortal(0);
-    setVistos(lerVistos(perfilId));
+    // O ref já recebe o "visto" do perfil novo: a consulta logo abaixo usa a marca dele.
+    const vistosDoPerfil = lerVistos(perfilId);
+    vistosRef.current = vistosDoPerfil;
+    setVistos(vistosDoPerfil);
     avisosVistos.current = null;
     ultimoVisto.current = null;
     setAberto(false);
