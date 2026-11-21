@@ -38,6 +38,7 @@ describe("ConfiguracoesTabGeral", () => {
     m.refreshStatus.mockClear();
     document.documentElement.style.fontSize = "";
     delete document.documentElement.dataset.movimento;
+    delete document.documentElement.dataset.densidade;
   });
 
   it("tamanho do texto muda a escala do app e fica guardado neste computador", async () => {
@@ -49,6 +50,17 @@ describe("ConfiguracoesTabGeral", () => {
     await user.click(screen.getByRole("radio", { name: "Normal" }));
     expect(document.documentElement.style.fontSize).toBe("100%");
     expect(localStorage.getItem("autoos:tamanho-texto")).toBeNull();
+  });
+
+  it("listas compactas marcam o documento e ficam neste computador", async () => {
+    const user = userEvent.setup();
+    renderizar();
+    await user.click(screen.getByRole("radio", { name: "Compactas" }));
+    expect(document.documentElement.dataset.densidade).toBe("compacta");
+    expect(localStorage.getItem("autoos:densidade")).toBe("compacta");
+    await user.click(screen.getByRole("radio", { name: "Confortáveis" }));
+    expect(document.documentElement.dataset.densidade).toBeUndefined();
+    expect(localStorage.getItem("autoos:densidade")).toBeNull();
   });
 
   it("reduzir animações marca o documento", async () => {

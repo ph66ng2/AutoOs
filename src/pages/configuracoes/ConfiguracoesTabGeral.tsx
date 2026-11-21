@@ -11,6 +11,9 @@ import { avisosWindowsLigados, definirAvisosWindows } from "@/lib/notificacao-si
 import {
   animacoesReduzidasAqui,
   definirAnimacoesReduzidas,
+  definirDensidade,
+  densidade as densidadeAtual,
+  type Densidade,
   definirTamanhoTexto,
   definirTelaInicial,
   tamanhoTexto,
@@ -40,6 +43,7 @@ export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
   const [salvandoTema, setSalvandoTema] = useState(false);
   const [modo, setModo] = useState<AppMode>(() => getAppMode() ?? "standard");
   const [texto, setTexto] = useState<TamanhoTexto>(tamanhoTexto);
+  const [listas, setListas] = useState<Densidade>(densidadeAtual);
   const [reduzidas, setReduzidas] = useState(animacoesReduzidasAqui);
   const [inicial, setInicial] = useState<TelaInicial>(telaInicial);
   const [sons, setSons] = useState(uiSoundsEnabled);
@@ -95,6 +99,17 @@ export function ConfiguracoesTabGeral({ conectado }: { conectado: boolean }) {
               aoMudar={(proximo) => {
                 setTexto(proximo);
                 definirTamanhoTexto(proximo);
+              }}
+            />
+          </Linha>
+          <Linha titulo="Listas">
+            <Segmentos
+              rotulo="Listas"
+              valor={listas}
+              opcoes={[["confortavel", "Confortáveis"], ["compacta", "Compactas"]]}
+              aoMudar={(proxima) => {
+                setListas(proxima);
+                definirDensidade(proxima);
               }}
             />
           </Linha>
