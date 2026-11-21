@@ -1313,7 +1313,9 @@ export default function Equipamentos() {
         payload,
         atuais.flatMap((foto) => typeof foto.id === "number" ? [foto.id] : []),
       );
-      if (selecionadoIdRef.current === equipamentoId) setImagensDetalhes(await carregarImagensComPreview(equipamentoId));
+      // A OS aberta pode ter mudado durante a gravação ou a recarga: só a mesma recebe as fotos.
+      const recarregadas = await carregarImagensComPreview(equipamentoId);
+      if (selecionadoIdRef.current === equipamentoId) setImagensDetalhes(recarregadas);
       success("Equipamentos", novas.length === 1 ? "Foto colada." : `${novas.length} fotos coladas.`, "Colar foto");
     } catch (err) {
       showError("Equipamentos", "Colar foto", err);
