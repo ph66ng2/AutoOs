@@ -12,11 +12,12 @@ export function useModelosMensagem(ativo = true) {
   const [loading, setLoading] = useState(ativo);
   const [error, setError] = useState<string | null>(null);
 
-  const carregar = useCallback(async () => {
-    setLoading(true);
+  const carregar = useCallback(async (opcoes?: { segundoPlano?: boolean }) => {
+    const segundoPlano = opcoes?.segundoPlano === true;
+    if (!segundoPlano) setLoading(true);
     setError(null);
     try {
-      setModelos(await db.listarModelosMensagem());
+      setModelos(await db.listarModelosMensagem(segundoPlano));
     } catch (causa) {
       setError(causa instanceof Error ? causa.message : String(causa));
     } finally {
@@ -32,7 +33,7 @@ export function useModelosMensagem(ativo = true) {
   const ativoRef = useRef(ativo);
   ativoRef.current = ativo;
   useAtualizacaoAoVivo(["modelos_mensagem"], () => {
-    if (ativoRef.current) void carregar();
+    if (ativoRef.current) void carregar({ segundoPlano: true });
   });
 
   const salvar = useCallback(async (input: ModeloMensagemInput) => {
@@ -46,5 +47,5 @@ export function useModelosMensagem(ativo = true) {
     await carregar();
   }, [carregar]);
 
-  return { modelos, loading, error, salvar, excluir, recarregar: carregar };
+  return { modelos, loading, error, salvar, excluir, recarregar: () => carregar() };
 }

@@ -44,9 +44,10 @@ fn validar(input: &ModeloMensagemInput) -> Result<(String, String), String> {
 /// Mensagens da empresa da sessão, na ordem em que aparecem no menu do WhatsApp.
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn listar_modelos_mensagem() -> Result<Vec<ModeloMensagem>, String> {
+pub async fn listar_modelos_mensagem(segundo_plano: Option<bool>) -> Result<Vec<ModeloMensagem>, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    // Recarga ao vivo (segundo plano) não renova a sessão: senão outro computador a manteria aberta.
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     sqlx::query_as::<_, ModeloMensagem>("SELECT id, titulo, texto, ordem, atualizado_em::TEXT AS atualizado_em FROM modelos_mensagem WHERE empresa_id = $1 ORDER BY ordem, id")
         .bind(empresa_id)
         .fetch_all(&pool)

@@ -947,8 +947,8 @@ export const db = {
 
   /** Abre URL no navegador padrão do sistema → Rust: abrir_url */
   /** Mensagens prontas de WhatsApp da empresa → Rust: listar_modelos_mensagem */
-  async listarModelosMensagem(): Promise<ModeloMensagem[]> {
-    return invoke<ModeloMensagem[]>("listar_modelos_mensagem");
+  async listarModelosMensagem(segundoPlano = false): Promise<ModeloMensagem[]> {
+    return invoke<ModeloMensagem[]>("listar_modelos_mensagem", seSegundoPlano(segundoPlano));
   },
 
   /** Cria ou altera uma mensagem pronta (permissão de comunicação) → Rust: salvar_modelo_mensagem */
