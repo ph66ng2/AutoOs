@@ -33,10 +33,10 @@ import {
   RefreshCw,
   Plus,
   ContactRound,
-  MessageCircle,
 } from "lucide-react";
 import { BotaoCopiar } from "@/components/ui/botao-copiar";
-import { montarLinkWhatsapp, telefoneParaExibir } from "@/lib/contato-cliente";
+import { telefoneParaExibir } from "@/lib/contato-cliente";
+import { WhatsappComMensagem } from "@/components/whatsapp/WhatsappComMensagem";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -698,20 +698,12 @@ export default function Clientes() {
                       <li className="flex items-center gap-1">
                         <span className="tabular-nums">{telefoneParaExibir(clienteAberto.telefone)}</span>
                         <BotaoCopiar valor={telefoneParaExibir(clienteAberto.telefone)} rotulo="telefone" />
-                        {montarLinkWhatsapp(clienteAberto.telefone, "") && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="ml-auto h-7 gap-1.5 px-2 text-xs"
-                            onClick={() => {
-                              const link = montarLinkWhatsapp(clienteAberto.telefone, "");
-                              if (link) void db.abrirUrl(link).catch((err) => showError("Clientes", "Abrir WhatsApp", err));
-                            }}
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" /> WhatsApp
-                          </Button>
-                        )}
+                        <WhatsappComMensagem
+                          className="ml-auto h-7"
+                          telefone={clienteAberto.telefone}
+                          dados={{ cliente: nomeExibicaoCliente(clienteAberto), contato: clienteAberto.contato_principal || nomeExibicaoCliente(clienteAberto) }}
+                          onErro={(err) => showError("Clientes", "Abrir WhatsApp", err)}
+                        />
                       </li>
                     )}
                     {clienteAberto.email?.trim() && (

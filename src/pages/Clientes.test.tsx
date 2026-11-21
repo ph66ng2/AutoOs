@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import Clientes from "@/pages/Clientes";
 
@@ -23,6 +24,7 @@ const dbMocks = vi.hoisted(() => ({
   listarEquipamentosCliente: vi.fn().mockResolvedValue([]),
   listarClienteContatos: vi.fn().mockResolvedValue([]),
   abrirUrl: vi.fn().mockResolvedValue(undefined),
+  listarModelosMensagem: vi.fn().mockResolvedValue([{ id: 1, titulo: "Equipamento pronto", texto: "Olá, {contato}! Está pronto.", ordem: 1 }]),
 }));
 vi.mock("@/lib/db", () => ({ db: dbMocks }));
 
@@ -100,8 +102,14 @@ describe("Clientes: ordem de compra e preferências", () => {
     mocks.clientes = [clienteSalvo({ email: "ana@x.com" })];
     renderPagina();
     fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
-    fireEvent.click(await screen.findByRole("button", { name: /WhatsApp/ }));
-    expect(dbMocks.abrirUrl).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/wa\.me\/5571999990000/));
+    // "WhatsApp ▾": escolher uma mensagem pronta abre a conversa com o texto preenchido.
+    // O Select do Radix precisa destes dois no jsdom.
+    HTMLElement.prototype.hasPointerCapture = () => false;
+    HTMLElement.prototype.scrollIntoView = () => undefined;
+    const usuario = userEvent.setup();
+    await usuario.click(await screen.findByRole("combobox", { name: "Abrir WhatsApp com uma mensagem" }));
+    await usuario.click(await screen.findByRole("option", { name: /Equipamento pronto/ }));
+    expect(dbMocks.abrirUrl).toHaveBeenCalledWith(`https://wa.me/5571999990000?text=${encodeURIComponent("Olá, Ana Souza! Está pronto.")}`);
     expect(screen.getByRole("button", { name: "Copiar telefone" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copiar e-mail" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copiar CPF/CNPJ" })).toBeInTheDocument();

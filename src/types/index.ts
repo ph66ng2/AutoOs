@@ -1390,3 +1390,18 @@ export interface ResumoCliente {
   noAno: number;
   faturado?: number | null;
 }
+
+/** Mensagem pronta de WhatsApp da empresa (0058). */
+export interface ModeloMensagem {
+  id: number;
+  titulo: string;
+  texto: string;
+  ordem: number;
+}
+
+export interface ModeloMensagemInput {
+  id?: number | null;
+  titulo: string;
+  texto: string;
+  ordem?: number | null;
+}

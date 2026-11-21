@@ -191,6 +191,12 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     }
     case "obter_garantia_servicos_dias":
       return 90 as T;
+    case "listar_modelos_mensagem":
+      return [
+        { id: 1, titulo: "Equipamento pronto", texto: "Olá, {contato}! O equipamento {equipamento} (OS {os}) está pronto para retirada.", ordem: 1 },
+        { id: 2, titulo: "Lembrete de retirada", texto: "Olá, {contato}! Lembrando que o equipamento {equipamento} (OS {os}) continua aguardando retirada.", ordem: 2 },
+        { id: 3, titulo: "Orçamento enviado", texto: "Olá, {contato}! Enviamos o orçamento do equipamento {equipamento} (OS {os}).", ordem: 3 },
+      ] as T;
     case "listar_cliente_contatos":
       return contatos.filter((c) => c.ativo) as T;
     case "criar_cliente_contato": {
