@@ -15,6 +15,8 @@ pub struct ModeloMensagem {
     pub titulo: String,
     pub texto: String,
     pub ordem: i32,
+    /// Token de concorrência: a edição só grava se ninguém mudou a mensagem depois de aberta.
+    pub atualizado_em: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -23,6 +25,8 @@ pub struct ModeloMensagemInput {
     pub titulo: String,
     pub texto: String,
     pub ordem: Option<i32>,
+    /// Obrigatório ao alterar (`id` presente): o `atualizado_em` de quando a edição abriu.
+    pub atualizado_em: Option<String>,
 }
 
 fn validar(input: &ModeloMensagemInput) -> Result<(String, String), String> {
@@ -43,7 +47,7 @@ fn validar(input: &ModeloMensagemInput) -> Result<(String, String), String> {
 pub async fn listar_modelos_mensagem() -> Result<Vec<ModeloMensagem>, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
-    sqlx::query_as::<_, ModeloMensagem>("SELECT id, titulo, texto, ordem FROM modelos_mensagem WHERE empresa_id = $1 ORDER BY ordem, id")
+    sqlx::query_as::<_, ModeloMensagem>("SELECT id, titulo, texto, ordem, atualizado_em::TEXT AS atualizado_em FROM modelos_mensagem WHERE empresa_id = $1 ORDER BY ordem, id")
         .bind(empresa_id)
         .fetch_all(&pool)
         .await
@@ -59,23 +63,35 @@ pub async fn salvar_modelo_mensagem(input: ModeloMensagemInput) -> Result<Modelo
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
     let salvo = match input.id {
-        Some(id) => sqlx::query_as::<_, ModeloMensagem>(
-            "UPDATE modelos_mensagem SET titulo = $1, texto = $2, ordem = COALESCE($3, ordem), atualizado_em = NOW()
-             WHERE id = $4 AND empresa_id = $5 RETURNING id, titulo, texto, ordem",
-        )
-        .bind(&titulo)
-        .bind(&texto)
-        .bind(input.ordem)
-        .bind(id)
-        .bind(empresa_id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(super::operator_errors::mapear_erro_sql)?
-        .ok_or_else(|| "Essa mensagem não existe mais. Recarregue a lista.".to_string())?,
+        Some(id) => {
+            let token = input
+                .atualizado_em
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .ok_or_else(|| "Token de concorrência da mensagem é obrigatório para alterá-la.".to_string())?;
+            sqlx::query_as::<_, ModeloMensagem>(
+                "UPDATE modelos_mensagem SET titulo = $1, texto = $2, ordem = COALESCE($3, ordem), atualizado_em = NOW()
+                 WHERE id = $4 AND empresa_id = $5 AND atualizado_em = $6::TIMESTAMPTZ
+                 RETURNING id, titulo, texto, ordem, atualizado_em::TEXT AS atualizado_em",
+            )
+            .bind(&titulo)
+            .bind(&texto)
+            .bind(input.ordem)
+            .bind(id)
+            .bind(empresa_id)
+            .bind(token)
+            .fetch_optional(&pool)
+            .await
+            .map_err(super::operator_errors::mapear_erro_sql)?
+            .ok_or_else(|| {
+                "Conflito de concorrência: esta mensagem foi alterada ou excluída em outro computador. Recarregue a lista antes de salvar novamente.".to_string()
+            })?
+        }
         None => sqlx::query_as::<_, ModeloMensagem>(
             "INSERT INTO modelos_mensagem (empresa_id, titulo, texto, ordem)
              VALUES ($1, $2, $3, COALESCE($4, (SELECT COALESCE(MAX(ordem), 0) + 1 FROM modelos_mensagem WHERE empresa_id = $1)))
-             RETURNING id, titulo, texto, ordem",
+             RETURNING id, titulo, texto, ordem, atualizado_em::TEXT AS atualizado_em",
         )
         .bind(empresa_id)
         .bind(&titulo)
@@ -111,7 +127,7 @@ mod tests {
     use super::{validar, ModeloMensagemInput};
 
     fn entrada(titulo: &str, texto: &str) -> ModeloMensagemInput {
-        ModeloMensagemInput { id: None, titulo: titulo.to_string(), texto: texto.to_string(), ordem: None }
+        ModeloMensagemInput { id: None, titulo: titulo.to_string(), texto: texto.to_string(), ordem: None, atualizado_em: None }
     }
 
     #[test]

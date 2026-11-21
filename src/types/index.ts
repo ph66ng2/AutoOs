@@ -1397,6 +1397,8 @@ export interface ModeloMensagem {
   titulo: string;
   texto: string;
   ordem: number;
+  /** Token de concorrência (edição só grava se ninguém mudou depois). */
+  atualizado_em: string;
 }
 
 export interface ModeloMensagemInput {
@@ -1404,4 +1406,6 @@ export interface ModeloMensagemInput {
   titulo: string;
   texto: string;
   ordem?: number | null;
+  /** Obrigatório ao alterar: o `atualizado_em` de quando a edição abriu. */
+  atualizado_em?: string | null;
 }

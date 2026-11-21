@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "@/lib/db";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import type { ModeloMensagem, ModeloMensagemInput } from "@/types";
 
 /**
@@ -26,6 +27,13 @@ export function useModelosMensagem(ativo = true) {
   useEffect(() => {
     if (ativo) void carregar();
   }, [ativo, carregar]);
+
+  // Mensagem mudada em outro computador: recarrega (só depois que a lista já foi pedida).
+  const ativoRef = useRef(ativo);
+  ativoRef.current = ativo;
+  useAtualizacaoAoVivo(["modelos_mensagem"], () => {
+    if (ativoRef.current) void carregar();
+  });
 
   const salvar = useCallback(async (input: ModeloMensagemInput) => {
     const salvo = await db.salvarModeloMensagem(input);

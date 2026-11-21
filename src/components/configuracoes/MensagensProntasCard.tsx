@@ -15,7 +15,7 @@ import type { ModeloMensagem } from "@/types";
 /** Exemplo do que cada campo vira, para a prévia enquanto se edita. */
 const EXEMPLO = { cliente: "Mercado Bom Preço", contato: "Lúcia", equipamento: "Zebra ZD220", os: "128", status: "Pronto" };
 
-type Rascunho = { id: number | null; titulo: string; texto: string };
+type Rascunho = { id: number | null; titulo: string; texto: string; atualizado_em: string | null };
 
 /**
  * Configurações › Integrações (permissão de comunicação): as mensagens prontas que o botão
@@ -46,7 +46,7 @@ export function MensagensProntasCard() {
     if (!editando) return;
     setSalvando(true);
     try {
-      await salvar({ id: editando.id, titulo: editando.titulo, texto: editando.texto });
+      await salvar({ id: editando.id, titulo: editando.titulo, texto: editando.texto, atualizado_em: editando.atualizado_em });
       toast.success("Mensagem salva.");
       setEditando(null);
     } catch (causa) {
@@ -63,7 +63,7 @@ export function MensagensProntasCard() {
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle>Mensagens prontas de WhatsApp</CardTitle>
         {!editando && (
-          <Button type="button" size="sm" variant="outline" onClick={() => setEditando({ id: null, titulo: "", texto: "" })}>
+          <Button type="button" size="sm" variant="outline" onClick={() => setEditando({ id: null, titulo: "", texto: "", atualizado_em: null })}>
             <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Nova mensagem
           </Button>
         )}
@@ -109,7 +109,7 @@ export function MensagensProntasCard() {
                 <p className="text-sm font-semibold">{modelo.titulo}</p>
                 <p className="line-clamp-2 text-xs text-muted-foreground">{modelo.texto}</p>
               </div>
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label={`Editar ${modelo.titulo}`} disabled={Boolean(editando)} onClick={() => setEditando({ id: modelo.id, titulo: modelo.titulo, texto: modelo.texto })}>
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label={`Editar ${modelo.titulo}`} disabled={Boolean(editando)} onClick={() => setEditando({ id: modelo.id, titulo: modelo.titulo, texto: modelo.texto, atualizado_em: modelo.atualizado_em })}>
                 <Pencil className="h-4 w-4" />
               </Button>
               <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" aria-label={`Excluir ${modelo.titulo}`} disabled={Boolean(editando)} onClick={() => setApagar(modelo)}>

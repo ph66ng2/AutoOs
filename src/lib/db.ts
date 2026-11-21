@@ -953,7 +953,7 @@ export const db = {
 
   /** Cria ou altera uma mensagem pronta (permissão de comunicação) → Rust: salvar_modelo_mensagem */
   async salvarModeloMensagem(input: ModeloMensagemInput): Promise<ModeloMensagem> {
-    return invoke<ModeloMensagem>("salvar_modelo_mensagem", { input: { id: input.id ?? null, titulo: input.titulo, texto: input.texto, ordem: input.ordem ?? null } });
+    return invoke<ModeloMensagem>("salvar_modelo_mensagem", { input: { id: input.id ?? null, titulo: input.titulo, texto: input.texto, ordem: input.ordem ?? null, atualizado_em: input.atualizado_em ?? null } });
   },
 
   /** Exclui uma mensagem pronta (permissão de comunicação) → Rust: excluir_modelo_mensagem */

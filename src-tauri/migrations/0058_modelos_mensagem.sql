@@ -21,6 +21,11 @@ CREATE INDEX IF NOT EXISTS idx_modelos_mensagem_empresa ON public.modelos_mensag
 
 ALTER TABLE public.modelos_mensagem ENABLE ROW LEVEL SECURITY;
 
+-- Mudança feita num computador chega aos outros (menu do WhatsApp e lista em Configurações).
+DROP TRIGGER IF EXISTS trg_avisar_mudanca ON public.modelos_mensagem;
+CREATE TRIGGER trg_avisar_mudanca AFTER INSERT OR UPDATE OR DELETE ON public.modelos_mensagem
+    FOR EACH ROW EXECUTE FUNCTION public.avisar_mudanca();
+
 -- Três modelos de partida, sem nome de empresa: cada uma edita os seus.
 INSERT INTO public.modelos_mensagem (empresa_id, titulo, texto, ordem, chave_padrao)
 SELECT e.id, m.titulo, m.texto, m.ordem, m.chave

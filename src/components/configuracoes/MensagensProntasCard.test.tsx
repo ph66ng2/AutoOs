@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const m = vi.hoisted(() => ({
-  modelos: [{ id: 1, titulo: "Equipamento pronto", texto: "Olá, {contato}!", ordem: 1 }],
+  modelos: [{ id: 1, titulo: "Equipamento pronto", texto: "Olá, {contato}!", ordem: 1, atualizado_em: "2026-11-21 10:00:00+00" }],
   salvar: vi.fn(),
   excluir: vi.fn(),
 }));
@@ -30,7 +30,7 @@ describe("MensagensProntasCard", () => {
     expect(screen.getByLabelText("Texto")).toHaveValue("Oi {contato}");
     expect(screen.getByText("Oi Lúcia")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Salvar" }));
-    expect(m.salvar).toHaveBeenCalledWith({ id: null, titulo: "Lembrete", texto: "Oi {contato}" });
+    expect(m.salvar).toHaveBeenCalledWith({ id: null, titulo: "Lembrete", texto: "Oi {contato}", atualizado_em: null });
   });
 
   it("excluir pede confirmação", async () => {
