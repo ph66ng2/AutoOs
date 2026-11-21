@@ -757,6 +757,7 @@ export default function Equipamentos() {
     const valores = form.getValues();
     const temAlgo = entradaTemAlgo(valores, clienteVinculado);
     const copia: RascunhoEntrada = { form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento, dono: donoRascunhoEntrada.current };
+    const origemDescartada = origemEntradaRef.current;
     rascunhoEntrada.limpar();
     setRascunhoRecuperadoEm(null);
     if (!temAlgo) return;
@@ -765,7 +766,9 @@ export default function Equipamentos() {
         label: "Desfazer",
         onClick: () => {
           rascunhoEntrada.salvarAgora(copia);
-          abrirNovo();
+          // Cancelar pode ter voltado para outra tela (Início, Clientes): esta instância já
+          // saiu; a página de Nova entrada que abrir lê o rascunho restaurado.
+          navigate("/equipamentos/nova", { state: { origem: origemDescartada } });
         },
       },
     });
