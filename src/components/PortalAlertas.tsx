@@ -213,6 +213,15 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     }
     setAberto(true);
   };
+  // Com o sino aberto, aviso ou erro que chega (ex.: a lista ainda carregava ao abrir) já está à
+  // vista no painel: entra no "visto" sem virar lido.
+  const chavesAbertas = [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos].join("|");
+  useEffect(() => {
+    if (!aberto || !chavesAbertas) return;
+    const chaves = chavesAbertas.split("|");
+    if (chaves.every((chave) => vistos.chaves.has(chave))) return;
+    setVistos((atual) => marcarVistos(perfilId, atual, [...new Set([...atual.chaves, ...chaves])], atual.portalAte));
+  }, [aberto, chavesAbertas, perfilId, vistos]);
   const abrirSinoRef = useRef(abrirSino);
   abrirSinoRef.current = abrirSino;
   const portalDesligadoRef = useRef(portalDesligado);

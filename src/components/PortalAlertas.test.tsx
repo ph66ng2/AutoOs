@@ -252,6 +252,20 @@ describe("PortalAlertasSino", () => {
     expect(await screen.findByText("Tela de insumos")).toBeInTheDocument();
   });
 
+  it("aviso que chega com o sino já aberto fica visto: ao fechar, o número não volta", async () => {
+    mocks.contar.mockResolvedValue(1);
+    let soltarAvisos: (v: unknown) => void = () => undefined;
+    mocks.avisos.mockReturnValue(new Promise((resolver) => { soltarAvisos = resolver; }));
+    renderSino();
+    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 1 nova(s)" }));
+    await act(async () => {
+      soltarAvisos([{ chave: "estoque-baixo:abc", tipo: "estoque-baixo", titulo: "2 itens com estoque baixo", detalhe: "Ribbon 110", lido: false, quando: "2026-11-19T10:00:00Z" }]);
+    });
+    expect(await screen.findByText("2 itens com estoque baixo")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Notificações/ }));
+    expect(await screen.findByRole("button", { name: "Notificações (há itens não lidos)" })).toBeInTheDocument();
+  });
+
   it("trocar de perfil esquece os avisos do anterior e ignora a resposta atrasada dele", async () => {
     mocks.contar.mockResolvedValue(0);
     mocks.listar.mockResolvedValue([]);
