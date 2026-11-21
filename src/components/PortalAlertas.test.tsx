@@ -58,6 +58,7 @@ describe("PortalAlertasSino", () => {
     mocks.marcarAvisos.mockReset().mockResolvedValue(1);
     vi.clearAllMocks();
     __resetErrosRegistrados();
+    localStorage.clear();
     mocks.contar.mockResolvedValue(1);
     mocks.listar.mockResolvedValue([alerta]);
     mocks.marcar.mockResolvedValue(1);
@@ -66,7 +67,7 @@ describe("PortalAlertasSino", () => {
 
   it("mostra o contador e abre o painel com não lidos e histórico", async () => {
     renderSino();
-    const sino = await screen.findByRole("button", { name: "Notificações: 1 não lida(s)" });
+    const sino = await screen.findByRole("button", { name: "Notificações: 1 nova(s)" });
     fireEvent.click(sino);
     expect(await screen.findByText(alerta.titulo)).toBeInTheDocument();
     expect(mocks.listar).toHaveBeenLastCalledWith(true, 100);
@@ -77,9 +78,18 @@ describe("PortalAlertasSino", () => {
     expect(mocks.listar).toHaveBeenLastCalledWith(false, 200);
   });
 
+  it("abrir o sino zera o número (visto) sem marcar como lido; o item segue não lido no painel", async () => {
+    renderSino();
+    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 1 nova(s)" }));
+    expect(await screen.findByText(alerta.titulo)).toBeInTheDocument();
+    expect(mocks.marcar).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /^Notificações/ }));
+    expect(await screen.findByRole("button", { name: "Notificações (há itens não lidos)" })).toBeInTheDocument();
+  });
+
   it("na primeira consulta não dispara toast (só o contador)", async () => {
     renderSino();
-    await screen.findByRole("button", { name: /1 não lida/ });
+    await screen.findByRole("button", { name: /1 nova/ });
     expect(mocks.toast).not.toHaveBeenCalled();
     expect(mocks.toast.error).not.toHaveBeenCalled();
   });
@@ -87,7 +97,7 @@ describe("PortalAlertasSino", () => {
   it("alerta que chega depois vira toast no mesmo padrão dos avisos do app", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderSino();
-    await screen.findByRole("button", { name: /1 não lida/ });
+    await screen.findByRole("button", { name: /1 nova/ });
     const falha: AlertaPortal = { ...alerta, id: 4, tipo: "EFETIVACAO_FALHOU", titulo: "Resposta do cliente NÃO efetivada" };
     mocks.contar.mockResolvedValue(2);
     mocks.listar.mockResolvedValue([falha, alerta]);
@@ -97,9 +107,9 @@ describe("PortalAlertasSino", () => {
       expect.objectContaining({ duration: Infinity, action: expect.objectContaining({ label: "Ver" }) }),
     ));
     expect(mocks.toast).not.toHaveBeenCalled();
-    expect(await screen.findByRole("button", { name: /2 não lida/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /2 nova/ })).toBeInTheDocument();
     // Abrir o painel recolhe os avisos do portal, que já estão listados nele.
-    fireEvent.click(screen.getByRole("button", { name: /2 não lida/ }));
+    fireEvent.click(screen.getByRole("button", { name: /2 nova/ }));
     await waitFor(() => expect(mocks.toast.dismiss).toHaveBeenCalledWith("portal-alerta-4"));
   });
 
@@ -129,7 +139,7 @@ describe("PortalAlertasSino", () => {
   it("aprovação efetivada chega em verde, sem cara de erro, e falha usa o aviso de erro do app", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderSino();
-    await screen.findByRole("button", { name: /1 não lida/ });
+    await screen.findByRole("button", { name: /1 nova/ });
     const aprovado: AlertaPortal = { ...alerta, id: 9, tipo: "DECISAO_EFETIVADA", decisao: "APROVAR", titulo: "Orçamento aprovado pelo cliente",
       detalhe: "Zebra ZT230 · série SER-123 · R$ 350,00 · Ana Souza" };
     mocks.contar.mockResolvedValue(2);
@@ -156,7 +166,7 @@ describe("PortalAlertasSino", () => {
     const ouvir = (event: Event) => eventos.push((event as CustomEvent<{ equipamentoIds: number[] }>).detail.equipamentoIds);
     window.addEventListener(EVENTO_ALERTAS_PORTAL, ouvir);
     renderSino();
-    await screen.findByRole("button", { name: /1 não lida/ });
+    await screen.findByRole("button", { name: /1 nova/ });
     const novo: AlertaPortal = { ...alerta, id: 7, equipamentoId: 41 };
     mocks.contar.mockResolvedValue(2);
     mocks.listar.mockResolvedValue([novo, alerta]);
@@ -173,7 +183,7 @@ describe("PortalAlertasSino", () => {
   it("abas Avisos / Sistema: erros do app ficam em Sistema e não contam no número do sino", async () => {
     notificarErro("Equipamentos", "Salvar equipamento", new Error("AUTOOS:DB:42P01#ABCD2345\nNão foi possível concluir esta ação."));
     renderSino();
-    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 1 não lida(s)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 1 nova(s)" }));
     expect(await screen.findByText(alerta.titulo)).toBeInTheDocument();
     expect(screen.queryByText("Equipamentos — Salvar equipamento")).not.toBeInTheDocument();
 
@@ -203,7 +213,7 @@ describe("PortalAlertasSino", () => {
       { chave: "pronto-parado:4:2026-11-10", tipo: "pronto-parado", titulo: "Pronto há 9 dias sem retirada: Elgin L42", lido: true, quando: "2026-11-17T10:00:00Z", equipamentoId: 4 },
     ]);
     renderSino();
-    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 1 não lida(s)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Notificações: 1 nova(s)" }));
     expect(await screen.findByText("2 itens com estoque baixo")).toBeInTheDocument();
     expect(screen.queryByText(/Pronto há 9 dias/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Ver estoque" }));
