@@ -222,6 +222,8 @@ import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
 import { useNomesFiltroTecnico, useTecnicos } from "@/hooks/useTecnicos";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+import { useEscSai } from "@/hooks/useEscSai";
+import { TeclaNoBotao } from "@/components/ui/tecla-no-botao";
 import { classeDestaque } from "@/lib/ao-vivo";
 import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { cn } from "@/lib/utils";
@@ -1400,6 +1402,22 @@ export default function Equipamentos() {
   // Um bloqueio só para a tela inteira: verificação pela metade ou edição de equipamento suja.
   const avisoVerificacao = useAvisoAoSair((verificacaoDialogOpen && verificacaoSuja) || edicaoSuja);
   const avisoEdicao = avisoVerificacao;
+
+  // Esc sai das páginas de formulário (como o botão marcado "(Esc)"). Com algo pela metade que
+  // não tem rascunho, a saída passa pelo aviso "Sair sem salvar?" em vez de descartar direto.
+  useEscSai(dialogOpen, () => {
+    if (editando && edicaoSuja) {
+      navigate(origemEntradaRef.current);
+      return;
+    }
+    if (!editando) descartarEntrada();
+    fecharFormulario();
+  });
+  useEscSai(verificacaoDialogOpen, () => {
+    if (verificacaoSuja) navigate(origemVerificacaoRef.current);
+    else fecharPaginaVerificacao();
+  });
+
   const paginaVerificacaoAbertaRef = useRef(false);
   paginaVerificacaoAbertaRef.current = verificacaoDialogOpen;
   /** Abre a página de verificação técnica (VerificacaoTecnica.tsx, /equipamentos/:id/verificacao). */
@@ -1658,6 +1676,7 @@ export default function Equipamentos() {
   const paginaAjusteAberta = statusDialogOpen && ajusteOrcamentoSemMudancaStatus;
   const paginaAjusteAbertaRef = useRef(false);
   paginaAjusteAbertaRef.current = paginaAjusteAberta;
+  useEscSai(paginaAjusteAberta, () => fecharPaginaAjuste());
   const idAjusteRotaAnterior = useRef<number | null>(null);
   useEffect(() => {
     const anterior = idAjusteRotaAnterior.current;
@@ -3293,7 +3312,7 @@ export default function Equipamentos() {
         <div className="sticky bottom-0 z-20 -mx-4 mt-auto flex flex-wrap items-center justify-between gap-3 border-t bg-card px-4 py-3 lg:-mx-8 lg:px-8">
           <p className="text-sm text-muted-foreground">O status atual do equipamento será mantido.</p>
           <div className="flex w-full gap-2 md:w-auto">
-            <Button type="button" variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={() => fecharPaginaAjuste()}>Cancelar</Button>
+            <Button type="button" variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={() => fecharPaginaAjuste()}>Cancelar<TeclaNoBotao tecla="Esc" /></Button>
             <Button type="button" className="h-12 flex-1 md:h-10 md:flex-none" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
               {salvando ? "Salvando..." : "Confirmar"}
             </Button>
@@ -3888,10 +3907,11 @@ export default function Equipamentos() {
                   fecharFormulario();
                 }}
               >
-                Cancelar
+                Cancelar<TeclaNoBotao tecla="Esc" />
               </Button>
               <Button type="submit" disabled={salvando || conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
                 {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}
+                {!salvando && <TeclaNoBotao tecla="Enter" />}
               </Button>
             </div>
           </form>

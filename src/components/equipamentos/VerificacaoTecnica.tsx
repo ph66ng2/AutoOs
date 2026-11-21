@@ -29,6 +29,7 @@ import { Camera, ChevronLeft, Lock, Plus, Search, Trash2 } from "lucide-react";
 import { LinhaServicoCelular } from "@/components/equipamentos/LinhaServicoCelular";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { Button } from "@/components/ui/button";
+import { TeclaNoBotao } from "@/components/ui/tecla-no-botao";
 import { Input } from "@/components/ui/input";
 import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { formatCurrency, formatCurrencyOrMissing } from "@/lib/utils";
@@ -556,7 +557,7 @@ export function VerificacaoTecnica({
             : "Ao finalizar: Verificado → Aguardando aprovação, com envio automático"}
         </p>
         <div className="flex w-full gap-2 md:w-auto">
-          <Button variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={() => handleOpenChange(false)}>Cancelar</Button>
+          <Button variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={() => handleOpenChange(false)}>Cancelar<TeclaNoBotao tecla="Esc" /></Button>
           <Button
             className="h-12 flex-1 md:h-10 md:flex-none"
             onClick={handleConcluir}
