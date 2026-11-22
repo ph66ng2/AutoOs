@@ -1,3 +1,4 @@
+import { destinoNovaEntrada } from "@/pages/equipamentos/equipamentos-page-utils";
 /**
  * ╔══════════════════════════════════════════════════════════════╗
  * ║  Equipamentos.tsx — Página Principal de Equipamentos        ║
@@ -857,7 +858,7 @@ export default function Equipamentos() {
   // ─── Handlers ─────────────────────────────────────────
 
   /**
-   * Abre a página de Nova entrada (/equipamentos/nova). `origem` é para onde Cancelar e salvar
+   * Abre a página de Nova entrada (/equipamentos/nova). `origem` é para onde Cancelar
    * voltam. `cliente` ou `base` (OS encerrada do mesmo aparelho) chegam já preenchidos; nesse
    * caso o rascunho guardado não é carregado, mas pode ser recuperado pelo aviso.
    */
@@ -2048,17 +2049,23 @@ export default function Equipamentos() {
             onSkip: () => undefined,
           });
           setEmailDialogOpen(true);
-          // A origem pode ser outra tela (Início, Clientes): sair agora desmontaria o envio.
-          // Fica na lista de equipamentos e volta para a origem quando o e-mail for decidido.
-          const origem = origemEntradaRef.current;
-          if (!origem.startsWith("/equipamentos")) {
-            origemAposEmailRef.current = origem;
-            origemEntradaRef.current = "/equipamentos";
-          }
         }
-      }
 
-      fecharFormulario();
+        const destino = destinoNovaEntrada(equipamentoIdSalvo, origemEntradaRef.current);
+        if (liberadoEmail && !destino.startsWith("/equipamentos/")) {
+          // Sair deste módulo agora desmontaria o diálogo de e-mail.
+          origemAposEmailRef.current = destino;
+          avisoEdicao.liberarProximaSaida();
+          fecharFormulario(false);
+          navigate("/equipamentos");
+        } else {
+          fecharFormulario(false);
+          avisoEdicao.liberarProximaSaida();
+          navigate(destino);
+        }
+      } else {
+        fecharFormulario();
+      }
       setImagensFormulario([]);
       setErroImagens(null);
     } catch (err: any) {
@@ -3868,7 +3875,7 @@ export default function Equipamentos() {
                       field.onChange(value);
                     }}>
                       <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                      <SelectContent>{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                      <SelectContent side="bottom" avoidCollisions={false}>{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
                   )} />
                   <FormValidationError message={form.formState.errors.tipo?.message} />

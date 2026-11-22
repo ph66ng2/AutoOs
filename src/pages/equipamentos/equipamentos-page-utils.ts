@@ -240,3 +240,10 @@ export function entradaTemAlgo(valores: Partial<EquipamentoFormData>, cliente: u
     || texto(valores.tipo) || texto(valores.defeito_relatado) || texto(valores.acessorios_outros) || texto(valores.observacoes)
     || (Array.isArray(valores.acessorios) && valores.acessorios.length > 0);
 }
+
+/** Os atalhos no cadastro do cliente voltam ao contexto em que a entrada começou. */
+export function destinoNovaEntrada(id: number, origem: string): string {
+  return /^\/clientes(?:\/\d+\/equipamentos)?(?:[?#]|$)/.test(origem)
+    ? origem
+    : `/equipamentos/${id}`;
+}
