@@ -13,12 +13,26 @@ const m = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
   mensagens: [] as unknown[],
   admin: false,
+  status: { unlocked: true, active_profile_id: 1 } as { unlocked: boolean; active_profile_id: number | null },
 }));
 vi.mock("@/hooks/useSuporte", () => ({
   useSuporte: () => ({ config: m.config, chamados: m.chamados, loading: false, error: null, abrirChamado: m.abrirChamado, responder: m.responder, retorno: m.retorno, recarregar: vi.fn() }),
   useMensagensChamado: () => m.mensagens,
 }));
-vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ hasPermission: () => m.admin }) }));
+// A sessão é uma loja externa: trocar `m.status` com `mudarSessao` re-renderiza até dentro do RouterProvider.
+const avisos = vi.hoisted(() => new Set<() => void>());
+function mudarSessao(status: { unlocked: boolean; active_profile_id: number | null }) {
+  m.status = status;
+  act(() => avisos.forEach((avisar) => avisar()));
+}
+vi.mock("@/hooks/useSensitiveAccess", async () => {
+  const { useSyncExternalStore } = await import("react");
+  const assinar = (avisar: () => void) => { avisos.add(avisar); return () => { avisos.delete(avisar); }; };
+  return {
+    useSensitiveAccess: () => ({ hasPermission: () => m.admin, status: useSyncExternalStore(assinar, () => m.status) }),
+    SensitiveRoute: ({ title }: { title?: string }) => <p>{title}</p>,
+  };
+});
 vi.mock("@/lib/db", () => ({ db: { abrirUrl: m.abrirUrl } }));
 vi.mock("@/lib/error-utils", () => ({ versaoDoApp: () => "0.6.4" }));
 vi.mock("sonner", () => ({ toast: m.toast }));
@@ -43,6 +57,7 @@ describe("Suporte", () => {
   beforeEach(() => {
     m.config = { token_neste_computador: true, canal: "C0CE5M6GTRV" };
     m.chamados = [];
+    m.status = { unlocked: true, active_profile_id: 1 };
     Object.values(m.toast).forEach((fn) => fn.mockReset());
     m.abrirChamado.mockReset().mockResolvedValue({ id: 12 });
     m.responder.mockReset().mockResolvedValue({ id: 12 });
@@ -222,6 +237,49 @@ describe("Suporte", () => {
     );
     render(<RouterProvider router={router} />);
     await user.type(screen.getByLabelText("O que aconteceu?"), "Ainda escrevendo");
+    await act(async () => { void router.navigate("/clientes"); });
+    expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+    expect(screen.queryByText("Tela de clientes")).not.toBeInTheDocument();
+  });
+
+  it("sessão bloqueada esconde lista e conversa; ao desbloquear volta com o rascunho", async () => {
+    const user = userEvent.setup();
+    m.chamados = [{ id: 12, texto: "Não salva a OS", situacao: "aberto", criado_em: "2026-11-21 09:00:00+00", atualizado_em: "2026-11-21 10:00:00+00", respostas: 1 }];
+    renderizar();
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    await user.type(screen.getByLabelText(/Responder/), "Resposta pela metade");
+    expect(screen.getByText(/Recarregue a OS\./)).toBeInTheDocument();
+
+    mudarSessao({ unlocked: false, active_profile_id: 1 });
+    expect(screen.getByText("Suporte bloqueado")).toBeInTheDocument();
+    expect(screen.queryByText(/Chamado #12/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Recarregue a OS\./)).not.toBeInTheDocument();
+    expect(screen.queryByText("Resposta pela metade")).not.toBeInTheDocument();
+
+    mudarSessao({ unlocked: true, active_profile_id: 1 });
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    expect(screen.getByLabelText(/Responder/)).toHaveValue("Resposta pela metade");
+  });
+
+  it("desbloquear com outro perfil não mostra o rascunho do anterior", async () => {
+    const user = userEvent.setup();
+    renderizar();
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Do perfil 1");
+    mudarSessao({ unlocked: false, active_profile_id: 1 });
+    mudarSessao({ unlocked: true, active_profile_id: 2 });
+    expect(screen.getByLabelText("O que aconteceu?")).toHaveValue("");
+  });
+
+  it("com a sessão bloqueada, sair com rascunho ainda pede confirmação", async () => {
+    const user = userEvent.setup();
+    const router = createMemoryRouter(
+      [{ path: "/suporte", element: <Suporte /> }, { path: "/clientes", element: <p>Tela de clientes</p> }],
+      { initialEntries: ["/suporte"] },
+    );
+    render(<RouterProvider router={router} />);
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Ainda escrevendo");
+    mudarSessao({ unlocked: false, active_profile_id: 1 });
+    expect(screen.getByText("Suporte bloqueado")).toBeInTheDocument();
     await act(async () => { void router.navigate("/clientes"); });
     expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
     expect(screen.queryByText("Tela de clientes")).not.toBeInTheDocument();
