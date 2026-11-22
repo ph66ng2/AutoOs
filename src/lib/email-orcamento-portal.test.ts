@@ -122,6 +122,7 @@ describe("email-orcamento-portal", () => {
 
     const copia = mockEnviarEmail.mock.calls[1][0];
     expect(copia.assunto.startsWith("[Cópia] ")).toBe(true);
+    expect(copia.equipamento_id).toBe(equip.id);
     expect(copia.email).toBe("medeiros@bmitag.com.br");
     expect(copia.cc).toContain("ivan@bmitag.com.br");
     expect(copia.corpo_texto).not.toContain("ABCD-1234-WXYZ");
@@ -180,6 +181,7 @@ describe("email-orcamento-portal", () => {
     expect(r.canais.email.enviado).toBe(true);
     expect(r.avisos).toEqual(["Não foi possível enviar a cópia interna do orçamento."]);
     expect(mockEnviarEmail).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      equipamento_id: equip.id,
       destinatario: "Cópia interna",
       email: "ivan@empresa-b.test",
     }));

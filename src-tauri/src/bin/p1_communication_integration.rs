@@ -143,6 +143,7 @@ async fn main() -> Result<()> {
 
         smtp::enviar_email(EmailSendInput {
             orcamento_equipamento_id: None,
+            equipamento_id: None,
             destinatario: "Cliente Integracao".to_string(),
             email: "cliente@test.local".to_string(),
             cc: None,

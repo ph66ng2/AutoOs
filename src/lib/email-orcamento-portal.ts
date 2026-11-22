@@ -325,6 +325,7 @@ export async function enviarEmailOrcamentoPortal(
     if (!principal) return resultado;
     try {
       const copia: EmailSendRequest = {
+        equipamento_id: equip.id,
         destinatario: "Cópia interna",
         email: principal,
         cc: restoCc,

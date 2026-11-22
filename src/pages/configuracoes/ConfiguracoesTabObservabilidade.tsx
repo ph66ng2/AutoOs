@@ -1,3 +1,4 @@
+import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
 import { EVENT_LABELS, resumirStatusAuditado } from "@/lib/eventos-auditoria";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -227,7 +228,7 @@ export function ConfiguracoesTabObservabilidade({
                     </div>
                   ) : event.details && <div className="text-muted-foreground">{event.details}</div>}
                   <div className="text-xs text-muted-foreground mt-1">
-                    {event.created_at ? new Date(event.created_at).toLocaleString("pt-BR") : "sem data"}
+                    {formatDateTimeSalvador(parseDbTimestampUtc(event.created_at), "sem data")}
                   </div>
                 </div>
               );

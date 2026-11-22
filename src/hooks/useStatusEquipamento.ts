@@ -113,7 +113,7 @@ export function useStatusEquipamento() {
    */
   async function marcarComoPronto(
     equipamento: Equipamento,
-    emailContato?: string,
+    emailContato?: string | null,
     emailDestinatario?: string,
   ): Promise<ResultadoAutomacao> {
     setLoading(true);
@@ -147,8 +147,10 @@ export function useStatusEquipamento() {
       try {
         const emailContatoResolvido = emailContato === undefined
           ? (eqAtualizado.cliente_email || "").trim()
-          : emailContato.trim();
-        if (!emailContatoResolvido) {
+          : emailContato?.trim();
+        if (emailContato === null) {
+          resultadoEmail = { sucesso: false, erro: "pulado" };
+        } else if (!emailContatoResolvido) {
           resultadoEmail = { sucesso: false, erro: "Cliente sem email cadastrado" };
         } else {
           resultadoEmail = await EmailService.enviarEquipamentoPronto(

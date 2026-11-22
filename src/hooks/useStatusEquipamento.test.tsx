@@ -232,6 +232,25 @@ describe("useStatusEquipamento", () => {
     );
   });
 
+  it("marca como pronto sem enviar e-mail quando o envio é pulado", async () => {
+    vi.mocked(db.atualizarStatusEquipamento).mockResolvedValue();
+    vi.mocked(db.buscarEquipamento).mockResolvedValue({
+      ...equipamentoBase,
+      cliente_email: "cliente@example.com",
+      status: "PRONTO",
+    });
+    vi.mocked(WhatsAppService.enviarEquipamentoPronto).mockResolvedValue({ sucesso: true });
+
+    const { result } = renderHook(useStatusEquipamento);
+    await act(async () => {
+      const resposta = await result.current.marcarComoPronto(equipamentoBase, null);
+      expect(resposta.sucesso).toBe(true);
+      expect(resposta.canais?.email).toEqual({ enviado: false, erro: "pulado" });
+    });
+    expect(EmailService.enviarEquipamentoPronto).not.toHaveBeenCalled();
+    expect(WhatsAppService.enviarEquipamentoPronto).toHaveBeenCalledOnce();
+  });
+
   it("retorna falha quando atualizacao de status quebra", async () => {
     vi.mocked(db.atualizarStatusEquipamento).mockRejectedValue(new Error("Falha no backend"));
 

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { db } from "@/lib/db";
 import type { ContagemClientes, ResumoCliente } from "@/types";
 
@@ -21,22 +22,30 @@ export function useContagemClientes(busca?: string) {
 
 /** Números do painel do cliente aberto; descarta a resposta de um cliente que já foi trocado. */
 export function useResumoCliente(clienteId: number | null) {
-  const [data, setData] = useState<ResumoCliente | null>(null);
+  const { status } = useSensitiveAccess();
+  const sessao = status?.unlocked
+    ? `${status.active_profile_id ?? ""}:${[...(status.permissions ?? [])].sort().join(",")}`
+    : null;
+  const chave = JSON.stringify([clienteId, sessao]);
+  const [cache, setCache] = useState<{ chave: string; resumo: ResumoCliente } | null>(null);
   const [versao, setVersao] = useState(0);
+  const pedido = useRef(0);
+
   useEffect(() => {
-    let vigente = true;
-    setData(null);
-    if (clienteId == null) return;
+    const meu = ++pedido.current;
+    setCache(null);
+    if (clienteId == null || sessao == null) return;
     (async () => {
       try {
         const resumo = await db.resumoCliente(clienteId);
-        if (vigente) setData(resumo);
+        if (meu === pedido.current) setCache({ chave, resumo });
       } catch (err) {
-        console.error("Erro ao carregar resumo do cliente:", err);
+        if (meu === pedido.current) console.error("Erro ao carregar resumo do cliente:", err);
       }
     })();
-    return () => { vigente = false; };
-  }, [clienteId, versao]);
+    return () => { pedido.current += 1; };
+  }, [clienteId, sessao, chave, versao]);
+
   const recarregar = useCallback(() => setVersao((v) => v + 1), []);
-  return { data, recarregar };
+  return { data: cache?.chave === chave ? cache.resumo : null, recarregar };
 }

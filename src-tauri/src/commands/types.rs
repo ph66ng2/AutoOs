@@ -364,6 +364,7 @@ pub struct EmailAttachmentInput {
 #[derive(Debug, Deserialize)]
 pub struct EmailSendInput {
     pub orcamento_equipamento_id: Option<i32>,
+    pub equipamento_id: Option<i32>,
     pub destinatario: String,
     pub email: String,
     pub cc: Option<Vec<String>>,
