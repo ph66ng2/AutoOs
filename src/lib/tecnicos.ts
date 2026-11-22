@@ -92,6 +92,30 @@ export function erroTecnicoDaEntrada(escolhido: string | null | undefined, tecni
   return "Escolha o técnico da verificação inicial. Marque os técnicos em Equipe e acessos.";
 }
 
+/**
+ * Quem fica no registro da entrada do Balcão. A verificação exige um nome (`tecnico_nome`), então
+ * sem nenhum técnico marcado na empresa ela fica no nome de quem está operando (perfil da sessão),
+ * sem a linha "Técnico inicial" e sem e-mail: a entrada não trava e nada é inventado.
+ */
+export function tecnicoDoBalcao(
+  escolhido: string | null | undefined,
+  tecnicos: readonly Tecnico[],
+  operador: string | null | undefined,
+): { nome: string; transicao: boolean; erro: string | null } {
+  const nome = escolhido?.trim() ?? "";
+  if (nome) return { nome, transicao: false, erro: null };
+  if (tecnicos.length > 0) return { nome: "", transicao: false, erro: "Escolha o técnico que está operando." };
+  const quemOpera = operador?.trim() ?? "";
+  if (quemOpera) return { nome: quemOpera, transicao: true, erro: null };
+  return { nome: "", transicao: false, erro: "Nenhum perfil está marcado como técnico. Entre com o seu perfil para registrar a entrada." };
+}
+
+/** Aviso do Balcão quando a empresa não tem nenhum técnico marcado. */
+export function avisoBalcaoSemTecnicos(operador: string | null | undefined): string {
+  const quem = operador?.trim();
+  return `Nenhum perfil marcado como técnico. ${quem ? `O registro fica no nome de quem está operando (${quem}); p` : "P"}eça a um administrador para marcar os técnicos em Equipe e acessos.`;
+}
+
 /** "Técnico inicial: <nome> (<e-mail>)" para as observações; vazio sem técnico. */
 export function linhaTecnicoInicial(nome: string | null | undefined, email: string): string {
   const limpo = nome?.trim() ?? "";

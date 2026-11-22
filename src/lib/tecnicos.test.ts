@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { definirTecnicosDaEmpresa, emailDoTecnico, erroTecnicoDaEntrada, linhaTecnicoInicial, tecnicoPadrao, tecnicosAtivos } from "./tecnicos";
+import { definirTecnicosDaEmpresa, emailDoTecnico, erroTecnicoDaEntrada, linhaTecnicoInicial, tecnicoDoBalcao, tecnicoPadrao, tecnicosAtivos } from "./tecnicos";
 import type { SecurityProfile } from "@/types";
 
 const perfil = (id: number, nome: string, email: string) =>
@@ -73,5 +73,17 @@ describe("tecnicoPadrao (técnico já escolhido ao abrir a entrada)", () => {
     expect(tecnicoPadrao(tecnicosAtivos(), 1)).toBe("QA Técnico");
     definirTecnicosDaEmpresa([]);
     expect(tecnicoPadrao(tecnicosAtivos(), 1)).toBe("");
+  });
+});
+
+describe("tecnicoDoBalcao", () => {
+  it("zero técnicos: fica no nome de quem opera, em transição (sem linha de técnico)", () => {
+    expect(tecnicoDoBalcao("", [], "Administrador")).toEqual({ nome: "Administrador", transicao: true, erro: null });
+    expect(tecnicoDoBalcao("", [], "").erro).toMatch(/Entre com o seu perfil/);
+  });
+  it("com técnicos, exige a escolha; escolhido passa", () => {
+    definirTecnicosDaEmpresa([perfil(2, "QA Técnico", "tec@empresa.test")]);
+    expect(tecnicoDoBalcao("", tecnicosAtivos(), "Administrador").erro).toBe("Escolha o técnico que está operando.");
+    expect(tecnicoDoBalcao("QA Técnico", tecnicosAtivos(), "Administrador")).toEqual({ nome: "QA Técnico", transicao: false, erro: null });
   });
 });

@@ -16,6 +16,7 @@ const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/db", () => ({ db }));
 import { PdfService } from "@/lib/pdf-service";
 import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
 
 // Sessão do balcão: por padrão o técnico Ivan (id 901 da fixture), para a entrada já vir com técnico.
 const m = vi.hoisted(() => ({ sessao: { active_profile_id: 901 as number | null, active_profile_name: "Ivan", unlocked: true } }));
@@ -76,6 +77,18 @@ describe("Modo Balcão", () => {
     await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
     expect(await screen.findByText("Escolha o técnico que está operando.")).toBeInTheDocument();
     expect(db.criarEquipamento).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("empresa sem nenhum técnico marcado não trava: registra no nome de quem opera, sem e-mail", async () => {
+    definirTecnicosDaEmpresa([]);
+    m.sessao = { active_profile_id: 1, active_profile_name: "Administrador", unlocked: true };
+    db.salvarVerificacao.mockResolvedValue({ id: 3 });
+    const user = userEvent.setup(); renderCounter(); await reachReview(user);
+    expect(screen.getByText("Administrador — —")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
+    await waitFor(() => expect(db.criarEquipamento).toHaveBeenCalled());
+    expect(db.criarEquipamento.mock.calls[0]![0].observacoes ?? "").not.toMatch(/Técnico inicial/);
+    await waitFor(() => expect(db.salvarVerificacao).toHaveBeenCalledWith(expect.objectContaining({ tecnico_nome: "Administrador" })));
   }, 20000);
 
   it("cria uma entrada recebida depois da conferência", async () => {
