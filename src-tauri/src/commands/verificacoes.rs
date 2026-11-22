@@ -648,14 +648,14 @@ pub(crate) async fn publicar_apos_ajuste(
     }
     match publicar_versao_isolada(pool, empresa_id, equipamento_id, actor.id).await {
         Ok(versao) => {
-            record_security_event(
-                "BUDGET_PUBLISHED_TO_PORTAL",
-                Some(actor),
+            super::portal_cliente::auditar_versao_orcamento(
+                pool,
+                empresa_id,
+                actor,
                 format!(
                     "empresa_id={empresa_id}; equipamento_id={equipamento_id}; versao={}; automatica=true; nova_aprovacao={nova_aprovacao}",
                     versao.numero
                 ),
-                true,
             )
             .await;
             PortalAjusteInfo {

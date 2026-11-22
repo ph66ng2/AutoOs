@@ -848,6 +848,7 @@ export interface EmailAttachment {
 }
 
 export interface EmailSendRequest {
+  orcamento_equipamento_id?: number;
   destinatario: string;
   email: string;
   cc?: string[];

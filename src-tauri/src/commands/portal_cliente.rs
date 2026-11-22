@@ -676,8 +676,7 @@ pub async fn publicar_orcamento_portal(equipamento_id: i32) -> Result<OrcamentoP
     publicar_versao(&pool, empresa_id, &actor, equipamento_id).await
 }
 
-/// Cria ou reaproveita a versão publicada de uma OS. Cada chamada tem a sua transação e grava o
-/// evento `BUDGET_PUBLISHED_TO_PORTAL`.
+/// Cria ou reaproveita a versão congelada de uma OS e audita após confirmar a transação.
 async fn publicar_versao(
     pool: &PgPool,
     empresa_id: i32,
@@ -698,14 +697,41 @@ async fn publicar_versao(
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     let nova = antes.is_none_or(|id| versao.id > id);
-    record_security_event(
-        "BUDGET_PUBLISHED_TO_PORTAL",
-        Some(actor),
+    auditar_versao_orcamento(
+        pool,
+        empresa_id,
+        actor,
         format!("empresa_id={empresa_id}; equipamento_id={equipamento_id}; versao={}; nova={nova}", versao.numero),
-        true,
     )
     .await;
     Ok(OrcamentoPublicado { versao_id: versao.id, versao: versao.numero, nova })
+}
+
+pub(crate) async fn auditar_versao_orcamento(
+    pool: &PgPool,
+    empresa_id: i32,
+    actor: &SecurityProfileSummary,
+    detalhes: String,
+) {
+    // A versão já foi gravada. A leitura do portal serve apenas à auditoria.
+    match sqlx::query_scalar::<_, bool>("SELECT public.autoos_portal_ligado($1)")
+        .bind(empresa_id)
+        .fetch_one(pool)
+        .await
+    {
+        Ok(ligado) => {
+            record_security_event(evento_versao_orcamento(ligado), Some(actor), detalhes, true).await;
+        }
+        Err(erro) => tracing::warn!(empresa_id, %erro, "Falha ao consultar o portal para auditar a versão do orçamento"),
+    }
+}
+
+fn evento_versao_orcamento(portal_ligado: bool) -> &'static str {
+    if portal_ligado {
+        "BUDGET_PUBLISHED_TO_PORTAL"
+    } else {
+        "BUDGET_VERSION_FROZEN"
+    }
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -861,6 +887,12 @@ pub async fn salvar_contato_portal_empresa(input: ContatoPortalEmpresa) -> Resul
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn estado_do_portal_define_o_evento_da_versao() {
+        assert_eq!(super::evento_versao_orcamento(true), "BUDGET_PUBLISHED_TO_PORTAL");
+        assert_eq!(super::evento_versao_orcamento(false), "BUDGET_VERSION_FROZEN");
+    }
+
     use super::*;
 
     #[test]

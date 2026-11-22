@@ -363,6 +363,7 @@ pub struct EmailAttachmentInput {
 /// Input para envio real de email.
 #[derive(Debug, Deserialize)]
 pub struct EmailSendInput {
+    pub orcamento_equipamento_id: Option<i32>,
     pub destinatario: String,
     pub email: String,
     pub cc: Option<Vec<String>>,

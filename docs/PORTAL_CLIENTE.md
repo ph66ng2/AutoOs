@@ -114,7 +114,7 @@ Se o envio falha por qualquer motivo (WhatsApp ou e-mail), abre **Enviar manualm
 
 ### Orçamentos pendentes de publicação
 
-OS em `AGUARDANDO_APROVACAO` sem versão aberta no portal (casos antigos, de antes do envio publicar sozinho) aparecem em Configurações → Portal do Cliente, no card do Portal, como **Enviar orçamentos pendentes ao portal (N)**. O botão some com N = 0, pede PIN (`MANAGE_STATUS_LINKS` ou `PREPARE_QUOTES`) e publica uma OS por vez pelo mesmo caminho de "Publicar no Portal do Cliente" (um `BUDGET_PUBLISHED_TO_PORTAL` por OS). Uma falha, como prazo vencido, não interrompe as outras: entra no resumo exibido no fim e no evento `BUDGET_PORTAL_BULK_PUBLISH`. O card do portal continua visível só para quem tem `MANAGE_STATUS_LINKS`.
+OS em `AGUARDANDO_APROVACAO` sem versão aberta no portal (casos antigos, de antes do envio publicar sozinho) aparecem em Configurações → Portal do Cliente, no card do Portal, como **Enviar orçamentos pendentes ao portal (N)**. O botão some com N = 0, pede PIN (`MANAGE_STATUS_LINKS` ou `PREPARE_QUOTES`) e publica uma OS por vez pelo mesmo caminho de "Publicar no Portal do Cliente" (um evento de versão por OS). Uma falha, como prazo vencido, não interrompe as outras: entra no resumo exibido no fim e no evento `BUDGET_PORTAL_BULK_PUBLISH`. O card do portal continua visível só para quem tem `MANAGE_STATUS_LINKS`.
 
 ### Prazo e prorrogação
 
@@ -293,6 +293,8 @@ Pré-requisitos: passos 1–4 da Ativação concluídos; build do AutoOS a parti
 ## PDFs oficiais no portal (0047, 10/11/2026)
 
 A OS e o orçamento não são mais desenhados pelo navegador do portal. O `PdfService` emite o documento oficial e manda seus bytes ao comando `publicar_documento_portal`. A prévia não publica: a publicação acontece só ao salvar/imprimir ou enviar, com o artefato final (inclusive o prazo escolhido no diálogo); o arquivo local e o anexo do e-mail usam esse mesmo artefato. Imprimir sem baixar também publica, em todas as prévias de OS/orçamento (Balcão, Equipamentos e Documentos do equipamento), inclusive depois de mudar o prazo no diálogo: a impressão aguarda a publicação e imprime os bytes canônicos. Imprimir e baixar o mesmo artefato publica uma vez só. Verificação com `adjusted_at` nunca é publicada como orçamento original. A OS é a ficha de recebimento do sistema, sem serviços nem valores. O e-mail e Documentos usam o construtor de orçamento ajustado quando existe `adjusted_at`.
+
+O envio do orçamento original por e-mail fica registrado como `BUDGET_EMAIL_SENT`, mesmo com o portal desligado. `BUDGET_PUBLISHED_TO_PORTAL` registra a publicação de uma versão com o portal ligado, inclusive no modo de consulta. Com o portal desligado, a versão ainda é congelada e gera `BUDGET_VERSION_FROZEN`. Se a cópia interna falhar, o operador recebe um aviso e a auditoria registra `EMAIL_SEND_FAILED`.
 
 O comando reutiliza a configuração Supabase Storage existente no keyring (`autoos/storage_config`); URL e chave de serviço não vão para o portal. A empresa vem da sessão ativa, nunca de um caminho enviado pelo frontend. Os arquivos ficam em `portal-documentos/<empresa>/<atendimento>/<tipo>/<versaoId ou 0>/<sha256>.pdf`, bucket **privado**, limite 15 MiB e MIME `application/pdf`. A referência fica em `portal_documentos_oficiais`, com FK por empresa, RLS e sem acesso de `anon`/`authenticated`.
 

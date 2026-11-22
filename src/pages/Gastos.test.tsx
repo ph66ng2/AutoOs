@@ -68,6 +68,18 @@ describe("Finanças (fase 8)", () => {
     expect(screen.getByRole("heading", { name: "Peso no faturamento" }).closest("section")).toHaveTextContent("83% em gastos");
   });
 
+  it("identifica o mês de corte do faturamento acumulado", async () => {
+    const usuario = userEvent.setup();
+    render(<Gastos />);
+    const painel = screen.getByRole("region", { name: "Faturamento e gastos" });
+    expect(within(painel).getByText("Faturado no ano (até novembro)")).toBeInTheDocument();
+
+    await usuario.click(screen.getByRole("combobox", { name: "Mês" }));
+    await usuario.click(await screen.findByRole("option", { name: "Outubro, 2026" }));
+
+    expect(within(painel).getByText("Faturado no ano (até outubro)")).toBeInTheDocument();
+  });
+
   it("saldo e peso ficam indisponíveis se o faturado do ano não carrega", async () => {
     mocks.db.listarReceitaAprovada.mockRejectedValue(new Error("rede"));
     render(<Gastos />);

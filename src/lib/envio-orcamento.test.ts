@@ -114,6 +114,19 @@ describe("enviarOrcamentoAoCliente", () => {
     expect(JSON.stringify(r.avisos)).not.toContain("S3NHA");
   });
 
+  it.each([
+    [{ enviado: false, erro: "SMTP indisponível" }, ["Não foi possível enviar a cópia interna do orçamento."]],
+    [{ enviado: false }, []],
+  ])("avisa apenas quando a cópia interna falha (%j)", async (copia, avisos) => {
+    mocks.solicitarEnvio.mockResolvedValue(okWpp);
+    mocks.enviarEmailOrcamentoPortal.mockResolvedValue({ cliente: { enviado: true }, copia });
+
+    const resultado = await enviarOrcamentoAoCliente(equip, verif, { preparo: preparo() });
+
+    expect(resultado.canais.email.enviado).toBe(true);
+    expect(resultado.avisos).toEqual(avisos);
+  });
+
   it("reaproveita o preparo numa segunda tentativa e a senha criada não se perde", async () => {
     const p = preparo();
     mocks.prepararAcessoPortal.mockResolvedValue(p);

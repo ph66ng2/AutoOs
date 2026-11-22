@@ -2870,8 +2870,16 @@ export default function Equipamentos() {
         db.obterDestinatarioOrcamento(id),
       ]);
       const { email, nome, contatoId } = destinatario;
-      if (atual.status !== "AGUARDANDO_APROVACAO" || !email || !emailValido(email)) {
-        warning("Equipamentos", "A OS deve estar aguardando aprovação e ter um e-mail válido para o reenvio.");
+      if (atual.status !== "AGUARDANDO_APROVACAO") {
+        warning("Equipamentos", "A OS deve estar aguardando aprovação para reenviar o orçamento.");
+        return;
+      }
+      if (!email?.trim()) {
+        warning("Equipamentos", `O contato ${nome} não tem e-mail; cadastre em Clientes › Contatos.`);
+        return;
+      }
+      if (!emailValido(email)) {
+        warning("Equipamentos", `O contato ${nome} tem um e-mail inválido. Corrija em Clientes › Contatos.`);
         return;
       }
 
