@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "@/lib/db";
 import type { OrcamentoInsumosDetalhe } from "@/types";
 
@@ -7,9 +7,14 @@ export function useVendaInsumos(id: number | null) {
   const [venda, setVenda] = useState<OrcamentoInsumosDetalhe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Só a busca mais recente pode mexer no estado: voltar/avançar entre /vendas/:id com uma
+  // busca pendente não deixa a resposta do orçamento anterior sobrescrever o atual.
+  const ultimaBusca = useRef(0);
 
   const carregar = useCallback(async () => {
+    const busca = ++ultimaBusca.current;
     if (id == null) {
+      setVenda(null);
       setLoading(false);
       setError("Orçamento não encontrado.");
       return;
@@ -17,11 +22,14 @@ export function useVendaInsumos(id: number | null) {
     setLoading(true);
     setError(null);
     try {
-      setVenda(await db.obterOrcamentoInsumos(id));
+      const detalhe = await db.obterOrcamentoInsumos(id);
+      if (busca !== ultimaBusca.current) return;
+      setVenda(detalhe);
     } catch (causa) {
+      if (busca !== ultimaBusca.current) return;
       setError(typeof causa === "string" ? causa : String((causa as Error)?.message ?? causa));
     } finally {
-      setLoading(false);
+      if (busca === ultimaBusca.current) setLoading(false);
     }
   }, [id]);
 
@@ -29,7 +37,11 @@ export function useVendaInsumos(id: number | null) {
     void carregar();
   }, [carregar]);
 
-  return { venda, loading, error, recarregar: carregar };
+  // Enquanto o novo id carrega, o orçamento anterior não aparece (as ações usariam o id errado).
+  const vendaAtual = venda != null && venda.id === id ? venda : null;
+  const carregandoOutro = venda != null && venda.id !== id && error == null;
+
+  return { venda: vendaAtual, loading: loading || carregandoOutro, error, recarregar: carregar };
 }
 
 /**
