@@ -35,17 +35,42 @@ export function lerVistos(perfilId: number | null): Vistos {
   }
 }
 
-/** Abrir o sino: as não lidas de agora viram vistas e a marca do portal sobe até `portalAte`. */
-export function marcarVistos(perfilId: number | null, atual: Vistos, chavesNaoLidas: string[], portalAte: number): Vistos {
-  const proximo: Vistos = { chaves: new Set(chavesNaoLidas), portalAte: Math.max(atual.portalAte, portalAte) };
-  if (perfilId != null) {
-    try {
-      window.localStorage.setItem(PREFIXO + perfilId, JSON.stringify({ chaves: [...proximo.chaves], portalAte: proximo.portalAte }));
-    } catch {
-      // Sem armazenamento: o "visto" vale só até fechar o app.
-    }
+/** Grava o "visto" do perfil neste computador. Sem perfil ou sem armazenamento, não grava. */
+export function gravarVistos(perfilId: number | null, vistos: Vistos): void {
+  if (perfilId == null) return;
+  try {
+    window.localStorage.setItem(PREFIXO + perfilId, JSON.stringify({ chaves: [...vistos.chaves], portalAte: vistos.portalAte }));
+  } catch {
+    // Sem armazenamento: o "visto" vale só até fechar o app.
   }
-  return proximo;
+}
+
+// ─── Regras (funções puras: recebem o "visto" atual e devolvem o próximo) ───────────
+
+/**
+ * Abrir o sino: as não lidas de agora viram vistas e a marca do portal sobe até `portalMaiorId`.
+ * As chaves de quem já foi lido saem (a lista não cresce sem limite). Exceção: enquanto os
+ * avisos internos não carregaram com sucesso, as chaves `aviso:` já vistas ficam, porque a lista
+ * vazia de agora não quer dizer que foram lidos.
+ */
+export function aoAbrir(atual: Vistos, { chavesNaoLidas, avisosCarregados, portalMaiorId }: {
+  chavesNaoLidas: string[];
+  avisosCarregados: boolean;
+  portalMaiorId: number;
+}): Vistos {
+  const mantidas = avisosCarregados ? [] : [...atual.chaves].filter((chave) => chave.startsWith("aviso:"));
+  return { chaves: new Set([...mantidas, ...chavesNaoLidas]), portalAte: Math.max(atual.portalAte, portalMaiorId) };
+}
+
+/** Com o sino aberto, o que aparece no painel também fica visto. `atual` volta igual se nada mudou. */
+export function comChaves(atual: Vistos, chaves: string[]): Vistos {
+  if (chaves.every((chave) => atual.chaves.has(chave))) return atual;
+  return { chaves: new Set([...atual.chaves, ...chaves]), portalAte: atual.portalAte };
+}
+
+/** A marca do portal só sobe. `atual` volta igual se não subiu. */
+export function subirMarcaPortal(atual: Vistos, maiorId: number): Vistos {
+  return maiorId > atual.portalAte ? { chaves: atual.chaves, portalAte: maiorId } : atual;
 }
 
 export function contarNovos(chavesNaoLidas: string[], vistos: Vistos): number {
