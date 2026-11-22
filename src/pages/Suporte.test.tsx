@@ -285,6 +285,61 @@ describe("Suporte", () => {
     expect(screen.getByLabelText("O que aconteceu?")).toHaveValue("");
   });
 
+  describe.each([
+    { tipo: "chamado", campo: "O que aconteceu?", escolherChamado: false },
+    { tipo: "resposta", campo: "Responder", escolherChamado: true },
+  ])("envio de $tipo", ({ campo, escolherChamado }) => {
+    async function iniciarEnvio() {
+      const user = userEvent.setup();
+      const enviar = escolherChamado ? m.responder : m.abrirChamado;
+      let concluir!: (chamado: typeof aberto12) => void;
+      enviar.mockReturnValueOnce(new Promise<typeof aberto12>((resolve) => { concluir = resolve; }));
+      m.chamados = [aberto12];
+      renderizar();
+      const abrirEditor = async () => {
+        if (escolherChamado) await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+        return screen.getByLabelText(campo);
+      };
+      await user.type(await abrirEditor(), "Do perfil 1");
+      await user.keyboard("{Control>}{Enter}{/Control}");
+      expect(enviar).toHaveBeenCalledTimes(1);
+      return { user, enviar, abrirEditor, concluir };
+    }
+
+    it("preserva texto e print do novo perfil quando o envio anterior termina", async () => {
+      const { user, abrirEditor, concluir } = await iniciarEnvio();
+      mudarSessao({ unlocked: true, active_profile_id: 2 });
+      const editor = await abrirEditor();
+      await user.type(editor, "Do perfil 2");
+      const print = new File(["x"], "tela.png", { type: "image/png" });
+      await user.upload(editor.closest("div.border-t")!.querySelector("input[type=file]") as HTMLInputElement, print);
+      await screen.findByAltText("Print 1");
+
+      await act(async () => concluir(aberto12));
+      expect(editor).toHaveValue("Do perfil 2");
+      expect(screen.getByAltText("Print 1")).toBeInTheDocument();
+    });
+
+    it("mantém a trava no desbloqueio até o envio terminar", async () => {
+      const { user, enviar, abrirEditor, concluir } = await iniciarEnvio();
+      mudarSessao({ unlocked: false, active_profile_id: 1 });
+      expect(screen.getByText("Suporte bloqueado")).toBeInTheDocument();
+      mudarSessao({ unlocked: true, active_profile_id: 1 });
+      const editor = await abrirEditor();
+      expect(editor).toHaveValue("Do perfil 1");
+      expect(screen.getByRole("button", { name: /Enviando/ })).toBeDisabled();
+      await user.click(editor);
+      await user.keyboard("{Control>}{Enter}{/Control}");
+      expect(enviar).toHaveBeenCalledTimes(1);
+
+      await act(async () => concluir(aberto12));
+      expect(editor).toHaveValue("");
+      await user.type(editor, "Novo envio");
+      await user.keyboard("{Control>}{Enter}{/Control}");
+      expect(enviar).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("com a sessão bloqueada, sair com rascunho ainda pede confirmação", async () => {
     const user = userEvent.setup();
     const router = createMemoryRouter(
