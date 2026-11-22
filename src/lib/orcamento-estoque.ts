@@ -107,20 +107,29 @@ export function orcamentoMudou(
   } catch {
     return true;
   }
-  return JSON.stringify(normalizarServicosOrcamento(anteriores)) !== JSON.stringify(servicos);
+  const canonico = (lista: ServicoNecessario[]) => normalizarServicosOrcamento(lista).map((servico) => {
+    const pecas = (servico.pecas ?? []).filter((peca) => peca.quantidade > 0);
+    const { pecas: _pecas, ...resto } = servico;
+    return pecas.length ? { ...resto, pecas } : resto;
+  });
+  return JSON.stringify(canonico(anteriores)) !== JSON.stringify(canonico(servicos));
 }
 
 export function validarPecas(pecas: PecaVinculada[]): boolean {
-  return pecas.every((peca) => Number.isInteger(peca.produto_id) && peca.produto_id > 0
-    && Number.isInteger(peca.quantidade) && peca.quantidade > 0
-    && Number.isFinite(peca.valor_unitario) && peca.valor_unitario >= 0);
+  return pecas.every((peca) => {
+    const produtoId = Number(peca.produto_id);
+    return Number.isInteger(produtoId) && produtoId > 0
+      && Number.isInteger(peca.quantidade) && peca.quantidade > 0
+      && Number.isFinite(peca.valor_unitario) && peca.valor_unitario >= 0;
+  });
 }
 
 export function resumirPecas(servicos: ServicoNecessario[]): Array<{ produto_id: number; nome: string; quantidade: number }> {
   const resumo = new Map<number, { produto_id: number; nome: string; quantidade: number }>();
   for (const servico of servicos) for (const peca of servico.pecas ?? []) {
-    const anterior = resumo.get(peca.produto_id);
-    resumo.set(peca.produto_id, { produto_id: peca.produto_id, nome: peca.nome,
+    const produtoId = Number(peca.produto_id);
+    const anterior = resumo.get(produtoId);
+    resumo.set(produtoId, { produto_id: produtoId, nome: peca.nome,
       quantidade: (anterior?.quantidade ?? 0) + peca.quantidade });
   }
   return [...resumo.values()];

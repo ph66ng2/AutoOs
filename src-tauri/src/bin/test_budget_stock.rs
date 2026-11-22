@@ -50,7 +50,7 @@ async fn main() -> Result<()> {
     sqlx::query("UPDATE equipamentos SET status='AGUARDANDO_APROVACAO' WHERE id=$1").bind(eq).execute(&pool).await?;
     let token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq).fetch_one(&pool).await?;
     let input = AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq,expected_updated_em:token.clone(),
-        pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],aprovado:None,resposta_esperada_id:None,motivo_divergencia:None };
+        pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],aprovar_sem_servicos:false,aprovado:None,resposta_esperada_id:None,motivo_divergencia:None };
     equipamentos::aprovar_orcamento(input.clone()).await.map_err(|e| anyhow!(e))?;
     assert!(equipamentos::aprovar_orcamento(input).await.is_err());
     let v = verificacoes::buscar_verificacao_tecnica(eq,Some(empresa)).await.map_err(|e| anyhow!(e))?;
@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
     sqlx::query("UPDATE equipamentos SET status='AGUARDANDO_APROVACAO' WHERE id=$1").bind(eq).execute(&pool).await?;
     let token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq).fetch_one(&pool).await?;
     equipamentos::aprovar_orcamento(AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq,expected_updated_em:token,
-        pagamento:FormaPagamento {codigo:FormaPagamentoCodigo::ACombinar,detalhe:None},servicos_aprovados:vec![],aprovado:None,resposta_esperada_id:None,motivo_divergencia:None }).await.map_err(|e| anyhow!(e))?;
+        pagamento:FormaPagamento {codigo:FormaPagamentoCodigo::ACombinar,detalhe:None},servicos_aprovados:vec![],aprovar_sem_servicos:false,aprovado:None,resposta_esperada_id:None,motivo_divergencia:None }).await.map_err(|e| anyhow!(e))?;
     let v = verificacoes::buscar_verificacao_tecnica(eq,Some(empresa)).await.map_err(|e| anyhow!(e))?;
     assert_eq!(v.custo_total,Some(60.0));
     assert_eq!(serde_json::from_str::<Vec<serde_json::Value>>(&v.servicos_necessarios.unwrap())?.len(),1);
@@ -96,7 +96,7 @@ async fn main() -> Result<()> {
         let token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq2).fetch_one(&db::get_pool().await.unwrap()).await.unwrap();
         equipamentos::aprovar_orcamento(AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq2,expected_updated_em:token,
             pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:if aprovado == Some(false) { vec![] } else { vec!["a".into()] },
-            aprovado,resposta_esperada_id:esperada,motivo_divergencia:motivo }).await
+            aprovar_sem_servicos:false,aprovado,resposta_esperada_id:esperada,motivo_divergencia:motivo }).await
     };
     // A lista mostra a resposta ainda não aplicada.
     assert_eq!(equipamentos::buscar_equipamento(eq2).await.map_err(|e| anyhow!(e))?.resposta_cliente.as_deref(), Some("APROVAR"));
@@ -127,7 +127,7 @@ async fn main() -> Result<()> {
     let estoque_antes = produtos::buscar_produto(produto.id).await.map_err(|e| anyhow!(e))?.quantidade_estoque.unwrap_or(0);
     let token3: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq3).fetch_one(&pool).await?;
     equipamentos::aprovar_orcamento(AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq3,expected_updated_em:token3,
-        pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],aprovado:None,resposta_esperada_id:None,motivo_divergencia:None }).await.map_err(|e| anyhow!(e))?;
+        pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],aprovar_sem_servicos:false,aprovado:None,resposta_esperada_id:None,motivo_divergencia:None }).await.map_err(|e| anyhow!(e))?;
     assert_eq!(produtos::buscar_produto(produto.id).await.map_err(|e| anyhow!(e))?.quantidade_estoque,Some(estoque_antes - 3));
     let analise = orcamento_correcao::analisar_correcao_decisao(eq3).await.map_err(|e| anyhow!(e))?;
     assert!(analise.pode_corrigir && analise.exige_decisao_estoque);
@@ -183,7 +183,7 @@ async fn main() -> Result<()> {
     let token4: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq4).fetch_one(&pool).await?;
     equipamentos::aprovar_orcamento(AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq4,expected_updated_em:token4,
         pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::ACombinar,detalhe:None },servicos_aprovados:vec!["a".into()],
-        aprovado:Some(true),resposta_esperada_id:Some(resposta4),motivo_divergencia:None }).await.map_err(|e| anyhow!(e))?;
+        aprovar_sem_servicos:false,aprovado:Some(true),resposta_esperada_id:Some(resposta4),motivo_divergencia:None }).await.map_err(|e| anyhow!(e))?;
     let corrigir4 = |modo: orcamento_correcao::ModoCorrecao, motivo: &str, token: String| orcamento_correcao::corrigir_decisao_orcamento(orcamento_correcao::CorrigirDecisaoInput {
         equipamento_id: eq4, expected_updated_em: token, motivo: motivo.into(), devolver_estoque: true, modo });
     let token_atual = || async { sqlx::query_scalar::<_, String>("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq4).fetch_one(&db::get_pool().await.unwrap()).await.unwrap() };
@@ -250,7 +250,7 @@ async fn main() -> Result<()> {
         let token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq).fetch_one(&pool).await.unwrap();
         equipamentos::aprovar_orcamento(AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq,expected_updated_em:token,
             pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],
-            aprovado:Some(true),resposta_esperada_id:Some(resposta),motivo_divergencia:None }).await.map_err(|e| anyhow!(e))
+            aprovar_sem_servicos:false,aprovado:Some(true),resposta_esperada_id:Some(resposta),motivo_divergencia:None }).await.map_err(|e| anyhow!(e))
     };
     let opcoes = |modo: verificacoes::ModoAjusteAprovado, devolver: bool| Some(verificacoes::OpcoesAjusteOrcamento { modo_aprovado: Some(modo), devolver_estoque: devolver, confirmar_resposta_pendente: false, confirmar_garantia: false });
 
@@ -331,7 +331,7 @@ async fn main() -> Result<()> {
     let token_g: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq_g).fetch_one(&pool).await?;
     equipamentos::aprovar_orcamento(AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq_g,expected_updated_em:token_g,
         pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],
-        aprovado:None,resposta_esperada_id:None,motivo_divergencia:None }).await.map_err(|e| anyhow!(e))?;
+        aprovar_sem_servicos:false,aprovado:None,resposta_esperada_id:None,motivo_divergencia:None }).await.map_err(|e| anyhow!(e))?;
     let token_g: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq_g).fetch_one(&pool).await?;
     let reaberto_g = orcamento_correcao::corrigir_decisao_orcamento(orcamento_correcao::CorrigirDecisaoInput {
         equipamento_id: eq_g, expected_updated_em: token_g, motivo: "Cliente pediu para rever".into(), devolver_estoque: true,

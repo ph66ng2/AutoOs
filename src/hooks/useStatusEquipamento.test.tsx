@@ -113,6 +113,7 @@ describe("useStatusEquipamento", () => {
     expect(enviarOrcamentoAoCliente).toHaveBeenCalledWith(
       expect.objectContaining({ status: "AGUARDANDO_APROVACAO", valor_orcamento: 80 }),
       verificacaoBase,
+      { enviarEmail: true },
     );
     expect(db.atualizarStatusEquipamento).toHaveBeenNthCalledWith(
       1,
@@ -169,6 +170,32 @@ describe("useStatusEquipamento", () => {
     expect(resposta?.envioManual).toBe(envioManual);
     expect(resposta?.avisos).toEqual(["aviso 1"]);
     expect(resposta?.canais?.whatsapp).toEqual({ enviado: false, erro: "falhou" });
+  });
+
+  it("não envia e-mail quando o operador pula o destinatário", async () => {
+    prepararFluxoFinalizar();
+    const { result } = renderHook(() => useStatusEquipamento());
+    await act(async () => {
+      await result.current.finalizarVerificacao(equipamentoBase, { ...verificacaoBase }, "");
+    });
+    expect(enviarOrcamentoAoCliente).toHaveBeenCalledWith(
+      expect.anything(),
+      verificacaoBase,
+      { enviarEmail: false },
+    );
+  });
+
+  it("repassa o e-mail digitado no diálogo para o envio", async () => {
+    prepararFluxoFinalizar();
+    const { result } = renderHook(() => useStatusEquipamento());
+    await act(async () => {
+      await result.current.finalizarVerificacao(equipamentoBase, { ...verificacaoBase }, "outro@cliente.invalid");
+    });
+    expect(enviarOrcamentoAoCliente).toHaveBeenCalledWith(
+      expect.anything(),
+      verificacaoBase,
+      { enviarEmail: true, emailDestino: "outro@cliente.invalid" },
+    );
   });
 
   it("falha no envio nao impede a mudanca de status", async () => {

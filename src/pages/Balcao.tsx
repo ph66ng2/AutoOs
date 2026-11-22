@@ -40,6 +40,13 @@ import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquip
 import { useCounterSession } from "@/components/CounterLayout";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { db, type ImpressoraWindows } from "@/lib/db";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { carregarRepositorioEquipamentos } from "@/lib/data/equipamentos-repository";
+import { carregarRepositorioClientes } from "@/lib/data/clientes-repository";
+import { carregarRepositorioProdutos } from "@/lib/data/produtos-repository";
+import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { ITEMS_PER_PAGE, totalPages } from "@/lib/pagination";
 import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { publicarPdfOficial } from "@/lib/portal-documentos";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
@@ -64,9 +71,35 @@ import {
   STATUS_LABELS,
   type Cliente,
   type ClienteContato,
-  type Equipamento,
+  type Equipamento as EquipamentoTipo,
+  type ClienteId,
   type Produto,
 } from "@/types";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
+
+type BalcaoEquipamento = EquipamentoTipo<ClienteId>;
+type BalcaoProduto = Produto<ClienteId>;
+
+async function listarEquipamentosBalcao(busca?: string, status?: string): Promise<BalcaoEquipamento[]> {
+  const repository = await carregarRepositorioEquipamentos<ClienteId>();
+  return repository.listar(busca, status);
+}
+
+async function listarEquipamentosBalcaoPorCliente(clienteId: ClienteId): Promise<BalcaoEquipamento[]> {
+  const repository = await carregarRepositorioEquipamentos<ClienteId>();
+  if (repository.listarPorClienteId) return repository.listarPorClienteId(clienteId);
+  return (await repository.listar()).filter((equipment) => equipment.cliente_id === clienteId);
+}
+
+async function buscarEquipamentoBalcao(id: ClienteId): Promise<BalcaoEquipamento> {
+  if (IS_SAAS_BUILD) {
+    const repository = await carregarRepositorioEquipamentos<ClienteId>();
+    if (!repository.buscar) throw new Error("A busca do equipamento não está disponível neste runtime.");
+    return repository.buscar(id);
+  }
+  if (typeof id !== "number") throw new Error("O identificador local do equipamento é inválido.");
+  return db.buscarEquipamento(id);
+}
 
 const inputClass = "min-h-12 text-base";
 const operationalStatuses = [
@@ -104,17 +137,17 @@ function base64ParaBytes(base64: string): number[] {
   return Array.from(binario, (caractere) => caractere.charCodeAt(0));
 }
 
-function equipmentTitle(eq: Equipamento) {
+function equipmentTitle(eq: BalcaoEquipamento) {
   return `${eq.marca} ${eq.modelo}`.trim();
 }
 
-export default function Balcao() {
+export default function Balcao({ operationalProfile }: { operationalProfile?: SaasOperationalProfile } = {}) {
   const { resetKey } = useCounterSession();
   const location = useLocation();
   const [view, setView] = useState<
     "home" | "entry" | "equipment" | "client" | "panel" | "stock"
   >("home");
-  const [counterEquipment, setCounterEquipment] = useState<Equipamento | null>(
+  const [counterEquipment, setCounterEquipment] = useState<BalcaoEquipamento | null>(
     null,
   );
   useEffect(() => {
@@ -126,27 +159,26 @@ export default function Balcao() {
   }, [location.pathname]);
   useEffect(() => {
     const equipmentId = (
-      location.state as { counterEquipmentId?: number } | null
+      location.state as { counterEquipmentId?: ClienteId } | null
     )?.counterEquipmentId;
     if (!equipmentId) return;
-    void db
-      .buscarEquipamento(equipmentId)
-      .then(setCounterEquipment)
+    void buscarEquipamentoBalcao(equipmentId)
+      .then((equipment) => setCounterEquipment(equipment))
       .catch(() => setCounterEquipment(null));
   }, [location.state]);
   if (counterEquipment)
     return (
       <section>
         <Back onBack={() => setCounterEquipment(null)} />
-        <EquipmentDetail equipamento={counterEquipment} />
+        <EquipmentDetail equipamento={counterEquipment} operationalProfile={operationalProfile} />
       </section>
     );
-  if (view === "entry") return <QuickEntry onBack={() => setView("home")} />;
+  if (view === "entry") return <QuickEntry onBack={() => setView("home")} operationalProfile={operationalProfile} />;
   if (view === "equipment")
-    return <EquipmentSearch onBack={() => setView("home")} />;
-  if (view === "client") return <ClientSearch onBack={() => setView("home")} />;
+    return <EquipmentSearch onBack={() => setView("home")} operationalProfile={operationalProfile} />;
+  if (view === "client") return <ClientSearch onBack={() => setView("home")} operationalProfile={operationalProfile} />;
   if (view === "panel")
-    return <OperationalPanel onBack={() => setView("home")} />;
+    return <OperationalPanel onBack={() => setView("home")} operationalProfile={operationalProfile} />;
   if (view === "stock") return <CounterStock onBack={() => setView("home")} />;
   return (
     <div className="mx-auto max-w-6xl py-8">
@@ -238,15 +270,21 @@ function formatarPreco(valor: number) {
 
 function CounterStock({ onBack }: { onBack: () => void }) {
   const [busca, setBusca] = useState("");
-  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [produtos, setProdutos] = useState<BalcaoProduto[]>([]);
+  const [pagina, setPagina] = useState(1);
+  const [totalProdutos, setTotalProdutos] = useState(0);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
-  async function carregarProdutos(termo = busca) {
+  async function carregarProdutos(termo = busca, paginaAlvo = pagina) {
     setCarregando(true);
     setErro(null);
     try {
-      setProdutos(await db.listarProdutos(termo.trim() || undefined));
+      const repository = await carregarRepositorioProdutos();
+      const result = await repository.listar({ busca: termo.trim() || undefined }, paginaAlvo);
+      setProdutos(result.items as BalcaoProduto[]);
+      setTotalProdutos(result.total);
+      setPagina(paginaAlvo);
     } catch (cause) {
       setErro("Não foi possível consultar o estoque agora.");
       console.error("Erro ao consultar estoque no balcão:", cause);
@@ -285,7 +323,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
         className="mt-6 flex flex-col gap-3 sm:flex-row"
         onSubmit={(event) => {
           event.preventDefault();
-          void carregarProdutos();
+          void carregarProdutos(busca, 1);
         }}
       >
         <div className="relative flex-1">
@@ -308,7 +346,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
           <Loader2 className="animate-spin" /> Carregando estoque...
         </div>
       ) : produtos.length === 0 ? (
-        <p className="mt-8 rounded-xl border bg-card p-6 text-lg text-muted-foreground">
+        <p className="mt-8 rounded-xl border bg-white p-6 text-lg text-muted-foreground">
           Nenhum insumo encontrado.
         </p>
       ) : (
@@ -328,7 +366,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
                     {estoqueBaixo && <Badge variant="destructive">Estoque baixo</Badge>}
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-base">
-                    <div className="rounded-lg bg-muted p-3">
+                    <div className="rounded-lg bg-slate-100 p-3">
                       <p className="text-sm text-muted-foreground">Disponível</p>
                       <p className="mt-1 text-2xl font-bold">{produto.quantidade_estoque}</p>
                     </div>
@@ -343,19 +381,30 @@ function CounterStock({ onBack }: { onBack: () => void }) {
           })}
         </div>
       )}
+      {!carregando && totalProdutos > ITEMS_PER_PAGE && (
+        <div className="mt-5 flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">{totalProdutos} insumo(s)</p>
+          <PaginationControls
+            page={pagina}
+            totalPages={totalPages(totalProdutos)}
+            onPageChange={(nextPage) => void carregarProdutos(busca, nextPage)}
+            label="Paginação do estoque no balcão"
+          />
+        </div>
+      )}
     </section>
   );
 }
 
-function QuickEntry({ onBack }: { onBack: () => void }) {
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+function QuickEntry({ onBack, operationalProfile }: { onBack: () => void; operationalProfile?: SaasOperationalProfile }) {
+  const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
   const [step, setStep] = useState(1);
   const [client, setClient] = useState<Cliente | null>(null);
   const [responsavel, setResponsavel] = useState<ClienteContato | null>(null);
-  const [history, setHistory] = useState<Equipamento[]>([]);
+  const [history, setHistory] = useState<BalcaoEquipamento[]>([]);
   const [confirmedCycle, setConfirmedCycle] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [created, setCreated] = useState<Equipamento | null>(null);
+  const [created, setCreated] = useState<BalcaoEquipamento | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<PdfArtifact | null>(null);
   const [data, setData] = useState({
@@ -399,10 +448,10 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     }
     const timer = window.setTimeout(
       () =>
-        void db
-          .buscarEquipamentosPorSerial(serial)
+        void carregarRepositorioEquipamentos<ClienteId>()
+          .then((repository) => repository.buscarPorSerial(serial))
           .then((rows) => {
-            setHistory(rows);
+            setHistory(rows as BalcaoEquipamento[]);
             const newest = rows[0];
             if (newest)
               setData((current) => ({
@@ -442,7 +491,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     if (step !== 3 || impressorasCarregadas || carregandoImpressoras) return;
     void carregarImpressoras();
   }, [carregandoImpressoras, impressorasCarregadas, step]);
-  async function solicitarEnvioAutomatico(equipment: Equipamento) {
+  async function solicitarEnvioAutomatico(equipment: BalcaoEquipamento) {
     const permitted = await ensureSensitiveAccess({
       title: "Enviar ordem de entrada",
       description:
@@ -453,7 +502,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       setEmailPromptOpen(true);
     }
   }
-  async function enviarOrdemEntrada(equipment: Equipamento, email: string, emailSalvo = false) {
+  async function enviarOrdemEntrada(equipment: BalcaoEquipamento, email: string, emailSalvo = false) {
     setEmailFeedback(null);
     let erroEnvio: string | undefined;
     try {
@@ -508,7 +557,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     }
   }
   async function save() {
-    if (!client?.id)
+    if (!client?.id || (!IS_SAAS_BUILD && typeof client.id !== "number"))
       return setError("Selecione ou cadastre o cliente antes de salvar.");
     const validation = equipamentoSchema.safeParse({
       ...data,
@@ -532,53 +581,82 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       ]
         .filter(Boolean)
         .join("\n");
-      const equipment = await db.criarEquipamento({
-        ...validation.data,
-        acessorios: validation.data.acessorios?.join(", "),
-        cliente_id: client.id,
-        empresa_id: client.empresa_id || undefined,
-        cliente_nome:
-          client.nome || client.nome_fantasia || client.razao_social,
-        cliente_telefone: client.telefone || undefined,
-        cliente_email: client.email,
-        responsavel_contato_id: responsavel?.id || undefined,
-        responsavel_nome: responsavel?.nome || undefined,
-        responsavel_email: responsavel?.email || undefined,
-        responsavel_telefone: responsavel?.telefone || undefined,
-        data_entrada: today(),
-        observacoes,
-      });
+      const clienteNome = client.nome || client.nome_fantasia || client.razao_social;
+      const equipment: BalcaoEquipamento = IS_SAAS_BUILD
+        ? await (async () => {
+          const repository = await carregarRepositorioEquipamentos<ClienteId>();
+          return repository.criar({
+            ...validation.data,
+            status: "RECEBIDO",
+            acessorios: validation.data.acessorios?.join(", "),
+            cliente_id: client.id!,
+            cliente_nome: clienteNome,
+            cliente_telefone: client.telefone,
+            cliente_email: client.email,
+            responsavel_contato_id: responsavel?.id,
+            responsavel_nome: responsavel?.nome || undefined,
+            responsavel_email: responsavel?.email || undefined,
+            responsavel_telefone: responsavel?.telefone || undefined,
+            data_entrada: today(),
+            observacoes,
+          });
+        })()
+        : await db.criarEquipamento({
+          ...validation.data,
+          acessorios: validation.data.acessorios?.join(", "),
+          cliente_id: client.id as number,
+          empresa_id: typeof client.empresa_id === "number" ? client.empresa_id : undefined,
+          cliente_nome: clienteNome,
+          cliente_telefone: client.telefone,
+          cliente_email: client.email,
+          responsavel_contato_id: typeof responsavel?.id === "number" ? responsavel.id : undefined,
+          responsavel_nome: responsavel?.nome || undefined,
+          responsavel_email: responsavel?.email || undefined,
+          responsavel_telefone: responsavel?.telefone || undefined,
+          data_entrada: today(),
+          observacoes,
+        });
       // A entrada já foi persistida. Se o laudo falhar, exibimos o detalhe
       // salvo com o erro, evitando que o atendente crie um ciclo duplicado.
       setCreated(equipment);
       void solicitarEnvioAutomatico(equipment);
-      await db.salvarVerificacao({
-        equipamento_id: equipment.id!,
-        tecnico_nome: tecnico,
-        problema_relatado: data.defeito_relatado,
-        diagnostico: [
-          data.laudo_tecnico.trim(),
-          `Teste de impressão: ${rotuloResultadoTeste(resultadoTesteImpressao)}.`,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        itens_verificados: "[]",
-        servicos_necessarios: "[]",
-        pecas_necessarias: "[]",
-        observacoes: `Registro imediato no balcão. Resultado do teste: ${rotuloResultadoTeste(resultadoTesteImpressao)}.`,
-        concluida: false,
-      });
-      // salvarVerificacao altera atualizado_em; a ordem impressa e publicada precisa do token novo.
-      try {
-        const recarregado = await db.buscarEquipamento(equipment.id!);
-        if (recarregado) setCreated(recarregado);
-      } catch (cause) {
-        console.warn("[Balcao] recarga pós-laudo indisponível", cause);
+      const diagnostico = [
+        data.laudo_tecnico.trim(),
+        `Teste de impressão: ${rotuloResultadoTeste(resultadoTesteImpressao)}.`,
+      ].filter(Boolean).join("\n");
+      if (IS_SAAS_BUILD) {
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        if (!repository.registerCounterIntakeVerification) throw new Error("O registro do laudo de entrada não está disponível neste runtime.");
+        await repository.registerCounterIntakeVerification({
+          equipmentId: String(equipment.id),
+          technician: tecnico,
+          reportedProblem: data.defeito_relatado,
+          diagnosis: diagnostico,
+          observations: `Registro imediato no balcão. Resultado do teste: ${rotuloResultadoTeste(resultadoTesteImpressao)}.`,
+        });
+      } else {
+        await db.salvarVerificacao({
+          equipamento_id: equipment.id!,
+          tecnico_nome: tecnico,
+          problema_relatado: data.defeito_relatado,
+          diagnostico,
+          itens_verificados: "[]",
+          servicos_necessarios: "[]",
+          pecas_necessarias: "[]",
+          observacoes: `Registro imediato no balcão. Resultado do teste: ${rotuloResultadoTeste(resultadoTesteImpressao)}.`,
+          concluida: false,
+        });
+        // salvarVerificacao altera atualizado_em; a ordem impressa e publicada precisa do token novo.
+        try {
+          const recarregado = await buscarEquipamentoBalcao(equipment.id!);
+          if (recarregado) setCreated(recarregado);
+        } catch (cause) {
+          console.warn("[Balcao] recarga pós-laudo indisponível", cause);
+        }
+        void Promise.resolve(afterCounterRegistration(equipment as never)).catch(
+          (cause: unknown) => console.warn("[Balcao] extensão pós-cadastro indisponível", cause),
+        );
       }
-      void Promise.resolve(afterCounterRegistration(equipment)).catch(
-        (cause: unknown) =>
-          console.warn("[Balcao] extensão pós-cadastro indisponível", cause),
-      );
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -594,7 +672,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
           <Button
             className="min-h-12 text-base"
             onClick={() =>
-              void PdfService.construirOrdemServico(created)
+              void PdfService.construirOrdemServico(created as never)
                 .then(setPreview)
                 .catch((cause) => setError(String(cause)))
             }
@@ -641,7 +719,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
             if (!open) setPreview(null);
           }}
           onDownload={async (artifact) => {
-            await PdfService.salvarOrdemServico(artifact, created);
+            await PdfService.salvarOrdemServico(artifact, created as never);
           }}
           // Imprimir sem baixar também publica; publicarPdfOficial é idempotente por artefato.
           onBeforePrint={(artifact) => publicarPdfOficial(artifact, created)}
@@ -661,11 +739,12 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
                 setError(String(cause));
                 return false;
               }
-              // O cadastro mudou: recarrega a entrada para um reenvio já usar o e-mail salvo.
               try {
-                setCreated(await db.buscarEquipamento(created.id!));
+                if (!IS_SAAS_BUILD && created && typeof created.id === "number") {
+                  setCreated(await db.buscarEquipamento(created.id));
+                }
               } catch {
-                // Melhor esforço: o e-mail já está salvo e o envio segue com o endereço digitado.
+                /* o e-mail já está salvo; o envio segue com o endereço digitado */
               }
             }
             await enviarOrdemEntrada(created, email, salvar);
@@ -673,7 +752,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
           onSkip={() => undefined}
         />
         <div id="registro-completo" className="mt-6">
-          <EquipmentDetail equipamento={created} />
+          <EquipmentDetail equipamento={created} operationalProfile={operationalProfile} />
         </div>
         <p className="mt-4 text-sm text-muted-foreground">
           Este botão apenas desce para o detalhe da entrada criada nesta tela;
@@ -699,14 +778,14 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         {["Cliente", "Equipamento", "Laudo imediato", "Recapitulação"].map((name, index) => (
           <li
             key={name}
-            className={`rounded-full px-4 py-2 ${step === index + 1 ? "bg-cyan-600 text-white" : "bg-muted"}`}
+            className={`rounded-full px-4 py-2 ${step === index + 1 ? "bg-cyan-600 text-white" : "bg-slate-200"}`}
           >
             {index + 1}. {name}
           </li>
         ))}
       </ol>
       {step === 1 && (
-        <div className="rounded-xl border bg-card p-6 [&_button]:min-h-12 [&_button]:text-base [&_input]:min-h-12 [&_input]:text-base">
+        <div className="rounded-xl border bg-white p-6 [&_button]:min-h-12 [&_button]:text-base [&_input]:min-h-12 [&_input]:text-base">
           <ClienteSelector
             onClienteSelecionado={(selectedClient) => {
               setClient(selectedClient);
@@ -721,7 +800,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
             <>
               <ContatoResponsavelSelector
                 cliente={client}
-                empresaId={client.empresa_id}
+                empresaId={typeof client.empresa_id === "number" ? client.empresa_id : undefined}
                 value={responsavel}
                 onChange={setResponsavel}
                 preSelecionar
@@ -737,7 +816,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         </div>
       )}
       {step === 2 && (
-        <div className="space-y-5 rounded-xl border bg-card p-6">
+        <div className="space-y-5 rounded-xl border bg-white p-6">
           <h2 className="text-xl font-semibold">Dados do equipamento</h2>
           <div className="grid gap-4 md:grid-cols-2">
             <Field
@@ -895,13 +974,13 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         </div>
       )}
       {step === 3 && (
-        <div className="space-y-5 rounded-xl border bg-card p-6">
+        <div className="space-y-5 rounded-xl border bg-white p-6">
           <h2 className="text-xl font-semibold">Laudo imediato</h2>
           <p className="text-base text-muted-foreground">
             Registre o teste feito no recebimento. O texto será salvo na
             verificação técnica e exibido na ordem de serviço.
           </p>
-          <div className="rounded-lg border bg-muted/50 p-4">
+          <div className="rounded-lg border bg-slate-50 p-4">
             <p className="font-medium">Configuração da impressora</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Abra a área de Impressoras e Faxes do Painel de Controle para
@@ -1010,7 +1089,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         </div>
       )}
       {step === 4 && (
-        <div className="rounded-xl border bg-card p-6">
+        <div className="rounded-xl border bg-white p-6">
           <h2 className="text-xl font-semibold">Recapitulação</h2>
           <dl className="mt-5 grid gap-3 text-base md:grid-cols-2">
             <Info
@@ -1135,10 +1214,10 @@ function labelFor(key: string) {
   return key.replace(/_/g, " ");
 }
 
-function EquipmentSearch({ onBack }: { onBack: () => void }) {
+function EquipmentSearch({ onBack, operationalProfile }: { onBack: () => void; operationalProfile?: SaasOperationalProfile }) {
   const [term, setTerm] = useState("");
-  const [rows, setRows] = useState<Equipamento[]>([]);
-  const [selected, setSelected] = useState<Equipamento | null>(null);
+  const [rows, setRows] = useState<BalcaoEquipamento[]>([]);
+  const [selected, setSelected] = useState<BalcaoEquipamento | null>(null);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     const query = term.trim();
@@ -1148,8 +1227,7 @@ function EquipmentSearch({ onBack }: { onBack: () => void }) {
     }
     const timer = window.setTimeout(() => {
       setLoading(true);
-      void db
-        .listarEquipamentos(query)
+      void listarEquipamentosBalcao(query)
         .then((items) =>
           setRows(
             items.sort((a, b) =>
@@ -1168,7 +1246,7 @@ function EquipmentSearch({ onBack }: { onBack: () => void }) {
     return (
       <section>
         <Back onBack={() => setSelected(null)} />
-        <EquipmentDetail equipamento={selected} />
+        <EquipmentDetail equipamento={selected} operationalProfile={operationalProfile} />
       </section>
     );
   return (
@@ -1196,7 +1274,7 @@ function EquipmentSearch({ onBack }: { onBack: () => void }) {
           <button
             type="button"
             key={eq.id}
-            className="min-h-28 rounded-xl border bg-card p-5 text-left shadow-sm hover:border-cyan-600"
+            className="min-h-28 rounded-xl border bg-white p-5 text-left shadow-sm hover:border-cyan-600"
             onClick={() => setSelected(eq)}
           >
             <div className="flex flex-wrap items-center gap-3">
@@ -1226,17 +1304,17 @@ function EquipmentSearch({ onBack }: { onBack: () => void }) {
   );
 }
 
-function ClientSearch({ onBack }: { onBack: () => void }) {
+function ClientSearch({ onBack, operationalProfile }: { onBack: () => void; operationalProfile?: SaasOperationalProfile }) {
   const [term, setTerm] = useState("");
   const [clients, setClients] = useState<Cliente[]>([]);
   const [selected, setSelected] = useState<Cliente | null>(null);
-  const [equipment, setEquipment] = useState<Equipamento | null>(null);
+  const [equipment, setEquipment] = useState<BalcaoEquipamento | null>(null);
   useEffect(() => {
     if (term.trim().length < 2) return setClients([]);
     const timer = window.setTimeout(
       () =>
-        void db
-          .listarClientes(term)
+        void carregarRepositorioClientes()
+          .then((repository) => repository.listar(term))
           .then(setClients)
           .catch(() => setClients([])),
       250,
@@ -1247,7 +1325,7 @@ function ClientSearch({ onBack }: { onBack: () => void }) {
     return (
       <section>
         <Back onBack={() => setEquipment(null)} />
-        <EquipmentDetail equipamento={equipment} />
+        <EquipmentDetail equipamento={equipment} operationalProfile={operationalProfile} />
       </section>
     );
   if (selected)
@@ -1274,7 +1352,7 @@ function ClientSearch({ onBack }: { onBack: () => void }) {
           <button
             key={client.id}
             type="button"
-            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-white p-4 text-left hover:border-cyan-600"
             onClick={() => setSelected(client)}
           >
             <strong className="text-lg">
@@ -1298,25 +1376,28 @@ function ClientCycles({
 }: {
   client: Cliente;
   onBack: () => void;
-  onSelectEquipment: (equipment: Equipamento) => void;
+  onSelectEquipment: (equipment: BalcaoEquipamento) => void;
 }) {
-  const [rows, setRows] = useState<Equipamento[]>([]);
+  const [rows, setRows] = useState<BalcaoEquipamento[]>([]);
+  const clientId = client.id;
   useEffect(() => {
-    void db
-      .listarEquipamentos(
-        client.nome || client.nome_fantasia || client.razao_social,
-      )
-      .then((all) =>
-        setRows(
-          all
-            .filter((eq) => eq.cliente_id === client.id)
-            .sort((a, b) =>
-              String(b.criado_em).localeCompare(String(a.criado_em)),
-            ),
-        ),
-      )
-      .catch(() => setRows([]));
-  }, [client]);
+    if (clientId === undefined) {
+      setRows([]);
+      return;
+    }
+    let active = true;
+    void listarEquipamentosBalcaoPorCliente(clientId)
+      .then((items) => {
+        if (!active) return;
+        setRows(items.sort((a, b) =>
+          String(b.criado_em).localeCompare(String(a.criado_em)),
+        ));
+      })
+      .catch(() => {
+        if (active) setRows([]);
+      });
+    return () => { active = false; };
+  }, [clientId]);
   return (
     <section>
       <Back onBack={onBack} />
@@ -1332,7 +1413,7 @@ function ClientCycles({
           <button
             type="button"
             key={eq.id}
-            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-white p-4 text-left hover:border-cyan-600"
             onClick={() => onSelectEquipment(eq)}
           >
             <strong>{equipmentTitle(eq)}</strong>
@@ -1351,8 +1432,8 @@ function ClientCycles({
   );
 }
 
-function EquipmentDetail({ equipamento }: { equipamento: Equipamento }) {
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+function EquipmentDetail({ equipamento, operationalProfile }: { equipamento: BalcaoEquipamento; operationalProfile?: SaasOperationalProfile }) {
+  const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
   const [current, setCurrent] = useState(equipamento);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1367,15 +1448,29 @@ function EquipmentDetail({ equipamento }: { equipamento: Equipamento }) {
     setBusy(true);
     setError(null);
     try {
-      await db.atualizarStatusEquipamento(
-        current.id!,
-        "ENTREGUE",
-        undefined,
-        undefined,
-        undefined,
-        current.atualizado_em,
-      );
-      setCurrent(await db.buscarEquipamento(current.id!));
+      if (IS_SAAS_BUILD) {
+        if (typeof current.id !== "string" || !current.atualizado_em) {
+          throw new Error("A versão atual do equipamento não está disponível. Atualize a lista e tente novamente.");
+        }
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        const updated = await repository.changeStatus({
+          equipmentId: current.id,
+          expectedUpdatedAt: current.atualizado_em,
+          status: "ENTREGUE",
+        });
+        setCurrent(updated as BalcaoEquipamento);
+      } else {
+        if (typeof current.id !== "number") throw new Error("O identificador local do equipamento é inválido.");
+        await db.atualizarStatusEquipamento(
+          current.id,
+          "ENTREGUE",
+          undefined,
+          undefined,
+          undefined,
+          current.atualizado_em,
+        );
+        setCurrent(await db.buscarEquipamento(current.id) as BalcaoEquipamento);
+      }
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -1432,18 +1527,17 @@ function EquipmentDetail({ equipamento }: { equipamento: Equipamento }) {
   );
 }
 
-function OperationalPanel({ onBack }: { onBack: () => void }) {
+function OperationalPanel({ onBack, operationalProfile }: { onBack: () => void; operationalProfile?: SaasOperationalProfile }) {
   const [status, setStatus] = useState("RECEBIDO");
-  const [rows, setRows] = useState<Equipamento[]>([]);
+  const [rows, setRows] = useState<BalcaoEquipamento[]>([]);
   const [period, setPeriod] = useState<"today" | "7" | "30" | "custom">(
     "today",
   );
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const [selected, setSelected] = useState<Equipamento | null>(null);
+  const [selected, setSelected] = useState<BalcaoEquipamento | null>(null);
   useEffect(() => {
-    void db
-      .listarEquipamentos(undefined, status)
+    void listarEquipamentosBalcao(undefined, status)
       .then((items) => {
         const start =
           period === "custom" && customStart
@@ -1472,7 +1566,7 @@ function OperationalPanel({ onBack }: { onBack: () => void }) {
     return (
       <section>
         <Back onBack={() => setSelected(null)} />
-        <EquipmentDetail equipamento={selected} />
+        <EquipmentDetail equipamento={selected} operationalProfile={operationalProfile} />
       </section>
     );
   return (
@@ -1547,14 +1641,13 @@ function OperationalPanel({ onBack }: { onBack: () => void }) {
           <button
             type="button"
             key={eq.id}
-            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-white p-4 text-left hover:border-cyan-600"
             onClick={() => setSelected(eq)}
           >
             <strong>{equipmentTitle(eq)}</strong>
             <span className="ml-3">#{eq.id}</span>
             <p>
-              {eq.cliente_nome} · {eq.serial_number} ·{" "}
-              {status === "ENTREGUE"
+              {eq.cliente_nome} · {eq.serial_number} · {status === "ENTREGUE"
                 ? `Entregue em: ${eq.data_saida || "data indisponível"}`
                 : `Entrada: ${eq.data_entrada}`}
             </p>

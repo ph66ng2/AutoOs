@@ -2,6 +2,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { FormValidationError } from "@/components/ui/form-validation-error";
@@ -28,8 +29,8 @@ import type {
   MovimentacaoFormData,
   ProdutoFormData,
 } from "@/lib/validations";
-import type { Produto, UsoProdutoOrcamentos } from "@/types";
-import { CATEGORIA_OPTIONS, MINIMO_POR_CATEGORIA } from "./insumos-page-constants";
+import type { ClienteId, Produto, UsoProdutoOrcamentos } from "@/types";
+import { CATEGORIA_CANONICA_VALUES, CATEGORIA_OPTIONS, MINIMO_POR_CATEGORIA } from "./insumos-page-constants";
 
 export function InsumosProdutoDialog({
   open,
@@ -37,15 +38,28 @@ export function InsumosProdutoDialog({
   editando,
   form,
   salvando,
+  bloquearEdicaoEstoque,
   onSubmit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  editando: Produto | null;
+  editando: Produto<ClienteId> | null;
   form: UseFormReturn<ProdutoFormData>;
   salvando: boolean;
+  bloquearEdicaoEstoque: boolean;
   onSubmit: (data: ProdutoFormData) => void | Promise<void>;
 }) {
+  const [custoInvalido, setCustoInvalido] = useState(false);
+  const [vendaInvalido, setVendaInvalido] = useState(false);
+  const precoInvalido = custoInvalido || vendaInvalido;
+
+  useEffect(() => {
+    if (open) {
+      setCustoInvalido(false);
+      setVendaInvalido(false);
+    }
+  }, [open, editando]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
@@ -54,7 +68,16 @@ export function InsumosProdutoDialog({
             {editando ? "Editar Insumo/Peça" : "Novo Insumo/Peça"}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form
+          onSubmit={(event) => {
+            if (precoInvalido) {
+              event.preventDefault();
+              return;
+            }
+            void form.handleSubmit(onSubmit)(event);
+          }}
+          className="space-y-4"
+        >
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Nome *</Label>
@@ -79,7 +102,7 @@ export function InsumosProdutoDialog({
                     onValueChange={(categoria) => {
                       field.onChange(categoria);
                       if (!editando) {
-                        form.setValue("quantidade_minima", MINIMO_POR_CATEGORIA[categoria], {
+                        form.setValue("quantidade_minima", MINIMO_POR_CATEGORIA[categoria] ?? 0, {
                           shouldValidate: true,
                         });
                       }
@@ -89,7 +112,7 @@ export function InsumosProdutoDialog({
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {CATEGORIA_OPTIONS.filter((c) => c.value !== "TODOS").map(
+                      {CATEGORIA_OPTIONS.filter((c) => CATEGORIA_CANONICA_VALUES.includes(c.value) || c.value === editando?.categoria).map(
                         (c) => (
                           <SelectItem key={c.value} value={c.value}>
                             {c.label}
@@ -120,7 +143,11 @@ export function InsumosProdutoDialog({
                 type="number"
                 {...form.register("quantidade_estoque", { valueAsNumber: true })}
                 min={0}
+                readOnly={bloquearEdicaoEstoque}
               />
+              {bloquearEdicaoEstoque && (
+                <p className="text-xs text-muted-foreground">Use “Movimentar” para registrar entradas ou saídas e manter o histórico do estoque.</p>
+              )}
               <FormValidationError message={form.formState.errors.quantidade_estoque?.message} />
             </div>
             <div className="space-y-2">
@@ -140,6 +167,7 @@ export function InsumosProdutoDialog({
                 min={0}
                 value={Number(form.watch("preco_custo")) || 0}
                 onValueChange={(valor) => form.setValue("preco_custo", valor, { shouldValidate: true, shouldDirty: true })}
+                onValidityChange={(valido) => setCustoInvalido(!valido)}
               />
             </div>
             <div className="space-y-2">
@@ -148,6 +176,7 @@ export function InsumosProdutoDialog({
                 min={0}
                 value={Number(form.watch("preco_venda")) || 0}
                 onValueChange={(valor) => form.setValue("preco_venda", valor, { shouldValidate: true, shouldDirty: true })}
+                onValidityChange={(valido) => setVendaInvalido(!valido)}
               />
             </div>
           </div>
@@ -166,7 +195,7 @@ export function InsumosProdutoDialog({
                 Cancelar
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={salvando}>
+            <Button type="submit" disabled={salvando || precoInvalido}>
               {salvando ? "Salvando..." : editando ? "Salvar" : "Cadastrar"}
             </Button>
           </DialogFooter>
@@ -186,7 +215,7 @@ export function InsumosMovimentacaoDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  movimentando: Produto | null;
+  movimentando: Produto<ClienteId> | null;
   movForm: UseFormReturn<MovimentacaoFormData>;
   salvando: boolean;
   onMovSubmit: (data: MovimentacaoFormData) => void | Promise<void>;
@@ -312,7 +341,7 @@ export function InsumosDeleteDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  deletando: Produto | null;
+  deletando: Produto<ClienteId> | null;
   salvando: boolean;
   onDelete: () => void | Promise<void>;
   uso?: UsoProdutoOrcamentos | null;

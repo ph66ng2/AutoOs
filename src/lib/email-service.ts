@@ -20,17 +20,21 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
-import { PdfService } from "@/lib/pdf-service";
+import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { formatDatePtBr } from "@/lib/date-utils";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { loadSaasAuthConfiguration } from "@/lib/saas-auth";
+import { carregarRepositorioComunicacoes } from "@/lib/data/comunicacoes-repository";
+import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
 import type {
   EmailAttachment,
   EmailSendRequest,
   Comunicacao,
   Equipamento,
+  EquipamentoId,
   Verificacao,
   ServicoNecessario,
 } from "@/types";
-import { resolveRecipient } from "@/lib/recipient-resolver";
 
 /**
  * Email da gerência que deve sempre receber cópia (CC) de toda comunicação
@@ -101,12 +105,31 @@ function fraseContatoTecnicoHtml(emailTecnico?: string): string {
   return "Em caso de dúvidas, para uma resolução mais rápida, responda este email para falar diretamente com nossa equipe técnica.";
 }
 
-async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao, "id">) {
+async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao<EquipamentoId>, "id">) {
   try {
-    await db.registrarComunicacao(comunicacao);
+    const repository = await carregarRepositorioComunicacoes();
+    await repository.registrar(comunicacao);
   } catch (error) {
     console.error("[EmailService] Falha ao registrar comunicação:", error);
   }
+}
+
+async function enviarEmail(emailData: EmailSendRequest): Promise<void> {
+  let sent: boolean;
+  if (!IS_SAAS_BUILD) {
+    sent = await invoke<boolean>("enviar_email", { input: emailData });
+  } else {
+    const config = loadSaasAuthConfiguration(import.meta.env);
+    sent = await invoke<boolean>("enviar_email_saas", {
+      input: emailData,
+      config: { supabaseUrl: config.supabaseUrl, publishableKey: config.publishableKey },
+    });
+  }
+  if (sent !== true) throw new Error("O servidor SMTP não confirmou o envio.");
+}
+
+function anexoPdfInline(artifact: PdfArtifact): EmailAttachment {
+  return { filename: artifact.filename, content_type: artifact.mimeType, bytes: Array.from(artifact.bytes) };
 }
 
 /**
@@ -140,61 +163,8 @@ export async function prepararAnexoTemporario(
 }
 
 export const EmailService = {
-  /** Envia o link de acompanhamento sem persistir o token no histórico interno. */
-  async enviarLinkStatusPublico(equipamento: Equipamento, url: string) {
-    const recipient = resolveRecipient(equipamento, "email");
-    if (!recipient.endereco) {
-      return { sucesso: false, erro: "Não há email cadastrado para este atendimento." };
-    }
-
-    const assunto = `Acompanhe seu atendimento - ${equipamento.marca} ${equipamento.modelo}`;
-    const corpoTexto = `Olá, ${recipient.nome}.\n\nAcompanhe a etapa atual do atendimento do seu equipamento pelo link abaixo:\n${url}\n\nEste link permite apenas consultar o andamento e não aprova orçamento nem altera dados.\n\nBMI TAG`;
-    const corpoHtml = `<p>Olá, ${escapeHtml(recipient.nome)}.</p><p>Acompanhe a etapa atual do atendimento do seu equipamento pelo link abaixo:</p><p><a href="${url}">Acompanhar atendimento</a></p><p>Este link permite apenas consultar o andamento e não aprova orçamento nem altera dados.</p><p>BMI TAG</p>`;
-    const logMessage = "Link público de acompanhamento enviado. O token foi omitido do histórico interno.";
-
-    try {
-      await invoke<void>("enviar_email", {
-        input: {
-          destinatario: recipient.nome,
-          email: recipient.endereco,
-          assunto,
-          corpo: corpoTexto,
-          corpo_texto: corpoTexto,
-          corpo_html: corpoHtml,
-          anexos: undefined,
-        },
-      });
-      await registrarComunicacaoSegura({
-        equipamento_id: equipamento.id!,
-        tipo: "STATUS_PUBLICO",
-        canal: "EMAIL",
-        destinatario: recipient.nome,
-        contato: recipient.endereco,
-        assunto,
-        mensagem: logMessage,
-        enviado: true,
-        data_envio: new Date().toISOString(),
-      });
-      return { sucesso: true };
-    } catch (error: any) {
-      const erroMsg = typeof error === "string" ? error : (error?.message || "Falha ao enviar o link por email.");
-      await registrarComunicacaoSegura({
-        equipamento_id: equipamento.id!,
-        tipo: "STATUS_PUBLICO",
-        canal: "EMAIL",
-        destinatario: recipient.nome,
-        contato: recipient.endereco,
-        assunto,
-        mensagem: logMessage,
-        enviado: false,
-        erro: erroMsg,
-      });
-      return { sucesso: false, erro: erroMsg };
-    }
-  },
-
   /** Envia email da ordem de entrada (ordem de serviço) via SMTP e registra no banco */
-  async enviarOrdemEntrada(equipamento: Equipamento) {
+  async enviarOrdemEntrada(equipamento: Equipamento<EquipamentoId>) {
     if (!equipamento.cliente_email) {
       return { sucesso: false, erro: "Cliente não possui email cadastrado" };
     }
@@ -239,25 +209,52 @@ Equipe Técnica BMITAG`;
     let anexos: EmailAttachment[] | undefined;
     let limparAnexoTemp: (() => Promise<void>) | undefined;
     try {
-      const caminhoPdf = await PdfService.gerarOrdemServico(equipamento);
-      if (!caminhoPdf) throw new Error("Não foi possível gerar o PDF da ordem de entrada.");
-      const preparado = await prepararAnexoTemporario(caminhoPdf, "ordem_entrada.pdf");
-      if (!preparado) throw new Error("Não foi possível anexar o PDF da ordem de entrada.");
-      anexos = [preparado.anexo];
-      limparAnexoTemp = preparado.cleanup;
+      if (IS_SAAS_BUILD) {
+        anexos = [anexoPdfInline(await PdfService.construirOrdemServico(equipamento as Equipamento))];
+      } else {
+        const caminhoPdf = await PdfService.gerarOrdemServico(equipamento as Equipamento);
+        if (caminhoPdf) {
+          const preparado = await prepararAnexoTemporario(caminhoPdf, "ordem_entrada.pdf");
+          if (!preparado) throw new Error("Não foi possível anexar o PDF da ordem de entrada.");
+          anexos = [preparado.anexo];
+          limparAnexoTemp = preparado.cleanup;
+        } else {
+          throw new Error("Não foi possível anexar o PDF da ordem de entrada.");
+        }
+      }
+    } catch (error) {
+      console.warn("[EmailService] Falha ao gerar PDF de ordem de entrada:", error);
+    }
 
-      const emailData: EmailSendRequest = {
+    if (!anexos?.length) {
+      const erro = "Não foi possível anexar o PDF da ordem de entrada.";
+      await registrarComunicacaoSegura({
+        equipamento_id: equipamento.id!,
+        tipo: "MANUAL",
+        canal: "EMAIL",
         destinatario: equipamento.cliente_nome || "",
-        email: equipamento.cliente_email,
-        cc,
+        contato: equipamento.cliente_email,
         assunto,
-        corpo: corpoTexto,
-        corpo_texto: corpoTexto,
-        corpo_html: corpoHtml,
-        anexos,
-      };
+        mensagem: corpoTexto,
+        enviado: false,
+        erro,
+      });
+      return { sucesso: false, erro };
+    }
 
-      await invoke<void>("enviar_email", { input: emailData });
+    const emailData: EmailSendRequest = {
+      destinatario: equipamento.cliente_nome || "",
+      email: equipamento.cliente_email,
+      cc,
+      assunto,
+      corpo: corpoTexto,
+      corpo_texto: corpoTexto,
+      corpo_html: corpoHtml,
+      anexos,
+    };
+
+    try {
+      await enviarEmail(emailData);
       await registrarComunicacaoSegura({
         equipamento_id: equipamento.id!,
         tipo: "MANUAL",
@@ -293,7 +290,7 @@ Equipe Técnica BMITAG`;
   },
 
   /** Envia email de orçamento via SMTP e registra no banco */
-  async enviarOrcamento(equipamento: Equipamento, verificacao: Verificacao) {
+  async enviarOrcamento(equipamento: Equipamento<EquipamentoId>, verificacao: Verificacao) {
     if (!equipamento.cliente_email) {
       return { sucesso: false, erro: "Cliente não possui email cadastrado" };
     }
@@ -307,12 +304,16 @@ Equipe Técnica BMITAG`;
     let anexos: EmailAttachment[] | undefined;
     let limparAnexoTemp: (() => Promise<void>) | undefined;
     try {
-      const caminhoPdf = await PdfService.gerarOrcamento(equipamento, verificacao);
-      if (caminhoPdf) {
-        const preparado = await prepararAnexoTemporario(caminhoPdf, "orcamento.pdf");
-        if (preparado) {
-          anexos = [preparado.anexo];
-          limparAnexoTemp = preparado.cleanup;
+      if (IS_SAAS_BUILD) {
+        anexos = [anexoPdfInline(await PdfService.construirOrcamento(equipamento as Equipamento, verificacao))];
+      } else {
+        const caminhoPdf = await PdfService.gerarOrcamento(equipamento as Equipamento, verificacao);
+        if (caminhoPdf) {
+          const preparado = await prepararAnexoTemporario(caminhoPdf, "orcamento.pdf");
+          if (preparado) {
+            anexos = [preparado.anexo];
+            limparAnexoTemp = preparado.cleanup;
+          }
         }
       }
     } catch (error) {
@@ -331,7 +332,7 @@ Equipe Técnica BMITAG`;
     };
 
     try {
-      await invoke<void>("enviar_email", { input: emailData });
+      await enviarEmail(emailData);
 
       await registrarComunicacaoSegura({
         equipamento_id: equipamento.id!,
@@ -372,15 +373,17 @@ Equipe Técnica BMITAG`;
   },
 
   /** Envia email de equipamento pronto via SMTP e registra no banco */
-  async enviarEquipamentoPronto(equipamento: Equipamento) {
+  async enviarEquipamentoPronto(equipamento: Equipamento<EquipamentoId>) {
     if (!equipamento.cliente_email) {
       return { sucesso: false, erro: "Cliente não possui email cadastrado" };
     }
 
     const assunto = `Seu equipamento está pronto! - ${equipamento.marca} ${equipamento.modelo}`;
-    const verificacao = equipamento.id
-      ? await db.buscarVerificacao(equipamento.id).catch(() => null)
-      : null;
+    const verificacao = IS_SAAS_BUILD && equipamento.id
+      ? await carregarRepositorioOperacoesEquipamento().then((repository) => repository.getVerification(String(equipamento.id))).catch(() => null)
+      : typeof equipamento.id === "number"
+        ? await db.buscarVerificacao(equipamento.id).catch(() => null)
+        : null;
     const tecnicoNome = verificacao?.tecnico_nome || extrairTecnicoInicialDeObservacoes(equipamento.observacoes);
     const emailTecnico = emailTecnicoPorNome(tecnicoNome);
     const cc = montarCcs(emailTecnico);
@@ -398,7 +401,7 @@ Equipe Técnica BMITAG`;
     };
 
     try {
-      await invoke<void>("enviar_email", { input: emailData });
+      await enviarEmail(emailData);
 
       await registrarComunicacaoSegura({
         equipamento_id: equipamento.id!,
@@ -429,6 +432,26 @@ Equipe Técnica BMITAG`;
       });
 
       return { sucesso: false, erro: erroMsg };
+    }
+  },
+
+  async enviarLinkStatusPublico(equipamento: Equipamento<EquipamentoId>, url: string) {
+    const email = equipamento.cliente_email;
+    if (!email) {
+      return { sucesso: false, erro: "Cliente não possui email cadastrado" };
+    }
+    try {
+      await enviarEmail({
+        destinatario: equipamento.cliente_nome || "cliente",
+        email,
+        assunto: `Acompanhe o equipamento ${equipamento.marca} ${equipamento.modelo}`,
+        corpo: `Olá,\nAcompanhe o status do equipamento em:\n${url}\n`,
+        corpo_texto: `Olá,\nAcompanhe o status do equipamento em:\n${url}\n`,
+        corpo_html: `<p>Olá,</p><p>Acompanhe o status do equipamento em: <a href="${url}">${url}</a></p>`,
+      });
+      return { sucesso: true };
+    } catch (error: unknown) {
+      return { sucesso: false, erro: error instanceof Error ? error.message : String(error) };
     }
   },
 };
@@ -470,7 +493,7 @@ function escapeHtml(value: string) {
  * Conecta-se a: EmailService.enviarOrcamento()
  */
 function gerarCorpoOrcamentoTexto(
-  equipamento: Equipamento,
+  equipamento: Equipamento<EquipamentoId>,
   verificacao: Verificacao,
   emailTecnico?: string,
 ): string {
@@ -538,7 +561,7 @@ Equipe Técnica BMITAG`.trim();
 }
 
 function gerarCorpoOrcamentoHtml(
-  equipamento: Equipamento,
+  equipamento: Equipamento<EquipamentoId>,
   verificacao: Verificacao,
   emailTecnico?: string,
 ): string {
@@ -629,7 +652,7 @@ function gerarCorpoOrcamentoHtml(
  * Inclui: dados do equipamento, horário, valor a pagar.
  * Conecta-se a: EmailService.enviarEquipamentoPronto()
  */
-function gerarCorpoEquipamentoProntoTexto(equipamento: Equipamento, emailTecnico?: string): string {
+function gerarCorpoEquipamentoProntoTexto(equipamento: Equipamento<EquipamentoId>, emailTecnico?: string): string {
   const valor = equipamento.valor_final || equipamento.valor_orcamento;
   return `Prezado(a) ${equipamento.cliente_nome},
 
@@ -657,7 +680,7 @@ Atenciosamente,
 Equipe Técnica BMITAG`.trim();
 }
 
-function gerarCorpoEquipamentoProntoHtml(equipamento: Equipamento, emailTecnico?: string): string {
+function gerarCorpoEquipamentoProntoHtml(equipamento: Equipamento<EquipamentoId>, emailTecnico?: string): string {
   const valor = equipamento.valor_final || equipamento.valor_orcamento;
 
   return `

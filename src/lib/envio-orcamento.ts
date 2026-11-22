@@ -25,6 +25,8 @@ export interface OpcoesEnvioOrcamento {
   confirmarIncerto?: boolean;
   /** Padrão true. */
   enviarEmail?: boolean;
+  /** E-mail escolhido no diálogo; substitui o do destinatário preparado. */
+  emailDestino?: string;
   /**
    * Acesso já preparado numa tentativa anterior. A senha só aparece na chamada que a cria: ao repetir o envio
    * (ex.: confirmação de resultado incerto) o chamador devolve o preparo para a senha não se perder.
@@ -122,6 +124,13 @@ export async function enviarOrcamentoAoCliente(
       avisos.push(`Não foi possível preparar o acesso ao portal: ${msgErro(error, "erro desconhecido")}`);
     }
   }
+  const emailDestino = opcoes.emailDestino?.trim();
+  if (preparo && emailDestino) {
+    preparo = {
+      ...preparo,
+      destinatario: { ...preparo.destinatario, email: emailDestino },
+    };
+  }
 
   // (b) WhatsApp
   let whatsapp: EstadoCanalWhatsapp = { enviado: false, erro: "Sem resposta do envio de WhatsApp." };
@@ -133,8 +142,8 @@ export async function enviarOrcamentoAoCliente(
       senhaPortal: preparo?.credenciais?.senha,
     });
     if (r) {
-      const enviado = !!r.sucesso && r.estado !== "INCERTA";
-      whatsapp = { enviado, estado: r.estado, ...(enviado ? {} : { erro: r.erro ?? r.mensagem }) };
+      const enviado = r.sucesso !== false && r.estado !== "INCERTA" && r.estado !== "FALHOU";
+      whatsapp = { enviado, estado: r.estado, ...(enviado ? {} : { erro: r.mensagem ?? r.erro ?? undefined }) };
       senhaRetida = !!r.senhaRetida;
     }
   } catch (error) {

@@ -1,0 +1,322 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  calcularPrazoAprovacaoOnline,
+  SupabaseEquipmentOperationsRepository,
+} from "@/lib/data/equipamentos-operacoes-repository";
+import type { SupabaseOnlineSession } from "@/lib/data/clientes-repository";
+
+const tenantId = "11000000-0000-4000-8000-000000000001";
+const otherTenantId = "11000000-0000-4000-8000-000000000002";
+const equipmentId = "22000000-0000-4000-8000-000000000001";
+const session: SupabaseOnlineSession = {
+  supabaseUrl: "https://autoos-test.supabase.co",
+  publishableKey: "sb_publishable_test_only",
+  accessToken: "user.jwt.test",
+  companyId: tenantId,
+};
+
+function response(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+const equipment = {
+  id: equipmentId,
+  empresa_id: tenantId,
+  serial_number: "TEST-SN",
+  marca: "Marca",
+  modelo: "Modelo",
+  tipo: "IMPRESSORA",
+  status: "AGUARDANDO_APROVACAO",
+  data_entrada: "2026-09-24",
+  atualizado_em: "2026-09-24T12:00:00",
+};
+
+describe("SupabaseEquipmentOperationsRepository", () => {
+  it("loads verification and service catalog through tenant-scoped reads", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(response([{ empresa_id: tenantId, equipamento_id: equipmentId, tecnico_nome: "Ivan", problema_relatado: "Falha", id: "33000000-0000-4000-8000-000000000001" }]))
+      .mockResolvedValueOnce(response([{ empresa_id: tenantId, id: "44000000-0000-4000-8000-000000000001", nome: "Limpeza", preco_padrao: 35, ativo: true, pecas_sugeridas: [{ produto_id: "55000000-0000-4000-8000-000000000001", nome: "Cabeça", quantidade: 1, valor_unitario: 85 }] }]));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+
+    const verification = await repository.getVerification(equipmentId);
+    const services = await repository.listActiveServices();
+
+    expect(verification?.tecnico_nome).toBe("Ivan");
+    expect(services[0]?.nome).toBe("Limpeza");
+    expect(services[0]?.pecas_sugeridas?.[0]?.nome).toBe("Cabeça");
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain(`empresa_id=eq.${tenantId}`);
+    expect(String(fetcher.mock.calls[1]?.[0])).toContain(`empresa_id=eq.${tenantId}`);
+    expect(String(fetcher.mock.calls[1]?.[0])).toContain("pecas_sugeridas");
+    expect(fetcher.mock.calls.every(([, init]) => (init?.headers as Record<string, string>).Authorization === `Bearer ${session.accessToken}`)).toBe(true);
+  });
+
+  it("paginates active services and keeps the tenant filter on every page", async () => {
+    const rows = Array.from({ length: 101 }, (_, index) => ({
+      empresa_id: tenantId,
+      id: `44000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      nome: `Serviço ${index + 1}`,
+      preco_padrao: 35,
+      ativo: true,
+      pecas_sugeridas: [],
+    }));
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(response(rows.slice(0, 100)))
+      .mockResolvedValueOnce(response(rows.slice(100)));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+
+    const services = await repository.listActiveServices();
+
+    expect(services).toHaveLength(101);
+    const firstUrl = new URL(String(fetcher.mock.calls[0]?.[0]));
+    const secondUrl = new URL(String(fetcher.mock.calls[1]?.[0]));
+    expect(firstUrl.searchParams.get("empresa_id")).toBe(`eq.${tenantId}`);
+    expect(firstUrl.searchParams.get("limit")).toBe("100");
+    expect(secondUrl.searchParams.get("empresa_id")).toBe(`eq.${tenantId}`);
+    expect(secondUrl.searchParams.get("offset")).toBe("100");
+  });
+
+  it("finalizes verification with one RPC and never sends a tenant, profile, or privileged key", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ equipment, verification: { ...equipment, id: "33000000-0000-4000-8000-000000000001", equipamento_id: equipmentId, tecnico_nome: "Ivan", problema_relatado: "Falha" } }));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+
+    await repository.finalizeVerification({
+      equipmentId,
+      expectedUpdatedAt: equipment.atualizado_em,
+      approvalDeadline: "2026-09-29",
+      verification: {
+        equipamento_id: equipmentId,
+        tecnico_nome: "Ivan",
+        problema_relatado: "Falha",
+        diagnostico: "Cabeça térmica",
+        itens_verificados: "[]",
+        servicos_necessarios: JSON.stringify([{ id: "1", descricao: "Limpeza", valor: 35, catalogo_id: "44000000-0000-4000-8000-000000000001" }]),
+        pecas_necessarias: "[]",
+        custo_estimado_mao_obra: 35,
+        custo_estimado_pecas: 0,
+        custo_total: 35,
+        tempo_estimado: 0,
+        concluida: true,
+        observacoes: "",
+      },
+    });
+
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(String(url)).toContain("/rpc/saas_finalize_equipment_verification");
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.p_equipment_id).toBe(equipmentId);
+    expect(body.p_verification).toMatchObject({
+      tecnico_nome: "Ivan",
+      servicos_necessarios: [{ descricao: "Limpeza", valor: 35 }],
+    });
+    expect(body).not.toHaveProperty("empresa_id");
+    expect(body).not.toHaveProperty("profile_id");
+    expect(JSON.stringify(init?.headers)).not.toMatch(/service.role|secret/i);
+  });
+
+  it("maps concurrency and server authorization errors to actionable UI messages", async () => {
+    const conflictFetch = vi.fn<typeof fetch>().mockResolvedValue(response({ code: "40001", message: "stale" }, 400));
+    const conflictRepository = new SupabaseEquipmentOperationsRepository(session, conflictFetch);
+    await expect(conflictRepository.changeStatus({
+      equipmentId,
+      expectedUpdatedAt: equipment.atualizado_em,
+      status: "EM_VERIFICACAO",
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+
+    const deniedFetch = vi.fn<typeof fetch>().mockResolvedValue(response({ code: "42501", message: "Financial permission is required" }, 403));
+    const deniedRepository = new SupabaseEquipmentOperationsRepository(session, deniedFetch);
+    await expect(deniedRepository.approveQuote({
+      equipmentId,
+      expectedUpdatedAt: equipment.atualizado_em,
+      payment: { codigo: "PIX" },
+    })).rejects.toMatchObject({
+      code: "RLS_DENIED",
+      message: "Financial permission is required",
+    });
+  });
+
+  it("surfaces the PostgREST operator message for invalid quote corrections", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({
+      code: "22023",
+      message: "3 peça(s) já foram baixadas do estoque. Confirme a devolução ao estoque, o que só vale se as peças estiverem intactas.",
+    }, 400));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+    await expect(repository.correctQuoteDecision({
+      equipmentId,
+      expectedUpdatedAt: equipment.atualizado_em,
+      motivo: "Cliente pediu para refazer",
+      devolverEstoque: false,
+      modo: "RESTAURAR_ORIGINAL",
+    })).rejects.toMatchObject({
+      code: "INVALID_DATA",
+      message: expect.stringMatching(/3 peça/),
+    });
+  });
+
+  it("rejects malformed equipment IDs and refuses data returned for another tenant", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ ...equipment, empresa_id: otherTenantId }));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+    await expect(repository.changeStatus({
+      equipmentId: "not-a-uuid",
+      expectedUpdatedAt: equipment.atualizado_em,
+      status: "EM_VERIFICACAO",
+    })).rejects.toMatchObject({ code: "INVALID_DATA" });
+    expect(fetcher).not.toHaveBeenCalled();
+
+    await expect(repository.approveQuote({
+      equipmentId,
+      expectedUpdatedAt: equipment.atualizado_em,
+      payment: { codigo: "PIX" },
+    })).rejects.toMatchObject({ code: "RLS_DENIED" });
+  });
+
+  it("calculates the approval deadline using business days without UTC date drift", () => {
+    expect(calcularPrazoAprovacaoOnline(3, new Date(2026, 8, 25, 23, 30))).toBe("2026-09-30");
+  });
+
+  it("analyzes an approved-quote adjustment through the Online RPC, not desktop IPC", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({
+      status: "APROVADO",
+      podePedirNovaAprovacao: true,
+      jaPublicado: false,
+      versaoAberta: null,
+      respostaPendente: null,
+      pecasBaixadas: [{ produtoId: "55000000-0000-4000-8000-000000000001", nome: "Cabeça", quantidade: 1 }],
+      totalBaixado: 1,
+      exigeDecisaoEstoque: true,
+    }));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+    const analise = await repository.analyzeQuoteAdjustment(equipmentId);
+    expect(analise.podePedirNovaAprovacao).toBe(true);
+    expect(analise.exigeDecisaoEstoque).toBe(true);
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain("/rpc/saas_analisar_ajuste_orcamento");
+  });
+
+  it("applies NOVA_APROVACAO on saveQuote in one RPC, including stock return", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ equipment, verification: { ...equipment, id: "33000000-0000-4000-8000-000000000001", equipamento_id: equipmentId } }));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+    await repository.saveQuote({
+      equipmentId,
+      expectedUpdatedAt: equipment.atualizado_em,
+      services: [],
+      parts: [],
+      total: 90,
+      payment: { codigo: "PIX" },
+      adjustment: { modoAprovado: "NOVA_APROVACAO", devolverEstoque: true },
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain("/rpc/saas_save_equipment_quote_adjustment");
+    expect(String(fetcher.mock.calls[0]?.[0])).not.toContain("saas_devolver_pecas_baixadas_orcamento");
+    const quoteBody = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(quoteBody.p_new_status).toBe("AGUARDANDO_APROVACAO");
+    expect(quoteBody.p_payment_code).toBeNull();
+    expect(quoteBody.p_modo_aprovado).toBe("NOVA_APROVACAO");
+    expect(quoteBody.p_devolver_estoque).toBe(true);
+    expect(quoteBody.p_correction_reason).toMatch(/nova aprovação/i);
+  });
+
+  it("keeps SEM_NOVA_APROVACAO approved with the chosen payment", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ equipment, verification: { ...equipment, id: "33000000-0000-4000-8000-000000000001", equipamento_id: equipmentId } }));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+    await repository.saveQuote({
+      equipmentId,
+      expectedUpdatedAt: equipment.atualizado_em,
+      services: [],
+      parts: [],
+      total: 90,
+      payment: { codigo: "PIX" },
+      adjustment: { modoAprovado: "SEM_NOVA_APROVACAO" },
+    });
+    const quoteBody = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(quoteBody.p_new_status).toBeNull();
+    expect(quoteBody.p_payment_code).toBe("PIX");
+    expect(quoteBody.p_modo_aprovado).toBe("SEM_NOVA_APROVACAO");
+    expect(quoteBody.p_devolver_estoque).toBe(false);
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain("/rpc/saas_save_equipment_quote_adjustment");
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes("analisar_ajuste_orcamento"))).toBe(false);
+  });
+
+  it("analyzes and corrects a budget decision through Online RPCs", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(response({
+        status: "APROVADO",
+        podeCorrigir: true,
+        bloqueios: [],
+        ajustadoAposDecisao: false,
+        permiteRestaurar: true,
+        permiteManter: false,
+        pagamentoCodigo: "PIX",
+        valorAtual: 50,
+        valorOriginal: 90,
+        pecasBaixadas: [{ produtoId: "55000000-0000-4000-8000-000000000001", nome: "Cabeça", quantidade: 1 }],
+        totalBaixado: 1,
+        exigeDecisaoEstoque: true,
+      }))
+      .mockResolvedValueOnce(response({ equipment: { ...equipment, status: "AGUARDANDO_APROVACAO" }, portal: { acao: "NENHUMA" } }));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+    const analise = await repository.analyzeDecisionCorrection(equipmentId);
+    expect(analise.podeCorrigir).toBe(true);
+    expect(analise.exigeDecisaoEstoque).toBe(true);
+    const corrected = await repository.correctQuoteDecision({
+      equipmentId,
+      expectedUpdatedAt: equipment.atualizado_em,
+      motivo: "Cliente pediu para refazer",
+      devolverEstoque: true,
+      modo: "RESTAURAR_ORIGINAL",
+    });
+    expect(corrected.equipment.status).toBe("AGUARDANDO_APROVACAO");
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain("/rpc/saas_analisar_correcao_decisao");
+    expect(String(fetcher.mock.calls[1]?.[0])).toContain("/rpc/saas_corrigir_decisao_orcamento");
+  });
+
+  it("corrects a REPROVADO decision through the Online RPC without requiring consumed stock", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(response({
+        status: "REPROVADO",
+        podeCorrigir: true,
+        bloqueios: [],
+        ajustadoAposDecisao: false,
+        permiteRestaurar: true,
+        permiteManter: false,
+        pecasBaixadas: [],
+        totalBaixado: 0,
+        exigeDecisaoEstoque: false,
+      }))
+      .mockResolvedValueOnce(response({
+        equipment: { ...equipment, status: "AGUARDANDO_APROVACAO" },
+        portal: { acao: "NENHUMA" },
+      }));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+    const analise = await repository.analyzeDecisionCorrection(equipmentId);
+    expect(analise.status).toBe("REPROVADO");
+    expect(analise.podeCorrigir).toBe(true);
+    expect(analise.exigeDecisaoEstoque).toBe(false);
+    const corrected = await repository.correctQuoteDecision({
+      equipmentId,
+      expectedUpdatedAt: equipment.atualizado_em,
+      motivo: "Cliente mudou de ideia",
+      devolverEstoque: false,
+      modo: "RESTAURAR_ORIGINAL",
+    });
+    expect(corrected.equipment.status).toBe("AGUARDANDO_APROVACAO");
+    const body = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body)) as Record<string, unknown>;
+    expect(body.p_devolver_estoque).toBe(false);
+    expect(body.p_modo).toBe("RESTAURAR_ORIGINAL");
+  });
+
+  it("extends the approval deadline through the Online RPC", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({
+      prorrogado: true,
+      equipment: { ...equipment, prazo_aprovacao: "2026-11-10" },
+    }));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+    const result = await repository.extendApprovalDeadline({
+      equipmentId,
+      expectedUpdatedAt: equipment.atualizado_em,
+      newDeadline: "2026-11-10",
+    });
+    expect(result.prorrogado).toBe(true);
+    expect(result.equipment.prazo_aprovacao).toBe("2026-11-10");
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain("/rpc/saas_prorrogar_prazo_orcamento");
+  });
+});

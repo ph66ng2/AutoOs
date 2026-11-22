@@ -18,8 +18,29 @@ export const TIPO_OPTIONS = [
   "Outro",
 ];
 
-/** Valores mais recorrentes no recebimento técnico. */
-export const MARCA_EQUIPAMENTO_OPTIONS = ["Zebra", "Argox", "Datacard", "Outro"];
+/** Valores mais recorrentes no recebimento técnico. "Outro" mantém o cadastro aberto. */
+export const MARCA_EQUIPAMENTO_OPTIONS = [
+  "Zebra",
+  "Argox",
+  "Datacard",
+  "Outro",
+];
+
+/**
+ * Modelos atendidos com maior frequência. O valor salvo continua sendo texto,
+ * para não restringir equipamentos já cadastrados ou novos modelos.
+ */
+export const MODELO_EQUIPAMENTO_OPTIONS = [
+  "GC420T",
+  "ZT410",
+  "ZT420",
+  "ZT411",
+  "ZD220",
+  "ZD230",
+  "ZT230",
+  "TLP2488",
+  "Outro",
+];
 
 export const STATUS_SENSIVEIS = new Set([
   "AGUARDANDO_APROVACAO",

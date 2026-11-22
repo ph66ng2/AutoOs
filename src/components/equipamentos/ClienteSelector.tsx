@@ -25,8 +25,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { db } from "@/lib/db";
-import { mensagemCadastroDuplicado } from "@/lib/operator-errors";
-import type { Cliente, Equipamento } from "@/types";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { carregarRepositorioClientes } from "@/lib/data/clientes-repository";
+import { carregarRepositorioEquipamentos } from "@/lib/data/equipamentos-repository";
+import type { Cliente, ClienteId, Equipamento } from "@/types";
 import {
   clienteSchema,
   type ClienteFormData,
@@ -44,7 +46,7 @@ interface ClienteSelectorProps {
   /** Cliente já selecionado (para edição) */
   clienteInicial?: Cliente | null;
   /** Cliente ID inicial (para carregar do DB) */
-  clienteIdInicial?: number | null;
+  clienteIdInicial?: ClienteId | null;
   /** Callback quando um cliente é selecionado ou criado */
   onClienteSelecionado: (cliente: Cliente) => void;
   /** Callback quando o cliente é removido */
@@ -108,7 +110,7 @@ export function ClienteSelector({
       razao_social: "", nome_fantasia: "", inscricao_estadual: "",
       telefone: "", telefone_secundario: "",
       email: "", cep: "", endereco: "", numero: "", complemento: "",
-      bairro: "", cidade: "", uf: "", observacoes: "", exige_ordem_compra: false,
+      bairro: "", cidade: "", uf: "", observacoes: "",
       exigir_contato_inicial: true,
       contato_nome: "", contato_telefone: "", contato_email: "",
     },
@@ -116,13 +118,18 @@ export function ClienteSelector({
 
   useEffect(() => {
     if (clienteIdInicial && !clienteInicial) {
-      db.buscarCliente(clienteIdInicial).then((c) => {
-        if (c) {
-          setClienteSelecionado(c);
-          setModo("selecionado");
-          onClienteSelecionado(c);
-        }
-      }).catch(() => {});
+      let ativo = true;
+      void carregarRepositorioClientes()
+        .then((repository) => repository.buscar(clienteIdInicial))
+        .then((c) => {
+          if (ativo && c) {
+            setClienteSelecionado(c);
+            setModo("selecionado");
+            onClienteSelecionado(c);
+          }
+        })
+        .catch(() => {});
+      return () => { ativo = false; };
     }
   }, [clienteIdInicial]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -136,7 +143,8 @@ export function ClienteSelector({
     const timeout = setTimeout(async () => {
       setBuscando(true);
       try {
-        const data = await db.listarClientes(termoBusca);
+        const repository = await carregarRepositorioClientes();
+        const data = await repository.listar(termoBusca);
         setResultados(data);
         setDropdownAberto(data.length > 0);
       } catch {
@@ -155,11 +163,23 @@ export function ClienteSelector({
       return;
     }
     setCarregandoEquip(true);
-    const nomes = [nomeExibicaoCliente(clienteSelecionado), clienteSelecionado.nome ?? ""];
-    db.listarEquipamentosCliente(clienteSelecionado.id, nomes)
-      .then(setEquipamentosCliente)
-      .catch(() => setEquipamentosCliente([]))
-      .finally(() => setCarregandoEquip(false));
+    const nome = nomeExibicaoCliente(clienteSelecionado);
+    const nomes = [nome, clienteSelecionado.nome].filter((item): item is string => Boolean(item));
+    let ativo = true;
+    const carregar = IS_SAAS_BUILD
+      ? carregarRepositorioEquipamentos().then((repository) =>
+          repository.listarPorClienteId
+            ? repository.listarPorClienteId(clienteSelecionado.id!)
+            : repository.listar(nome).then((todos) => todos.filter(
+                (eq) => eq.cliente_id === clienteSelecionado.id || eq.cliente_nome === nome || eq.cliente_nome === clienteSelecionado.nome
+              )))
+      : db.listarEquipamentosCliente(clienteSelecionado.id!, nomes);
+    void carregar.then((doCliente) => {
+      if (!ativo) return;
+      setEquipamentosCliente(doCliente);
+    }).catch(() => { if (ativo) setEquipamentosCliente([]); })
+      .finally(() => { if (ativo) setCarregandoEquip(false); });
+    return () => { ativo = false; };
   }, [clienteSelecionado]);
 
   useEffect(() => {
@@ -223,7 +243,7 @@ export function ClienteSelector({
       razao_social: "", nome_fantasia: "", inscricao_estadual: "",
       telefone: "", telefone_secundario: "",
       email: "", cep: "", endereco: "", numero: "", complemento: "",
-      bairro: "", cidade: "", uf: "", observacoes: "", exige_ordem_compra: false,
+      bairro: "", cidade: "", uf: "", observacoes: "",
       exigir_contato_inicial: true,
       contato_nome: "", contato_telefone: "", contato_email: "",
     });
@@ -255,7 +275,6 @@ export function ClienteSelector({
         uf: data.uf || null,
         receber_email: true,
         receber_whatsapp: true,
-        exige_ordem_compra: Boolean(data.exige_ordem_compra),
         observacoes: data.observacoes || null,
         ativo: true,
       } as Omit<Cliente, "id">;
@@ -267,15 +286,15 @@ export function ClienteSelector({
             email: data.contato_email?.trim() || undefined,
           }
         : undefined;
-      const novoCliente = await db.criarCliente(payload, contato);
+      const repository = await carregarRepositorioClientes();
+      const novoCliente = await repository.criar(payload, contato);
       setClienteSelecionado(novoCliente);
       setModo("selecionado");
       onClienteSelecionado(novoCliente);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err ?? "");
-      const duplicado = mensagemCadastroDuplicado(err);
-      if (duplicado || msg.toLowerCase().includes("cpf/cnpj já está cadastrado")) {
-        warning("Clientes", duplicado ?? "Já existe um cliente com este CPF/CNPJ. Use a busca para encontrá-lo.");
+      const msg = err?.toString() || "";
+      if (msg.includes("UNIQUE")) {
+        warning("Clientes", "Já existe um cliente com este CPF/CNPJ. Use a busca para encontrá-lo.");
       } else {
         console.error("Erro ao criar cliente:", err);
         showError("Clientes", "Criar cliente", err || "Erro ao criar cliente.");

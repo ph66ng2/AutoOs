@@ -24,11 +24,26 @@ import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { isTemporaryDatabaseAccessMessage, sensitiveAccessErrorMessage } from "@/lib/sensitive-access-error";
 import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
 import { requestTour } from "@/lib/tour-request";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import {
+  SENSITIVE_PERMISSIONS,
   SENSITIVE_PERMISSION_LABELS,
   type SensitiveAccessStatus,
   type SensitivePermission,
 } from "@/types";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
+
+const EMPTY_SAAS_STATUS: SensitiveAccessStatus = {
+  pin_configured: false,
+  unlocked: false,
+  expires_at: null,
+  active_profile_id: null,
+  active_profile_name: null,
+  active_role: null,
+  permissions: [],
+  can_manage_profiles: false,
+  profiles: [],
+};
 
 interface SensitiveAccessPromptOptions {
   title?: string;
@@ -744,13 +759,49 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useSensitiveAccess() {
+export function useSensitiveAccess(options?: { operationalProfile?: SaasOperationalProfile }) {
   const context = useContext(SensitiveAccessContext);
-  if (!context) {
-    throw new Error("useSensitiveAccess deve ser usado dentro de SensitiveAccessProvider");
-  }
+  const saasAccess = useMemo<SensitiveAccessContextValue | null>(() => {
+    const profile = options?.operationalProfile;
+    if (!IS_SAAS_BUILD || !profile) return null;
+    const permissions = profile.role === "ADMIN"
+      ? Object.values(SENSITIVE_PERMISSIONS)
+      : profile.permissions.filter(
+        (permission): permission is SensitivePermission =>
+          Object.values(SENSITIVE_PERMISSIONS).includes(permission as SensitivePermission),
+      );
+    const status: SensitiveAccessStatus = {
+      ...EMPTY_SAAS_STATUS,
+      pin_configured: true,
+      unlocked: true,
+      active_profile_name: profile.name,
+      active_role: profile.role,
+      permissions,
+    };
+    return {
+      status,
+      loading: false,
+      connectionUnavailable: false,
+      bootProgress: 100,
+      refreshStatus: async () => undefined,
+      ensureSensitiveAccess: async (promptOptions) => {
+        if (profileHasPermission(status, promptOptions?.permission, promptOptions?.anyPermission)) return true;
+        toast.error(`O perfil não possui permissão para ${permissionDescription(promptOptions?.permission, promptOptions?.anyPermission)}.`);
+        return false;
+      },
+      openProfileSelector: async () => false,
+      lockSensitiveAccess: async () => undefined,
+      pinPromptDismissed: false,
+      hasPermission: (permission) => permissions.includes(permission),
+      hasAnyPermission: (list) => list.some((permission) => permissions.includes(permission)),
+      setActiveProfile: async () => undefined,
+      firstAccessOpen: false,
+    };
+  }, [options?.operationalProfile]);
 
-  return context;
+  if (context) return context;
+  if (saasAccess) return saasAccess;
+  throw new Error("useSensitiveAccess deve ser usado dentro de SensitiveAccessProvider");
 }
 
 export function SensitiveRoute({

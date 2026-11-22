@@ -37,10 +37,10 @@ import type {
   PublicacaoLotePortal,
   UsoProdutoOrcamentos,
   AprovarOrcamentoInput,
-  ConsumoOrcamento,
   Cliente,
   ClienteContato,
   ClienteContatoInput,
+  ClienteId,
   ContatoInicialInput,
   DestinatarioOrcamento,
   PreparoAcessoPortal,
@@ -67,6 +67,9 @@ import type {
   PostgresBackupResult,
   PostgresRestoreResult,
   PostgresBackupToolsStatus,
+  PhotoUploadSessionCreated,
+  PhotoUploadSessionInput,
+  PhotoUploadSessionStatus,
   AnaliseCorrecaoDecisao,
   AnaliseAjusteOrcamento,
   PortalAjusteInfo,
@@ -148,8 +151,8 @@ export const db = {
   },
 
   /** Equipamentos de um cliente por cliente_id (nomes só para legados sem cliente_id) → Rust: listar_equipamentos_cliente */
-  async listarEquipamentosCliente(clienteId: number, nomes: string[] = []): Promise<Equipamento[]> {
-    return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes });
+  async listarEquipamentosCliente(clienteId: ClienteId, nomes: string[] = []): Promise<Equipamento[]> {
+    return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId: Number(clienteId), nomes });
   },
 
   async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE"): Promise<PaginatedResult<Equipamento>> {
@@ -212,12 +215,8 @@ export const db = {
     return invoke<Cliente[]>("listar_clientes", { busca: busca ?? null });
   },
 
-  async listarClientesPaginados(busca: string | undefined, page: number): Promise<PaginatedResult<Cliente>> {
-    return invoke<PaginatedResult<Cliente>>("listar_clientes_paginados", { busca: busca ?? null, page });
-  },
-
   /** Busca cliente por ID → Rust: buscar_cliente */
-  async buscarCliente(id: number): Promise<Cliente> {
+  async buscarCliente(id: ClienteId): Promise<Cliente> {
     return invoke<Cliente>("buscar_cliente", { id });
   },
 
@@ -241,15 +240,19 @@ export const db = {
 
   /** Define o contato responsável pela OS → Rust: definir_responsavel_equipamento */
   async definirResponsavelEquipamento(
-    equipamentoId: number,
-    contatoId: number,
+    equipamentoId: ClienteId,
+    contatoId: ClienteId,
     expectedUpdatedEm: string,
   ): Promise<Equipamento> {
-    return invoke<Equipamento>("definir_responsavel_equipamento", { equipamentoId, contatoId, expectedUpdatedEm });
+    return invoke<Equipamento>("definir_responsavel_equipamento", {
+      equipamentoId: Number(equipamentoId),
+      contatoId: Number(contatoId),
+      expectedUpdatedEm,
+    });
   },
 
   /** Atualiza cliente existente → Rust: atualizar_cliente */
-  async atualizarCliente(id: number, cliente: Omit<Cliente, "id">, contatoInicial?: ContatoInicialInput): Promise<void> {
+  async atualizarCliente(id: ClienteId, cliente: Omit<Cliente, "id">, contatoInicial?: ContatoInicialInput): Promise<void> {
     const input = contatoInicial
       ? { ...clientePersistenciaParaInput(cliente), contato_inicial: contatoInicial }
       : clientePersistenciaParaInput(cliente);
@@ -257,7 +260,7 @@ export const db = {
   },
 
   /** Deleta cliente → Rust: deletar_cliente */
-  async deletarCliente(id: number): Promise<void> {
+  async deletarCliente(id: ClienteId): Promise<void> {
     return invoke<void>("deletar_cliente", { id });
   },
 
@@ -286,8 +289,8 @@ export const db = {
   // ─── Contatos de cliente ─────────────────────────────
 
   /** Lista contatos ativos do cliente dentro da empresa informada. */
-  async listarClienteContatos(clienteId: number, empresaId: number): Promise<ClienteContato[]> {
-    return invoke<ClienteContato[]>("listar_cliente_contatos", { clienteId, empresaId });
+  async listarClienteContatos(clienteId: ClienteId, empresaId: ClienteId): Promise<ClienteContato[]> {
+    return invoke<ClienteContato[]>("listar_cliente_contatos", { clienteId: Number(clienteId), empresaId: Number(empresaId) });
   },
 
   /** Cria um contato explicitamente vinculado a cliente e empresa. */
@@ -351,13 +354,13 @@ export const db = {
     return invoke<number>("marcar_alertas_portal_lidos", { alertaId: alertaId ?? null });
   },
 
-  async definirAcessoPortalContato(contatoId: number, acesso: AcessoPortalContato): Promise<ClienteContato> {
-    return invoke<ClienteContato>("definir_acesso_portal_contato", { contatoId, acesso });
+  async definirAcessoPortalContato(contatoId: ClienteId, acesso: AcessoPortalContato): Promise<ClienteContato> {
+    return invoke<ClienteContato>("definir_acesso_portal_contato", { contatoId: Number(contatoId), acesso });
   },
 
   /** `senha = null` remove a senha. A senha não volta do backend; só a data em que foi criada. */
-  async definirSenhaPortalContato(contatoId: number, senha: string | null): Promise<ClienteContato> {
-    return invoke<ClienteContato>("definir_senha_portal_contato", { contatoId, senha });
+  async definirSenhaPortalContato(contatoId: ClienteId, senha: string | null): Promise<ClienteContato> {
+    return invoke<ClienteContato>("definir_senha_portal_contato", { contatoId: Number(contatoId), senha });
   },
 
   async obterVersaoDocumentoPortal(equipamentoId: number): Promise<DecisaoOrcamentoInfo | null> {
@@ -495,20 +498,6 @@ export const db = {
       busca: busca ?? null,
       categoria: categoria ?? null,
       apenasEstoqueBaixo: apenasEstoqueBaixo || false,
-    });
-  },
-
-  async listarProdutosPaginados(
-    busca: string | undefined,
-    categoria: string | undefined,
-    apenasEstoqueBaixo: boolean,
-    page: number,
-  ): Promise<PaginatedResult<Produto>> {
-    return invoke<PaginatedResult<Produto>>("listar_produtos_paginados", {
-      page,
-      busca: busca ?? null,
-      categoria: categoria ?? null,
-      apenasEstoqueBaixo,
     });
   },
 
@@ -652,14 +641,6 @@ export const db = {
     });
   },
 
-  async listarServicosPaginados(busca: string | undefined, apenasAtivos: boolean, page: number): Promise<PaginatedResult<ServicoCatalogo>> {
-    return invoke<PaginatedResult<ServicoCatalogo>>("listar_servicos_paginados", {
-      busca: busca ?? null,
-      apenasAtivos,
-      page,
-    });
-  },
-
   /** Busca serviço por ID. */
   async buscarServico(id: number): Promise<ServicoCatalogo> {
     return invoke<ServicoCatalogo>("buscar_servico", { id });
@@ -747,8 +728,8 @@ export const db = {
     equipamentoId: number,
     categoria: string,
     port: number,
-  ): Promise<{ qr_svg: string; url: string; token: string; via_tunnel?: boolean }> {
-    return invoke<{ qr_svg: string; url: string; token: string; via_tunnel?: boolean }>("gerar_qr_upload", {
+  ): Promise<{ qr_svg: string; url: string; token: string }> {
+    return invoke<{ qr_svg: string; url: string; token: string }>("gerar_qr_upload", {
       equipamentoId,
       categoria,
       port,
@@ -765,7 +746,7 @@ export const db = {
     return invoke<void>("stop_photo_server");
   },
 
-  /** Status do token de upload sem HTTP (o CSP bloqueia localhost:8765) → Rust: consultar_status_foto */
+  /** Consulta o token de upload pelo backend Tauri, sem requisição HTTP local. */
   async consultarStatusFoto(token: string): Promise<{
     valid: boolean;
     used: boolean;
@@ -941,7 +922,7 @@ export const db = {
       profileId,
       divergence: input.divergence ?? false,
       clienteAprovouAlteracao: input.cliente_aprovou_alteracao ?? false,
-      expectedUpdatedEm: input.expected_updated_em ?? null,
+      expectedUpdatedEm: input.expected_updated_em,
       ...(input.observacoes === undefined ? {} : { observacoes: input.observacoes }),
       ...(input.forma_pagamento_codigo === undefined
         ? {}
@@ -965,14 +946,6 @@ export const db = {
   /** Aprova orçamento, pagamento e status APROVADO atomicamente no backend. */
   async aprovarOrcamento(input: AprovarOrcamentoInput): Promise<Equipamento> {
     return invoke<Equipamento>("aprovar_orcamento", { input });
-  },
-
-  async listarConsumosOrcamento(equipamentoId: number): Promise<ConsumoOrcamento[]> {
-    return invoke<ConsumoOrcamento[]>("listar_consumos_orcamento", { equipamentoId });
-  },
-
-  async baixarPecasPendentes(equipamentoId: number): Promise<number> {
-    return invoke<number>("baixar_pecas_pendentes", { equipamentoId });
   },
 
   /** Lista serviços ativos do catálogo (apenas leitura) → Rust: listar_servicos_catalogo_ativos */
@@ -1012,5 +985,19 @@ export const db = {
       pin: params.pin,
       profileName: params.profileName,
     });
+  },
+
+  // ─── Sessões de fotos pelo celular ───────────────────
+
+  async criarSessaoUploadFotos(input: PhotoUploadSessionInput): Promise<PhotoUploadSessionCreated> {
+    return invoke<PhotoUploadSessionCreated>("criar_sessao_upload_fotos", { input });
+  },
+
+  async consultarSessaoUploadFotos(sessionId: string): Promise<PhotoUploadSessionStatus> {
+    return invoke<PhotoUploadSessionStatus>("consultar_sessao_upload_fotos", { sessionId });
+  },
+
+  async cancelarSessaoUploadFotos(sessionId: string): Promise<PhotoUploadSessionStatus> {
+    return invoke<PhotoUploadSessionStatus>("cancelar_sessao_upload_fotos", { sessionId });
   },
 };

@@ -24,7 +24,9 @@
 
 mod commands;
 mod db;
+#[cfg(not(feature = "saas"))]
 mod release_highlights;
+mod runtime_mode;
 
 use std::sync::OnceLock;
 use tracing::{info, Level};
@@ -86,22 +88,47 @@ fn main() {
         Err(error) => info!("Housekeeping local não pôde ser concluído: {}", error),
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|_app| {
-            info!("Inicializando banco de dados...");
-            match tauri::async_runtime::block_on(db::init_database()) {
-                Ok(_pool) => {
-                    info!("Banco de dados inicializado com sucesso");
+            if runtime_mode::should_initialize_legacy_database() {
+                info!("Inicializando banco de dados...");
+                match tauri::async_runtime::block_on(db::init_database()) {
+                    Ok(_pool) => {
+                        info!("Banco de dados inicializado com sucesso");
+                    }
+                    Err(e) => {
+                        let msg = format!("Banco de dados não configurado ou indisponível: {}. O app continuará no modo de configuração.", e);
+                        info!("{}", msg);
+                    }
                 }
-                Err(e) => {
-                    let msg = format!("Banco de dados não configurado ou indisponível: {}. O app continuará no modo de configuração.", e);
-                    info!("{}", msg);
-                }
+            } else {
+                info!("Build SaaS detectado: inicialização PostgreSQL local ignorada");
             }
             Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
+        });
+
+    #[cfg(feature = "saas")]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        commands::saas_auth::salvar_sessao_saas,
+        commands::saas_auth::carregar_sessao_saas,
+        commands::saas_auth::remover_sessao_saas,
+        commands::saas_device::carregar_marcador_dispositivo_saas,
+        commands::saas_device::criar_marcador_dispositivo_saas,
+        commands::saas_device::remover_marcador_dispositivo_saas,
+        commands::saas_profile_pin::status_pin_perfil_saas,
+        commands::saas_profile_pin::configurar_pin_perfil_saas,
+        commands::saas_profile_pin::desbloquear_pin_perfil_saas,
+        commands::saas_profile_pin::remover_pin_perfil_saas,
+        commands::saas_profile_pin::sincronizar_pins_perfis_saas,
+        commands::smtp::enviar_email_saas,
+        commands::whatsapp::enviar_whatsapp_saas,
+        commands::cnpj::consultar_cnpj,
+    ]);
+
+    #[cfg(not(feature = "saas"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+            // Novidades da versão (só no build interno; o SaaS tem app próprio)
             release_highlights::get_seen_release_highlights,
             release_highlights::mark_release_highlights_seen,
             // Auth sensível
@@ -208,6 +235,9 @@ fn main() {
             commands::qr_code::gerar_qr_upload,
             commands::photo_tunnel::salvar_config_photo_tunnel,
             commands::photo_tunnel::carregar_config_photo_tunnel,
+            commands::photo_upload_sessions::criar_sessao_upload_fotos,
+            commands::photo_upload_sessions::consultar_sessao_upload_fotos,
+            commands::photo_upload_sessions::cancelar_sessao_upload_fotos,
             // Clientes
             commands::clientes::listar_clientes,
             commands::clientes::listar_clientes_paginados,
@@ -286,7 +316,9 @@ fn main() {
             commands::auth::provision_pin_with_enrollment,
             // Image Migration
             commands::image_migration::migrate_images_to_storage,
-        ])
+    ]);
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

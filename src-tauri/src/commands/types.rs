@@ -284,6 +284,8 @@ pub struct AprovarOrcamentoInput {
     pub expected_updated_em: String,
     pub pagamento: FormaPagamento,
     pub servicos_aprovados: Vec<String>,
+    #[serde(default)]
+    pub aprovar_sem_servicos: bool,
     /// Decisão explícita permite aprovar orçamentos legados sem serviços detalhados.
     #[serde(default)]
     pub aprovado: Option<bool>,
@@ -370,6 +372,15 @@ pub struct EmailSendInput {
     pub anexos: Option<Vec<EmailAttachmentInput>>,
 }
 
+/// Configuração pública usada pelo comando SaaS para validar a sessão junto
+/// ao projeto Supabase que emitiu o token armazenado no keyring.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaasCommunicationConfigInput {
+    pub supabase_url: String,
+    pub publishable_key: String,
+}
+
 /// Input para configurar o provider de WhatsApp.
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
@@ -395,14 +406,46 @@ pub struct WhatsappConfigStored {
     pub token: String,
 }
 
-/// Configuração do Supabase armazenada no keyring.
+/// Configuração não privilegiada do Supabase armazenada no keyring.
 /// Espelha `SupabaseStorageConfig` do frontend (types/index.ts:666).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SupabaseStorageConfig {
     pub supabase_url: String,
-    pub supabase_service_key: String,
+    pub supabase_publishable_key: String,
+    pub access_token: String,
     #[serde(default)]
     pub empresa_id: Option<String>,
+}
+
+/// Solicitação para abrir uma sessão temporária de envio de fotos pelo celular.
+/// `equipamento_id = None` representa o rascunho de um equipamento ainda não salvo.
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct PhotoUploadSessionInput {
+    pub equipamento_id: Option<i32>,
+    pub categoria: Option<String>,
+}
+
+/// Dados devolvidos uma única vez ao criar uma sessão.
+/// A URL pode conter o token efêmero para compor o QR, mas o token nunca é
+/// retornado isoladamente nem persistido no banco.
+#[derive(Debug, Serialize)]
+pub struct PhotoUploadSessionCreated {
+    pub session_id: String,
+    pub expires_at: String,
+    pub mobile_upload_url: Option<String>,
+}
+
+/// Estado seguro de uma sessão: não inclui token nem hash.
+#[derive(Debug, Serialize)]
+pub struct PhotoUploadSessionStatus {
+    pub session_id: String,
+    pub equipamento_id: Option<i32>,
+    pub categoria: String,
+    pub status: String,
+    pub expires_at: String,
+    pub cancelled_at: Option<String>,
+    pub consumed_at: Option<String>,
 }
 
 /// Input para envio de mensagem de WhatsApp via provider HTTP.

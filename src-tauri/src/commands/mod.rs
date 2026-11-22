@@ -19,6 +19,7 @@ pub mod equipamentos;
 pub mod equipamento_imagens;
 pub mod photo_server;
 pub mod photo_tunnel;
+pub mod photo_upload_sessions;
 pub mod clientes;
 pub mod contatos;
 pub mod cnpj;
@@ -41,6 +42,10 @@ pub mod orcamento_decisao;
 pub mod portal_cliente;
 pub mod public_status;
 pub mod image_migration;
+pub mod saas_auth;
+pub mod saas_communication;
+pub mod saas_device;
+pub mod saas_profile_pin;
 pub mod legacy_regularization;
 
 pub mod portal_documentos;

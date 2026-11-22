@@ -63,12 +63,14 @@ import { useNotification } from "@/hooks/useNotification";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SENSITIVE_PERMISSIONS, type Produto, type UsoProdutoOrcamentos } from "@/types";
+import { SENSITIVE_PERMISSIONS, type ClienteId, type Produto, type UsoProdutoOrcamentos } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { formatCurrency } from "@/lib/utils";
 import { totalPages } from "@/lib/pagination";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { CATEGORIA_OPTIONS, categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
 import {
   InsumosDeleteDialog,
   InsumosMovimentacaoDialog,
@@ -76,25 +78,25 @@ import {
 } from "@/pages/insumos/InsumosDialogs";
 import { OrcamentosInsumosTab } from "@/pages/insumos/OrcamentosInsumosTab";
 
-export default function Insumos() {
+export default function Insumos({ operationalProfile }: { operationalProfile?: SaasOperationalProfile } = {}) {
   const [aba, setAba] = useState<"estoque" | "orcamentos">("estoque");
   const [busca, setBusca] = useState("");
+  const [pagina, setPagina] = useState(1);
   const [categoriaFiltro, setCategoriaFiltro] = useState("TODOS");
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
-  const [paginaInsumos, setPaginaInsumos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [movDialogOpen, setMovDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [editando, setEditando] = useState<Produto | null>(null);
-  const [movimentando, setMovimentando] = useState<Produto | null>(null);
-  const [deletando, setDeletando] = useState<Produto | null>(null);
+  const [editando, setEditando] = useState<Produto<ClienteId> | null>(null);
+  const [movimentando, setMovimentando] = useState<Produto<ClienteId> | null>(null);
+  const [deletando, setDeletando] = useState<Produto<ClienteId> | null>(null);
   const [usoDeletando, setUsoDeletando] = useState<UsoProdutoOrcamentos | null>(null);
   const [carregandoUso, setCarregandoUso] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
   const {
     produtos,
-    total: totalProdutos,
+    total,
     loading,
     error,
     insumosAbaixoMinimo,
@@ -108,21 +110,20 @@ export default function Insumos() {
     busca: busca || undefined,
     categoria: categoriaFiltro,
     apenasEstoqueBaixo,
-    page: paginaInsumos,
+    page: pagina,
   });
-  const totalPaginasInsumos = totalPages(totalProdutos);
-  const paginaInsumosExibida = Math.min(paginaInsumos, totalPaginasInsumos);
-  const produtosExibidos = produtos;
+  const { error: showError } = useNotification();
+  const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
+  const totalPaginas = totalPages(total);
+  const paginaExibida = Math.min(pagina, totalPaginas);
 
   useEffect(() => {
-    setPaginaInsumos(1);
+    setPagina(1);
   }, [busca, categoriaFiltro, apenasEstoqueBaixo]);
 
   useEffect(() => {
-    setPaginaInsumos((pagina) => Math.min(pagina, totalPaginasInsumos));
-  }, [totalPaginasInsumos]);
-  const { error: showError } = useNotification();
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+    setPagina((atual) => Math.min(atual, totalPaginas));
+  }, [totalPaginas]);
 
   const form = useForm<ProdutoFormData>({
     resolver: zodResolver(produtoSchema),
@@ -172,7 +173,7 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
-  async function abrirEditar(p: Produto) {
+  async function abrirEditar(p: Produto<ClienteId>) {
     const liberado = await ensureSensitiveAccess({
       title: "Editar insumo/peça",
       description: "Informe o PIN para alterar preços e parâmetros de estoque deste insumo/peça.",
@@ -195,7 +196,7 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
-  async function abrirMovimentacao(p: Produto) {
+  async function abrirMovimentacao(p: Produto<ClienteId>) {
     const liberado = await ensureSensitiveAccess({
       title: "Movimentar estoque",
       description: "Informe o PIN para registrar entradas e saídas de estoque.",
@@ -270,18 +271,22 @@ export default function Insumos() {
     if (!deletando) return;
     setSalvando(true);
     try {
-      await deletar(deletando.id!);
+      const resultado = await deletar(deletando.id!, deletando.atualizado_em);
+      if (!resultado.sucesso) {
+        throw new Error(resultado.erro || "Não foi possível excluir o insumo/peça.");
+      }
       setDeleteDialogOpen(false);
       setDeletando(null);
       setUsoDeletando(null);
     } catch (err) {
       console.error("Erro ao deletar:", err);
+      showError("Insumos/Peças", "Excluir produto", err);
     } finally {
       setSalvando(false);
     }
   }
 
-  async function solicitarExclusao(produto: Produto) {
+  async function solicitarExclusao(produto: Produto<ClienteId>) {
     const liberado = await ensureSensitiveAccess({
       title: "Excluir insumo/peça",
       description: "Informe o PIN para excluir um insumo/peça do estoque.",
@@ -310,7 +315,7 @@ export default function Insumos() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -335,14 +340,16 @@ export default function Insumos() {
         </div>
       </div>
 
-      <Tabs value={aba} onValueChange={(valor) => setAba(valor as "estoque" | "orcamentos")}>
-        <TabsList aria-label="Áreas de Insumos/Peças">
-          <TabsTrigger value="estoque">Estoque</TabsTrigger>
-          <TabsTrigger value="orcamentos">Orçamentos</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {!IS_SAAS_BUILD && (
+        <Tabs value={aba} onValueChange={(valor) => setAba(valor as "estoque" | "orcamentos")}>
+          <TabsList aria-label="Áreas de Insumos/Peças">
+            <TabsTrigger value="estoque">Estoque</TabsTrigger>
+            <TabsTrigger value="orcamentos">Orçamentos</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
 
-      {aba === "orcamentos" ? (
+      {!IS_SAAS_BUILD && aba === "orcamentos" ? (
         <OrcamentosInsumosTab onEstoqueAlterado={() => void recarregar()} />
       ) : (
         <>
@@ -418,13 +425,13 @@ export default function Insumos() {
           ) : (
             <>
               <PaginationControls
-                page={paginaInsumosExibida}
-                totalPages={totalPaginasInsumos}
-                onPageChange={setPaginaInsumos}
+                page={paginaExibida}
+                totalPages={totalPaginas}
+                onPageChange={setPagina}
                 label="Paginação de estoque"
               />
               <div className="rounded-md border">
-                <Table>
+              <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome</TableHead>
@@ -438,7 +445,7 @@ export default function Insumos() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {produtosExibidos.map((p) => {
+                  {produtos.map((p) => {
                     const estoqueBaixo = p.quantidade_estoque < p.quantidade_minima;
                     return (
                       <TableRow
@@ -513,12 +520,14 @@ export default function Insumos() {
                     );
                   })}
                 </TableBody>
-                </Table>
+              </Table>
               </div>
             </>
           )}
         </CardContent>
       </Card>
+        </>
+      )}
 
       <InsumosProdutoDialog
         open={dialogOpen}
@@ -526,6 +535,7 @@ export default function Insumos() {
         editando={editando}
         form={form}
         salvando={salvando}
+        bloquearEdicaoEstoque={IS_SAAS_BUILD && Boolean(editando)}
         onSubmit={onSubmit}
       />
       <InsumosMovimentacaoDialog
@@ -545,8 +555,6 @@ export default function Insumos() {
         uso={usoDeletando}
         carregandoUso={carregandoUso}
       />
-        </>
-      )}
     </div>
   );
 }

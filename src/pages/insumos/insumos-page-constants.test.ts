@@ -6,9 +6,11 @@ import {
 
 describe("categoriaProdutoLabel", () => {
   it("usa o mesmo texto do filtro de Insumos", () => {
-    expect(categoriaProdutoLabel("RIBBON")).toBe("Ribbon");
-    expect(categoriaProdutoLabel("PEÇA")).toBe("Peça");
+    expect(categoriaProdutoLabel("CARTUCHO")).toBe("Cartucho");
+    expect(categoriaProdutoLabel("ROLO")).toBe("Rolo");
+    expect(CATEGORIA_OPTIONS.some((option) => option.value === "RIBBON")).toBe(true);
     expect(CATEGORIA_OPTIONS.some((option) => option.value === "ETIQUETA")).toBe(true);
-    expect(CATEGORIA_OPTIONS.some((option) => option.value === "IMPRESSORA")).toBe(true);
+    expect(categoriaProdutoLabel("RIBBON")).toBe("Ribbon");
+    expect(categoriaProdutoLabel("ETIQUETA")).toBe("Etiqueta");
   });
 });

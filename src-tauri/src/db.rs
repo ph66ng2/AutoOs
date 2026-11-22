@@ -405,6 +405,8 @@ const REQUIRED_RUNTIME_TABLES: &[&str] = &[
     "orcamento_servicos_decisao",
     "security_profiles",
     "security_audit_log",
+    "photo_upload_sessions",
+    "photo_upload_session_items",
     // Orçamento pelo Portal do Cliente e fila de WhatsApp (0031–0040): aprovar, finalizar
     // verificação e o sino de alertas dependem delas. Sem as migrations o app não abre pela metade.
     "orcamento_versoes",
@@ -450,6 +452,8 @@ const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
     ("verificacoes", "adjusted_at"),
     ("equipamento_imagens", "storage_path"),
     ("security_profiles", "permissions"),
+    ("photo_upload_sessions", "token_hash"),
+    ("photo_upload_session_items", "storage_path"),
     ("security_profiles", "pin_required"),
     // Dados ampliados do portal (0039).
     ("clientes", "exige_ordem_compra"),
@@ -464,6 +468,16 @@ const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
     ("security_profiles", "tema"),
     ("security_profiles", "onboarding_concluido_em"),
     ("security_profiles", "tour_permissoes_vistas"),
+];
+
+const REQUIRED_RUNTIME_INDEXES: &[&str] = &[
+    "ux_clientes_documento_ativo",
+    "ux_clientes_cpf_cnpj_ativo",
+    "ux_gastos_fixos_nome_ativo",
+    "ux_produtos_empresa_codigo_ativo",
+    "ux_produtos_codigo_ativo_sem_empresa",
+    "ux_security_profiles_nome_normalizado",
+    "idx_photo_upload_sessions_active_token",
 ];
 
 const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
@@ -516,6 +530,17 @@ async fn check_runtime_schema(pool: &PgPool) -> Result<usize, SchemaCheckFailure
          ORDER BY required_name",
     )
     .bind(table_names)
+    .fetch_all(pool)
+    .await
+    .map_err(SchemaCheckFailure::Query)?;
+
+    let missing_indexes = sqlx::query_scalar::<_, String>(
+        "SELECT required_name
+         FROM unnest($1::text[]) AS required(required_name)
+         WHERE to_regclass(format('public.%I', required_name)) IS NULL
+         ORDER BY required_name",
+    )
+    .bind(REQUIRED_RUNTIME_INDEXES.iter().map(|value| value.to_string()).collect::<Vec<_>>())
     .fetch_all(pool)
     .await
     .map_err(SchemaCheckFailure::Query)?;
@@ -579,10 +604,12 @@ async fn check_runtime_schema(pool: &PgPool) -> Result<usize, SchemaCheckFailure
     if !missing_tables.is_empty()
         || !missing_columns.is_empty()
         || !incompatible_columns.is_empty()
+        || !missing_indexes.is_empty()
     {
         let mut missing = missing_tables;
         missing.extend(missing_columns);
         missing.extend(incompatible_columns);
+        missing.extend(missing_indexes);
         return Err(SchemaCheckFailure::Mismatch(format!(
             "Estruturas obrigatórias ausentes: {}.",
             missing.join(", ")
@@ -591,7 +618,8 @@ async fn check_runtime_schema(pool: &PgPool) -> Result<usize, SchemaCheckFailure
 
     Ok(REQUIRED_RUNTIME_TABLES.len()
         + REQUIRED_RUNTIME_COLUMNS.len()
-        + REQUIRED_RUNTIME_COLUMN_TYPES.len())
+        + REQUIRED_RUNTIME_COLUMN_TYPES.len()
+        + REQUIRED_RUNTIME_INDEXES.len())
 }
 
 async fn validate_migration_history_on_pool(pool: &PgPool) -> Result<usize, String> {

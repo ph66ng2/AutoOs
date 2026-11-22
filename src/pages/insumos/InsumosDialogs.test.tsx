@@ -13,7 +13,13 @@ beforeAll(() => {
   HTMLElement.prototype.scrollIntoView = () => undefined;
 });
 
-function TestDialog({ editando = null }: { editando?: Produto | null }) {
+function TestDialog({
+  editando = null,
+  onSubmit = vi.fn(),
+}: {
+  editando?: Produto | null;
+  onSubmit?: () => void;
+}) {
   const form = useForm<ProdutoFormData>({
     defaultValues: {
       nome: "Insumo",
@@ -33,7 +39,7 @@ function TestDialog({ editando = null }: { editando?: Produto | null }) {
       editando={editando}
       form={form}
       salvando={false}
-      onSubmit={vi.fn()}
+      onSubmit={onSubmit}
     />
   );
 }
@@ -130,5 +136,29 @@ describe("mínimo no cadastro de insumos", () => {
     await user.click(screen.getByRole("combobox"));
     await user.click(await screen.findByRole("option", { name: "Ribbon" }));
     expect(minimo).toHaveValue(7);
+  });
+});
+
+describe("preços no cadastro de insumos", () => {
+  it.each(["Preço Custo", "Preço Venda"])("bloqueia o salvar com %s inválido até corrigir", async (rotulo) => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<TestDialog onSubmit={onSubmit} />);
+    const campo = screen.getByText(rotulo).parentElement!.querySelector("input") as HTMLInputElement;
+
+    await user.clear(campo);
+    await user.type(campo, "abc");
+    await user.tab();
+    const salvar = screen.getByRole("button", { name: "Cadastrar" });
+    expect(salvar).toBeDisabled();
+    await user.type(screen.getByPlaceholderText("Toner HP 26A"), "{Enter}");
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    await user.clear(campo);
+    await user.type(campo, "12,50");
+    await user.tab();
+    expect(salvar).toBeEnabled();
+    await user.click(salvar);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 });

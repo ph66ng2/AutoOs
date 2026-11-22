@@ -55,10 +55,12 @@ import {
 import { useClientes } from "@/hooks/useClientes";
 import { useNotification } from "@/hooks/useNotification";
 import { db } from "@/lib/db";
+import { carregarRepositorioClienteContatos } from "@/lib/data/cliente-contatos-repository";
 import { mensagemCadastroDuplicado } from "@/lib/operator-errors";
 import {
   SENSITIVE_PERMISSIONS,
   type Cliente,
+  type ClienteId,
   type ClienteContato,
   type Equipamento,
   type RegularizacaoLegadoPrevia,
@@ -98,17 +100,18 @@ export default function Clientes() {
   const [buscandoCep, setBuscandoCep] = useState(false);
 
   // Equipamentos vinculados
-  const [expandido, setExpandido] = useState<number | null>(null);
+  const [expandido, setExpandido] = useState<ClienteId | null>(null);
   const [equipamentosCliente, setEquipamentosCliente] = useState<Equipamento[]>([]);
   const [carregandoEquip, setCarregandoEquip] = useState(false);
   const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
   const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
   const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
-  const [contatosExpandido, setContatosExpandido] = useState<number | null>(null);
-  const contatosExpandidoRef = useRef<number | null>(null);
+  const [contatosExpandido, setContatosExpandido] = useState<ClienteId | null>(null);
+  const contatosExpandidoRef = useRef<ClienteId | null>(null);
   const contatosRequisicaoRef = useRef(0);
   const [contatosLista, setContatosLista] = useState<ClienteContato[]>([]);
   const [carregandoContatos, setCarregandoContatos] = useState(false);
+  const [contatosErro, setContatosErro] = useState<string | null>(null);
   const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
   const [previaVinculoEmpresa, setPreviaVinculoEmpresa] = useState<VinculoEmpresaPerfilPrevia | null>(null);
   const [regularizando, setRegularizando] = useState(false);
@@ -204,31 +207,37 @@ export default function Clientes() {
     }
     const clienteId = cliente.id!;
     const vigente = () => token === contatosRequisicaoRef.current && contatosExpandidoRef.current === clienteId;
+    setContatosErro(null);
     setCarregandoContatos(true);
     try {
-      const lista = await db.listarClienteContatos(clienteId, cliente.empresa_id);
+      const repository = await carregarRepositorioClienteContatos();
+      const lista = await repository.listar(clienteId, cliente.empresa_id);
       if (vigente()) setContatosLista(lista);
     } catch (err) {
-      console.error("Erro ao buscar contatos:", err);
-      if (vigente()) setContatosLista([]);
+      if (vigente()) {
+        setContatosLista([]);
+        setContatosErro(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       if (vigente()) setCarregandoContatos(false);
     }
   }
 
-  /** Expande/recolhe a lista de contatos do cliente. Conecta-se a: db.listarClienteContatos → Rust listar_cliente_contatos */
+  /** Expande/recolhe a lista de contatos do cliente. Conecta-se a: carregarRepositorioClienteContatos (Tauri: db.listarClienteContatos; SaaS: Supabase) */
   async function toggleContatos(cliente: Cliente) {
     if (contatosExpandidoRef.current === cliente.id) {
       contatosExpandidoRef.current = null;
       contatosRequisicaoRef.current++;
       setContatosExpandido(null);
       setContatosLista([]);
+      setContatosErro(null);
       setCarregandoContatos(false);
       return;
     }
     contatosExpandidoRef.current = cliente.id!;
     setContatosExpandido(cliente.id!);
     setContatosLista([]);
+    setContatosErro(null);
     setCarregandoContatos(false);
     await carregarContatosExpandido(cliente);
   }
@@ -245,7 +254,7 @@ export default function Clientes() {
    * Busca equipamentos pelo cliente_id via db.listarEquipamentosCliente.
    * Conecta-se a: db.listarEquipamentosCliente → Rust listar_equipamentos_cliente
    */
-  async function toggleExpandir(clienteId: number) {
+  async function toggleExpandir(clienteId: ClienteId) {
     if (expandido === clienteId) {
       setExpandido(null);
       setEquipamentosCliente([]);
@@ -639,6 +648,10 @@ export default function Clientes() {
                           </span>
                         ) : carregandoContatos ? (
                           <span className="text-sm text-muted-foreground">Carregando contatos...</span>
+                        ) : contatosErro ? (
+                          <span role="alert" className="text-sm text-destructive">
+                            Não foi possível carregar os contatos: {contatosErro}
+                          </span>
                         ) : contatosLista.length === 0 ? (
                           <span className="text-sm text-muted-foreground">Nenhum contato cadastrado</span>
                         ) : (

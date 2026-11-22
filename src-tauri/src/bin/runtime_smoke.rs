@@ -527,7 +527,7 @@ async fn run_sql_stock_smoke(pool: &PgPool, codigo: &str, suffix: &str) -> Resul
     .bind(codigo)
     .bind(format!("Produto Smoke {}", suffix))
     .bind("runtime_smoke:create")
-    .bind("TONER")
+    .bind("RIBBON")
     .bind(10)
     .bind(2)
     .bind(25)

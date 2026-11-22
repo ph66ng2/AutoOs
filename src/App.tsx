@@ -35,6 +35,8 @@ import { CounterSessionGate } from "@/components/CounterSessionGate";
 import { ReleaseHighlightsDialog } from "@/components/ReleaseHighlightsDialog";
 import { UpdateNotice } from "@/components/UpdateNotice";
 import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
+import { SaasApp } from "@/components/SaasApp";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Equipamentos = lazy(() => import("@/pages/Equipamentos"));
@@ -193,7 +195,7 @@ function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean
   return null;
 }
 
-function App() {
+function InternalApp() {
   const [dbReady, setDbReady] = useState<boolean | null>(null);
   const { resolvedTheme } = useTheme();
   const toastTheme = resolvedTheme === "dark" ? "dark" : "light";
@@ -236,6 +238,20 @@ function App() {
       </ErrorBoundary>
     </>
   );
+}
+
+function App() {
+  if (IS_SAAS_BUILD) {
+    return (
+      <>
+        <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
+        <ErrorBoundary>
+          <SaasApp />
+        </ErrorBoundary>
+      </>
+    );
+  }
+  return <InternalApp />;
 }
 
 export default App;

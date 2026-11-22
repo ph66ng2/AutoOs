@@ -26,13 +26,17 @@ import type { jsPDF } from "jspdf";
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
 import { publicarPdfOficial, referenciaPdfPortal, type ReferenciaPdfPortal } from "@/lib/portal-documentos";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
+import { carregarRepositorioHistoricoEquipamento } from "@/lib/data/equipamentos-historico-repository";
 import { formatDateTimeSalvador, parseTimestampPostgres } from "@/lib/date-utils";
 import { STATUS_LABELS } from "@/types";
 import type {
-  OrcamentoInsumosDetalhe,
   Equipamento,
+  EquipamentoId,
   EquipamentoHistoricoEvento,
   EquipamentoImagem,
+  OrcamentoInsumosDetalhe,
   Verificacao,
   ServicoNecessario,
   PecaNecessaria,
@@ -48,6 +52,22 @@ const MARGIN_RIGHT = 15;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
 
 type CorPdf = [number, number, number];
+type EquipamentoPdf = Equipamento<EquipamentoId>;
+
+function obterIdEquipamentoInterno(equipamento: EquipamentoPdf): number {
+  if (typeof equipamento.id !== "number") {
+    throw new Error("O identificador local do equipamento é inválido.");
+  }
+  return equipamento.id;
+}
+
+async function buscarVerificacaoPdf(equipamento: EquipamentoPdf): Promise<Verificacao | null> {
+  if (!equipamento.id) return null;
+  if (IS_SAAS_BUILD) {
+    return (await carregarRepositorioOperacoesEquipamento()).getVerification(String(equipamento.id));
+  }
+  return db.buscarVerificacao(obterIdEquipamentoInterno(equipamento));
+}
 
 /** Documento construído em memória. A persistência é intencionalmente separada para permitir prévia no balcão. */
 export interface PdfArtifact {
@@ -156,7 +176,7 @@ function formatarMoeda(valor: number): string {
  * Gera número da OS a partir do ID do equipamento.
  * Ex: ID 42 → "OS-00042"
  */
-function gerarNumeroOS(equipamentoId: number | undefined): string {
+function gerarNumeroOS(equipamentoId: EquipamentoId | undefined): string {
   const id = equipamentoId ?? 0;
   return `OS-${String(id).padStart(5, "0")}`;
 }
@@ -220,7 +240,7 @@ function formatarDocumentoCliente(documento?: string): string {
   return documento?.trim() ? `Documento: ${documento.trim()}` : "";
 }
 
-function obterIdentificacaoResponsavel(equipamento: Equipamento): IdentificacaoResponsavel {
+function obterIdentificacaoResponsavel(equipamento: EquipamentoPdf): IdentificacaoResponsavel {
   const empresa = [
     equipamento.cliente_nome?.trim(),
     formatarDocumentoCliente(equipamento.cliente_documento),
@@ -239,7 +259,7 @@ function obterIdentificacaoResponsavel(equipamento: Equipamento): IdentificacaoR
   };
 }
 
-function montarHistoricoBasico(equipamento: Equipamento): EquipamentoHistoricoEvento[] {
+function montarHistoricoBasico(equipamento: EquipamentoPdf): EquipamentoHistoricoEvento[] {
   const eventos: EquipamentoHistoricoEvento[] = [];
   const incluir = (status: string, data: string | undefined, motivo: string) => {
     if (data) eventos.push({ tipo: "ETAPA", data, status, motivo });
@@ -254,12 +274,20 @@ function montarHistoricoBasico(equipamento: Equipamento): EquipamentoHistoricoEv
 }
 
 function obterTecnicoResponsavel(
-  equipamento: Equipamento,
+  equipamento: EquipamentoPdf,
   verificacao?: Verificacao | null,
 ): string {
   return verificacao?.tecnico_nome?.trim()
     || extrairTecnicoInicialDeObservacoes(equipamento.observacoes)
     || "";
+}
+
+function formatarDataBr(valor?: string | null): string {
+  if (!valor) return "";
+  const data = valor.includes("T") ? valor : `${valor}T00:00:00`;
+  const parsed = new Date(data);
+  if (Number.isNaN(parsed.getTime())) return valor;
+  return parsed.toLocaleDateString("pt-BR");
 }
 
 const ROTULOS_PAGAMENTO: Record<string, string> = {
@@ -274,7 +302,7 @@ const ROTULOS_PAGAMENTO: Record<string, string> = {
 };
 
 function obterFormaPagamento(
-  equipamento: Equipamento,
+  equipamento: EquipamentoPdf,
   verificacao: Verificacao,
 ): string {
   const codigo = verificacao.forma_pagamento_codigo?.trim().toUpperCase();
@@ -291,10 +319,9 @@ function obterFormaPagamento(
 interface CabecalhoPdf {
   titulo: string;
   numeroOS: string;
-  /** Rótulo acima do número do documento; o padrão é o da OS. */
-  rotuloNumero?: string;
   rotuloData: "Emissão" | "Entrada";
   dataFormatada: string;
+  rotuloNumero?: string;
 }
 
 function aplicarCabecalhoPadrao(doc: jsPDF, y: number, cabecalho: CabecalhoPdf) {
@@ -545,7 +572,7 @@ function renderizarIdentificacaoENotasOrcamento(
   doc: jsPDF,
   autoTable: AutoTable,
   y: number,
-  equipamento: Equipamento,
+  equipamento: EquipamentoPdf,
   verificacao: Verificacao,
 ): number {
   y = renderizarIdentificacaoEquipamento(doc, autoTable, y, equipamento);
@@ -553,7 +580,7 @@ function renderizarIdentificacaoENotasOrcamento(
   return renderizarDescricaoServico(doc, y, verificacao.observacoes);
 }
 
-function renderizarIdentificacaoEquipamento(doc: jsPDF, autoTable: AutoTable, y: number, equipamento: Equipamento): number {
+function renderizarIdentificacaoEquipamento(doc: jsPDF, autoTable: AutoTable, y: number, equipamento: EquipamentoPdf): number {
   const patrimonio = equipamento.patrimonio?.trim();
   if (patrimonio) {
     return renderizarTabelaFormulario(
@@ -881,7 +908,8 @@ function renderizarCondicoesComerciais(
   return y;
 }
 
-/** Nome de arquivo seguro: "Orcamento_Insumos_OI-12_Cliente.pdf" (prefixo reconhecido pela pasta de orçamentos). */
+// ─── Serviço principal ──────────────────────────────────
+
 function nomeArquivoOrcamentoInsumos(orcamento: OrcamentoInsumosDetalhe): string {
   const cliente = (orcamento.cliente_nome || "Cliente")
     .normalize("NFD")
@@ -933,13 +961,6 @@ function renderizarCondicoesInsumos(doc: jsPDF, y: number, orcamento: OrcamentoI
   return y;
 }
 
-function formatarDataBr(valor: string): string {
-  const [ano, mes, dia] = valor.slice(0, 10).split("-");
-  return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor;
-}
-
-// ─── Serviço principal ──────────────────────────────────
-
 export const PdfService = {
   /**
    * Gera PDF de orçamento profissional no padrão BMITAG.
@@ -955,7 +976,7 @@ export const PdfService = {
    * @returns Documento em memória para prévia ou persistência explícita
    */
   async construirOrcamento(
-    equipamento: Equipamento,
+    equipamento: EquipamentoPdf,
     verificacao: Verificacao,
     nomeArquivo?: string,
     prazoExecucao?: PrazoExecucaoPdf,
@@ -1101,8 +1122,8 @@ export const PdfService = {
         );
       }
 
-      const imagensEquipamento = equipamento.id
-        ? await db.listarImagensEquipamento(equipamento.id)
+      const imagensEquipamento = equipamento.id && !IS_SAAS_BUILD
+        ? await db.listarImagensEquipamento(obterIdEquipamentoInterno(equipamento))
         : [];
       const imagensEntrada = imagensEquipamento.filter((imagem) => imagem.categoria === "ENTRADA");
       const imagensSaida = imagensEquipamento.filter((imagem) => imagem.categoria === "SAIDA");
@@ -1164,7 +1185,7 @@ export const PdfService = {
 
   /** Mantém o fluxo legado para anexos e automações que precisam de um arquivo persistido. */
   async gerarOrcamento(
-    equipamento: Equipamento,
+    equipamento: EquipamentoPdf,
     verificacao: Verificacao,
     nomeArquivo?: string
   ): Promise<string | null> {
@@ -1173,7 +1194,7 @@ export const PdfService = {
   },
 
   async construirOrcamentoAjustado(
-    equipamento: Equipamento,
+    equipamento: EquipamentoPdf,
     verificacao: Verificacao,
     nomeArquivo?: string,
     prazoExecucao?: PrazoExecucaoPdf,
@@ -1319,8 +1340,8 @@ export const PdfService = {
         );
       }
 
-      const imagensEquipamento = equipamento.id
-        ? await db.listarImagensEquipamento(equipamento.id)
+      const imagensEquipamento = equipamento.id && !IS_SAAS_BUILD
+        ? await db.listarImagensEquipamento(obterIdEquipamentoInterno(equipamento))
         : [];
       const imagensEntrada = imagensEquipamento.filter((imagem) => imagem.categoria === "ENTRADA");
       const imagensSaida = imagensEquipamento.filter((imagem) => imagem.categoria === "SAIDA");
@@ -1405,7 +1426,7 @@ export const PdfService = {
    * Gera PDF de ordem de serviço para recebimento técnico.
    * Lista os campos preenchidos na seção "Dados do Equipamento".
    */
-  async construirOrdemServico(equipamento: Equipamento, nomeArquivo?: string): Promise<PdfArtifact> {
+  async construirOrdemServico(equipamento: EquipamentoPdf, nomeArquivo?: string): Promise<PdfArtifact> {
     const portal = await referenciaPdfPortal(equipamento, "ORDEM_SERVICO");
     try {
       const { jsPDF, autoTable } = await carregarModulosPdf();
@@ -1425,7 +1446,7 @@ export const PdfService = {
       let verificacao = null;
       if (equipamento.id) {
         try {
-          verificacao = await db.buscarVerificacao(equipamento.id);
+          verificacao = await buscarVerificacaoPdf(equipamento);
         } catch (error) {
           console.warn("[PdfService] Verificação não encontrada para a OS, seguindo sem dados de técnico.", error);
         }
@@ -1527,8 +1548,8 @@ export const PdfService = {
         [CONTENT_WIDTH],
       );
 
-      const imagensEquipamento = equipamento.id
-        ? await db.listarImagensEquipamento(equipamento.id)
+      const imagensEquipamento = equipamento.id && !IS_SAAS_BUILD
+        ? await db.listarImagensEquipamento(obterIdEquipamentoInterno(equipamento))
         : [];
       const imagensEntrada = imagensEquipamento.filter((imagem) => imagem.categoria === "ENTRADA");
       const imagensVerificacao = imagensEquipamento.filter((imagem) => imagem.categoria === "VERIFICACAO");
@@ -1577,12 +1598,12 @@ export const PdfService = {
   },
 
   /** Mantém o comportamento existente: constrói em memória e persiste no backend. */
-  async gerarOrdemServico(equipamento: Equipamento, nomeArquivo?: string): Promise<string | null> {
+  async gerarOrdemServico(equipamento: EquipamentoPdf, nomeArquivo?: string): Promise<string | null> {
     const artifact = await PdfService.construirOrdemServico(equipamento, nomeArquivo);
     return PdfService.salvarOrdemServico(artifact, equipamento, nomeArquivo);
   },
 
-  async salvarOrcamento(artifact: PdfArtifact, equipamento: Equipamento, nomeArquivo?: string): Promise<string> {
+  async salvarOrcamento(artifact: PdfArtifact, equipamento: EquipamentoPdf, nomeArquivo?: string): Promise<string> {
     await publicarPdfOficial(artifact, equipamento);
     const caminho = await invoke<string>("salvar_orcamento_pdf", {
       bytes: Array.from(artifact.bytes),
@@ -1593,7 +1614,7 @@ export const PdfService = {
     return caminho;
   },
 
-  async salvarOrdemServico(artifact: PdfArtifact, equipamento: Equipamento, nomeArquivo?: string): Promise<string> {
+  async salvarOrdemServico(artifact: PdfArtifact, equipamento: EquipamentoPdf, nomeArquivo?: string): Promise<string> {
     await publicarPdfOficial(artifact, equipamento);
     const caminho = await invoke<string>("salvar_ordem_servico_pdf", {
       bytes: Array.from(artifact.bytes),
@@ -1608,7 +1629,7 @@ export const PdfService = {
    * Gera PDF com histórico/status completo do equipamento.
    */
   async construirRelatorioStatus(
-    equipamento: Equipamento,
+    equipamento: EquipamentoPdf,
     historicoInformado?: EquipamentoHistoricoEvento[],
   ): Promise<PdfArtifact> {
     try {
@@ -1629,7 +1650,7 @@ export const PdfService = {
       let verificacao: Verificacao | null = null;
       if (equipamento.id) {
         try {
-          verificacao = await db.buscarVerificacao(equipamento.id);
+          verificacao = await buscarVerificacaoPdf(equipamento);
         } catch (error) {
           console.warn("[PdfService] Verificação não encontrada para o relatório de status.", error);
         }
@@ -1655,7 +1676,9 @@ export const PdfService = {
       let eventos = historicoInformado ?? montarHistoricoBasico(equipamento);
       if (!historicoInformado && equipamento.id) {
         try {
-          eventos = await db.listarHistoricoEquipamento(equipamento.id);
+          eventos = IS_SAAS_BUILD
+            ? await (await carregarRepositorioHistoricoEquipamento()).listar(String(equipamento.id))
+            : await db.listarHistoricoEquipamento(obterIdEquipamentoInterno(equipamento));
         } catch (error) {
           console.warn("[PdfService] Histórico auditado indisponível; usando etapas do equipamento.", error);
         }
@@ -1717,12 +1740,12 @@ export const PdfService = {
     }
   },
 
-  async gerarRelatorioStatus(equipamento: Equipamento): Promise<string | null> {
+  async gerarRelatorioStatus(equipamento: EquipamentoPdf): Promise<string | null> {
     const artifact = await PdfService.construirRelatorioStatus(equipamento);
     return PdfService.salvarRelatorioStatus(artifact, equipamento);
   },
 
-  async salvarRelatorioStatus(artifact: PdfArtifact, equipamento: Equipamento): Promise<string> {
+  async salvarRelatorioStatus(artifact: PdfArtifact, equipamento: EquipamentoPdf): Promise<string> {
     const caminho = await invoke<string>("salvar_relatorio_status_pdf", {
       bytes: Array.from(artifact.bytes),
       empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
@@ -1731,11 +1754,6 @@ export const PdfService = {
     return caminho;
   },
 
-  /**
-   * Gera o PDF do orçamento de venda avulsa de insumos (OI-<n>) no mesmo padrão visual do
-   * orçamento técnico: cabeçalho BMITAG, cliente, itens, desconto, total e condições.
-   * Usa só os dados já calculados pelo backend; nada é recalculado aqui.
-   */
   async construirOrcamentoInsumos(orcamento: OrcamentoInsumosDetalhe, nomeArquivo?: string): Promise<PdfArtifact> {
     try {
       const { jsPDF, autoTable } = await carregarModulosPdf();

@@ -6,6 +6,10 @@ authors = ["BMITAG"]
 edition = "2021"
 default-run = "autoos"
 
+[features]
+default = []
+saas = []
+
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
 

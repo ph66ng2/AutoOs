@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { AcessoPortalDialog } from "@/components/equipamentos/AcessoPortalDialog";
 import { PortalClientePanel } from "@/components/equipamentos/PortalClientePanel";
@@ -12,6 +13,7 @@ import {
   SENSITIVE_PERMISSIONS,
   type DecisaoOrcamentoInfo,
   type EnvioManualOrcamento,
+  type ClienteId,
   type Equipamento,
   type RespostaOrcamentoInfo,
   type SolicitacaoOrcamentoInfo,
@@ -74,7 +76,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [consultado, setConsultado] = useState<number | null>(null);
+  const [consultado, setConsultado] = useState<ClienteId | null>(null);
   const [painelAberto, setPainelAberto] = useState(false);
   const [acessoAberto, setAcessoAberto] = useState(false);
   const [acessoTela, setAcessoTela] = useState<"acesso" | "contatos">("acesso");
@@ -88,6 +90,13 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
 
   const carregar = useCallback(async () => {
     if (!equipamentoId) return;
+    if (IS_SAAS_BUILD) {
+      setInfo(null);
+      setError(null);
+      setLoading(false);
+      setConsultado(equipamentoId);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -120,6 +129,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
 
   const gerarNovaSenha = useCallback(async () => {
     if (!equipamentoId) return null;
+    if (IS_SAAS_BUILD) return null;
     const verificacao = await db.buscarVerificacao(equipamentoId);
     if (!verificacao) throw new Error("Verificação não encontrada.");
     return gerarNovaSenhaEnvioManual(equipamento, verificacao);
@@ -154,7 +164,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   );
 
   const publicar = useCallback(() => {
-    if (!equipamentoId) return;
+    if (!equipamentoId || IS_SAAS_BUILD) return;
     void executar(
       [SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
       "Publicar orçamento no portal",
@@ -182,6 +192,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   }, [equipamentoId, executar, hasAnyPermission]);
 
   const tratarSolicitacao = useCallback((id: number) => {
+    if (IS_SAAS_BUILD) return;
     void executar(
       [SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
       "Mensagem do cliente",
@@ -227,8 +238,8 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   return (
     <PortalClienteContext.Provider value={valor}>
       {children}
-      <PortalClientePanel open={painelAberto} onOpenChange={setPainelAberto} />
-      {equipamentoId ? (
+      {!IS_SAAS_BUILD && <PortalClientePanel open={painelAberto} onOpenChange={setPainelAberto} />}
+      {!IS_SAAS_BUILD && equipamentoId ? (
         <ProrrogarPrazoDialog
           open={prorrogarAberto}
           onOpenChange={setProrrogarAberto}
@@ -237,8 +248,8 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
           onEnvioManual={setEnvioManual}
         />
       ) : null}
-      <EnvioManualOrcamentoDialog envio={envioManual} onFechar={fecharEnvioManual} onGerarNovaSenha={gerarNovaSenha} />
-      {equipamento.cliente_id ? (
+      {!IS_SAAS_BUILD && <EnvioManualOrcamentoDialog envio={envioManual} onFechar={fecharEnvioManual} onGerarNovaSenha={gerarNovaSenha} />}
+      {!IS_SAAS_BUILD && equipamento.cliente_id ? (
         <AcessoPortalDialog
           open={acessoAberto}
           onOpenChange={(aberto) => {

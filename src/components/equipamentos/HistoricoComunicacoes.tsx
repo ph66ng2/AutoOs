@@ -24,17 +24,18 @@ import {
   Clock,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { db } from "@/lib/db";
-import type { Comunicacao } from "@/types";
+import { carregarRepositorioComunicacoes } from "@/lib/data/comunicacoes-repository";
+import type { Comunicacao, EquipamentoId } from "@/types";
 
 /**
  * Props do componente. Aceita comunicações já carregadas externamente
  * (evita refetch quando o parent já tem os dados do dialog de detalhes).
  */
 interface HistoricoComunicacoesProps {
-  equipamentoId: number;
+  equipamentoId: EquipamentoId;
   /** Comunicações já carregadas externamente (evita refetch) */
-  comunicacoesExternas?: Comunicacao[];
+  comunicacoesExternas?: Comunicacao<EquipamentoId>[];
+  erroExterno?: string | null;
 }
 
 /**
@@ -45,24 +46,30 @@ interface HistoricoComunicacoesProps {
 export function HistoricoComunicacoes({
   equipamentoId,
   comunicacoesExternas,
+  erroExterno,
 }: HistoricoComunicacoesProps) {
-  const [comunicacoes, setComunicacoes] = useState<Comunicacao[]>([]);
+  const [comunicacoes, setComunicacoes] = useState<Comunicacao<EquipamentoId>[]>([]);
   const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     if (comunicacoesExternas) {
       setComunicacoes(comunicacoesExternas);
+      setErro(erroExterno || null);
       return;
     }
 
     let cancelled = false;
     async function carregar() {
       setLoading(true);
+      setErro(null);
       try {
-        const data = await db.listarComunicacoes(equipamentoId);
+        const repository = await carregarRepositorioComunicacoes();
+        const data = await repository.listar(equipamentoId);
         if (!cancelled) setComunicacoes(data);
       } catch (err) {
         console.error("Erro ao carregar comunicações:", err);
+        if (!cancelled) setErro(err instanceof Error ? err.message : "Não foi possível carregar as comunicações.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -71,7 +78,7 @@ export function HistoricoComunicacoes({
     return () => {
       cancelled = true;
     };
-  }, [equipamentoId, comunicacoesExternas]);
+  }, [equipamentoId, comunicacoesExternas, erroExterno]);
 
   /** Retorna ícone do canal (Email ou WhatsApp) */
   const getIcone = (canal: string) => {
@@ -83,7 +90,7 @@ export function HistoricoComunicacoes({
   };
 
   /** Retorna badge de status: "Enviado" (verde) ou "Falhou" (vermelho) */
-  const getStatusBadge = (com: Comunicacao) => {
+  const getStatusBadge = (com: Comunicacao<EquipamentoId>) => {
     if (!com.enviado) {
       return (
         <Badge variant="destructive" className="text-xs gap-1">
@@ -106,6 +113,10 @@ export function HistoricoComunicacoes({
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
       </div>
     );
+  }
+
+  if (erro) {
+    return <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Não foi possível carregar o histórico de comunicações. {erro}</p>;
   }
 
   if (comunicacoes.length === 0) {

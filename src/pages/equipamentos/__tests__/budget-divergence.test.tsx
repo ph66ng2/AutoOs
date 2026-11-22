@@ -1055,7 +1055,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     });
     await screen.findByText(/Erros no processamento/);
     await waitFor(() => expect(screen.queryByRole("status", { name: "Carregando fotos" })).not.toBeInTheDocument());
-    fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "ZT230 revisada" } });
+    fireEvent.change(screen.getByPlaceholderText("Código patrimonial, se houver"), { target: { value: "ZT230 revisada" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
 
     await waitFor(() => expect(mockAtualizarEquipamento).toHaveBeenCalledOnce());
@@ -1066,7 +1066,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     mockListarImagensEquipamento.mockRejectedValueOnce(new Error("offline"));
     render(<Equipamentos />);
     fireEvent.click(screen.getByTestId("action-editar"));
-    fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "texto preservado" } });
+    fireEvent.change(screen.getByPlaceholderText("Código patrimonial, se houver"), { target: { value: "texto preservado" } });
     await screen.findByRole("button", { name: "Recarregar fotos" });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
@@ -1079,7 +1079,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await screen.findByRole("status", { name: "Carregando fotos" });
     await waitFor(() => {
       expect(screen.queryByRole("status", { name: "Carregando fotos" })).not.toBeInTheDocument();
-      expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("texto preservado");
+      expect(screen.getByPlaceholderText("Código patrimonial, se houver")).toHaveValue("texto preservado");
     });
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mockAtualizarEquipamento).toHaveBeenCalledOnce());
@@ -1103,14 +1103,14 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     render(<Equipamentos />);
     fireEvent.click(screen.getByTestId("action-editar"));
     await screen.findByText("entrada.jpg");
-    fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "texto mantido no conflito" } });
+    fireEvent.change(screen.getByPlaceholderText("Código patrimonial, se houver"), { target: { value: "texto mantido no conflito" } });
     fireEvent.click(screen.getByRole("button", { name: "Remover entrada.jpg" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
 
     await waitFor(() => expect(mockSubstituirImagensEquipamento).toHaveBeenCalledOnce());
     expect(mockSubstituirImagensEquipamento).toHaveBeenCalledWith(10, [], [77]);
     expect(screen.getByRole("heading", { name: "Editar Equipamento" })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("texto mantido no conflito");
+    expect(screen.getByPlaceholderText("Código patrimonial, se houver")).toHaveValue("texto mantido no conflito");
 
     mockListarImagensEquipamento.mockResolvedValueOnce([{
       id: 99,
@@ -1124,7 +1124,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     }]);
     fireEvent.click(screen.getByRole("button", { name: "Recarregar fotos" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Recarregar fotos" })).not.toBeInTheDocument());
-    expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("texto mantido no conflito");
+    expect(screen.getByPlaceholderText("Código patrimonial, se houver")).toHaveValue("texto mantido no conflito");
     expect(screen.getByText("foto-atualizada-externamente.jpg")).toBeInTheDocument();
   });
 
@@ -1135,7 +1135,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     render(<Equipamentos />);
     fireEvent.click(screen.getByTestId("action-editar"));
     await screen.findByRole("heading", { name: "Editar Equipamento" });
-    fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "gravação antiga" } });
+    fireEvent.change(screen.getByPlaceholderText("Código patrimonial, se houver"), { target: { value: "gravação antiga" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mockAtualizarEquipamento).toHaveBeenCalledOnce());
 
@@ -1151,7 +1151,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       });
     });
 
-    expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("ZT230");
+    expect(screen.getByPlaceholderText("Código patrimonial, se houver")).toHaveValue("");
     expect(screen.getByRole("heading", { name: "Editar Equipamento" })).toBeInTheDocument();
   });
 

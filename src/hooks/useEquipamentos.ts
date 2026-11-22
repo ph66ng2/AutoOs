@@ -10,20 +10,29 @@
  * @usedBy pages/Equipamentos.tsx - página principal de equipamentos
  */
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { db } from "@/lib/db";
-import type { Equipamento } from "@/types";
+import {
+  carregarRepositorioEquipamentos,
+  type EquipamentosRepository,
+  type EquipmentOrdering,
+} from "@/lib/data/equipamentos-repository";
+import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
+import type { Equipamento, EquipamentoId } from "@/types";
+import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
 
 /**
  * Parâmetros de busca e filtro para a listagem de equipamentos.
  * @property busca - Texto livre para busca por nome, modelo, número de série, etc.
  * @property status - Filtro por status do equipamento (ex: "ABERTO", "EM_REPARO"). Use "TODOS" para ignorar o filtro.
  */
-interface UseEquipamentosParams {
+interface UseEquipamentosParams<Id extends EquipamentoId> {
   busca?: string;
   status?: string;
-  ordenacao?: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE";
-  /** Página apresentada pela interface, iniciando em 1. */
   page?: number;
+  ordenacao?: EquipmentOrdering;
+  /** Injeção para testes; em runtime, o build escolhe o adapter Online ou Tauri. */
+  repository?: EquipamentosRepository<Id>;
 }
 
 type ResultadoCarregamento =
@@ -42,15 +51,14 @@ function mensagemErro(error: unknown, fallback: string): string {
  * @param params - Parâmetros opcionais de busca/filtro
  * @returns Objeto com a lista de equipamentos, estados de loading/error e funções de mutação
  */
-export function useEquipamentos(params?: UseEquipamentosParams) {
-  const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
+export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseEquipamentosParams<Id>) {
+  const [equipamentos, setEquipamentos] = useState<Equipamento<Id>[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [avisoAtualizacao, setAvisoAtualizacao] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(false);
-  const paramsRef = useRef(params);
 
   useLayoutEffect(() => {
     mountedRef.current = true;
@@ -59,13 +67,6 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
       requestIdRef.current += 1;
     };
   }, []);
-
-  useLayoutEffect(() => {
-    paramsRef.current = params;
-    // Invalidate the previous filter request as soon as the new params commit,
-    // before a resolved promise can publish its stale result.
-    requestIdRef.current += 1;
-  }, [params?.busca, params?.status, params?.page, params?.ordenacao]);
 
   /**
    * Carrega a lista de equipamentos do banco de dados.
@@ -84,16 +85,19 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     setError(null);
     setAvisoAtualizacao(null);
     try {
-      const params = paramsRef.current;
-      const data = await db.listarEquipamentosPaginados(
-        params?.busca,
-        params?.status === "TODOS" ? undefined : params?.status,
-        Math.max((params?.page ?? 1) - 1, 0),
-        params?.ordenacao ?? "ATUALIZACAO_RECENTE",
-      );
-      if (!atual()) return { status: "obsoleto" };
-      setEquipamentos(data.items);
-      setTotal(data.total);
+      const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
+      const status = params?.status === "TODOS" ? undefined : params?.status;
+      if (params?.page !== undefined && repository.listarPagina) {
+        const result = await repository.listarPagina(params.busca, status, params.page, params.ordenacao);
+        if (!atual()) return { status: "obsoleto" };
+        setEquipamentos(result.items);
+        setTotal(result.total);
+      } else {
+        const data = await repository.listar(params?.busca, status);
+        if (!atual()) return { status: "obsoleto" };
+        setEquipamentos(params?.page === undefined ? data : paginateItems(data, params.page, ITEMS_PER_PAGE));
+        setTotal(data.length);
+      }
       return { status: "atualizado" };
     } catch (err: any) {
       if (!atual()) return { status: "obsoleto" };
@@ -105,14 +109,16 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     } finally {
       if (atual()) setLoading(false);
     }
+  }, [params?.busca, params?.status, params?.page, params?.ordenacao, params?.repository]);
+
+  const substituirLocal = useCallback((equipamento: Equipamento<Id>) => {
+    setEquipamentos((current) => current.map((item) => item.id === equipamento.id ? equipamento : item));
   }, []);
 
   useEffect(() => {
     void carregar();
-    return () => {
-      requestIdRef.current += 1;
-    };
-  }, [carregar, params?.busca, params?.status, params?.page, params?.ordenacao]);
+    return () => { requestIdRef.current += 1; };
+  }, [carregar]);
 
   const recarregar = useCallback(() => carregar(), [carregar]);
   const atualizarEmSegundoPlano = useCallback(() => carregar({ silencioso: true }), [carregar]);
@@ -132,9 +138,10 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
    * @param equipamento - Dados do equipamento (sem id, gerado pelo banco)
    * @returns Objeto com { sucesso: boolean, erro?: string }
    */
-  const criar = async (equipamento: Omit<Equipamento, "id">) => {
+  const criar = async (equipamento: Omit<Equipamento<Id>, "id">) => {
     try {
-      const data = await db.criarEquipamento(equipamento);
+      const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
+      const data = await repository.criar(equipamento);
       return { sucesso: true as const, data, ...(await recarregarAposGravacao()) };
     } catch (err: any) {
       return { sucesso: false as const, erro: err?.toString() };
@@ -149,9 +156,10 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
    * @param equipamento - Novos dados do equipamento
    * @returns Objeto com { sucesso: boolean, erro?: string }
    */
-  const atualizar = async (id: number, equipamento: Omit<Equipamento, "id">) => {
+  const atualizar = async (id: Id, equipamento: Omit<Equipamento<Id>, "id">, atualizadoEm?: string) => {
     try {
-      const data = await db.atualizarEquipamento(id, equipamento);
+      const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
+      const data = await repository.atualizar(id, equipamento, atualizadoEm);
       return { sucesso: true as const, data, ...(await recarregarAposGravacao()) };
     } catch (err: any) {
       return { sucesso: false as const, erro: err?.toString() };
@@ -165,12 +173,23 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
    * @param id - ID do equipamento a ser removido
    * @returns Objeto com { sucesso: boolean, erro?: string }
    */
-  const deletar = async (id: number) => {
+  const deletar = async (id: Id) => {
     try {
-      await db.deletarEquipamento(id);
+      const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
+      await repository.deletar(id);
       return { sucesso: true as const, ...(await recarregarAposGravacao()) };
     } catch (err: any) {
       return { sucesso: false as const, erro: err?.toString() };
+    }
+  };
+
+  const buscarPorSerial = async (serial: string) => {
+    try {
+      const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
+      return await repository.buscarPorSerial(serial);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao buscar equipamentos por série");
+      return [];
     }
   };
 
@@ -186,7 +205,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
    * @returns Objeto com { sucesso: boolean, erro?: string }
    */
   const atualizarStatus = async (
-    id: number,
+    id: Id,
     novoStatus: string,
     valorOrcamento?: number,
     prazoAprovacao?: string,
@@ -195,6 +214,21 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     motivoCorrecao?: string,
   ) => {
     try {
+      if (IS_SAAS_BUILD) {
+        if (typeof id !== "string") throw new Error("O identificador do equipamento Online é inválido.");
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        await repository.changeStatus({
+          equipmentId: id,
+          expectedUpdatedAt: expectedUpdatedEm ?? "",
+          status: novoStatus,
+          budget: valorOrcamento,
+          approvalDeadline: prazoAprovacao,
+          finalValue: valorFinal,
+          correctionReason: motivoCorrecao,
+        });
+        return { sucesso: true as const, ...(await recarregarAposGravacao()) };
+      }
+      if (typeof id !== "number") throw new Error("Um identificador SaaS não pode ser encaminhado ao banco local.");
       await db.atualizarStatusEquipamento(
         id,
         novoStatus,
@@ -220,7 +254,9 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     atualizar,
     deletar,
     atualizarStatus,
+    buscarPorSerial,
     recarregar,
     atualizarEmSegundoPlano,
+    substituirLocal,
   };
 }

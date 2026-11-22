@@ -16,9 +16,14 @@
  *  O método `criar` retorna o ID do novo cliente, permitindo que outros
  *  componentes o utilizem imediatamente após a criação.
  */
-import { useState, useEffect, useCallback } from "react";
-import { db } from "@/lib/db";
-import type { Cliente, ContatoInicialInput } from "@/types";
+import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  carregarRepositorioClientes,
+  type ClienteInput,
+  type ClientesRepository,
+} from "@/lib/data/clientes-repository";
+import type { Cliente, ClienteId, ContatoInicialInput } from "@/types";
+import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
 
 /**
  * Parâmetros de pesquisa aceitos pelo hook useClientes.
@@ -28,8 +33,9 @@ import type { Cliente, ContatoInicialInput } from "@/types";
  */
 interface UseClientesParams {
   busca?: string;
-  /** Página apresentada pela interface, iniciando em 1. */
   page?: number;
+  /** Injeção para teste; o runtime seleciona o adapter Online ou interno. */
+  repository?: ClientesRepository;
 }
 
 /**
@@ -47,6 +53,7 @@ export function useClientes(params?: UseClientesParams) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const latestRequest = useRef(0);
 
   /**
    * Carrega a lista de clientes a partir do banco de dados.
@@ -56,25 +63,34 @@ export function useClientes(params?: UseClientesParams) {
    * que o valor de `busca` muda.
    */
   const carregar = useCallback(async () => {
+    const requestId = ++latestRequest.current;
     setLoading(true);
     setError(null);
     try {
-      const data = await db.listarClientesPaginados(
-        params?.busca,
-        Math.max((params?.page ?? 1) - 1, 0),
-      );
-      setClientes(data.items);
-      setTotal(data.total);
+      const repository = params?.repository ?? await carregarRepositorioClientes();
+      if (params?.page !== undefined && repository.listarPagina) {
+        const result = await repository.listarPagina(params.busca, params.page);
+        if (requestId !== latestRequest.current) return;
+        setClientes(result.items);
+        setTotal(result.total);
+      } else {
+        const data = await repository.listar(params?.busca);
+        if (requestId !== latestRequest.current) return;
+        setClientes(params?.page === undefined ? data : paginateItems(data, params.page, ITEMS_PER_PAGE));
+        setTotal(data.length);
+      }
     } catch (err: any) {
+      if (requestId !== latestRequest.current) return;
       setError(err?.toString() || "Erro ao carregar clientes");
       console.error("Erro ao carregar clientes:", err);
     } finally {
-      setLoading(false);
+      if (requestId === latestRequest.current) setLoading(false);
     }
-  }, [params?.busca, params?.page]);
+  }, [params?.busca, params?.page, params?.repository]);
 
   useEffect(() => {
-    carregar();
+    void carregar();
+    return () => { latestRequest.current += 1; };
   }, [carregar]);
 
   /**
@@ -89,9 +105,10 @@ export function useClientes(params?: UseClientesParams) {
    *          O `id` retornado é utilizado por ClienteSelector.tsx para
    *          vincular o cliente recém-criado a um equipamento.
    */
-  const criar = async (cliente: Omit<Cliente, "id">, contatoInicial?: ContatoInicialInput) => {
+  const criar = async (cliente: ClienteInput, contatoInicial?: ContatoInicialInput) => {
     try {
-      const criado = await db.criarCliente(cliente, contatoInicial);
+      const repository = params?.repository ?? await carregarRepositorioClientes();
+      const criado = await repository.criar(cliente, contatoInicial);
       await carregar();
       return { sucesso: true, id: criado.id! };
     } catch (err: any) {
@@ -109,9 +126,10 @@ export function useClientes(params?: UseClientesParams) {
    * @param cliente — Novos dados do cliente (sem o campo `id`).
    * @returns `{ sucesso: true }` ou `{ sucesso: false, erro }` em caso de falha.
    */
-  const atualizar = async (id: number, cliente: Omit<Cliente, "id">, contatoInicial?: ContatoInicialInput) => {
+  const atualizar = async (id: ClienteId, cliente: ClienteInput, contatoInicial?: ContatoInicialInput) => {
     try {
-      await db.atualizarCliente(id, cliente, contatoInicial);
+      const repository = params?.repository ?? await carregarRepositorioClientes();
+      await (contatoInicial ? repository.atualizar(id, cliente, contatoInicial) : repository.atualizar(id, cliente));
       await carregar();
       return { sucesso: true };
     } catch (err: any) {
@@ -122,15 +140,16 @@ export function useClientes(params?: UseClientesParams) {
   /**
    * Remove um cliente do banco de dados.
    *
-   * Fluxo: `db.deletarCliente` → Rust `deletar_cliente` (DELETE no PostgreSQL).
+   * Fluxo: `db.deletarCliente` → Rust `deletar_cliente` (exclusão lógica no PostgreSQL).
    * Após a exclusão, recarrega a lista automaticamente.
    *
    * @param id — ID do cliente a ser removido.
    * @returns `{ sucesso: true }` ou `{ sucesso: false, erro }` em caso de falha.
    */
-  const deletar = async (id: number) => {
+  const deletar = async (id: ClienteId) => {
     try {
-      await db.deletarCliente(id);
+      const repository = params?.repository ?? await carregarRepositorioClientes();
+      await repository.deletar(id);
       await carregar();
       return { sucesso: true };
     } catch (err: any) {

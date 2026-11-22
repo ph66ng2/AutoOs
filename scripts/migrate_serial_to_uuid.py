@@ -510,8 +510,12 @@ class MigrationTransformer:
                 if col_to_remove in new_columns:
                     new_columns.remove(col_to_remove)
 
-            # Add empresa_id if not present
-            if "empresa_id" not in new_columns:
+            empresa_id_in_source = "empresa_id" in columns
+
+            # Add empresa_id only when the source dump does not contain it.
+            # Existing integer tenant IDs belong to the legacy model and must be
+            # replaced by the selected UUID, not emitted a second time.
+            if not empresa_id_in_source:
                 new_columns.append("empresa_id")
 
             # Find indices we need to remap
@@ -580,8 +584,11 @@ class MigrationTransformer:
                         if idx < len(new_row):
                             new_row.pop(idx)
 
-                # Add empresa_id value
-                if "empresa_id" in new_columns:
+                # Keep exactly one empresa_id value. A legacy value is converted
+                # to the selected staging tenant UUID; otherwise append it.
+                if empresa_id_in_source:
+                    new_row[columns.index("empresa_id")] = f"'{self.empresa_uuid}'::uuid"
+                else:
                     new_row.append(f"'{self.empresa_uuid}'::uuid")
 
                 # Ensure row length matches column count

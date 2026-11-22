@@ -145,6 +145,31 @@ describe("CorrigirDecisaoDialog", () => {
     await waitFor(() => expect(mocks.corrigir).toHaveBeenCalledWith(expect.objectContaining({ modo: "MANTER_ATUAL" })));
   });
 
+  it("corrige uma recusa (REPROVADO) sem pedir estoque quando nada foi baixado", async () => {
+    mocks.analisar.mockResolvedValue(analise({
+      status: "REPROVADO",
+      pecasBaixadas: [],
+      totalBaixado: 0,
+      exigeDecisaoEstoque: false,
+    }));
+    mocks.corrigir.mockResolvedValue({});
+    const recusado = { ...equipamento, status: "REPROVADO" } as Equipamento;
+    const onCorrigido = vi.fn();
+    render(<CorrigirDecisaoDialog equipamento={recusado} open onOpenChange={vi.fn()} onCorrigido={onCorrigido} />);
+
+    const botao = await screen.findByRole("button", { name: "Reabrir orçamento" });
+    expect(screen.getByText(/Etapa atual:/).closest("p")).toHaveTextContent("REPROVADO");
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Motivo da correção/), { target: { value: "Cliente mudou de ideia" } });
+    fireEvent.click(botao);
+
+    await waitFor(() => expect(mocks.corrigir).toHaveBeenCalledWith(expect.objectContaining({
+      modo: "RESTAURAR_ORIGINAL",
+      devolver_estoque: false,
+    })));
+    await waitFor(() => expect(onCorrigido).toHaveBeenCalled());
+  });
+
   it("mostra o erro do backend sem fechar o diálogo", async () => {
     mocks.analisar.mockResolvedValue(analise({ pecasBaixadas: [], totalBaixado: 0, exigeDecisaoEstoque: false }));
     mocks.corrigir.mockRejectedValue("O equipamento foi alterado por outra pessoa.");
@@ -156,6 +181,12 @@ describe("CorrigirDecisaoDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/alterado por outra pessoa/);
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
     expect(onCorrigido).not.toHaveBeenCalled();
+  });
+
+  it("mostra a mensagem de um OnlineDataError em vez do fallback genérico", async () => {
+    mocks.analisar.mockRejectedValue(new Error("3 peça(s) já foram baixadas do estoque. Confirme a devolução ao estoque, o que só vale se as peças estiverem intactas."));
+    abrir();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/3 peça\(s\) já foram baixadas/);
   });
 
   it("repassa o resultado do portal (aviso quando a republicação falha)", async () => {

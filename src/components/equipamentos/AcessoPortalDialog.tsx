@@ -8,7 +8,7 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import type { Cliente, ClienteContato } from "@/types";
+import type { Cliente, ClienteContato, ClienteId } from "@/types";
 
 /** Contato que responde orçamentos no portal: acesso DECIDIR e senha criada. */
 export function respondeNoPortal(contato: ClienteContato) {
@@ -37,12 +37,12 @@ type Tela = "acesso" | "contatos" | "senha";
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  clienteId: number;
-  empresaId?: number;
+  clienteId: ClienteId;
+  empresaId?: ClienteId;
   /** Tela que abre ao ser aberto: o acesso (padrão) ou direto a lista de contatos. */
   telaInicial?: "acesso" | "contatos";
   /** Responsável pelo equipamento: já vem marcado. */
-  responsavelContatoId?: number | null;
+  responsavelContatoId?: ClienteId | null;
   /** Avisa o quadro do orçamento para atualizar "quem responde". */
   onAlterado: () => void;
 };
@@ -56,15 +56,15 @@ export function AcessoPortalDialog({ open, onOpenChange, clienteId, empresaId, t
   const [tela, setTela] = useState<Tela>("acesso");
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
-  const [selecionado, setSelecionado] = useState<number | null>(null);
+  const [selecionado, setSelecionado] = useState<ClienteId | null>(null);
   const [podeResponder, setPodeResponder] = useState(true);
   const [carregando, setCarregando] = useState(false);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const idsAntesDosContatos = useRef<Set<number>>(new Set());
+  const idsAntesDosContatos = useRef<Set<ClienteId>>(new Set());
   const empresa = empresaId ?? cliente?.empresa_id;
 
-  const carregar = useCallback(async (preferir?: number | null) => {
+  const carregar = useCallback(async (preferir?: ClienteId | null) => {
     setCarregando(true);
     setErro(null);
     try {

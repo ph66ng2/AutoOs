@@ -1,0 +1,1 @@
+{"name":"autoos-mobile-photo-uploader","private":true,"scripts":{"build":"node scripts/write-config.mjs && node --check app.js"}}

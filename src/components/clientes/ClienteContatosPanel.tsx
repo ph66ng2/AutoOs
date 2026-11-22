@@ -19,6 +19,8 @@ import { useNotification } from "@/hooks/useNotification";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 import { db } from "@/lib/db";
+import { carregarRepositorioClienteContatos } from "@/lib/data/cliente-contatos-repository";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import {
   celularValido,
   schemaContatoCliente,
@@ -28,7 +30,7 @@ import {
 } from "@/lib/validations";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { SenhaPortalDialog } from "@/components/clientes/SenhaPortalDialog";
-import type { AcessoPortalContato, Cliente, ClienteContato, ClienteContatoInput } from "@/types";
+import type { AcessoPortalContato, Cliente, ClienteContato, ClienteContatoInput, ClienteId } from "@/types";
 
 const ACESSO_PORTAL: Record<AcessoPortalContato, string> = {
   NENHUM: "Sem acesso ao portal",
@@ -38,7 +40,7 @@ const ACESSO_PORTAL: Record<AcessoPortalContato, string> = {
 
 interface ClienteContatosPanelProps {
   cliente: Cliente;
-  empresaId?: number;
+  empresaId?: ClienteId;
 }
 
 function formatarDocumentoCliente(valor: string) {
@@ -48,8 +50,12 @@ function formatarDocumentoCliente(valor: string) {
   return valor;
 }
 
+/** No SaaS não há SensitiveAccessProvider e o acesso ao portal ainda não foi portado (fica oculto). */
+const SEM_ACESSO_SENSIVEL_SAAS = { ensureSensitiveAccess: async () => false } as const;
+
 export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPanelProps) {
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  // IS_SAAS_BUILD é constante de build: a ordem dos hooks não muda entre renderizações.
+  const { ensureSensitiveAccess } = IS_SAAS_BUILD ? SEM_ACESSO_SENSIVEL_SAAS : useSensitiveAccess();
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -57,7 +63,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   const [editando, setEditando] = useState<ClienteContato | null>(null);
   const [inativando, setInativando] = useState<ClienteContato | null>(null);
   const [salvando, setSalvando] = useState(false);
-  const [alterandoAcesso, setAlterandoAcesso] = useState<number | null>(null);
+  const [alterandoAcesso, setAlterandoAcesso] = useState<ClienteId | null>(null);
   const [senhaDe, setSenhaDe] = useState<ClienteContato | null>(null);
   const { success, error: showError } = useNotification();
   const outrosComCelular = contatos.some((contato) =>
@@ -76,7 +82,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   });
 
   async function carregarContatos() {
-    if (!cliente.id || !empresaId) {
+    if (!cliente.id || (!IS_SAAS_BUILD && !empresaId)) {
       setContatos([]);
       setErro(empresaId ? "Cliente sem identificador para listar contatos." : "Empresa não identificada para listar contatos.");
       return;
@@ -84,7 +90,8 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
     setCarregando(true);
     setErro(null);
     try {
-      setContatos(await db.listarClienteContatos(cliente.id, empresaId));
+      const repository = await carregarRepositorioClienteContatos();
+      setContatos(await repository.listar(cliente.id, empresaId));
     } catch (cause) {
       setErro(String(cause));
     } finally {
@@ -115,10 +122,10 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   }
 
   async function salvarContato(data: ClienteContatoFormData) {
-    if (!cliente.id || !empresaId) return;
+    if (!cliente.id || (!IS_SAAS_BUILD && !empresaId)) return;
     setSalvando(true);
     const input: ClienteContatoInput = {
-      empresa_id: empresaId,
+      empresa_id: empresaId ?? "",
       cliente_id: cliente.id,
       nome: data.nome.trim(),
       email: data.email.trim() || undefined,
@@ -127,10 +134,12 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
     };
     try {
       if (editando?.id) {
-        await db.atualizarClienteContato(editando.id, input);
+        const repository = await carregarRepositorioClienteContatos();
+        await repository.atualizar(editando.id, input);
         success("Clientes", "Contato atualizado.", "Contatos");
       } else {
-        await db.criarClienteContato(input);
+        const repository = await carregarRepositorioClienteContatos();
+        await repository.criar(input);
         success("Clientes", "Contato cadastrado.", "Contatos");
       }
       setDialogOpen(false);
@@ -167,10 +176,11 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   }
 
   async function confirmarInativacao() {
-    if (!inativando?.id || !empresaId) return;
+    if (!inativando?.id || (!IS_SAAS_BUILD && !empresaId)) return;
     setSalvando(true);
     try {
-      await db.inativarClienteContato(inativando.id, empresaId);
+      const repository = await carregarRepositorioClienteContatos();
+      await repository.inativar(inativando.id, empresaId == null ? undefined : Number(empresaId));
       setInativando(null);
       await carregarContatos();
       success("Clientes", "Contato inativado.", "Contatos");
@@ -192,12 +202,12 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
             Empresa/cliente vinculado: <strong>{nomeExibicaoCliente(cliente)}</strong>
           </p>
         </div>
-        <Button type="button" size="sm" onClick={abrirNovo} disabled={!cliente.id || !empresaId}>
+        <Button type="button" size="sm" onClick={abrirNovo} disabled={!cliente.id || (!IS_SAAS_BUILD && !empresaId)}>
           <Plus className="mr-1 h-4 w-4" /> Novo contato
         </Button>
       </div>
 
-      {erro && <ErrorAlert variant="error" context="Clientes" message={erro} action={empresaId ? "Carregar contatos" : "Use “Regularizar antigos” na tela de clientes"} />}
+      {erro && <ErrorAlert variant="error" context="Clientes" message={erro} action={IS_SAAS_BUILD || empresaId ? "Carregar contatos" : "Use “Regularizar antigos” na tela de clientes"} />}
       {carregando ? (
         <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">Carregando contatos...</div>
       ) : contatos.length === 0 ? (
@@ -214,7 +224,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
                   <span><Mail className="mr-1 inline h-3 w-3" />{contato.email || "Sem e-mail"}</span>
                   <span><Phone className="mr-1 inline h-3 w-3" />{contato.telefone ? formatarTelefone(contato.telefone) : "Sem telefone"}</span>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                {!IS_SAAS_BUILD && <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                   <span className="text-muted-foreground">Portal das Impressoras:</span>
                   <select
                     aria-label={`Acesso de ${contato.nome} ao portal`}
@@ -238,7 +248,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
                       {contato.portal_senha_definida_em ? "Senha criada" : "Sem senha (ainda não entra)"}
                     </span>
                   )}
-                </div>
+                </div>}
               </div>
               <div className="flex shrink-0 gap-1">
                 <Button type="button" size="sm" variant="outline" onClick={() => abrirEdicao(contato)}>

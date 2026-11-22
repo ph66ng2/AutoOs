@@ -6,17 +6,17 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { useNotification } from "@/hooks/useNotification";
-import { db } from "@/lib/db";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { carregarRepositorioClienteContatos } from "@/lib/data/cliente-contatos-repository";
 import { celularValido, clienteContatoSchema, digitosTelefoneBr, formatarTelefone, type ClienteContatoFormData } from "@/lib/validations";
-import type { Cliente, ClienteContato } from "@/types";
+import type { Cliente, ClienteContato, ClienteId } from "@/types";
 
 interface ContatoResponsavelSelectorProps {
   cliente: Cliente | null;
-  empresaId?: number;
+  empresaId?: ClienteId;
   value: ClienteContato | null;
   onChange: (contato: ClienteContato | null) => void;
   disabled?: boolean;
-  /** Rótulo do campo; no equipamento é o responsável por ele. */
   titulo?: string;
   /** Pré-seleciona o primeiro contato ativo com celular válido, uma vez por cliente, quando não há responsável. */
   preSelecionar?: boolean;
@@ -39,9 +39,9 @@ export function ContatoResponsavelSelector({
   const [novo, setNovo] = useState<ClienteContatoFormData>({ nome: "", email: "", telefone: "" });
   const [erroNovo, setErroNovo] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
-  const clienteAnterior = useRef<number | undefined>(cliente?.id);
+  const clienteAnterior = useRef<ClienteId | undefined>(cliente?.id);
   const valorAtual = useRef<ClienteContato | null>(value);
-  const preSelecionadosPara = useRef<Set<number>>(new Set());
+  const preSelecionadosPara = useRef<Set<ClienteId>>(new Set());
   const { error: showError } = useNotification();
 
   valorAtual.current = value;
@@ -52,7 +52,8 @@ export function ContatoResponsavelSelector({
       onChange(null);
     }
     setBusca("");
-    if (!cliente?.id || !empresaId) {
+    const companyId = empresaId ?? cliente?.empresa_id;
+    if (!cliente?.id || (!IS_SAAS_BUILD && typeof companyId !== "number")) {
       setContatos([]);
       setErro(null);
       return;
@@ -61,10 +62,13 @@ export function ContatoResponsavelSelector({
     const clienteId = cliente.id;
     setCarregando(true);
     setErro(null);
-    db.listarClienteContatos(clienteId, empresaId)
+    void carregarRepositorioClienteContatos()
+      .then((repository) => repository.listar(clienteId, companyId))
       .then((items) => {
         if (!ativo) return;
         setContatos(items);
+        const linkedContact = valorAtual.current?.id ? items.find((item) => item.id === valorAtual.current?.id) : undefined;
+        if (linkedContact) onChange(linkedContact);
         if (preSelecionar && !valorAtual.current && !preSelecionadosPara.current.has(clienteId)) {
           preSelecionadosPara.current.add(clienteId);
           const primeiro = items.find((contato) => contato.ativo && celularValido(contato.telefone ?? ""));
@@ -74,7 +78,7 @@ export function ContatoResponsavelSelector({
       .catch((cause) => { if (ativo) { setContatos([]); setErro(String(cause)); } })
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
-  }, [cliente?.id, empresaId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cliente?.id, cliente?.empresa_id, empresaId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtrados = contatos.filter((contato) => {
     const termo = busca.trim().toLowerCase();
@@ -88,7 +92,8 @@ export function ContatoResponsavelSelector({
   }
 
   async function cadastrarRapido() {
-    if (!cliente?.id || !empresaId) return;
+    const companyId = empresaId ?? cliente?.empresa_id;
+    if (!cliente?.id || (!IS_SAAS_BUILD && typeof companyId !== "number")) return;
     const resultado = clienteContatoSchema.safeParse(novo);
     if (!resultado.success) {
       setErroNovo(resultado.error.issues[0]?.message || "Revise os dados do contato.");
@@ -96,8 +101,9 @@ export function ContatoResponsavelSelector({
     }
     setSalvando(true);
     try {
-      const contato = await db.criarClienteContato({
-        empresa_id: empresaId,
+      const repository = await carregarRepositorioClienteContatos();
+      const contato = await repository.criar({
+        empresa_id: companyId,
         cliente_id: cliente.id,
         nome: resultado.data.nome.trim(),
         email: resultado.data.email.trim() || undefined,
@@ -121,7 +127,7 @@ export function ContatoResponsavelSelector({
           <Label className="flex items-center gap-1"><UserRound className="h-3.5 w-3.5 shrink-0" /> {titulo}</Label>
           <p className="text-xs text-muted-foreground">Opcional. Escolha um contato ativo deste cliente.</p>
         </div>
-        <Button type="button" size="sm" variant="outline" className="shrink-0 whitespace-nowrap" onClick={() => setNovoOpen(true)} disabled={disabled || !cliente?.id || !empresaId}>
+        <Button type="button" size="sm" variant="outline" className="shrink-0 whitespace-nowrap" onClick={() => setNovoOpen(true)} disabled={disabled || !cliente?.id || (!IS_SAAS_BUILD && typeof (empresaId ?? cliente?.empresa_id) !== "number")}>
           <Plus className="mr-1 h-3.5 w-3.5" /> Novo contato
         </Button>
       </div>
@@ -149,7 +155,7 @@ export function ContatoResponsavelSelector({
                   value={busca}
                   onChange={(event) => setBusca(event.target.value)}
                   placeholder="Pesquisar contato por nome, e-mail ou telefone"
-                  disabled={disabled || !empresaId}
+                  disabled={disabled || (!IS_SAAS_BUILD && typeof (empresaId ?? cliente.empresa_id) !== "number")}
                 />
               </div>
               <Button type="button" variant="ghost" className="w-full justify-start text-sm" onClick={() => onChange(null)} disabled={disabled}>

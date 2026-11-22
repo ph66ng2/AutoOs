@@ -61,7 +61,7 @@ async fn main() -> Result<()> {
 
     // NÃO CONSEGUE: aprovar (FINANCIAL_ACTIONS).
     let erro = equipamentos::aprovar_orcamento(AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq,expected_updated_em:token(eq).await?,
-        pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],aprovado:None,resposta_esperada_id:None,motivo_divergencia:None })
+        pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],aprovar_sem_servicos:false,aprovado:None,resposta_esperada_id:None,motivo_divergencia:None })
         .await.unwrap_err();
     assert!(erro.contains(SEM_PERMISSAO), "{erro}");
 

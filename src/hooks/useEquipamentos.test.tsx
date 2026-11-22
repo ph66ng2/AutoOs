@@ -11,6 +11,7 @@ const mockAtualizarStatus = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/db", () => ({
   db: {
     listarEquipamentosPaginados: (...args: unknown[]) => mockListarPaginados(...args),
+    listarEquipamentos: async (...args: unknown[]) => (await mockListarPaginados(...args)).items,
     criarEquipamento: (...args: unknown[]) => mockCriar(...args),
     atualizarEquipamento: (...args: unknown[]) => mockAtualizar(...args),
     deletarEquipamento: (...args: unknown[]) => mockDeletar(...args),

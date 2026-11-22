@@ -1,0 +1,271 @@
+import { db } from "@/lib/db";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { loadSaasAuthConfiguration, type SaasAuthConfiguration } from "@/lib/saas-auth";
+import { tauriSaasSessionStore } from "@/lib/saas-session-store";
+import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
+import type { Cliente, ClienteId, ContatoInicialInput } from "@/types";
+import type { SaasSession } from "@/types/saas-auth";
+
+export type ClienteInput = Omit<Cliente, "id">;
+
+export interface ClientesPage {
+  items: Cliente[];
+  total: number;
+}
+
+export interface ClientesRepository {
+  listar(busca?: string): Promise<Cliente[]>;
+  listarPagina?(busca: string | undefined, page: number): Promise<ClientesPage>;
+  buscar(id: ClienteId): Promise<Cliente>;
+  criar(cliente: ClienteInput, contatoInicial?: ContatoInicialInput): Promise<Cliente>;
+  atualizar(id: ClienteId, cliente: ClienteInput, contatoInicial?: ContatoInicialInput): Promise<Cliente>;
+  deletar(id: ClienteId): Promise<void>;
+}
+
+export type OnlineDataErrorCode = "ONLINE_UNAVAILABLE" | "SESSION_EXPIRED" | "RLS_DENIED" | "INVALID_SESSION" | "CONFLICT" | "INVALID_DATA";
+
+/** Erro seguro para a UI: nunca inclui URL, token ou payload de autenticação. */
+export class OnlineDataError extends Error {
+  constructor(public readonly code: OnlineDataErrorCode, message: string) {
+    super(message);
+    this.name = "OnlineDataError";
+  }
+}
+
+export interface SupabaseOnlineSession {
+  supabaseUrl: string;
+  publishableKey: string;
+  accessToken: string;
+  /** Derivado exclusivamente de app_metadata.company_id no JWT de usuário. */
+  companyId: string;
+}
+
+type FetchLike = typeof fetch;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CLIENTE_FIELDS = ["nome", "tipo_pessoa", "documento", "razao_social", "nome_fantasia", "inscricao_estadual", "cpf_cnpj", "telefone", "telefone_secundario", "email", "cep", "endereco", "numero", "complemento", "bairro", "cidade", "uf", "receber_email", "receber_whatsapp", "observacoes", "ativo"] as const;
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function assertPublishableKey(key: string): void {
+  if (!key.trim()) throw new OnlineDataError("INVALID_SESSION", "A chave publicável do Supabase não foi configurada.");
+  const keyPayload = decodeJwtPayload(key);
+  if (keyPayload?.role === "service_role" || /service[_-]?role|secret/i.test(key)) {
+    throw new OnlineDataError("INVALID_SESSION", "A configuração SaaS contém uma credencial administrativa proibida no desktop.");
+  }
+}
+
+/** A leitura da claim preenche INSERT; a autorização continua exclusivamente no RLS. */
+export function sessionFromSaasSession(
+  session: SaasSession,
+  config: SaasAuthConfiguration = loadSaasAuthConfiguration(import.meta.env),
+): SupabaseOnlineSession {
+  assertPublishableKey(config.publishableKey);
+  if (!UUID_PATTERN.test(session.identity.companyId) || !/^https:\/\/[^/]+$/i.test(config.supabaseUrl)) {
+    throw new OnlineDataError("INVALID_SESSION", "A sessão SaaS não possui uma identidade de empresa autorizada. Entre novamente.");
+  }
+  return {
+    supabaseUrl: config.supabaseUrl,
+    publishableKey: config.publishableKey,
+    accessToken: session.accessToken,
+    companyId: session.identity.companyId,
+  };
+}
+
+function clientePayload(cliente: ClienteInput): Record<string, unknown> {
+  return Object.fromEntries(CLIENTE_FIELDS.flatMap((field) => {
+    const value = cliente[field];
+    return value === undefined ? [] : [[field, value]];
+  }));
+}
+
+async function asOnlineError(response: Response): Promise<OnlineDataError> {
+  if (response.status === 401) return new OnlineDataError("SESSION_EXPIRED", "Sua sessão expirou. Entre novamente para continuar.");
+  if (response.status === 403) return new OnlineDataError("RLS_DENIED", "Seu acesso a estes dados foi negado pela empresa.");
+  if (response.status === 409) {
+    let code: string | undefined;
+    try { code = (await response.json() as { code?: string }).code; } catch { /* resposta sem JSON */ }
+    if (code === "23505") return new OnlineDataError("CONFLICT", "Este CPF/CNPJ já está cadastrado nesta empresa. Busque o cliente existente.");
+  }
+  return new OnlineDataError("ONLINE_UNAVAILABLE", "Não foi possível concluir a operação online. Tente novamente.");
+}
+
+function searchPattern(value: string): string {
+  const escaped = value.replace(/[\\%_*",()]/g, (character) => `\\${character}`);
+  return `"%${escaped}%"`;
+}
+
+function responseTotal(response: Response): number {
+  const match = response.headers.get("Content-Range")?.match(/\/(\d+)$/);
+  if (!match) {
+    throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online não informou o total de clientes para a paginação.");
+  }
+  return Number(match[1]);
+}
+
+function assertTenantClientes(rows: Cliente[], session: SupabaseOnlineSession): Cliente[] {
+  for (const cliente of rows) {
+    if (typeof cliente.id !== "string" || !UUID_PATTERN.test(cliente.id)
+      || String(cliente.empresa_id ?? "") !== session.companyId) {
+      throw new OnlineDataError("RLS_DENIED", "A resposta Online contém clientes fora da empresa autenticada.");
+    }
+  }
+  return rows;
+}
+
+function clientesQuery(session: SupabaseOnlineSession, busca: string | undefined, limit: number, offset: number): URLSearchParams {
+  const query = new URLSearchParams({
+    select: "*",
+    empresa_id: `eq.${session.companyId}`,
+    ativo: "is.true",
+    order: "criado_em.desc,id.desc",
+    limit: String(limit),
+    offset: String(offset),
+  });
+  const term = busca?.trim();
+  if (term) {
+    const pattern = searchPattern(term);
+    const digits = term.replace(/\D/g, "");
+    const documentPattern = searchPattern(digits && /^[\d.\-/\s]+$/.test(term) ? digits : term);
+    query.set("or", `(nome.ilike.${pattern},razao_social.ilike.${pattern},nome_fantasia.ilike.${pattern},documento.ilike.${documentPattern},cpf_cnpj.ilike.${documentPattern},telefone.ilike.${pattern},email.ilike.${pattern})`);
+  }
+  return query;
+}
+
+export class SupabaseClientesRepository implements ClientesRepository {
+  constructor(private readonly session: SupabaseOnlineSession, private readonly fetcher: FetchLike = fetch.bind(globalThis)) {}
+
+  private endpoint(query = ""): string {
+    return `${this.session.supabaseUrl}/rest/v1/clientes${query}`;
+  }
+
+  private async request<T>(url: string, init: RequestInit): Promise<T> {
+    let response: Response;
+    try {
+      response = await this.fetcher(url, {
+        ...init,
+        headers: { apikey: this.session.publishableKey, Authorization: `Bearer ${this.session.accessToken}`, "Content-Type": "application/json", ...(init.headers ?? {}) },
+      });
+    } catch {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "A comunicação com o serviço Online falhou. Seus dados do formulário foram mantidos; tente novamente.");
+    }
+    if (!response.ok) throw await asOnlineError(response);
+    return (await response.json()) as T;
+  }
+
+  async listar(busca?: string): Promise<Cliente[]> {
+    const pageSize = 500;
+    const rows: Cliente[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await this.request<Cliente[]>(this.endpoint(`?${clientesQuery(this.session, busca, pageSize, offset).toString()}`), { method: "GET" });
+      rows.push(...assertTenantClientes(page, this.session));
+      if (page.length < pageSize) return rows;
+    }
+  }
+
+  async listarPagina(busca: string | undefined, page: number): Promise<ClientesPage> {
+    const query = clientesQuery(this.session, busca, ITEMS_PER_PAGE, (Math.max(1, Math.floor(page)) - 1) * ITEMS_PER_PAGE);
+    let response: Response;
+    try {
+      response = await this.fetcher(this.endpoint(`?${query.toString()}`), {
+        method: "GET",
+        headers: {
+          apikey: this.session.publishableKey,
+          Authorization: `Bearer ${this.session.accessToken}`,
+          "Content-Type": "application/json",
+          Prefer: "count=exact",
+        },
+      });
+    } catch {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "A comunicação com o serviço Online falhou. Tente novamente.");
+    }
+    if (!response.ok) throw await asOnlineError(response);
+    let rows: Cliente[];
+    try {
+      rows = await response.json() as Cliente[];
+    } catch {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou uma resposta inválida. Tente novamente.");
+    }
+    return { items: assertTenantClientes(rows, this.session), total: responseTotal(response) };
+  }
+
+  async buscar(id: ClienteId): Promise<Cliente> {
+    const rows = await this.request<Cliente[]>(this.endpoint(`?select=*&id=eq.${encodeURIComponent(String(id))}&limit=1`), { method: "GET" });
+    if (!rows[0]) throw new OnlineDataError("RLS_DENIED", "Cliente não encontrado ou indisponível para sua empresa.");
+    return rows[0];
+  }
+
+  async criar(cliente: ClienteInput, contatoInicial?: ContatoInicialInput): Promise<Cliente> {
+    const rows = await this.request<Cliente[]>(this.endpoint(), { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ ...clientePayload(cliente), empresa_id: this.session.companyId }) });
+    if (!rows[0]) throw new OnlineDataError("RLS_DENIED", "O cliente não pôde ser criado para sua empresa.");
+    const criado = rows[0];
+    if (contatoInicial) await this.criarContatoInicial(criado.id!, contatoInicial);
+    return criado;
+  }
+
+  private async criarContatoInicial(clienteId: ClienteId, contatoInicial: ContatoInicialInput): Promise<void> {
+    const nome = contatoInicial.nome.trim();
+    const telefone = (contatoInicial.telefone ?? "").trim();
+    if (!nome || !telefone) {
+      throw new OnlineDataError("INVALID_DATA", "Informe nome e telefone do contato inicial.");
+    }
+    await this.request(`${this.session.supabaseUrl}/rest/v1/cliente_contatos`, {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        empresa_id: this.session.companyId,
+        cliente_id: clienteId,
+        nome,
+        telefone,
+        email: contatoInicial.email || null,
+        ativo: true,
+      }),
+    });
+  }
+
+  async atualizar(id: ClienteId, cliente: ClienteInput, contatoInicial?: ContatoInicialInput): Promise<Cliente> {
+    const rows = await this.request<Cliente[]>(this.endpoint(`?id=eq.${encodeURIComponent(String(id))}`), { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(clientePayload(cliente)) });
+    if (!rows[0]) throw new OnlineDataError("RLS_DENIED", "O cliente não pôde ser alterado para sua empresa.");
+    if (contatoInicial) await this.criarContatoInicial(rows[0].id!, contatoInicial);
+    return rows[0];
+  }
+
+  async deletar(id: ClienteId): Promise<void> {
+    const rows = await this.request<Cliente[]>(this.endpoint(`?id=eq.${encodeURIComponent(String(id))}`), { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ ativo: false }) });
+    if (!rows[0]) throw new OnlineDataError("RLS_DENIED", "O cliente não pôde ser removido para sua empresa.");
+  }
+}
+
+const tauriClientesRepository: ClientesRepository = {
+  listar: (busca) => db.listarClientes(busca),
+  async listarPagina(busca, page) {
+    const rows = await db.listarClientes(busca);
+    return { items: paginateItems(rows, page, ITEMS_PER_PAGE), total: rows.length };
+  },
+  buscar: (id) => db.buscarCliente(id),
+  criar: (cliente, contatoInicial) => db.criarCliente(cliente, contatoInicial),
+  atualizar: async (id, cliente, contatoInicial) => { await db.atualizarCliente(id, cliente, contatoInicial); return db.buscarCliente(id); },
+  deletar: (id) => db.deletarCliente(id),
+};
+
+/** Sem sessão SaaS, o baseline interno permanece no adapter Tauri. */
+export async function carregarRepositorioClientes(): Promise<ClientesRepository> {
+  if (!IS_SAAS_BUILD) return tauriClientesRepository;
+
+  const session = await tauriSaasSessionStore.load();
+  if (!session) {
+    throw new OnlineDataError("SESSION_EXPIRED", "Sua sessão SaaS expirou. Entre novamente para continuar.");
+  }
+  return new SupabaseClientesRepository(sessionFromSaasSession(session));
+}
+
+export const repositorioClientesInterno = tauriClientesRepository;

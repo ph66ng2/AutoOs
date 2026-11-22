@@ -70,3 +70,4 @@ src-tauri/target
 .sisyphus/
 .sissyphus/
 .github/agents/
+.workflow/

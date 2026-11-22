@@ -1,10 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import type { AnaliseCorrecaoDecisao, Equipamento, ModoCorrecaoDecisao, PortalAjusteInfo } from "@/types";
+
+export type CorrigirDecisaoDeps = {
+  analisar: (equipamentoId: Equipamento["id"]) => Promise<AnaliseCorrecaoDecisao>;
+  corrigir: (input: {
+    equipamento_id: Equipamento["id"];
+    expected_updated_em: string;
+    motivo: string;
+    devolver_estoque: boolean;
+    modo: ModoCorrecaoDecisao;
+  }) => Promise<{ portal?: PortalAjusteInfo } | void>;
+};
 
 type Props = {
   equipamento: Equipamento | null;
@@ -13,6 +24,7 @@ type Props = {
   /** Chamado depois que o orçamento foi reaberto, para a página recarregar a lista. */
   /** Recebe o que aconteceu no portal (republicação automática ou aviso de falha). */
   onCorrigido: (portal?: PortalAjusteInfo) => void | Promise<void>;
+  deps?: CorrigirDecisaoDeps;
 };
 
 const MOTIVO_MINIMO = 5;
@@ -21,7 +33,9 @@ const moeda = (valor?: number | null) =>
   valor == null ? "—" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 
 function mensagemErro(cause: unknown, fallback: string) {
-  return typeof cause === "string" && cause.trim() ? cause : fallback;
+  if (typeof cause === "string" && cause.trim()) return cause;
+  if (cause instanceof Error && cause.message.trim()) return cause.message;
+  return fallback;
 }
 
 /** Com os dois modos disponíveis, começa pelo que não perde o ajuste feito no orçamento. */
@@ -36,7 +50,7 @@ function modoInicial(analise: AnaliseCorrecaoDecisao): ModoCorrecaoDecisao {
  * orçamento foi ajustado depois da decisão, o operador escolhe entre manter o ajuste ou restaurar
  * a versão enviada ao cliente.
  */
-export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorrigido }: Props) {
+export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorrigido, deps }: Props) {
   const [analise, setAnalise] = useState<AnaliseCorrecaoDecisao | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -45,6 +59,8 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
   const [devolver, setDevolver] = useState(false);
   const [modo, setModo] = useState<ModoCorrecaoDecisao>("RESTAURAR_ORIGINAL");
   const equipamentoId = equipamento?.id;
+  const depsRef = useRef(deps);
+  depsRef.current = deps;
 
   useEffect(() => {
     if (!open || !equipamentoId) return;
@@ -54,7 +70,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
     setMotivo("");
     setDevolver(false);
     setLoading(true);
-    db.analisarCorrecaoDecisao(equipamentoId)
+    (depsRef.current?.analisar ?? ((id) => db.analisarCorrecaoDecisao(Number(id))))(equipamentoId)
       .then((result) => {
         if (cancelado) return;
         setAnalise(result);
@@ -77,7 +93,11 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
     setBusy(true);
     setError(null);
     try {
-      const resultado = await db.corrigirDecisaoOrcamento({
+      const corrigir = depsRef.current?.corrigir ?? ((input) => db.corrigirDecisaoOrcamento({
+        ...input,
+        equipamento_id: Number(input.equipamento_id),
+      }));
+      const resultado = await corrigir({
         equipamento_id: equipamento.id,
         expected_updated_em: equipamento.atualizado_em,
         motivo: motivo.trim(),

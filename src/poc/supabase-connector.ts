@@ -12,13 +12,15 @@ import {
  * to Supabase). The service handles the sync stream; this connector
  * handles uploading local CRUD changes to Supabase via REST.
  *
- * For this POC, credentials are entered manually. In production,
- * these should come from a secure backend/auth flow.
+ * For this POC, credentials are entered manually. In production, the
+ * backend must issue a short-lived user JWT; this connector must never
+ * receive an administrative key or a PostgreSQL password.
  */
 export class SupabaseConnector implements PowerSyncBackendConnector {
   constructor(
     private supabaseUrl: string,
-    private supabaseKey: string
+    private supabasePublishableKey: string,
+    private accessToken: string
   ) {}
 
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
@@ -34,7 +36,7 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
     // from your backend auth service.
     return {
       endpoint: `${this.supabaseUrl}/rest/v1`,
-      token: this.supabaseKey,
+      token: this.accessToken,
     };
   }
 
@@ -59,8 +61,8 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
           await fetch(url, {
             method: "PATCH",
             headers: {
-              apikey: this.supabaseKey,
-              Authorization: `Bearer ${this.supabaseKey}`,
+              apikey: this.supabasePublishableKey,
+              Authorization: `Bearer ${this.accessToken}`,
               "Content-Type": "application/json",
               Prefer: "resolution=merge-duplicates",
             },
@@ -70,8 +72,8 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
           await fetch(url, {
             method: "DELETE",
             headers: {
-              apikey: this.supabaseKey,
-              Authorization: `Bearer ${this.supabaseKey}`,
+              apikey: this.supabasePublishableKey,
+              Authorization: `Bearer ${this.accessToken}`,
             },
           });
         }

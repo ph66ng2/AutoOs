@@ -164,7 +164,7 @@ export function QuemRecebeOrcamentoDialog({
     let contato = contatoCriado;
     if (!contato) {
       try {
-        if (existente?.id !== undefined) {
+        if (typeof existente?.id === "number") {
           contato = await db.atualizarClienteContato(existente.id, {
             empresa_id: equipamento.empresa_id,
             cliente_id: equipamento.cliente_id,

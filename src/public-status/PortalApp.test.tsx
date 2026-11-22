@@ -173,6 +173,20 @@ describe("lista", () => {
     expect(within(lista).queryByText("Aguarda sua resposta")).not.toBeInTheDocument();
     expect(within(lista).getByText("Orçamento em preparação")).toBeInTheDocument();
   });
+
+  it("orçamento publicado com respostas online desligadas não vira \"em preparação\"", async () => {
+    logar();
+    api.listar.mockResolvedValue({
+      cliente: "Cliente A", contato: "Ana Souza", podeDecidir: true,
+      atendimentos: [
+        { id: 5, equipamento: "Publicado sem aceite", serie: "E5", patrimonio: null, status: "AGUARDANDO_APROVACAO", titulo: "O orçamento aguarda sua resposta",
+          historico: false, entradaEm: "2026-10-02T00:00:00Z", atividadeEm: "2026-10-13T00:00:00Z", statusAlteradoEm: null, aguardaResposta: false, orcamentoPublicado: true, resposta: null },
+      ],
+    });
+    render(<PortalApp />);
+    const lista = await screen.findByRole("list");
+    expect(within(lista).queryByText("Orçamento em preparação")).not.toBeInTheDocument();
+  });
 });
 
 describe("detalhe e orçamento", () => {

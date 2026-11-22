@@ -78,8 +78,10 @@ pub async fn publicar_documento_portal(
             "{}/storage/v1/object/portal-documentos/{caminho}",
             config.supabase_url.trim_end_matches('/')
         ))
-        .header("apikey", &config.supabase_service_key)
-        .bearer_auth(&config.supabase_service_key)
+        // Linha SaaS: o desktop não guarda chave administrativa; usa a chave publicável e o JWT do
+        // usuário, como o upload de imagens. A política do bucket decide; falha vira aviso no frontend.
+        .header("apikey", &config.supabase_publishable_key)
+        .bearer_auth(&config.access_token)
         .header("Content-Type", "application/pdf")
         .header("x-upsert", "true")
         .body(bytes.clone())
@@ -118,8 +120,10 @@ async fn baixar_canonico(
             "{}/storage/v1/object/authenticated/portal-documentos/{caminho}",
             config.supabase_url.trim_end_matches('/')
         ))
-        .header("apikey", &config.supabase_service_key)
-        .bearer_auth(&config.supabase_service_key)
+        // Linha SaaS: o desktop não guarda chave administrativa; usa a chave publicável e o JWT do
+        // usuário, como o upload de imagens. A política do bucket decide; falha vira aviso no frontend.
+        .header("apikey", &config.supabase_publishable_key)
+        .bearer_auth(&config.access_token)
         .send()
         .await
         .map_err(|_| "Documento canônico indisponível.".to_string())?;

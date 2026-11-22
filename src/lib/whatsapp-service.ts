@@ -2,13 +2,13 @@
  * ╔══════════════════════════════════════════════════════════════╗
  * ║  lib/whatsapp-service.ts — Serviço de WhatsApp por API      ║
  * ╠══════════════════════════════════════════════════════════════╣
- * ║  Orçamento, decisão e "pronto" pedem o envio ao backend por  ║
- * ║  `solicitar_envio_whatsapp` (fila com tentativas e histórico);║
- * ║  o texto é montado lá. O link de acompanhamento ainda usa o  ║
- * ║  envio direto, porque o token só existe na tela.             ║
+ * ║  Gera mensagens formatadas e envia pelo backend Tauri.      ║
+ * ║  Registra cada envio na tabela `comunicacoes` para          ║
+ * ║  tabela `comunicacoes` para rastreabilidade.                 ║
  * ║                                                              ║
  * ║  DEPENDE DE:                                                 ║
- * ║  - lib/db.ts (solicitarEnvioWhatsapp, registrarComunicacao)  ║
+ * ║  - @tauri-apps/api/core (invoke) — aciona envio no backend  ║
+ * ║  - lib/db.ts (registrarComunicacao) — salva log no banco    ║
  * ║  - types/index.ts (Equipamento, Verificacao)                 ║
  * ║                                                              ║
  * ║  USADO POR:                                                  ║
@@ -18,30 +18,52 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { formatDatePtBr } from "@/lib/date-utils";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { loadSaasAuthConfiguration } from "@/lib/saas-auth";
+import { carregarRepositorioComunicacoes } from "@/lib/data/comunicacoes-repository";
 import { db } from "@/lib/db";
 import type {
   Comunicacao,
   Equipamento,
+  EquipamentoId,
   EstadoEnvioWhatsapp,
+  PecaNecessaria,
   ResultadoEnvioWhatsapp,
+  ServicoNecessario,
   TipoEnvioWhatsapp,
   Verificacao,
+  WhatsappSendRequest,
 } from "@/types";
 import { resolveRecipient } from "@/lib/recipient-resolver";
 
-async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao, "id">) {
+async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao<EquipamentoId>, "id">) {
   try {
-    await db.registrarComunicacao(comunicacao);
+    const repository = await carregarRepositorioComunicacoes();
+    await repository.registrar(comunicacao);
   } catch (error) {
     console.error("[WhatsAppService] Falha ao registrar comunicação:", error);
   }
 }
 
+async function enviarWhatsapp(request: WhatsappSendRequest): Promise<void> {
+  let sent: boolean;
+  if (!IS_SAAS_BUILD) {
+    sent = await invoke<boolean>("enviar_whatsapp", { input: request });
+  } else {
+    const config = loadSaasAuthConfiguration(import.meta.env);
+    sent = await invoke<boolean>("enviar_whatsapp_saas", {
+      input: request,
+      config: { supabaseUrl: config.supabaseUrl, publishableKey: config.publishableKey },
+    });
+  }
+  if (sent !== true) throw new Error("O provedor de WhatsApp não confirmou o envio.");
+}
+
 /** Adiciona DDI 55 (Brasil) se não presente. Remove caracteres não-numéricos */
 export function formatarTelefone(telefone: string): string {
   const numeros = telefone.replace(/\D/g, "");
-  // Pelo tamanho, não pelo prefixo: DDD 55 (RS) com 10/11 dígitos ainda precisa do DDI.
-  const normalizado = numeros.startsWith("55") && numeros.length >= 12 ? numeros : "55" + numeros;
+  const normalizado = numeros.startsWith("55") ? numeros : "55" + numeros;
   if (normalizado.length < 12) {
     throw new Error("Telefone do cliente inválido para envio de WhatsApp");
   }
@@ -49,106 +71,230 @@ export function formatarTelefone(telefone: string): string {
   return normalizado;
 }
 
+function parseJsonList<T>(value?: string): T[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(value) as T[];
+  } catch {
+    return [];
+  }
+}
+
 export const WhatsAppService = {
-  /** Envia o link de acompanhamento e registra apenas o resultado, nunca o token. */
-  async enviarLinkStatusPublico(equipamento: Equipamento, url: string) {
+  /**
+   * Envia orçamento via WhatsApp API.
+   * Monta mensagem com: dados do equipamento, serviços, peças, valor total, prazo.
+   * Registra comunicação tipo=ORCAMENTO canal=WHATSAPP no banco.
+   * Conecta-se a: db.registrarComunicacao, backend enviar_whatsapp
+   */
+  async enviarOrcamento(equipamento: Equipamento<EquipamentoId>, verificacao: Verificacao) {
     const recipient = resolveRecipient(equipamento, "telefone");
-    if (!recipient.endereco) {
-      return { sucesso: false, erro: "Não há telefone cadastrado para este atendimento." };
+    const equipamentoComDestinatario = {
+      ...equipamento,
+      cliente_telefone: recipient.endereco || undefined,
+      cliente_nome: recipient.nome,
+    };
+    if (!equipamentoComDestinatario.cliente_telefone) {
+      return { sucesso: false, erro: "Cliente não possui telefone cadastrado" };
     }
 
-    const mensagem = `Olá, ${recipient.nome}! Acompanhe a etapa atual do atendimento do seu equipamento ${equipamento.marca} ${equipamento.modelo} pelo link seguro: ${url}\n\nEste link permite apenas consultar o andamento e não aprova orçamento nem altera dados.\n\nBMI TAG`;
-    const logMessage = "Link público de acompanhamento enviado. O token foi omitido do histórico interno.";
-    let telefone = recipient.endereco;
+    const servicos = parseJsonList<ServicoNecessario>(verificacao.servicos_necessarios);
+    const pecas = parseJsonList<PecaNecessaria>(verificacao.pecas_necessarias);
+
+    let detalhesServicos = "";
+    if (servicos.length > 0) {
+      detalhesServicos = "\n*SERVIÇOS:*\n" +
+        servicos.map((s: any) => `• ${s.descricao}: R$ ${s.valor.toFixed(2)}`).join("\n");
+    }
+
+    let detalhesPecas = "";
+    if (pecas.length > 0) {
+      detalhesPecas = "\n*PEÇAS:*\n" +
+        pecas.map((p: any) => `• ${p.nome} (x${p.quantidade}): R$ ${p.valorTotal.toFixed(2)}`).join("\n");
+    }
+
+    const mensagem = `🔧 *Olá, ${equipamentoComDestinatario.cliente_nome}!*
+
+Seu equipamento foi verificado e elaboramos o orçamento:
+
+*EQUIPAMENTO:*
+${equipamento.marca} ${equipamento.modelo}
+SN: ${equipamento.serial_number}
+${detalhesServicos}${detalhesPecas}
+
+*ORÇAMENTO:*
+Mão de Obra: R$ ${(verificacao.custo_estimado_mao_obra || 0).toFixed(2)}
+Peças: R$ ${(verificacao.custo_estimado_pecas || 0).toFixed(2)}
+━━━━━━━━━━━━━━━━━━━━
+*TOTAL: R$ ${(verificacao.custo_total || 0).toFixed(2)}*
+
+⏱️ Tempo estimado: ${verificacao.tempo_estimado || 0}h
+${equipamento.prazo_aprovacao ? `📅 Prazo para aprovação: ${formatDatePtBr(equipamento.prazo_aprovacao)}` : ""}
+
+Para aprovar, responda *APROVADO*.
+Para dúvidas, estamos à disposição! 😊`;
+
+    let telefone = equipamentoComDestinatario.cliente_telefone;
 
     try {
-      telefone = formatarTelefone(recipient.endereco);
-      await invoke<void>("enviar_whatsapp", {
-        input: { contato: telefone, mensagem },
-      });
+      telefone = formatarTelefone(equipamentoComDestinatario.cliente_telefone);
+
+      const request: WhatsappSendRequest = {
+        contato: telefone,
+        mensagem,
+      };
+      await enviarWhatsapp(request);
+
       await registrarComunicacaoSegura({
         equipamento_id: equipamento.id!,
-        tipo: "STATUS_PUBLICO",
+        tipo: "ORCAMENTO",
         canal: "WHATSAPP",
-        destinatario: recipient.nome,
+        destinatario: equipamentoComDestinatario.cliente_nome || "",
         contato: telefone,
-        mensagem: logMessage,
+        mensagem,
         enviado: true,
         data_envio: new Date().toISOString(),
       });
+
       return { sucesso: true };
     } catch (error: any) {
-      const erroMsg = typeof error === "string" ? error : (error?.message || "Falha ao enviar o link por WhatsApp.");
+      const erroMsg = typeof error === "string" ? error : (error?.message || error?.toString() || "Falha ao enviar WhatsApp");
+
       await registrarComunicacaoSegura({
         equipamento_id: equipamento.id!,
-        tipo: "STATUS_PUBLICO",
+        tipo: "ORCAMENTO",
         canal: "WHATSAPP",
-        destinatario: recipient.nome,
+        destinatario: equipamentoComDestinatario.cliente_nome || "",
         contato: telefone,
-        mensagem: logMessage,
+        mensagem,
         enviado: false,
         erro: erroMsg,
       });
+
       return { sucesso: false, erro: erroMsg };
     }
   },
 
   /**
-   * Pede ao backend o envio de um evento. A tela não monta nem transmite o texto: o backend
-   * busca os dados atualizados, congela o orçamento, escolhe a mensagem, evita duplicidade e
-   * registra cada tentativa. Conecta-se a: db.solicitarEnvioWhatsapp → solicitar_envio_whatsapp.
+   * Notifica cliente que equipamento está PRONTO via WhatsApp API.
+   * Monta mensagem com: dados do equipamento, valor a pagar.
+   * Registra comunicação tipo=PRONTO canal=WHATSAPP no banco.
+   * Conecta-se a: db.registrarComunicacao, backend enviar_whatsapp
    */
+  async enviarEquipamentoPronto(equipamento: Equipamento<EquipamentoId>) {
+    const recipient = resolveRecipient(equipamento, "telefone");
+    const equipamentoComDestinatario = {
+      ...equipamento,
+      cliente_telefone: recipient.endereco || undefined,
+      cliente_nome: recipient.nome,
+    };
+    if (!equipamentoComDestinatario.cliente_telefone) {
+      return { sucesso: false, erro: "Cliente não possui telefone cadastrado" };
+    }
+
+    const valor = equipamento.valor_final || equipamento.valor_orcamento;
+
+    const mensagem = `🎉 *Ótimas notícias, ${equipamentoComDestinatario.cliente_nome}!*
+
+Seu equipamento está *PRONTO* para retirada! ✅
+
+*EQUIPAMENTO:*
+${equipamento.marca} ${equipamento.modelo}
+SN: ${equipamento.serial_number}
+
+${valor ? `💰 Valor a pagar: R$ ${valor.toFixed(2)}\n` : ""}
+Traga documento com foto para retirada.
+
+Aguardamos você! 😊`;
+
+    let telefone = equipamentoComDestinatario.cliente_telefone;
+
+    try {
+      telefone = formatarTelefone(equipamentoComDestinatario.cliente_telefone);
+
+      const request: WhatsappSendRequest = {
+        contato: telefone,
+        mensagem,
+      };
+      await enviarWhatsapp(request);
+
+      await registrarComunicacaoSegura({
+        equipamento_id: equipamento.id!,
+        tipo: "PRONTO",
+        canal: "WHATSAPP",
+        destinatario: equipamentoComDestinatario.cliente_nome || "",
+        contato: telefone,
+        mensagem,
+        enviado: true,
+        data_envio: new Date().toISOString(),
+      });
+
+      return { sucesso: true };
+    } catch (error: any) {
+      const erroMsg = typeof error === "string" ? error : (error?.message || error?.toString() || "Falha ao enviar WhatsApp");
+
+      await registrarComunicacaoSegura({
+        equipamento_id: equipamento.id!,
+        tipo: "PRONTO",
+        canal: "WHATSAPP",
+        destinatario: equipamentoComDestinatario.cliente_nome || "",
+        contato: telefone,
+        mensagem,
+        enviado: false,
+        erro: erroMsg,
+      });
+
+      return { sucesso: false, erro: erroMsg };
+    }
+  },
+
+  async enviarLinkStatusPublico(equipamento: Equipamento<EquipamentoId>, url: string) {
+    const recipient = resolveRecipient(equipamento, "telefone");
+    if (!recipient.endereco) {
+      return { sucesso: false, erro: "Cliente não possui telefone cadastrado" };
+    }
+    const mensagem = `Olá, ${recipient.nome || "cliente"}!\nAcompanhe o status do equipamento:\n${url}`;
+    try {
+      const telefone = formatarTelefone(recipient.endereco);
+      await enviarWhatsapp({ contato: telefone, mensagem });
+      return { sucesso: true };
+    } catch (error: unknown) {
+      return { sucesso: false, erro: error instanceof Error ? error.message : String(error) };
+    }
+  },
+
   async solicitarEnvio(
     equipamentoId: number,
     tipo: TipoEnvioWhatsapp,
-    opcoes: OpcoesEnvioWhatsapp = {},
+    opcoes: { senhaPortal?: string; reenvioManual?: boolean; confirmarIncerto?: boolean } = {},
   ): Promise<ResultadoSolicitacaoWhatsapp> {
     try {
       const resultado = await db.solicitarEnvioWhatsapp({
         equipamento_id: equipamentoId,
         tipo,
-        reenvio_manual: opcoes.reenvioManual ?? false,
-        confirmar_incerto: opcoes.confirmarIncerto ?? false,
-        ...(opcoes.senhaPortal ? { senha_portal: opcoes.senhaPortal } : {}),
+        senha_portal: opcoes.senhaPortal,
+        reenvio_manual: opcoes.reenvioManual,
+        confirmar_incerto: opcoes.confirmarIncerto,
       });
       return traduzirResultado(resultado);
-    } catch (error: any) {
-      const erro = typeof error === "string" ? error : (error?.message || "Falha ao solicitar o envio de WhatsApp");
+    } catch (error: unknown) {
+      const erro = typeof error === "string" ? error : (error instanceof Error ? error.message : "Falha ao solicitar o envio de WhatsApp");
       return { sucesso: false, estado: "FALHOU", erro };
     }
   },
-
-  /** Orçamento concluído: texto informativo a partir da versão congelada do orçamento. */
-  async enviarOrcamento(equipamento: Equipamento, _verificacao?: Verificacao, opcoes?: OpcoesEnvioWhatsapp) {
-    return WhatsAppService.solicitarEnvio(equipamento.id!, "orcamento_informativo", opcoes);
-  },
-
-  /** Equipamento PRONTO: aviso de retirada. */
-  async enviarEquipamentoPronto(equipamento: Equipamento, opcoes?: OpcoesEnvioWhatsapp) {
-    return WhatsAppService.solicitarEnvio(equipamento.id!, "equipamento_pronto", opcoes);
-  },
 };
 
-export interface OpcoesEnvioWhatsapp {
-  reenvioManual?: boolean;
-  confirmarIncerto?: boolean;
-  /** Senha do portal gerada nesta sessão; vai ao backend como `senha_portal`. */
-  senhaPortal?: string;
-}
-
 export interface ResultadoSolicitacaoWhatsapp {
-  /** `true` quando o provedor aceitou o envio ou o evento já havia sido solicitado. */
   sucesso: boolean;
   estado: EstadoEnvioWhatsapp;
   erro?: string;
-  /** A mensagem entrou na fila central e será enviada pelo processador em instantes. */
   enfileirada?: boolean;
-  /** O pedido já existia e não foi enviado de novo (gatilho automático repetido). */
   jaSolicitado?: boolean;
-  /** O envio anterior tem resultado incerto; repetir exige confirmação do operador. */
   requerConfirmacao?: boolean;
   mensagem?: string;
-  /** O backend não usou a senha informada (ex.: pedido já existia); ela segue só no canal manual. */
   senhaRetida?: boolean;
 }
 

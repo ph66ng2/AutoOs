@@ -159,7 +159,7 @@ export default function PowerSyncPOC() {
             onChange={(e) => setSupabaseUrl(e.target.value)}
           />
           <Input
-            placeholder="Supabase service_role key"
+            placeholder="Supabase publishable key (POC)"
             type="password"
             value={supabaseKey}
             onChange={(e) => setSupabaseKey(e.target.value)}

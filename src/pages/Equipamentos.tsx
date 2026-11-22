@@ -32,13 +32,11 @@ import {
   Printer,
   Plus,
   Search,
-  ArrowDownUp,
   X,
   Edit,
   Trash2,
   Filter,
   RefreshCw,
-  RotateCcw,
   MessageSquare,
   ClipboardCheck,
   Users,
@@ -56,6 +54,8 @@ import {
   Download,
   Smartphone,
   DollarSign,
+  RotateCcw,
+  CalendarClock,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -68,7 +68,6 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogDescription,
   DialogTitle,
   DialogFooter,
   DialogClose,
@@ -102,7 +101,8 @@ import { formatDatePtBr, formatDateTimeSalvador, todayLocalIsoDate } from "@/lib
 import {
   STATUS_LABELS,
   SENSITIVE_PERMISSIONS,
-  type Equipamento,
+  type Equipamento as EquipamentoBase,
+  type EquipamentoId,
   type EquipamentoHistoricoEvento,
   type EquipamentoImagemCategoria,
   type EquipamentoImagemInput,
@@ -115,10 +115,13 @@ import {
   type ServicoNecessario,
   type ServicoCatalogo,
   type PecaNecessaria,
-  type Produto,
-  type ConsumoOrcamento,
   type Verificacao,
   type Comunicacao,
+  type ResultadoAutomacao,
+  type AnaliseAjusteOrcamento,
+  type EnvioManualOrcamento,
+  type OpcoesAjusteOrcamento,
+  type PreparoAcessoPortal,
 } from "@/types";
 
 // Componentes extraídos
@@ -130,17 +133,16 @@ import {
 import { HistoricoComunicacoes } from "@/components/equipamentos/HistoricoComunicacoes";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
 import { ContatoResponsavelSelector } from "@/components/equipamentos/ContatoResponsavelSelector";
-import { EnvioManualOrcamentoDialog } from "@/components/equipamentos/EnvioManualOrcamentoDialog";
-import { QuemRecebeOrcamentoDialog } from "@/components/equipamentos/QuemRecebeOrcamentoDialog";
-import { enviarOrcamentoAoCliente, gerarNovaSenhaEnvioManual, prorrogarEEnviar, sugerirNovoPrazo } from "@/lib/envio-orcamento";
-import { ehErroPrazoVencido, formatarDataIso } from "@/lib/orcamento-prazo";
 import { CommunicationEmailDialog } from "@/components/equipamentos/CommunicationEmailDialog";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { publicarPdfOficial } from "@/lib/portal-documentos";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
-import { carregarProdutosOrcamento, LABEL_CONFIRMAR_OS_GARANTIA, MENSAGEM_CONFIRMAR_OS_GARANTIA, normalizarServicosOrcamento, orcamentoEmElaboracao, transicaoElaboraOrcamento, osSomenteGarantia, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, TITULO_CONFIRMAR_OS_GARANTIA, vaiAutoAprovarOsGarantia, validarPecas } from "@/lib/orcamento-estoque";
+import { LABEL_CONFIRMAR_OS_GARANTIA, MENSAGEM_CONFIRMAR_OS_GARANTIA, orcamentoEmElaboracao, transicaoElaboraOrcamento, osSomenteGarantia, orcamentoJaAprovado, orcamentoMudou, TITULO_CONFIRMAR_OS_GARANTIA, vaiAutoAprovarOsGarantia } from "@/lib/orcamento-estoque";
+import { EscolhaAjusteOrcamentoDialog } from "@/components/equipamentos/EscolhaAjusteOrcamentoDialog";
+import { validatePecasSugeridas } from "@/lib/data/servicos-repository";
+import { mesclarPecasDoOrcamento, somarPecas } from "@/lib/servico-pecas";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -154,6 +156,7 @@ import {
 import {
   EMAIL_POR_TECNICO,
   MARCA_EQUIPAMENTO_OPTIONS,
+  MODELO_EQUIPAMENTO_OPTIONS,
   STATUS_COM_ORCAMENTO,
   STATUS_OPTIONS,
   TECNICOS_DISPONIVEIS,
@@ -161,11 +164,6 @@ import {
 } from "@/pages/equipamentos/equipamentos-page-constants";
 import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
-import { AnteriorEmAtendimentoAviso } from "@/components/equipamentos/AnteriorEmAtendimentoAviso";
-import {
-  MENSAGEM_DADOS_PREENCHIDOS,
-  usarEquipamentoAnteriorNoCadastro,
-} from "@/pages/equipamentos/equipamento-anterior";
 import {
   agruparAcoesOs,
   extrairTecnicoInicialDeObservacoes,
@@ -190,38 +188,96 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { PaginationControls } from "@/components/ui/pagination-controls";
+import { ITEMS_PER_PAGE, totalPages } from "@/lib/pagination";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
-import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
+import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { PortalClienteBotao } from "@/components/equipamentos/PortalClienteBotao";
 import { PortalClienteProvider } from "@/components/equipamentos/portal-cliente-context";
-import { EVENTO_ALERTAS_PORTAL } from "@/components/PortalAlertas";
-import { toast } from "sonner";
-
-const AVISO_ATENDIMENTO_PENDENTE = "abrir-atendimento-pendente";
+import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
 import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
+import { EnvioManualOrcamentoDialog } from "@/components/equipamentos/EnvioManualOrcamentoDialog";
+import { QuemRecebeOrcamentoDialog } from "@/components/equipamentos/QuemRecebeOrcamentoDialog";
+import { AnteriorEmAtendimentoAviso } from "@/components/equipamentos/AnteriorEmAtendimentoAviso";
+import {
+  MENSAGEM_DADOS_PREENCHIDOS,
+  usarEquipamentoAnteriorNoCadastro,
+} from "@/pages/equipamentos/equipamento-anterior";
+import { enviarOrcamentoAoCliente, gerarNovaSenhaEnvioManual, prorrogarEEnviar, sugerirNovoPrazo } from "@/lib/envio-orcamento";
+import { ehErroPrazoVencido, formatarDataIso, prazoAprovacaoVencido } from "@/lib/orcamento-prazo";
+import { EVENTO_ALERTAS_PORTAL } from "@/components/PortalAlertas";
 import { ReabrirOrcamentoDialog } from "@/components/equipamentos/ReabrirOrcamentoDialog";
-import { EscolhaAjusteOrcamentoDialog } from "@/components/equipamentos/EscolhaAjusteOrcamentoDialog";
-import type { AnaliseAjusteOrcamento, EnvioManualOrcamento, OpcoesAjusteOrcamento, PortalAjusteInfo, PreparoAcessoPortal } from "@/types";
-import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
-import { totalPages } from "@/lib/pagination";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { carregarRepositorioClientes } from "@/lib/data/clientes-repository";
+import { carregarRepositorioComunicacoes } from "@/lib/data/comunicacoes-repository";
+import { carregarRepositorioHistoricoEquipamento } from "@/lib/data/equipamentos-historico-repository";
+import {
+  calcularPrazoAprovacaoOnline,
+  carregarRepositorioOperacoesEquipamento,
+  type EquipmentPartConsumption,
+} from "@/lib/data/equipamentos-operacoes-repository";
+import {
+  analisarAjusteDoEquipamento,
+  carregarVerificacaoDoEquipamento,
+  enviarWhatsAppOrcamentoOnline,
+  whatsappOrcamentoPedeProrrogacao,
+} from "@/pages/equipamentos/online-ipc";
+import { carregarProdutosParaPecas, type ProdutoParaPecaSugerida } from "@/lib/data/servicos-repository";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
 
-// O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
-// do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
-// border-separate deixa esse divisor fora do anel. O anel segue só o
-// :focus-visible do botão .equipment-row-open, então o clique do mouse não
-// acende e os botões de Ações continuam fora de um role=button.
+type Equipamento = EquipamentoBase<number>;
+
 const EQUIPMENT_ROW_FOCUS_RING =
   "border-b group-has-[.equipment-row-open:focus-visible]:z-[30] group-has-[.equipment-row-open:focus-visible]:bg-sky-100 group-has-[.equipment-row-open:focus-visible]:after:pointer-events-none group-has-[.equipment-row-open:focus-visible]:after:absolute group-has-[.equipment-row-open:focus-visible]:after:inset-0 group-has-[.equipment-row-open:focus-visible]:after:z-[1] group-has-[.equipment-row-open:focus-visible]:after:border-y-[3px] group-has-[.equipment-row-open:focus-visible]:after:border-[#1d4ed8] group-has-[.equipment-row-open:focus-visible]:after:content-['']";
 const EQUIPMENT_ROW_FOCUS_EDGE = `relative ${EQUIPMENT_ROW_FOCUS_RING}`;
 const EQUIPMENT_ROW_FOCUS_FIRST = `relative ${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]`;
 const EQUIPMENT_ROW_FOCUS_LAST = `${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-r-[3px]`;
 
-export default function Equipamentos() {
+function normalizarServicosAprovacao(servicos: ServicoNecessario[]): ServicoNecessario[] {
+  return servicos.map((servico, index) => ({ ...servico, id: servico.id || `legacy:${index}` }));
+}
+
+async function carregarProdutosLocaisParaAprovacao(): Promise<ProdutoParaPecaSugerida[]> {
+  const produtos: ProdutoParaPecaSugerida[] = [];
+  for (let page = 0; ; page += 1) {
+    const lote = await db.listarProdutos(undefined, undefined, false, page);
+    produtos.push(...lote.map((produto) => ({
+      id: String(produto.id), empresa_id: String(produto.empresa_id), nome: produto.nome,
+      quantidade_estoque: produto.quantidade_estoque, preco_venda: produto.preco_venda,
+      ativo: produto.ativo ?? true,
+    })));
+    if (lote.length < 50) return produtos;
+  }
+}
+
+function resumirPecasAprovadas(servicos: ServicoNecessario[]) {
+  const resumo = new Map<string, { produto_id: string; nome: string; quantidade: number }>();
+  for (const servico of servicos) {
+    for (const peca of servico.pecas ?? []) {
+      const produtoId = String(peca.produto_id);
+      const anterior = resumo.get(produtoId);
+      resumo.set(produtoId, {
+        produto_id: produtoId,
+        nome: peca.nome,
+        quantidade: (anterior?.quantidade ?? 0) + peca.quantidade,
+      });
+    }
+  }
+  return [...resumo.values()];
+}
+
+function equipamentoInterno(equipamento: EquipamentoBase<EquipamentoId>): EquipamentoBase<number> {
+  if (typeof equipamento.id !== "number" || (equipamento.empresa_id != null && typeof equipamento.empresa_id !== "number")) {
+    throw new Error("Um equipamento SaaS não pode ser encaminhado a uma operação local.");
+  }
+  return equipamento as EquipamentoBase<number>;
+}
+
+export default function Equipamentos({ operationalProfile }: { operationalProfile?: SaasOperationalProfile } = {}) {
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("TODOS");
-  const [ordenacao, setOrdenacao] = useState<"ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE">("ATUALIZACAO_RECENTE");
+  const [ordenacaoEquipamentos, setOrdenacaoEquipamentos] = useState<"ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE">("ATUALIZACAO_RECENTE");
   const [paginaEquipamentos, setPaginaEquipamentos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -229,13 +285,13 @@ export default function Equipamentos() {
   const detalhesAbertoRef = useRef(false);
   const [sinalPortal, setSinalPortal] = useState(0);
   detalhesAbertoRef.current = detalhesDialogOpen;
-  // Resposta do cliente lida ao abrir a aprovação; segue junto dela para barrar tela desatualizada.
-  // Só a aprovação escreve aqui: recarregar o quadro em segundo plano não pode trocar o que o operador conferiu.
-  const respostaClienteVistaRef = useRef(0);
-  // Decisão do cliente (ainda não aplicada) que o operador está conferindo, e o motivo se ele divergir dela.
-  const [respostaClienteDecisao, setRespostaClienteDecisao] = useState<"APROVAR" | "RECUSAR" | null>(null);
-  const [motivoDivergencia, setMotivoDivergencia] = useState("");
   const [corrigirDecisaoAlvo, setCorrigirDecisaoAlvo] = useState<Equipamento | null>(null);
+  const [envioManual, setEnvioManual] = useState<EnvioManualOrcamento | null>(null);
+  const [quemRecebe, setQuemRecebe] = useState<{
+    eq: Equipamento;
+    sugestao: { nome: string; telefone: string; email: string };
+    continuar: (eq: Equipamento) => void | Promise<void>;
+  } | null>(null);
   const [reabrirAlvo, setReabrirAlvo] = useState<Equipamento | null>(null);
   // Diálogo "Mudar Status" aberto sem status pré-selecionado: REPROVADO não oferece "Aguardando aprovação" aí (use "Nova proposta").
   const [statusSemPreSelecao, setStatusSemPreSelecao] = useState(false);
@@ -247,30 +303,22 @@ export default function Equipamentos() {
   const [pagamentoAprovacaoInicial, setPagamentoAprovacaoInicial] = useState<FormaPagamento | null>(null);
   const [selecaoServicosOpen, setSelecaoServicosOpen] = useState(false);
   const [servicosAprovacao, setServicosAprovacao] = useState<ServicoNecessario[]>([]);
-  const [produtosAprovacao, setProdutosAprovacao] = useState<Produto[]>([]);
+  const [produtosAprovacao, setProdutosAprovacao] = useState<ProdutoParaPecaSugerida[]>([]);
   const [todosServicosAprovados, setTodosServicosAprovados] = useState<boolean | null>(null);
   const [idsAprovados, setIdsAprovados] = useState<string[]>([]);
   const [totalOrcamentoAprovacao, setTotalOrcamentoAprovacao] = useState<number | undefined>();
-  const decisaoAprovada = todosServicosAprovados === true || idsAprovados.length > 0;
-  const [escolhaAjuste, setEscolhaAjuste] = useState<{ variante: "aprovado" | "pendente"; analise: AnaliseAjusteOrcamento } | null>(null);
-  const escolhaAjusteResolver = useRef<((opcoes: OpcoesAjusteOrcamento | null) => void) | null>(null);
   const garantiaConfirmadaRef = useRef(false);
-  const [consumosDetalhes, setConsumosDetalhes] = useState<ConsumoOrcamento[]>([]);
+  const [consumosDetalhes, setConsumosDetalhes] = useState<EquipmentPartConsumption[]>([]);
   const [baixandoPendentes, setBaixandoPendentes] = useState(false);
   const [consumosDialogOpen, setConsumosDialogOpen] = useState(false);
   const [ajusteOrcamentoSemMudancaStatus, setAjusteOrcamentoSemMudancaStatus] = useState(false);
+  const [pecasAjusteInvalidas, setPecasAjusteInvalidas] = useState(false);
   const [correcaoStatus, setCorrecaoStatus] = useState(false);
   const [motivoCorrecaoStatus, setMotivoCorrecaoStatus] = useState("");
   const [editando, setEditando] = useState<Equipamento | null>(null);
-  const [envioManual, setEnvioManual] = useState<EnvioManualOrcamento | null>(null);
-  const [quemRecebe, setQuemRecebe] = useState<{
-    eq: Equipamento;
-    sugestao: { nome: string; telefone: string; email: string };
-    continuar: (eq: Equipamento) => Promise<void>;
-  } | null>(null);
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
-  const selecionadoIdRef = useRef<number | undefined>();
+  const selecionadoIdRef = useRef<Equipamento["id"]>();
   selecionadoIdRef.current = selecionado?.id;
   const [salvando, setSalvando] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{
@@ -286,14 +334,14 @@ export default function Equipamentos() {
   // Duplicidade de serial (múltiplos ciclos de manutenção)
   const [registrosAnteriores, setRegistrosAnteriores] = useState<Equipamento[]>([]);
   const [confirmouNovoCiclo, setConfirmouNovoCiclo] = useState(false);
-  // Equipamento anterior clicado no cadastro que ainda está em atendimento (não serve de base).
   const [anteriorEmAtendimento, setAnteriorEmAtendimento] = useState<Equipamento | null>(null);
   const [sugestoesSerial, setSugestoesSerial] = useState<Equipamento[]>([]);
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
 
   // Dados do drawer de detalhes
   const [verificacaoDetalhes, setVerificacaoDetalhes] = useState<Verificacao | null>(null);
-  const [comunicacoes, setComunicacoes] = useState<Comunicacao[]>([]);
+  const [comunicacoes, setComunicacoes] = useState<Comunicacao<EquipamentoId>[]>([]);
+  const [comunicacoesError, setComunicacoesError] = useState<string | null>(null);
   const [imagensDetalhes, setImagensDetalhes] = useState<EquipamentoImagemDraft[]>([]);
   const [historicoDetalhes, setHistoricoDetalhes] = useState<EquipamentoHistoricoEvento[]>([]);
   const [historicoDetalhesError, setHistoricoDetalhesError] = useState<string | null>(null);
@@ -303,7 +351,10 @@ export default function Equipamentos() {
   const [novoStatus, setNovoStatus] = useState("");
   const [valorOrcamento, setValorOrcamento] = useState<number>(0);
   const [valorOrcamentoValido, setValorOrcamentoValido] = useState(true);
+  const [prazoAprovacaoValido, setPrazoAprovacaoValido] = useState(true);
   const valorOrcamentoRef = useRef(valorOrcamento);
+  const [escolhaAjuste, setEscolhaAjuste] = useState<{ variante: "aprovado" | "pendente"; analise: AnaliseAjusteOrcamento } | null>(null);
+  const escolhaAjusteResolver = useRef<((opcoes: OpcoesAjusteOrcamento | null) => void) | null>(null);
   useEffect(() => { valorOrcamentoRef.current = valorOrcamento; }, [valorOrcamento]);
   const [prazoAprovacao, setPrazoAprovacao] = useState("");
   const [valorOrcamentoOriginal, setValorOrcamentoOriginal] = useState<number | null>(null);
@@ -313,12 +364,14 @@ export default function Equipamentos() {
   const [pecasLegadasAjuste, setPecasLegadasAjuste] = useState<PecaNecessaria[]>([]);
   const [observacoesAjuste, setObservacoesAjuste] = useState("");
   const [formaPagamentoAjuste, setFormaPagamentoAjuste] = useState<FormaPagamentoCodigo | "">("");
+  const [clienteAprovouAlteracao, setClienteAprovouAlteracao] = useState(false);
   const [detalhePagamentoAjuste, setDetalhePagamentoAjuste] = useState("");
-  const [catalogoServicosAjuste, setCatalogoServicosAjuste] = useState<ServicoCatalogo[]>([]);
+  const [catalogoServicosAjuste, setCatalogoServicosAjuste] = useState<ServicoCatalogo<EquipamentoId>[]>([]);
   const [carregandoCatalogoAjuste, setCarregandoCatalogoAjuste] = useState(false);
   const [valorFinal, setValorFinal] = useState<number>(0);
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
+  const [valorFinalValido, setValorFinalValido] = useState(true);
   const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("Ivan");
   const [marcaOutroOpen, setMarcaOutroOpen] = useState(false);
   const [tipoOutroOpen, setTipoOutroOpen] = useState(false);
@@ -363,92 +416,76 @@ export default function Equipamentos() {
   } | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const { equipamentos, total: totalEquipamentos, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
-    useEquipamentos({ busca: busca || undefined, status: statusFiltro, ordenacao, page: paginaEquipamentos });
-  const totalPaginasEquipamentos = totalPages(totalEquipamentos);
+  const {
+    equipamentos: registrosEquipamento,
+    total: totalEquipamentos,
+    loading,
+    error: erroListaEquipamentos,
+    avisoAtualizacao,
+    criar,
+    atualizar,
+    deletar,
+    atualizarStatus,
+    buscarPorSerial,
+    recarregar,
+    atualizarEmSegundoPlano,
+    substituirLocal,
+  } =
+    useEquipamentos<EquipamentoId>({ busca: busca || undefined, status: statusFiltro, page: paginaEquipamentos, ordenacao: ordenacaoEquipamentos });
+  // A página original mantém handlers de DB local para os tickets seguintes;
+  // o runtime SaaS só expõe a lista e o CRUD remoto, preservando UUID sem conversão.
+  const equipamentos = registrosEquipamento as unknown as Equipamento[];
+  const totalPaginasEquipamentos = totalPages(totalEquipamentos, ITEMS_PER_PAGE);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
-  const equipamentosExibidos = equipamentos;
 
-  useEffect(() => {
-    setPaginaEquipamentos(1);
-  }, [busca, statusFiltro, ordenacao]);
-
-  useEffect(() => {
-    setPaginaEquipamentos((pagina) => Math.min(pagina, totalPaginasEquipamentos));
-  }, [totalPaginasEquipamentos]);
+  useEffect(() => setPaginaEquipamentos(1), [busca, statusFiltro, ordenacaoEquipamentos]);
+  useEffect(() => setPaginaEquipamentos((current) => Math.min(current, totalPaginasEquipamentos)), [totalPaginasEquipamentos]);
 
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
     useStatusEquipamento();
-  const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess();
+  const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess({ operationalProfile });
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Diálogo com algo sendo preenchido: abrir outro atendimento por cima perderia o que foi digitado.
-  const edicaoEmAndamento =
-    dialogOpen ? "o cadastro do equipamento"
-    : verificacaoDialogOpen ? "a verificação técnica"
-    : statusDialogOpen ? "a mudança de status"
-    : pagamentoDialogOpen ? "a forma de pagamento"
-    : selecaoServicosOpen ? "a decisão do orçamento"
-    : consumosDialogOpen ? "as peças da OS"
-    : corrigirDecisaoAlvo !== null ? "a correção da decisão"
-    : emailDialogOpen ? "o envio de email"
-    : photoUploadOpen ? "o envio de fotos"
-    : deleteDialogOpen || confirmOpen ? "a confirmação aberta"
-    : null;
-  const avisoEdicaoPendente = useRef<unknown>(null);
-
-  // Vindo de um alerta/atalho: abre o atendimento pedido. Se outra janela de detalhes estiver
-  // aberta, troca na hora; só espera quando há um formulário em preenchimento.
   useEffect(() => {
+    if (IS_SAAS_BUILD) return;
     const state = location.state as { equipamentoId?: number } | null;
-    if (!state?.equipamentoId) return;
-    if (edicaoEmAndamento) {
-      if (avisoEdicaoPendente.current !== state) {
-        avisoEdicaoPendente.current = state;
-        toast.warning("Equipamentos — Abrir atendimento", {
-          id: AVISO_ATENDIMENTO_PENDENTE,
-          description: `Termine ou feche ${edicaoEmAndamento}. O atendimento do alerta abre em seguida.`,
-          duration: Infinity,
+    if (state?.equipamentoId && !detalhesDialogOpen) {
+      db.buscarEquipamento(state.equipamentoId)
+        .then((eq) => {
+          abrirDetalhes(eq);
+          navigate(location.pathname, { replace: true, state: {} });
+        })
+        .catch((err) => {
+          console.error("Erro ao buscar equipamento do estado de navegação:", err);
         });
-      }
-      return;
     }
-    toast.dismiss(AVISO_ATENDIMENTO_PENDENTE);
-    navigate(location.pathname, { replace: true, state: {} });
-    db.buscarEquipamento(state.equipamentoId)
-      .then((eq) => abrirDetalhes(eq))
-      .catch((err) => {
-        console.error("Erro ao buscar equipamento do estado de navegação:", err);
-      });
-  }, [location.state, edicaoEmAndamento]);
+  }, [location.state, detalhesDialogOpen]);
 
-  // Cliente respondeu/pediu algo no portal: a lista reordena sem o operador recarregar, e o
-  // atendimento aberto mostra o estado novo.
   useEffect(() => {
     const aoChegar = (event: Event) => {
-      const ids = (event as CustomEvent<{ equipamentoIds?: number[] }>).detail?.equipamentoIds ?? [];
+      const ids = (event as CustomEvent<{ equipamentoIds?: Array<number | string> }>).detail?.equipamentoIds ?? [];
       void atualizarEmSegundoPlano();
       const abertoId = selecionadoIdRef.current;
-      if (detalhesAbertoRef.current && abertoId && ids.includes(abertoId)) {
+      if (detalhesAbertoRef.current && abertoId != null && ids.some((id) => String(id) === String(abertoId))) {
         setSinalPortal((valor) => valor + 1);
-        db.buscarEquipamento(abertoId)
-          .then((eq) => { if (selecionadoIdRef.current === eq.id) setSelecionado(eq); })
-          .catch(() => undefined);
       }
     };
     window.addEventListener(EVENTO_ALERTAS_PORTAL, aoChegar);
     return () => window.removeEventListener(EVENTO_ALERTAS_PORTAL, aoChegar);
   }, [atualizarEmSegundoPlano]);
 
-  const carregarImagensComPreview = useCallback(async (equipamentoId: number) => {
+  const carregarImagensComPreview = useCallback(async (equipamentoId: EquipamentoId) => {
+    if (IS_SAAS_BUILD) return [];
+    if (typeof equipamentoId !== "number") throw new Error("O ID local do equipamento é inválido.");
     const imagens = await db.listarImagensEquipamento(equipamentoId);
     return Promise.all(imagens.map(imagemPersistidaParaDraft));
   }, []);
 
   // ─── Event listener: photo-received ────────────────────
   useEffect(() => {
+    if (IS_SAAS_BUILD) return;
     let unlisten: (() => void) | undefined;
     let cancelled = false;
 
@@ -476,20 +513,6 @@ export default function Equipamentos() {
     };
   }, [carregarImagensComPreview]);
 
-  useEffect(() => {
-    if (novoStatus === "AGUARDANDO_APROVACAO" && verificacaoAjusteOrcamento) {
-      let pecasTotal = 0;
-      try {
-        const pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
-        pecasTotal = pecas.reduce((sum, p) => sum + (p.valorTotal || 0), 0);
-      } catch {
-        pecasTotal = 0;
-      }
-      const servicosTotal = servicosAjuste.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
-      setValorOrcamento(servicosTotal + pecasTotal);
-    }
-  }, [servicosAjuste, verificacaoAjusteOrcamento, novoStatus]);
-
   const form = useForm<EquipamentoFormData>({
      resolver: zodResolver(equipamentoSchema),
       defaultValues: {
@@ -498,6 +521,11 @@ export default function Equipamentos() {
         observacoes: "",
       },
   });
+
+  // Os seletores são apenas uma ajuda de preenchimento: marca e modelo seguem
+  // sendo gravados como texto para preservar o contrato com backend, busca e PDF.
+  const [marcaSelecionada, setMarcaSelecionada] = useState("");
+  const [modeloSelecionado, setModeloSelecionado] = useState("");
 
   // ─── Handlers ─────────────────────────────────────────
 
@@ -517,6 +545,8 @@ export default function Equipamentos() {
     setRegistrosAnteriores([]);
     setConfirmouNovoCiclo(false);
     setAnteriorEmAtendimento(null);
+    setMarcaSelecionada("");
+    setModeloSelecionado("");
     form.reset({
       serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
@@ -563,19 +593,19 @@ export default function Equipamentos() {
     fotoEdicaoEquipamentoId.current = eq.id ?? null;
     baselineFotosRef.current = null;
     setEditando(eq);
-    setResponsavelVinculado(eq.responsavel_contato_id ? {
+    setResponsavelVinculado(eq.responsavel_contato_id && eq.cliente_id ? {
       id: eq.responsavel_contato_id,
-      empresa_id: eq.empresa_id || 0,
-      cliente_id: eq.cliente_id || 0,
+      empresa_id: eq.empresa_id ?? "",
+      cliente_id: eq.cliente_id,
       nome: eq.responsavel_nome || "Responsável pelo equipamento",
       email: eq.responsavel_email,
       telefone: eq.responsavel_telefone,
-      ativo: true,
+      ativo: undefined,
     } : null);
     setErroCliente(null);
     setErroImagens(null);
     setImagensFormulario([]);
-    setCarregandoImagensFormulario(true);
+    setCarregandoImagensFormulario(!IS_SAAS_BUILD);
     setTecnicoNovoEquipamento(extrairTecnicoInicialDeObservacoes(eq.observacoes) || "Ivan");
     if (eq.id) void carregarFotosDaEdicao(eq.id, sequencia);
     else setCarregandoImagensFormulario(false);
@@ -590,7 +620,7 @@ export default function Equipamentos() {
         telefone: eq.cliente_telefone || "",
         email: eq.cliente_email || undefined,
       });
-      db.buscarCliente(eq.cliente_id).then((c) => {
+      void carregarRepositorioClientes().then((repository) => repository.buscar(eq.cliente_id!)).then((c) => {
         if (fotoEdicaoSeq.current !== sequencia || fotoEdicaoEquipamentoId.current !== eq.id) return;
         if (c) setClienteVinculado(c);
       }).catch(() => {
@@ -622,6 +652,12 @@ export default function Equipamentos() {
       tipo: eq.tipo, status: eq.status, defeito_relatado: eq.defeito_relatado || "",
       acessorios: eq.acessorios ? eq.acessorios.split(", ").filter(Boolean) : [], acessorios_outros: eq.acessorios_outros || "", observacoes: removerTecnicoInicialDasObservacoes(eq.observacoes || ""),
     });
+    setMarcaSelecionada(
+      MARCA_EQUIPAMENTO_OPTIONS.includes(eq.marca) ? eq.marca : "Outro",
+    );
+    setModeloSelecionado(
+      MODELO_EQUIPAMENTO_OPTIONS.includes(eq.modelo) ? eq.modelo : "Outro",
+    );
     setDialogOpen(true);
   }
 
@@ -698,7 +734,7 @@ export default function Equipamentos() {
       return;
     }
     try {
-      const registros = await db.buscarEquipamentosPorSerial(serial);
+      const registros = await buscarPorSerial(serial) as unknown as Equipamento[];
       const anteriores = editando
         ? registros.filter((r) => r.id !== editando.id)
         : registros;
@@ -714,7 +750,9 @@ export default function Equipamentos() {
    * quando o atendimento já foi encerrado; se ainda está em atendimento, avisa e não preenche.
    */
   async function usarEquipamentoAnterior(anterior: Equipamento) {
-    const resultado = await usarEquipamentoAnteriorNoCadastro(form, anterior, (serial) => db.buscarEquipamentosPorSerial(serial));
+    const resultado = await usarEquipamentoAnteriorNoCadastro(form, anterior, async (serial) => {
+      return await buscarPorSerial(serial) as unknown as Equipamento[];
+    });
     if (resultado.tipo === "em_atendimento") {
       setAnteriorEmAtendimento(anterior);
       return;
@@ -723,14 +761,14 @@ export default function Equipamentos() {
     setMostrarSugestoes(false);
     setRegistrosAnteriores(resultado.registros);
     setConfirmouNovoCiclo(resultado.confirmarNovoCiclo);
-    toast.success(MENSAGEM_DADOS_PREENCHIDOS, { duration: 3000 });
+    success("Equipamentos", MENSAGEM_DADOS_PREENCHIDOS);
   }
 
   async function handleSerialInput(value: string) {
     const serial = value.trim();
     if (serial.length < 2) { setSugestoesSerial([]); setMostrarSugestoes(false); return; }
     try {
-      const registros = await db.buscarEquipamentosPorSerial(serial);
+      const registros = await buscarPorSerial(serial) as unknown as Equipamento[];
       setSugestoesSerial(registros.filter((r) => r.serial_number.toLowerCase().startsWith(serial.toLowerCase())));
       setMostrarSugestoes(true);
     } catch { setSugestoesSerial([]); }
@@ -773,21 +811,48 @@ export default function Equipamentos() {
   }
 
   /**
-   * Abre dialog de detalhes com 4 abas. Carrega verificação e comunicações em paralelo.
-   * Conecta-se a: db.buscarVerificacao, db.listarComunicacoes
+   * Abre dialog de detalhes com as abas existentes. No SaaS, leituras remotas
+   * usam UUID/RLS; no modo local, os dados continuam vindo do banco Tauri.
    */
-  const detalhesSeq = useRef(0);
   const abrirDetalhes = useCallback(async (eq: Equipamento) => {
-    // Trocar de atendimento com a janela aberta: só a última abertura grava os dados.
-    const seq = ++detalhesSeq.current;
     setSelecionado(eq);
     setDetalhesDialogOpen(true);
     setCarregandoDetalhes(true);
     setVerificacaoDetalhes(null);
     setComunicacoes([]);
+    setComunicacoesError(null);
     setImagensDetalhes([]);
     setHistoricoDetalhes([]);
     setHistoricoDetalhesError(null);
+    if (IS_SAAS_BUILD) {
+      const [verificationResult, communicationsResult, historyResult] = await Promise.allSettled([
+        carregarRepositorioOperacoesEquipamento().then((repository) => repository.getVerification(String(eq.id))),
+        carregarRepositorioComunicacoes().then((repository) => repository.listar(String(eq.id))),
+        carregarRepositorioHistoricoEquipamento().then((repository) => repository.listar(String(eq.id))),
+      ]);
+      setVerificacaoDetalhes(verificationResult.status === "fulfilled" ? verificationResult.value : null);
+      setComunicacoes(communicationsResult.status === "fulfilled" ? communicationsResult.value : []);
+      setComunicacoesError(
+        communicationsResult.status === "rejected"
+          ? communicationsResult.reason instanceof Error
+            ? communicationsResult.reason.message
+            : "Não foi possível carregar as comunicações deste equipamento."
+          : null,
+      );
+      if (verificationResult.status === "rejected") {
+        console.error("Erro ao carregar verificação Online:", verificationResult.reason);
+      }
+      setHistoricoDetalhes(historyResult.status === "fulfilled" ? historyResult.value : []);
+      setHistoricoDetalhesError(
+        historyResult.status === "rejected"
+          ? historyResult.reason instanceof Error
+            ? historyResult.reason.message
+            : "Não foi possível carregar o histórico deste equipamento."
+          : null,
+      );
+      setCarregandoDetalhes(false);
+      return;
+    }
     try {
       const [verif, comms, imagens, historico] = await Promise.allSettled([
         db.buscarVerificacao(eq.id!),
@@ -795,9 +860,13 @@ export default function Equipamentos() {
         carregarImagensComPreview(eq.id!),
         db.listarHistoricoEquipamento(eq.id!),
       ]);
-      if (seq !== detalhesSeq.current) return;
       setVerificacaoDetalhes(verif.status === "fulfilled" ? verif.value : null);
       setComunicacoes(comms.status === "fulfilled" ? comms.value : []);
+      setComunicacoesError(
+        comms.status === "rejected"
+          ? "Não foi possível carregar as comunicações deste equipamento. " + String(comms.reason)
+          : null,
+      );
       setImagensDetalhes(imagens.status === "fulfilled" ? imagens.value : []);
       setHistoricoDetalhes(historico.status === "fulfilled" ? historico.value : []);
       setHistoricoDetalhesError(
@@ -808,7 +877,7 @@ export default function Equipamentos() {
     } catch (err) {
       console.error("Erro ao carregar detalhes:", err);
     } finally {
-      if (seq === detalhesSeq.current) setCarregandoDetalhes(false);
+      setCarregandoDetalhes(false);
     }
   }, [carregarImagensComPreview]);
 
@@ -820,15 +889,20 @@ export default function Equipamentos() {
 
   /** Abre dialog de mudança manual de status com opção de pré-selecionar o status */
   async function prepararValorEntregaPadrao(eq: Equipamento) {
-    const verificacao = await db.buscarVerificacao(eq.id!);
+    const verificacao = IS_SAAS_BUILD
+      ? await (await carregarRepositorioOperacoesEquipamento()).getVerification(String(eq.id))
+      : await db.buscarVerificacao(eq.id!);
     const sugerido = verificacao?.custo_total ?? eq.valor_orcamento ?? 0;
     setValorFinalSugerido(sugerido);
     setValorFinal(sugerido);
-    setAcordoExcecaoEntrega(false);
+    setAcordoExcecaoEntrega(false); setValorFinalValido(true);
   }
 
   async function prepararAjusteOrcamentoPadrao(eq: Equipamento) {
-    const verificacao = await db.buscarVerificacao(eq.id!, eq.empresa_id);
+    const online = IS_SAAS_BUILD ? await carregarRepositorioOperacoesEquipamento() : null;
+    const verificacao = online
+      ? await online.getVerification(String(eq.id))
+      : await db.buscarVerificacao(eq.id!, eq.empresa_id);
     const valorOriginal = verificacao?.custo_total ?? null;
     const valorAnterior = eq.valor_orcamento ?? null;
     const valorBase = eq.valor_orcamento ?? verificacao?.custo_total ?? 0;
@@ -839,7 +913,7 @@ export default function Equipamentos() {
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setVerificacaoAjusteOrcamento(verificacao);
     setObservacoesAjuste(verificacao?.observacoes || "");
-    if (orcamentoJaAprovado(eq.status) && verificacao?.forma_pagamento_codigo) {
+    if (eq.status === "APROVADO" && verificacao?.forma_pagamento_codigo) {
       setFormaPagamentoAjuste(verificacao.forma_pagamento_codigo);
       setDetalhePagamentoAjuste(verificacao.forma_pagamento_detalhe || "");
     } else {
@@ -853,16 +927,16 @@ export default function Equipamentos() {
     } catch {
       servicosIniciais = [];
     }
-    setServicosAjuste(normalizarServicosOrcamento(servicosIniciais));
-    try {
-      const todas = JSON.parse(verificacao?.pecas_necessarias || "[]") as PecaNecessaria[];
-      const vinculadas = new Set(pecasParaOrcamento(normalizarServicosOrcamento(servicosIniciais)).map((p) => p.id));
-      setPecasLegadasAjuste(todas.filter((p) => !vinculadas.has(p.id)));
-    } catch { setPecasLegadasAjuste([]); }
+    setServicosAjuste(normalizarServicosAprovacao(servicosIniciais));
+    let pecasIniciais: PecaNecessaria[] = [];
+    try { pecasIniciais = JSON.parse(verificacao?.pecas_necessarias || "[]") as PecaNecessaria[]; } catch { /* orçamento legado sem peças válidas */ }
+    setPecasLegadasAjuste(pecasIniciais.filter((peca) => !peca.servico_id));
 
     setCarregandoCatalogoAjuste(true);
     try {
-      const catalogo = await db.listarServicosCatalogoAtivos();
+      const catalogo = online
+        ? await online.listActiveServices()
+        : await db.listarServicosCatalogoAtivos();
       setCatalogoServicosAjuste(catalogo);
     } catch (err) {
       console.error("Erro ao carregar catálogo de serviços:", err);
@@ -877,7 +951,7 @@ export default function Equipamentos() {
       void prepararValorEntregaPadrao(selecionado);
     } else {
       setValorFinalSugerido(null);
-      setAcordoExcecaoEntrega(false);
+      setAcordoExcecaoEntrega(false); setValorFinalValido(true);
     }
   }
 
@@ -901,7 +975,6 @@ export default function Equipamentos() {
     setValorOrcamentoAnterior(null);
     setVerificacaoAjusteOrcamento(null);
     setServicosAjuste([]);
-    setPecasLegadasAjuste([]);
     setObservacoesAjuste("");
     setFormaPagamentoAjuste("");
     setDetalhePagamentoAjuste("");
@@ -909,20 +982,22 @@ export default function Equipamentos() {
     setCarregandoCatalogoAjuste(false);
     setValorFinal(0);
     setValorFinalSugerido(null);
-    setAcordoExcecaoEntrega(false);
+    setAcordoExcecaoEntrega(false); setValorFinalValido(true);
     setErroImagensSaidaEntrega(null);
     setImagensSaidaEntrega([]);
     if ((statusPreSelecionado || "") === "ENTREGUE") {
       await prepararValorEntregaPadrao(eq);
-      setCarregandoImagensSaidaEntrega(true);
-      try {
-        const imagens = await carregarImagensComPreview(eq.id!);
-        setImagensSaidaEntrega(filtrarImagensPorCategoria(imagens, "SAIDA"));
-      } catch (err) {
-        console.error("Erro ao carregar fotos de saída para entrega:", err);
-        setErroImagensSaidaEntrega("Não foi possível carregar as fotos de saída já cadastradas.");
-      } finally {
-        setCarregandoImagensSaidaEntrega(false);
+      if (!IS_SAAS_BUILD) {
+        setCarregandoImagensSaidaEntrega(true);
+        try {
+          const imagens = await carregarImagensComPreview(eq.id!);
+          setImagensSaidaEntrega(filtrarImagensPorCategoria(imagens, "SAIDA"));
+        } catch (err) {
+          console.error("Erro ao carregar fotos de saída para entrega:", err);
+          setErroImagensSaidaEntrega("Não foi possível carregar as fotos de saída já cadastradas.");
+        } finally {
+          setCarregandoImagensSaidaEntrega(false);
+        }
       }
     }
     if ((statusPreSelecionado || "") === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(eq.status, statusPreSelecionado || "")) {
@@ -974,39 +1049,14 @@ export default function Equipamentos() {
     setSelecionado(eq);
     setNovoStatus("");
     setAjusteOrcamentoSemMudancaStatus(true);
+    setClienteAprovouAlteracao(false);
     setCorrecaoStatus(false);
     setMotivoCorrecaoStatus("");
-    setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorFinal(0);
     setValorFinalSugerido(null);
-    setAcordoExcecaoEntrega(false);
+    setAcordoExcecaoEntrega(false); setValorFinalValido(true);
     await prepararAjusteOrcamentoPadrao(eq);
     setStatusDialogOpen(true);
-  }
-
-  async function abrirConsumosOrcamento(eq: Equipamento) {
-    const liberado = await ensureSensitiveAccess({
-      title: "Peças desta OS",
-      description: "Informe o PIN para consultar e confirmar baixas pendentes.",
-      permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
-    });
-    if (!liberado || !eq.id) return;
-    try {
-      setSelecionado(eq);
-      setConsumosDetalhes(await db.listarConsumosOrcamento(eq.id));
-      setConsumosDialogOpen(true);
-    } catch (cause) { showError("Equipamentos", "Peças da OS", cause); }
-  }
-
-  async function confirmarBaixaPendente() {
-    if (!selecionado?.id || baixandoPendentes) return;
-    setBaixandoPendentes(true);
-    try {
-      const quantidade = await db.baixarPecasPendentes(selecionado.id);
-      setConsumosDetalhes(await db.listarConsumosOrcamento(selecionado.id));
-      success("Equipamentos", `${quantidade} peça(s) baixada(s).`, "Estoque da OS");
-    } catch (cause) { showError("Equipamentos", "Baixar peças pendentes", cause); }
-    finally { setBaixandoPendentes(false); }
   }
 
   /**
@@ -1057,6 +1107,7 @@ export default function Equipamentos() {
         empresa_id: clienteVinculado.empresa_id || editando?.empresa_id || null,
         // Dados denormalizados para exibição rápida
         cliente_nome: nomeCliente,
+        cliente_documento: clienteVinculado.documento || clienteVinculado.cpf_cnpj || null,
         cliente_telefone: clienteVinculado.telefone || null,
         cliente_email: clienteVinculado.email || null,
         responsavel_contato_id: responsavelVinculado?.id || null,
@@ -1071,7 +1122,7 @@ export default function Equipamentos() {
         ? !imagensPersistidasIguais(imagensFormulario, baselineFotos!.fotos)
         : imagensPayload.length > 0;
       const resultado = editando
-        ? await atualizar(editando.id!, payload)
+        ? await atualizar(editando.id!, payload, editando.atualizado_em)
         : await criar(payload);
 
       if (!resultado.sucesso || !resultado.data?.id) {
@@ -1080,8 +1131,9 @@ export default function Equipamentos() {
       const equipamentoSalvo = resultado.data;
       const equipamentoIdSalvo = equipamentoSalvo.id!;
 
-      if (fotosAlteradas) {
+      if (fotosAlteradas && !IS_SAAS_BUILD) {
         try {
+          if (typeof equipamentoIdSalvo !== "number") throw new Error("O ID local do equipamento é inválido.");
           const expectedImageIds = editando
             ? baselineFotos!.fotos.flatMap((foto) => typeof foto.id === "number" ? [foto.id] : [])
             : [];
@@ -1101,10 +1153,10 @@ export default function Equipamentos() {
           }
         } catch (err: any) {
           if (fotoEdicaoSeq.current === sequenciaEdicao) {
-            setEditando(equipamentoSalvo);
+            setEditando(equipamentoInterno(equipamentoSalvo));
             baselineFotosRef.current = null;
             if (!editando) {
-              fotoEdicaoEquipamentoId.current = equipamentoIdSalvo;
+              fotoEdicaoEquipamentoId.current = equipamentoIdSalvo as number;
             }
             setErroImagens(
               `O equipamento foi salvo, mas as fotos não foram salvas: ${err?.message || "falha ao persistir as fotos"}. Recarregue as fotos antes de tentar novamente.`,
@@ -1125,6 +1177,7 @@ export default function Equipamentos() {
         const liberadoEmail = await ensureSensitiveAccess({
           title: "Enviar ordem de entrada",
           description: "Informe o PIN para enviar a ordem de entrada por email ao cliente.",
+          permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
         });
         if (fotoEdicaoSeq.current !== sequenciaEdicao) return;
         if (liberadoEmail) {
@@ -1135,7 +1188,7 @@ export default function Equipamentos() {
                 ...equipamentoSalvo,
                 cliente_email: email,
                 cliente_nome: nomeDestinatario,
-              } as Equipamento);
+              } as unknown as Equipamento);
               if (!retornoEmailEntrada.sucesso) erroEnvio = retornoEmailEntrada.erro || "Falha desconhecida.";
             } catch (cause) {
               erroEnvio = cause instanceof Error ? cause.message : String(cause);
@@ -1185,8 +1238,14 @@ export default function Equipamentos() {
   async function onDelete() {
     if (!deletando) return;
     setSalvando(true);
-    try { await deletar(deletando.id!); setDeleteDialogOpen(false); setDeletando(null); }
-    catch (err) { console.error("Erro ao deletar:", err); }
+    try {
+      const resultado = await deletar(deletando.id!);
+      if (!resultado.sucesso) throw new Error(resultado.erro || "Não foi possível excluir o equipamento.");
+      setDeleteDialogOpen(false);
+      setDeletando(null);
+    } catch (err) {
+      showError("Equipamentos", "Excluir equipamento", err);
+    }
     finally { setSalvando(false); }
   }
 
@@ -1210,7 +1269,8 @@ export default function Equipamentos() {
    * Conecta-se a: useStatusEquipamento.finalizarVerificacao
    */
   async function handleConcluirVerificacao(dados: DadosVerificacao): Promise<boolean> {
-    if (!selecionado) return false;
+    const equipamentoSelecionado = selecionado;
+    if (!equipamentoSelecionado) return false;
     // Total 0 só chega aqui em OS só de garantia, que sai aprovada: só quem aprova orçamento finaliza.
     const garantiaAprovada = dados.custo_total === 0;
     const liberado = await ensureSensitiveAccess({
@@ -1222,13 +1282,83 @@ export default function Equipamentos() {
     });
     if (!liberado) return false;
 
-    async function finalizar(eq: Equipamento): Promise<boolean> {
+    async function seguir(eq: Equipamento): Promise<boolean> {
+    if (IS_SAAS_BUILD) {
+      async function executarOnline(email: string, nomeDestinatario?: string): Promise<boolean> {
+        setSalvando(true);
+        try {
+          const repository = await carregarRepositorioOperacoesEquipamento();
+          const result = await repository.finalizeVerification({
+            equipmentId: String(eq.id),
+            expectedUpdatedAt: eq.atualizado_em || "",
+            verification: dados,
+            approvalDeadline: calcularPrazoAprovacaoOnline(3),
+          });
+          const equipamentoOnline = result.equipment as unknown as Equipamento;
+          const verificacaoOnline = result.verification;
+          let whatsapp: { sucesso: boolean; erro?: string } = { sucesso: false, erro: "Verificação não retornada pelo serviço Online." };
+          let emailResult: { sucesso: boolean; erro?: string } = { sucesso: false, erro: "Envio de email ignorado pelo operador." };
+          if (verificacaoOnline) {
+            const telefone = resolveRecipient(equipamentoOnline, "telefone");
+            whatsapp = await WhatsAppService.enviarOrcamento({
+              ...equipamentoOnline,
+              cliente_telefone: telefone.endereco || undefined,
+              cliente_nome: telefone.nome,
+            }, verificacaoOnline);
+            if (email.trim()) {
+              emailResult = await EmailService.enviarOrcamento({
+                ...equipamentoOnline,
+                cliente_email: email.trim(),
+                cliente_nome: nomeDestinatario || equipamentoOnline.cliente_nome,
+              }, verificacaoOnline);
+            }
+          }
+          setVerificacaoDialogOpen(false);
+          await recarregar();
+          const resumo = mensagemResultadoCanais({
+            sucesso: true,
+            canais: {
+              whatsapp: { enviado: whatsapp.sucesso, erro: whatsapp.erro },
+              email: { enviado: emailResult.sucesso, erro: emailResult.erro },
+            },
+          } satisfies ResultadoAutomacao);
+          if (resumo) success("Equipamentos", resumo, "Finalizar verificação");
+          return true;
+        } catch (err) {
+          showError("Equipamentos", "Finalizar verificação", err);
+          return false;
+        } finally {
+          setSalvando(false);
+        }
+      }
+      const recipientOnline = resolveRecipient(eq, "email");
+      setEmailFlow({
+        recipient: recipientOnline,
+        onConfirm: async (email, salvar) => {
+          if (salvar) {
+            try {
+              await saveRecipientAddress(eq, "email", email);
+            } catch (cause) {
+              showError("Equipamentos", "Salvar destinatário", cause);
+              return false;
+            }
+          }
+          return executarOnline(email, recipientOnline.nome);
+        },
+        onSkip: async () => { await executarOnline(""); },
+      });
+      setEmailDialogOpen(true);
+      return false;
+    }
+
+    async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
       setSalvando(true);
       try {
-        const resultado = await finalizarVerificacao(eq, dados);
+        const resultado = await finalizarVerificacao(eq, dados, email, nomeDestinatario);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
+        if (resultado.envioManual) setEnvioManual(resultado.envioManual);
         setVerificacaoDialogOpen(false);
         await recarregar();
         const resumoCanais = mensagemResultadoCanais(resultado);
@@ -1238,9 +1368,9 @@ export default function Equipamentos() {
         if (resultado.avisos?.length) {
           warning("Equipamentos", resultado.avisos.join("\n"));
         }
-        if (resultado.envioManual) setEnvioManual(resultado.envioManual);
         return true;
       } catch (err: any) {
+        console.error("Erro ao finalizar verificação:", err);
         showError("Equipamentos", "Finalizar verificação", err);
         return false;
       } finally {
@@ -1248,31 +1378,54 @@ export default function Equipamentos() {
       }
     }
 
-    let precisaContato = false;
-    try {
-      const dest = await db.obterDestinatarioOrcamento(selecionado.id!);
-      precisaContato = !!dest?.precisaContato;
-    } catch (err) {
-      showError("Equipamentos", "Finalizar verificação", err);
-      return false;
+    const recipient = resolveRecipient(eq, "email");
+    setEmailFlow({
+      recipient,
+      onConfirm: async (email, salvar) => {
+        if (salvar) {
+          try {
+            await saveRecipientAddress(eq, "email", email);
+          } catch (cause) {
+            showError("Equipamentos", "Salvar destinatário", cause);
+            return false;
+          }
+        }
+        await executarComEmail(email, recipient.nome);
+      },
+      onSkip: async () => { await executarComEmail(""); },
+    });
+    setEmailDialogOpen(true);
+    return false;
     }
 
-    if (precisaPerguntarQuemRecebeOrcamento(precisaContato, garantiaAprovada)) {
-      setQuemRecebe({
-        eq: selecionado,
-        sugestao: {
-          nome: selecionado.cliente_nome || "",
-          telefone: selecionado.cliente_telefone || "",
-          email: selecionado.cliente_email || "",
-        },
-        continuar: async (eqAtualizado) => { await finalizar(eqAtualizado); },
-      });
-      return false;
+    if (!IS_SAAS_BUILD) {
+      let precisaContato = false;
+      try {
+        const dest = await db.obterDestinatarioOrcamento(equipamentoSelecionado.id!);
+        precisaContato = !!dest?.precisaContato;
+      } catch (err) {
+        showError("Equipamentos", "Finalizar verificação", err);
+        return false;
+      }
+      if (precisaPerguntarQuemRecebeOrcamento(precisaContato, garantiaAprovada)) {
+        setQuemRecebe({
+          eq: equipamentoSelecionado,
+          sugestao: {
+            nome: equipamentoSelecionado.cliente_nome || "",
+            telefone: equipamentoSelecionado.cliente_telefone || "",
+            email: equipamentoSelecionado.cliente_email || "",
+          },
+          continuar: async (eqAtualizado) => {
+            setSelecionado(eqAtualizado);
+            await seguir(eqAtualizado);
+          },
+        });
+        return false;
+      }
     }
-    return finalizar(selecionado);
+    return seguir(equipamentoSelecionado);
   }
 
-  /** Gera nova senha de portal para o envio manual aberto e atualiza o diálogo. */
   async function gerarNovaSenhaDoEnvioManual(): Promise<EnvioManualOrcamento | null> {
     if (!envioManual) return null;
     const [eq, verificacao] = await Promise.all([
@@ -1298,7 +1451,64 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
-    async function executarComEmail(email: string | undefined, nomeDestinatario?: string, emailSalvo = false): Promise<boolean> {
+    if (IS_SAAS_BUILD) {
+      const recipient = resolveRecipient(eq, "email");
+      async function executarOnline(email: string, nomeDestinatario?: string): Promise<boolean> {
+        setSalvando(true);
+        try {
+          const resultado = await atualizarStatus(eq.id!, "PRONTO", undefined, undefined, undefined, eq.atualizado_em);
+          if (!resultado.sucesso) throw new Error(resultado.erro || "Não foi possível marcar o equipamento como pronto.");
+          const equipamentoOnline = eq as unknown as Equipamento;
+          const telefone = resolveRecipient(equipamentoOnline, "telefone");
+          const whatsapp = await WhatsAppService.enviarEquipamentoPronto({
+            ...equipamentoOnline,
+            cliente_telefone: telefone.endereco || undefined,
+            cliente_nome: telefone.nome,
+          });
+          const emailResult = email.trim()
+            ? await EmailService.enviarEquipamentoPronto({
+              ...equipamentoOnline,
+              cliente_email: email.trim(),
+              cliente_nome: nomeDestinatario || equipamentoOnline.cliente_nome,
+            })
+            : { sucesso: false, erro: "Envio de email ignorado pelo operador." };
+          await recarregar();
+          const resumo = mensagemResultadoCanais({
+            sucesso: true,
+            canais: {
+              whatsapp: { enviado: whatsapp.sucesso, erro: whatsapp.erro },
+              email: { enviado: emailResult.sucesso, erro: emailResult.erro },
+            },
+          } satisfies ResultadoAutomacao);
+          if (resumo) success("Equipamentos", resumo, "Marcar como pronto");
+          return true;
+        } catch (err) {
+          showError("Equipamentos", "Marcar como pronto", err);
+          return false;
+        } finally {
+          setSalvando(false);
+        }
+      }
+      setEmailFlow({
+        recipient,
+        onConfirm: async (email, salvar) => {
+          if (salvar) {
+            try {
+              await saveRecipientAddress(eq, "email", email);
+            } catch (cause) {
+              showError("Equipamentos", "Salvar destinatário", cause);
+              return false;
+            }
+          }
+          return executarOnline(email, recipient.nome);
+        },
+        onSkip: async () => { await executarOnline(""); },
+      });
+      setEmailDialogOpen(true);
+      return;
+    }
+
+    async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
       setSalvando(true);
       try {
         const resultado = await marcarComoPronto(eq, email, nomeDestinatario);
@@ -1307,16 +1517,13 @@ export default function Equipamentos() {
         }
         await recarregar();
         const resumoCanais = mensagemResultadoCanais(resultado);
-        if (emailSalvo && resultado.canais?.email && !resultado.canais.email.enviado) {
-          showError("Equipamentos", "Marcar como pronto", new Error([mensagemEnvioFalhouComEmailSalvo(resultado.canais.email.erro), ...resumoCanais.split("\n").filter((linha) => linha.startsWith("WhatsApp"))].join("\n")));
-        } else if (resumoCanais) {
+        if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Marcar como pronto");
         }
         return true;
       } catch (err: any) {
         console.error("Erro ao marcar pronto:", err);
         showError("Equipamentos", "Marcar como pronto", err);
-        if (emailSalvo) await atualizarEmSegundoPlano();
         return false;
       } finally {
         setSalvando(false);
@@ -1335,7 +1542,7 @@ export default function Equipamentos() {
             return false;
           }
         }
-        await executarComEmail(email, recipient.nome, salvar);
+        await executarComEmail(email, recipient.nome);
       },
       onSkip: async () => { await executarComEmail(""); },
     });
@@ -1348,7 +1555,12 @@ export default function Equipamentos() {
     const enviandoParaAprovacao = novoStatus === "AGUARDANDO_APROVACAO"
       && !!selecionado
       && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
-    if (mostraOrcamento && !valorOrcamentoValido) return;
+    if (mostraOrcamento && (!valorOrcamentoValido || !prazoAprovacaoValido)) return;
+    if (novoStatus === "ENTREGUE" && acordoExcecaoEntrega && !valorFinalValido) return;
+    if (pecasAjusteInvalidas) {
+      warning("Equipamentos", "Corrija o preço inválido de peça antes de continuar.");
+      return;
+    }
     if (enviandoParaAprovacao && !totalOrcamentoAprovacaoValido(valorOrcamentoRef.current)) {
       warning("Equipamentos", osSomenteGarantia(servicosAjuste)
         ? "OS só de garantia não envia orçamento para aprovação de valor."
@@ -1360,7 +1572,7 @@ export default function Equipamentos() {
       return;
     }
     if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
-      if (ajusteOrcamentoSemMudancaStatus && vaiAutoAprovarOsGarantia(selecionado?.status, osSomenteGarantia(servicosAjuste), valorOrcamentoRef.current)) {
+      if (ajusteOrcamentoSemMudancaStatus && !IS_SAAS_BUILD && vaiAutoAprovarOsGarantia(selecionado?.status, osSomenteGarantia(servicosAjuste), valorOrcamentoRef.current)) {
         void confirmarMudancaStatus(false);
         return;
       }
@@ -1371,9 +1583,7 @@ export default function Equipamentos() {
       const totalOriginal = servicosOriginal.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
       const totalNovo = servicosAjuste.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
 
-      const pecasTotal = [...pecasParaOrcamento(servicosAjuste), ...pecasLegadasAjuste]
-        .reduce((sum, p) => sum + p.valorTotal, 0);
-      const calculado = totalNovo + pecasTotal;
+      const calculado = totalNovo + somarPecas(mesclarPecasDoOrcamento(pecasLegadasAjuste, servicosAjuste));
 
       const digitado = valorOrcamentoRef.current;
       if (Math.abs(calculado - digitado) > 0.001) {
@@ -1425,7 +1635,7 @@ export default function Equipamentos() {
     void confirmarMudancaStatus(false);
   }
 
-  async function abrirDialogoAprovacao(eq: Equipamento, decisaoInicial: "aprovar" | "reprovar") {
+  async function abrirDialogoAprovacao(eq: Equipamento, decisaoInicial: "aprovar" | "reprovar" = "aprovar") {
     const liberado = await ensureSensitiveAccess({
       title: decisaoInicial === "aprovar" ? "Aprovar orçamento" : "Reprovar orçamento",
       description: decisaoInicial === "aprovar"
@@ -1439,35 +1649,23 @@ export default function Equipamentos() {
     setPagamentoAprovacaoError(null);
     setPagamentoAprovacaoLoading(true);
     try {
-      const verificacao = await db.buscarVerificacao(eq.id!);
-      const servicos = normalizarServicosOrcamento(JSON.parse(verificacao?.servicos_necessarios || "[]") as ServicoNecessario[]);
+      const verificacao = IS_SAAS_BUILD
+        ? await (await carregarRepositorioOperacoesEquipamento()).getVerification(String(eq.id))
+        : await db.buscarVerificacao(eq.id!);
+      const servicosSalvos = JSON.parse(verificacao?.servicos_necessarios || "[]") as ServicoNecessario[];
+      const servicos = normalizarServicosAprovacao(servicosSalvos);
       setServicosAprovacao(servicos);
-      setTotalOrcamentoAprovacao(servicos.length === 0
-        ? (eq.valor_orcamento != null && eq.valor_orcamento > 0
-          ? eq.valor_orcamento
-          : verificacao?.custo_total != null && verificacao.custo_total > 0
-            ? verificacao.custo_total
-            : eq.valor_orcamento ?? verificacao?.custo_total)
-        : verificacao?.custo_total);
-      setProdutosAprovacao(await carregarProdutosOrcamento());
       setTodosServicosAprovados(decisaoInicial === "reprovar" ? false : null);
       setIdsAprovados([]);
-      const decisaoCliente = await db.obterDecisaoOrcamento(eq.id!);
-      respostaClienteVistaRef.current = decisaoCliente && !decisaoCliente.encerradaMotivo
-        ? decisaoCliente.resposta?.id ?? 0
-        : 0;
-      const respostaPendente = decisaoCliente && !decisaoCliente.encerradaMotivo ? decisaoCliente.resposta : null;
-      setRespostaClienteDecisao(
-        respostaPendente && !respostaPendente.aplicadaEm && respostaPendente.decisao !== "DESFEITA"
-          ? respostaPendente.decisao
-          : null,
-      );
-      setMotivoDivergencia("");
+      setTotalOrcamentoAprovacao(verificacao?.custo_total ?? undefined);
+      setProdutosAprovacao(IS_SAAS_BUILD
+        ? await carregarProdutosParaPecas()
+        : await carregarProdutosLocaisParaAprovacao());
+      setSelecaoServicosOpen(true);
       setPagamentoAprovacaoInicial(verificacao?.forma_pagamento_codigo ? {
         codigo: verificacao.forma_pagamento_codigo,
         detalhe: verificacao.forma_pagamento_detalhe || null,
       } : null);
-      setSelecaoServicosOpen(true);
     } catch (cause) {
       showError("Equipamentos", "Carregar pagamento", cause);
     } finally {
@@ -1475,17 +1673,12 @@ export default function Equipamentos() {
     }
   }
 
-  const decisaoDivergeDoCliente = respostaClienteDecisao != null
-    && todosServicosAprovados !== null
-    && (respostaClienteDecisao === "APROVAR") !== decisaoAprovada;
-  const motivoDivergenciaValido = motivoDivergencia.trim().length >= 5;
-
   async function confirmarAprovacao(pagamento: FormaPagamento): Promise<boolean> {
     if (!selecionado?.id) {
       setPagamentoAprovacaoError("Não foi possível identificar o equipamento selecionado.");
       return false;
     }
-    if (!selecionado.empresa_id) {
+    if (!IS_SAAS_BUILD && !selecionado.empresa_id) {
       setPagamentoAprovacaoError("Este equipamento é um cadastro legado sem empresa vinculada. Vincule o cliente à empresa antes de aprovar o orçamento.");
       return false;
     }
@@ -1493,41 +1686,108 @@ export default function Equipamentos() {
       setPagamentoAprovacaoError("A versão atual do orçamento não está disponível. Feche, atualize a lista e tente novamente.");
       return false;
     }
-    if (decisaoDivergeDoCliente && !motivoDivergenciaValido) {
-      setPagamentoAprovacaoError("O cliente respondeu de outra forma. Informe o motivo da divergência (mínimo de 5 caracteres).");
-      return false;
-    }
     setPagamentoAprovacaoLoading(true);
     try {
-      await db.aprovarOrcamento({
-        empresa_id: selecionado.empresa_id,
-        equipamento_id: selecionado.id,
-        expected_updated_em: selecionado.atualizado_em,
-        pagamento,
-        servicos_aprovados: idsAprovados,
-        aprovado: decisaoAprovada,
-        resposta_esperada_id: respostaClienteVistaRef.current,
-        ...(decisaoDivergeDoCliente ? { motivo_divergencia: motivoDivergencia.trim() } : {}),
-      });
+      let aprovado: Equipamento;
+      if (IS_SAAS_BUILD) {
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        aprovado = await repository.approveQuote({
+          equipmentId: String(selecionado.id),
+          expectedUpdatedAt: selecionado.atualizado_em,
+          payment: pagamento,
+          ...(servicosAprovacao.length > 0 || todosServicosAprovados !== true
+            ? { servicesApproved: idsAprovados }
+            : {}),
+        }) as unknown as Equipamento;
+      } else {
+        aprovado = await db.aprovarOrcamento({
+          empresa_id: selecionado.empresa_id!,
+          equipamento_id: selecionado.id,
+          expected_updated_em: selecionado.atualizado_em,
+          pagamento,
+          servicos_aprovados: idsAprovados,
+          aprovar_sem_servicos: servicosAprovacao.length === 0 && todosServicosAprovados === true,
+          aprovado: idsAprovados.length > 0 || (servicosAprovacao.length === 0 && todosServicosAprovados === true),
+        });
+      }
       await recarregar();
+      const equipamentoAtualizado = { ...selecionado, ...aprovado };
+      substituirLocal(equipamentoAtualizado);
+      setSelecionado(equipamentoAtualizado);
       setPagamentoAprovacaoError(null);
-      const servicosReprovados = servicosAprovacao
-        .filter((servico) => !idsAprovados.includes(servico.id))
-        .map((servico) => servico.descricao);
-      const detalheReprovacaoParcial = servicosReprovados.length > 0
-        ? ` Serviços não aprovados: ${servicosReprovados.join(", ")}.`
-        : "";
-      success("Equipamentos", decisaoAprovada
-        ? servicosAprovacao.length
-          ? `Serviços aprovados. As peças disponíveis foram baixadas; confira faltas em Peças da OS.${detalheReprovacaoParcial}`
-          : "Orçamento aprovado sem serviços detalhados e sem baixa de estoque."
-        : "Orçamento reprovado sem baixa de estoque.", "Decisão do cliente");
+      success(
+        "Equipamentos",
+        servicosAprovacao.length > 0
+          ? idsAprovados.length > 0
+            ? "Serviços aprovados. As peças disponíveis foram baixadas; confira faltas em Peças da OS."
+            : "Orçamento reprovado sem baixa de estoque."
+          : todosServicosAprovados ? "Orçamento aprovado." : "Orçamento reprovado sem baixa de estoque.",
+        servicosAprovacao.length > 0 ? "Decisão do cliente" : "Aprovação",
+      );
       return true;
     } catch (cause) {
       setPagamentoAprovacaoError(String(cause));
       return false;
     } finally {
       setPagamentoAprovacaoLoading(false);
+    }
+  }
+
+  async function confirmarSelecaoServicosAprovados() {
+    if (todosServicosAprovados === null) return;
+    const servicosSelecionados = servicosAprovacao.filter((servico) => idsAprovados.includes(servico.id));
+    if (servicosSelecionados.some((servico) => (servico.pecas ?? []).length > 0)) {
+      const liberado = await ensureSensitiveAccess({
+        title: "Baixa de peças da aprovação",
+        description: "Seu perfil precisa autorizar estoque para baixar as peças dos serviços aprovados.",
+        permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
+      });
+      if (!liberado) return;
+    }
+    if (idsAprovados.length > 0 || (servicosAprovacao.length === 0 && todosServicosAprovados)) {
+      setPagamentoAprovacaoError(null);
+      setSelecaoServicosOpen(false);
+      setPagamentoDialogOpen(true);
+      return;
+    }
+    const confirmado = await confirmarAprovacao({ codigo: "A_COMBINAR" });
+    if (confirmado) setSelecaoServicosOpen(false);
+  }
+
+  async function abrirConsumosOrcamento(eq: Equipamento) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Peças desta OS",
+      description: "Informe o PIN para consultar e confirmar baixas pendentes.",
+      permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
+    });
+    if (!liberado || !eq.id) return;
+    try {
+      const repository = await carregarRepositorioOperacoesEquipamento();
+      if (!repository.listPartsConsumption) throw new Error("A consulta de peças da OS não está disponível neste runtime.");
+      setSelecionado(eq);
+      setConsumosDetalhes(await repository.listPartsConsumption(String(eq.id)));
+      setConsumosDialogOpen(true);
+    } catch (cause) {
+      showError("Equipamentos", "Peças da OS", cause);
+    }
+  }
+
+  async function confirmarBaixaPendente() {
+    if (!selecionado?.id || baixandoPendentes) return;
+    setBaixandoPendentes(true);
+    try {
+      const repository = await carregarRepositorioOperacoesEquipamento();
+      if (!repository.consumePendingParts || !repository.listPartsConsumption) {
+        throw new Error("A baixa pendente não está disponível neste runtime.");
+      }
+      const quantidade = await repository.consumePendingParts(String(selecionado.id));
+      setConsumosDetalhes(await repository.listPartsConsumption(String(selecionado.id)));
+      await recarregar();
+      success("Equipamentos", `${quantidade} peça(s) baixada(s).`, "Estoque da OS");
+    } catch (cause) {
+      showError("Equipamentos", "Baixar peças pendentes", cause);
+    } finally {
+      setBaixandoPendentes(false);
     }
   }
 
@@ -1546,17 +1806,17 @@ export default function Equipamentos() {
 
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
-    if (servicosAjuste.some((s) => !validarPecas(s.pecas ?? []))) {
-      warning("Equipamentos", "Informe quantidade inteira positiva e preço válido para as peças.");
-      return;
-    }
     const totalAtual = valorOrcamentoRef.current;
     const mostraOrcamento = (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus))
       || ajusteOrcamentoSemMudancaStatus;
     const enviandoParaAprovacao = novoStatus === "AGUARDANDO_APROVACAO"
       && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
-    if (mostraOrcamento && (!valorOrcamentoValido || !Number.isFinite(totalAtual))) {
+    if (mostraOrcamento && (!valorOrcamentoValido || !prazoAprovacaoValido || !Number.isFinite(totalAtual))) {
       warning("Equipamentos", "Informe um valor de orçamento válido.");
+      return;
+    }
+    if (pecasAjusteInvalidas) {
+      warning("Equipamentos", "Corrija o preço inválido antes de continuar.");
       return;
     }
     if (enviandoParaAprovacao && !totalOrcamentoAprovacaoValido(totalAtual)) {
@@ -1577,7 +1837,7 @@ export default function Equipamentos() {
       warning("Equipamentos", "Informe o motivo da correção antes de continuar.");
       return;
     }
-    const autoAprovaGarantia = vaiAutoAprovarOsGarantia(
+    const autoAprovaGarantia = !IS_SAAS_BUILD && vaiAutoAprovarOsGarantia(
       selecionado.status,
       osSomenteGarantia(servicosAjuste),
       totalAtual,
@@ -1631,13 +1891,17 @@ export default function Equipamentos() {
       return;
     }
 
-    // Alterar orçamento já aprovado ou já respondido no portal: o operador escolhe o que fazer.
     let opcoesAjuste: OpcoesAjusteOrcamento | undefined;
     if (ajusteOrcamentoSemMudancaStatus && verificacaoAjusteOrcamento && selecionado.id) {
       try {
-        const analise = await db.analisarAjusteOrcamento(selecionado.id);
+        const analise = await analisarAjusteDoEquipamento(
+          IS_SAAS_BUILD,
+          selecionado.id,
+          (id) => db.analisarAjusteOrcamento(id),
+          async (id) => (await carregarRepositorioOperacoesEquipamento()).analyzeQuoteAdjustment(id),
+        );
         const aprovado = orcamentoJaAprovado(selecionado.status);
-        const variante = aprovado ? "aprovado" : analise.respostaPendente ? "pendente" : null;
+        const variante = aprovado ? "aprovado" as const : analise.respostaPendente ? "pendente" as const : null;
         if (variante && orcamentoMudou(verificacaoAjusteOrcamento, servicosAjuste, totalAtual)) {
           const escolha = await pedirEscolhaAjuste(variante, analise);
           if (!escolha) {
@@ -1667,6 +1931,58 @@ export default function Equipamentos() {
 
     setSalvando(true);
     try {
+      if (IS_SAAS_BUILD) {
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        const savesQuote = Boolean(
+          verificacaoAjusteOrcamento
+          && (ajusteOrcamentoSemMudancaStatus
+            || (novoStatus === "AGUARDANDO_APROVACAO"
+              && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)))
+        );
+        if (savesQuote && verificacaoAjusteOrcamento) {
+          let pecasSalvas: PecaNecessaria[] = [];
+          try {
+            pecasSalvas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
+          } catch {
+            pecasSalvas = [];
+          }
+          for (const servico of servicosAjuste) validatePecasSugeridas(servico.pecas ?? []);
+          await repository.saveQuote({
+            equipmentId: String(selecionado.id),
+            expectedUpdatedAt: selecionado.atualizado_em || "",
+            services: servicosAjuste,
+            parts: mesclarPecasDoOrcamento(pecasSalvas, servicosAjuste),
+            total: totalAtual,
+            observations: observacoesAjuste,
+            newStatus: ajusteOrcamentoSemMudancaStatus ? undefined : novoStatus,
+            approvalDeadline: ajusteOrcamentoSemMudancaStatus ? undefined : prazoAprovacao,
+            payment: selecionado.status === "APROVADO" && formaPagamentoAjuste
+              ? { codigo: formaPagamentoAjuste, detalhe: formaPagamentoAjuste === "OUTRO" ? detalhePagamentoAjuste.trim() : undefined }
+              : undefined,
+            correctionReason: correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
+            adjustment: opcoesAjuste,
+          });
+        } else {
+          const result = await repository.changeStatus({
+            equipmentId: String(selecionado.id),
+            expectedUpdatedAt: selecionado.atualizado_em || "",
+            status: novoStatus,
+            budget: totalAtual || undefined,
+            approvalDeadline: prazoAprovacao || undefined,
+            finalValue: novoStatus === "ENTREGUE" ? valorFinal : valorFinal || undefined,
+            correctionReason: correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
+          });
+          void result;
+        }
+        await recarregar();
+        setStatusDialogOpen(false);
+        setAjusteOrcamentoSemMudancaStatus(false);
+        setImagensSaidaEntrega([]);
+        setErroImagensSaidaEntrega(null);
+        success("Equipamentos", ajusteOrcamentoSemMudancaStatus ? "Orçamento atualizado." : "Status atualizado.", ajusteOrcamentoSemMudancaStatus ? "Alterar orçamento" : "Alterar status");
+        return;
+      }
+
       if (novoStatus === "ENTREGUE") {
         const imagensAtuais = await carregarImagensComPreview(selecionado.id!);
         const imagensEntradaPayload: EquipamentoImagemInput[] = normalizarOrdemPorCategoria(
@@ -1693,21 +2009,24 @@ export default function Equipamentos() {
         }
       }
 
-      let versaoAtual = selecionado.atualizado_em;
-      let portalAjuste: PortalAjusteInfo | undefined;
+      let expectedUpdatedEm = selecionado.atualizado_em;
       if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) {
         const profileId = sensitiveStatus?.active_profile_id;
         if (!profileId) {
           throw new Error("Perfil autorizado não encontrado para ajustar o orçamento.");
         }
-        const pecas = [...pecasParaOrcamento(servicosAjuste), ...pecasLegadasAjuste];
+        const expectedUpdatedEmAtual = selecionado.atualizado_em?.trim();
+        if (!expectedUpdatedEmAtual) {
+          throw new Error("A versão deste orçamento não está disponível. Atualize a lista e tente novamente.");
+        }
+        const pecas = mesclarPecasDoOrcamento(pecasLegadasAjuste, servicosAjuste);
         const pedeNovaAprovacao = opcoesAjuste?.modoAprovado === "NOVA_APROVACAO";
-        const resultado = await db.atualizarServicosVerificacao(
+        const ajusteSalvo = await db.atualizarServicosVerificacao(
           {
             equipamento_id: selecionado.id!,
             empresa_id: selecionado.empresa_id,
             servicos: servicosAjuste,
-            pecas,
+                            pecas,
             custo_total: totalAtual,
             observacoes: observacoesAjuste,
             ...(orcamentoJaAprovado(selecionado.status) && formaPagamentoAjuste && !pedeNovaAprovacao
@@ -1717,66 +2036,28 @@ export default function Equipamentos() {
               }
               : {}),
             divergence: divergencia,
-            // Escolher "ajuste sem nova aprovação" é a confirmação de que o cliente concordou.
             cliente_aprovou_alteracao: opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO",
-            expected_updated_em: selecionado.atualizado_em,
+            expected_updated_em: expectedUpdatedEmAtual,
             ...((opcoesAjuste || autoAprovaGarantia)
               ? { opcoes: { ...opcoesAjuste, ...(autoAprovaGarantia ? { confirmarGarantia: true } : {}) } }
               : {}),
           },
           profileId,
         );
-        if (!ajusteOrcamentoSemMudancaStatus) versaoAtual = (await db.buscarEquipamento(selecionado.id!)).atualizado_em;
-        portalAjuste = resultado?.portal;
+        expectedUpdatedEm = ajusteSalvo.equipamento_atualizado_em
+          ?? (!IS_SAAS_BUILD && !ajusteOrcamentoSemMudancaStatus
+            ? (await db.buscarEquipamento(selecionado.id!)).atualizado_em
+            : expectedUpdatedEm);
+        if (!ajusteOrcamentoSemMudancaStatus && !expectedUpdatedEm) {
+          throw new Error("O orçamento foi salvo, mas não foi possível confirmar sua nova versão. Atualize a lista antes de continuar.");
+        }
       }
 
       if (ajusteOrcamentoSemMudancaStatus) {
-        let portalProrrogacao: PortalAjusteInfo | undefined;
-        const prazoMudou = selecionado.status === "AGUARDANDO_APROVACAO"
-          && !!prazoAprovacao
-          && prazoAprovacao !== (selecionado.prazo_aprovacao || "").slice(0, 10);
-        if (prazoMudou) {
-          try {
-            const equipamentoId = selecionado.id!;
-            const prorrogar = async (confirmarRespostaPendente?: boolean) => {
-              const versao = (await db.buscarEquipamento(equipamentoId)).atualizado_em;
-              if (!versao) throw new Error("Versão do equipamento não encontrada.");
-              return db.prorrogarPrazoOrcamento({
-                equipamentoId,
-                novoPrazo: prazoAprovacao,
-                expectedUpdatedEm: versao,
-                ...(confirmarRespostaPendente ? { confirmarRespostaPendente: true } : {}),
-              });
-            };
-            let resultadoProrrogacao = await prorrogar();
-            if (!resultadoProrrogacao.prorrogado) {
-              const confirmado = await confirmarComOperador(
-                "O cliente já respondeu",
-                "Prorrogar anula a resposta pendente. Continuar?",
-                "Prorrogar",
-              );
-              if (confirmado) {
-                resultadoProrrogacao = await prorrogar(true);
-              } else {
-                warning("Equipamentos", "Orçamento salvo. O prazo não foi prorrogado.");
-              }
-            }
-            if (resultadoProrrogacao.prorrogado) portalProrrogacao = resultadoProrrogacao.portal;
-          } catch (err) {
-            const detalhe = err instanceof Error ? err.message : String(err);
-            warning("Equipamentos", `Orçamento salvo, mas o prazo não foi prorrogado: ${detalhe}`);
-          }
-        }
         await recarregar();
         setStatusDialogOpen(false);
         setAjusteOrcamentoSemMudancaStatus(false);
-        success(
-          "Equipamentos",
-          ["Orçamento atualizado.", portalAjuste?.mensagem, portalProrrogacao?.mensagem].filter(Boolean).join(" "),
-          "Alterar orçamento",
-        );
-        if (portalAjuste?.aviso) warning("Equipamentos", portalAjuste.aviso);
-        if (portalProrrogacao?.aviso) warning("Equipamentos", portalProrrogacao.aviso);
+        success("Equipamentos", "Orçamento atualizado.", "Alterar orçamento");
         return;
       }
 
@@ -1786,7 +2067,7 @@ export default function Equipamentos() {
         valorOrcamentoStatus,
         prazoStatus,
         valorFinalStatus,
-        versaoAtual,
+        expectedUpdatedEm,
         correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
       );
       if (!resultado.sucesso) {
@@ -1795,9 +2076,18 @@ export default function Equipamentos() {
       setStatusDialogOpen(false);
       setImagensSaidaEntrega([]);
       setErroImagensSaidaEntrega(null);
+      success(
+        "Equipamentos",
+        ajusteOrcamentoSemMudancaStatus ? "Orçamento atualizado." : "Status atualizado.",
+        ajusteOrcamentoSemMudancaStatus ? "Alterar orçamento" : "Alterar status",
+      );
     } catch (err: any) {
       console.error("Erro:", err);
-      showError("Equipamentos", "Alterar status", err);
+      const ajusteDeOrcamento = ajusteOrcamentoSemMudancaStatus
+        || (novoStatus === "AGUARDANDO_APROVACAO"
+          && Boolean(verificacaoAjusteOrcamento)
+          && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus));
+      showError("Equipamentos", ajusteDeOrcamento ? "Alterar orçamento" : "Alterar status", err);
     }
     finally {
       setSalvando(false);
@@ -1978,6 +2268,28 @@ export default function Equipamentos() {
     if (!confirmado) return;
     setSalvando(true);
     try {
+      if (IS_SAAS_BUILD) {
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        const atual = await repository.extendApprovalDeadline({
+          equipmentId: String(eq.id),
+          expectedUpdatedAt: eq.atualizado_em || "",
+          newDeadline: novoPrazo,
+        });
+        const verificacao = await repository.getVerification(String(eq.id));
+        const etapas = [atual.prorrogado ? "Prazo prorrogado." : "Prazo não prorrogado."];
+        if (verificacao) {
+          const wa = await WhatsAppService.enviarOrcamento(
+            { ...eq, ...atual.equipment, prazo_aprovacao: novoPrazo } as Equipamento,
+            verificacao,
+          );
+          etapas.push(wa.sucesso ? "WhatsApp: enviado." : `WhatsApp: não enviado${wa.erro ? ` (${wa.erro})` : "."}`);
+        } else {
+          warning("Equipamentos", "Verificação não encontrada; o orçamento não foi reenviado.");
+        }
+        if (atual.prorrogado) success("Equipamentos", etapas.join("\n"), "Prorrogar e enviar");
+        await recarregar();
+        return;
+      }
       const r = await prorrogarEEnviar(eq, novoPrazo, () =>
         confirmarComOperador(
           "Resposta pendente",
@@ -2046,6 +2358,30 @@ export default function Equipamentos() {
       description: "Informe o PIN para disparar manualmente a mensagem de orçamento ao cliente.",
     });
     if (!liberado) return;
+    if (IS_SAAS_BUILD) {
+      if (whatsappOrcamentoPedeProrrogacao(true, eq.prazo_aprovacao, prazoAprovacaoVencido)) {
+        await prorrogarPrazoEEnviar(eq);
+        return;
+      }
+      const r = await enviarWhatsAppOrcamentoOnline(eq, {
+        getVerification: async (id) => (await carregarRepositorioOperacoesEquipamento()).getVerification(id),
+        enviarOrcamento: (equipamento, verificacao) => WhatsAppService.enviarOrcamento(equipamento, verificacao),
+      });
+      if (!r.sucesso) {
+        if (whatsappOrcamentoPedeProrrogacao(true, eq.prazo_aprovacao, prazoAprovacaoVencido, r.erro, ehErroPrazoVencido)) {
+          await prorrogarPrazoEEnviar(eq);
+          return;
+        }
+        if (whatsappNaoConfigurado(r.erro)) {
+          warning("Equipamentos", "WhatsApp ainda não está configurado. O histórico registra que o envio não foi realizado.");
+          return;
+        }
+        showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro || "Falha ao enviar WhatsApp."));
+        return;
+      }
+      success("Equipamentos", "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.", "WhatsApp");
+      return;
+    }
     await reenviarWhatsApp(eq, "orcamento_informativo");
   }
 
@@ -2053,7 +2389,12 @@ export default function Equipamentos() {
   async function gerarOrcamentoPdf(eq: Equipamento) {
     try {
       setSalvando(true);
-      const verif = await db.buscarVerificacao(eq.id!);
+      const verif = await carregarVerificacaoDoEquipamento(
+        IS_SAAS_BUILD,
+        eq.id!,
+        (id) => db.buscarVerificacao(id),
+        async (id) => (await carregarRepositorioOperacoesEquipamento()).getVerification(id),
+      );
       if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
       const artifact = await PdfService.construirOrcamentoAjustado(eq, verif);
       if (!artifact) return;
@@ -2112,6 +2453,19 @@ export default function Equipamentos() {
       description: "Informe o PIN para disparar manualmente a mensagem de retirada ao cliente.",
     });
     if (!liberado) return;
+    if (IS_SAAS_BUILD) {
+      const r = await WhatsAppService.enviarEquipamentoPronto(eq);
+      if (!r.sucesso) {
+        if (whatsappNaoConfigurado(r.erro)) {
+          warning("Equipamentos", "WhatsApp ainda não está configurado. O histórico registra que o envio não foi realizado.");
+          return;
+        }
+        showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
+        return;
+      }
+      success("Equipamentos", "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.", "WhatsApp");
+      return;
+    }
     await reenviarWhatsApp(eq, "equipamento_pronto");
   }
 
@@ -2166,7 +2520,7 @@ export default function Equipamentos() {
     const acaoCorrigirStatus: PriorityAction = {
       id: "corrigir_status",
       label: "Corrigir Status",
-      icon: <History className="h-3.5 w-3.5" />,
+      icon: <RefreshCw className="h-3.5 w-3.5" />,
       variant: "outline",
       onClick: () => void abrirCorrecaoStatus(eq),
     };
@@ -2176,6 +2530,14 @@ export default function Equipamentos() {
       icon: <RotateCcw className="h-3.5 w-3.5" />,
       variant: "outline",
       onClick: () => void abrirCorrigirDecisao(eq),
+    };
+    const acaoProrrogarPrazo: PriorityAction = {
+      id: "prorrogar_prazo",
+      label: "Prorrogar prazo",
+      icon: <CalendarClock className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void prorrogarPrazoEEnviar(eq),
+      disabled: salvando,
     };
     const acaoExcluir: PriorityAction = {
       id: "excluir",
@@ -2284,6 +2646,9 @@ export default function Equipamentos() {
             onClick: () => void enviarWhatsAppOrcamento(eq),
           });
         }
+        if (IS_SAAS_BUILD && prazoAprovacaoVencido(eq.prazo_aprovacao)) {
+          overflow.push(acaoProrrogarPrazo);
+        }
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "APROVADO":
@@ -2363,7 +2728,7 @@ export default function Equipamentos() {
           overflow.push({
             id: "mudar_status",
             label: "Mudar Status",
-            icon: <ArrowDownUp className="h-3.5 w-3.5" />,
+            icon: <RefreshCw className="h-3.5 w-3.5" />,
             variant: "outline",
             onClick: () => void abrirMudarStatus(eq),
             disabled: salvando,
@@ -2396,7 +2761,7 @@ export default function Equipamentos() {
           secondary = {
             id: "mudar_status",
             label: "Mudar Status",
-            icon: <ArrowDownUp className="h-3.5 w-3.5" />,
+            icon: <RefreshCw className="h-3.5 w-3.5" />,
             variant: "outline",
             onClick: () => void abrirMudarStatus(eq),
           };
@@ -2502,6 +2867,10 @@ export default function Equipamentos() {
     const eq = selecionado;
     const eventos = historicoDetalhes;
 
+    if (carregandoDetalhes) {
+      return <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>;
+    }
+
     if (historicoDetalhesError) {
       return <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">{historicoDetalhesError}</div>;
     }
@@ -2526,8 +2895,8 @@ export default function Equipamentos() {
         {eventos.map((ev, idx) => (
           <div key={`${ev.data}-${ev.status}-${idx}`} className="flex items-start gap-3 pb-4">
             <div className="flex flex-col items-center">
-              <div className={`w-3 h-3 rounded-full mt-1 ${idx === eventos.length - 1 ? "bg-blue-500 ring-2 ring-blue-200" : "bg-muted-foreground/40"}`} />
-              {idx < eventos.length - 1 && <div className="w-0.5 flex-1 bg-border mt-1 min-h-[16px]" />}
+              <div className={`w-3 h-3 rounded-full mt-1 ${idx === eventos.length - 1 ? "bg-blue-500 ring-2 ring-blue-200" : "bg-gray-300"}`} />
+              {idx < eventos.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 mt-1 min-h-[16px]" />}
             </div>
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -2572,30 +2941,28 @@ export default function Equipamentos() {
       {/* Filtros */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col lg:flex-row gap-3">
+          <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input aria-label="Pesquisar equipamentos" placeholder="Série, patrimônio, equipamento, cliente ou CPF/CNPJ" value={busca} onChange={e => setBusca(e.target.value)} className="pl-9 pr-10" />
-              {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
+              <Input placeholder="Buscar por série, marca, modelo, cliente ou responsável..." value={busca} onChange={e => setBusca(e.target.value)} className="pl-9 pr-9" />
+              {busca && <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0" aria-label="Limpar busca" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
             </div>
             <Select value={statusFiltro} onValueChange={setStatusFiltro}>
-              <SelectTrigger aria-label="Filtrar equipamentos por status" className="w-full lg:w-48">
+              <SelectTrigger className="w-full sm:w-56">
                 <Filter className="h-4 w-4 mr-2" /><SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {STATUS_OPTIONS.map(opt => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}
               </SelectContent>
             </Select>
-            <Select value={ordenacao} onValueChange={(value: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE") => setOrdenacao(value)}>
-              <SelectTrigger aria-label="Ordenar equipamentos" className="w-full lg:w-56">
-                <ArrowDownUp className="h-4 w-4 mr-2" /><SelectValue />
-              </SelectTrigger>
+            <Select value={ordenacaoEquipamentos} onValueChange={(value) => setOrdenacaoEquipamentos(value as "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE")}>
+              <SelectTrigger className="w-full sm:w-56" aria-label="Ordenar equipamentos"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ATUALIZACAO_RECENTE">Alterados recentemente</SelectItem>
-                <SelectItem value="CADASTRO_RECENTE">Cadastros recentes</SelectItem>
+                <SelectItem value="CADASTRO_RECENTE">Cadastrados recentemente</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="shrink-0" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
           </div>
         </CardContent>
       </Card>
@@ -2623,27 +2990,30 @@ export default function Equipamentos() {
             </div>
           ) : (
             <>
+            <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+              <span>{totalEquipamentos} equipamento(s)</span>
               <PaginationControls
                 page={paginaEquipamentosExibida}
                 totalPages={totalPaginasEquipamentos}
                 onPageChange={setPaginaEquipamentos}
                 label="Paginação de equipamentos"
               />
-              <div className="rounded-md border">
-                <Table className="min-w-[76rem] table-fixed border-separate border-spacing-0">
-                <TableHeader className="[&_tr]:!border-b-0 [&_th]:border-b">
+            </div>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[8rem]">Nº Série</TableHead>
-                    <TableHead className="w-[14rem]">Equipamento</TableHead>
-                    <TableHead className="w-[10rem]">Cliente</TableHead>
-                    <TableHead className="w-[11rem]">Status</TableHead>
-                    <TableHead className="w-[7rem]">Entrada</TableHead>
-                    <TableHead className="w-[8rem]">Última alteração</TableHead>
-                    <TableHead className="sticky right-0 z-20 w-[18rem] min-w-[18rem] bg-card text-right">Ações</TableHead>
+                    <TableHead>Nº Série</TableHead>
+                    <TableHead>Equipamento</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Entrada</TableHead>
+                    <TableHead>Última alteração</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0">
-                  {equipamentosExibidos.map(eq => (
+                  {equipamentos.map(eq => (
                     <TableRow
                       key={eq.id}
                       className="group cursor-pointer"
@@ -2685,26 +3055,14 @@ export default function Equipamentos() {
                                 Orçamento: {formatCurrency(eq.valor_orcamento)}
                               </div>
                             )}
-                          {eq.status === "AGUARDANDO_APROVACAO" &&
-                            (eq.resposta_cliente === "APROVAR" || eq.resposta_cliente === "RECUSAR") && (
-                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-900">
-                                Cliente respondeu: {eq.resposta_cliente === "APROVAR" ? "aprovou" : "recusou"} — {
-                                  eq.resposta_cliente_situacao === "EM_CORRECAO" ? "em prazo de correção"
-                                    : eq.resposta_cliente_situacao === "PROCESSANDO" ? "aguardando efetivação automática"
-                                      : eq.resposta_cliente_situacao === "PENDENTE_EQUIPE" ? "efetivação falhou, confira"
-                                        : "aguardando conferência"}
-                              </div>
-                            )}
                         </div>
                       </TableCell>
                       <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <span className="block truncate">{formatDatePtBr(eq.data_entrada)}</span>
+                        {formatDatePtBr(eq.data_entrada)}
                       </TableCell>
-                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <span className="block truncate">{formatDatePtBr(eq.atualizado_em || eq.criado_em)}</span>
-                      </TableCell>
+                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>{formatDatePtBr(eq.atualizado_em || eq.criado_em)}</TableCell>
                       <TableCell
-                        className={`sticky right-0 z-10 w-[18rem] min-w-[18rem] bg-card text-right group-hover:bg-muted/50 ${EQUIPMENT_ROW_FOCUS_LAST}`}
+                        className={`text-right ${EQUIPMENT_ROW_FOCUS_LAST}`}
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => event.stopPropagation()}
                       >
@@ -2715,8 +3073,8 @@ export default function Equipamentos() {
                     </TableRow>
                   ))}
                 </TableBody>
-                </Table>
-              </div>
+              </Table>
+            </div>
             </>
           )}
         </CardContent>
@@ -2756,7 +3114,7 @@ export default function Equipamentos() {
               )}
               <ContatoResponsavelSelector
                 cliente={clienteVinculado}
-                empresaId={clienteVinculado?.empresa_id || editando?.empresa_id}
+                empresaId={clienteVinculado?.empresa_id ?? editando?.empresa_id}
                 value={responsavelVinculado}
                 onChange={setResponsavelVinculado}
                 disabled={salvando}
@@ -2845,20 +3203,56 @@ export default function Equipamentos() {
                 <div className="space-y-2">
                   <Label>Marca *</Label>
                   <Select
-                    value={MARCA_EQUIPAMENTO_OPTIONS.includes(form.watch("marca")) ? form.watch("marca") : form.watch("marca") ? "Outro" : ""}
+                    value={marcaSelecionada}
                     onValueChange={(value) => {
-                      if (value === "Outro") { setMarcaOutroOpen(true); return; }
-                      form.setValue("marca", value, { shouldDirty: true, shouldValidate: true });
+                      setMarcaSelecionada(value);
+                      form.setValue("marca", value === "Outro" ? "" : value, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
                     }}
                   >
                     <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>{MARCA_EQUIPAMENTO_OPTIONS.map((marca) => <SelectItem key={marca} value={marca}>{marca}</SelectItem>)}</SelectContent>
+                    <SelectContent>
+                      {MARCA_EQUIPAMENTO_OPTIONS.map((marca) => (
+                        <SelectItem key={marca} value={marca}>{marca}</SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
+                  {marcaSelecionada === "Outro" && (
+                    <Input
+                      {...form.register("marca")}
+                      autoFocus
+                      placeholder="Informe a marca"
+                    />
+                  )}
                   <FormValidationError message={form.formState.errors.marca?.message} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Modelo do equipamento</Label>
-                  <Input {...form.register("modelo")} placeholder="ZD421, GC420T" />
+                  <Label>Modelo do equipamento *</Label>
+                  <Select
+                    value={modeloSelecionado}
+                    onValueChange={(value) => {
+                      setModeloSelecionado(value);
+                      form.setValue("modelo", value === "Outro" ? "" : value, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                      {MODELO_EQUIPAMENTO_OPTIONS.map((modelo) => (
+                        <SelectItem key={modelo} value={modelo}>{modelo}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {modeloSelecionado === "Outro" && (
+                    <Input
+                      {...form.register("modelo")}
+                      placeholder="Informe o modelo"
+                    />
+                  )}
                   <FormValidationError message={form.formState.errors.modelo?.message} />
                 </div>
               </div>
@@ -2933,7 +3327,7 @@ export default function Equipamentos() {
                 <Label>Observação</Label>
                 <Textarea {...form.register("observacoes")} placeholder="Detalhe o estado físico, inclusive se o equipamento já chegou quebrado" rows={3} />
               </div>
-              <div className="space-y-4 rounded-lg border p-4">
+              {!IS_SAAS_BUILD && <div className="space-y-4 rounded-lg border p-4">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="text-sm font-medium">Registro fotográfico do equipamento</p>
@@ -3031,7 +3425,7 @@ export default function Equipamentos() {
                     )}
                   </div>
                 </div>
-              </div>
+              </div>}
             </div>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
@@ -3062,13 +3456,15 @@ export default function Equipamentos() {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
                   <StatusBadge status={selecionado.status} />
-                  <PortalClienteBotao />
+                  {!IS_SAAS_BUILD && <PortalClienteBotao />}
                 </div>
               </div>
 
+              {!IS_SAAS_BUILD && (
               <DecisaoOrcamentoCard
                 onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
               />
+              )}
 
               <Tabs key={selecionado.id} defaultValue="info">
                 <TabsList className="grid grid-cols-4 w-full">
@@ -3083,13 +3479,19 @@ export default function Equipamentos() {
                     <div><span className="text-muted-foreground">Tipo:</span> <span className="ml-1 font-medium">{selecionado.tipo}</span></div>
                     <div><span className="text-muted-foreground">Entrada:</span> <span className="ml-1 font-medium">{formatDatePtBr(selecionado.data_entrada)}</span></div>
                     <div><span className="text-muted-foreground">Patrimônio:</span> <span className="ml-1 font-medium">{selecionado.patrimonio || "—"}</span></div>
-                    <div className="min-w-0 [overflow-wrap:anywhere]"><span className="text-muted-foreground">Nº Série:</span> <span className="ml-1 font-medium font-mono">{selecionado.serial_number}</span></div>
+                    <div><span className="text-muted-foreground">Nº Série:</span> <span className="ml-1 font-medium font-mono">{selecionado.serial_number}</span></div>
+                    {selecionado.tecnologia && <div><span className="text-muted-foreground">Tecnologia:</span> <span className="ml-1 font-medium">{selecionado.tecnologia}</span></div>}
+                    {selecionado.conectividade && <div><span className="text-muted-foreground">Conectividade:</span> <span className="ml-1 font-medium">{selecionado.conectividade}</span></div>}
+                    {selecionado.paginas_impressas != null && <div><span className="text-muted-foreground">Páginas impressas:</span> <span className="ml-1 font-medium">{selecionado.paginas_impressas.toLocaleString("pt-BR")}</span></div>}
+                    {selecionado.proprietario && <div><span className="text-muted-foreground">Proprietário:</span> <span className="ml-1 font-medium">{selecionado.proprietario}</span></div>}
+                    {selecionado.preco_compra != null && <div><span className="text-muted-foreground">Preço de compra:</span> <span className="ml-1 font-medium">R$ {selecionado.preco_compra.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div>}
+                    {selecionado.preco_venda != null && <div><span className="text-muted-foreground">Preço de venda:</span> <span className="ml-1 font-medium">R$ {selecionado.preco_venda.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div>}
                   </div>
                   {selecionado.defeito_relatado && <div className="text-sm"><p className="text-muted-foreground mb-1">Defeito na entrada:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.defeito_relatado}</p></div>}
                   {selecionado.acessorios && <div className="text-sm"><p className="text-muted-foreground mb-1">Acessórios:</p><p className="bg-accent/50 p-2 rounded">{selecionado.acessorios}</p></div>}
                   {selecionado.acessorios_outros && <div className="text-sm"><p className="text-muted-foreground mb-1">Outros Acessórios:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.acessorios_outros}</p></div>}
                   {selecionado.observacoes && <div className="text-sm"><p className="text-muted-foreground mb-1">Observação física:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.observacoes}</p></div>}
-                  <div className="grid gap-4 lg:grid-cols-2">
+                  {!IS_SAAS_BUILD && <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-muted-foreground">Fotos da entrada</p>
@@ -3160,14 +3562,16 @@ export default function Equipamentos() {
                         />
                       )}
                     </div>
-                  </div>
+                  </div>}
                   {selecionado.cliente_nome && (
                     <Card>
                       <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-1"><Users className="h-4 w-4" />Cliente</CardTitle></CardHeader>
                       <CardContent className="text-sm space-y-1">
                         <p><strong>{selecionado.cliente_nome}</strong></p>
+                        {selecionado.cliente_documento && <p>CPF/CNPJ: {selecionado.cliente_documento}</p>}
                         {selecionado.cliente_telefone && <p>Tel: {selecionado.cliente_telefone}</p>}
                         {selecionado.cliente_email && <p>Email: {selecionado.cliente_email}</p>}
+                        {selecionado.responsavel_nome && <div className="mt-3 border-t pt-2"><p className="font-medium">Contato responsável: {selecionado.responsavel_nome}</p>{selecionado.responsavel_email && <p>Email: {selecionado.responsavel_email}</p>}{selecionado.responsavel_telefone && <p>Tel: {selecionado.responsavel_telefone}</p>}</div>}
                       </CardContent>
                     </Card>
                   )}
@@ -3182,7 +3586,7 @@ export default function Equipamentos() {
                     </Card>
                   )}
                   {selecionado.observacoes && <div><p className="text-sm text-muted-foreground">Observações:</p><p className="text-sm mt-1 bg-accent/50 p-2 rounded">{selecionado.observacoes}</p></div>}
-                  <DocumentosEquipamento equipamento={selecionado} />
+                  {!IS_SAAS_BUILD && <DocumentosEquipamento equipamento={selecionado} />}
                 </TabsContent>
 
                 <TabsContent value="verificacao" className="mt-4">{renderVerificacaoTab()}</TabsContent>
@@ -3195,6 +3599,7 @@ export default function Equipamentos() {
                     <HistoricoComunicacoes
                       equipamentoId={selecionado.id!}
                       comunicacoesExternas={comunicacoes}
+                      erroExterno={comunicacoesError}
                     />
                   )}
                 </TabsContent>
@@ -3206,31 +3611,6 @@ export default function Equipamentos() {
           )}
         </DialogContent>
       </Dialog>
-
-      <EscolhaAjusteOrcamentoDialog
-        open={escolhaAjuste !== null}
-        variante={escolhaAjuste?.variante ?? "aprovado"}
-        analise={escolhaAjuste?.analise ?? null}
-        onConfirmar={responderEscolhaAjuste}
-        onCancelar={() => responderEscolhaAjuste(null)}
-      />
-
-      <CorrigirDecisaoDialog
-        equipamento={corrigirDecisaoAlvo}
-        open={corrigirDecisaoAlvo !== null}
-        onOpenChange={(open) => { if (!open) setCorrigirDecisaoAlvo(null); }}
-        onCorrigido={async (portal) => {
-          setSelecionado(null);
-          await recarregar();
-          // A republicação no portal é feita depois da correção; se falhar, a correção vale e o operador é avisado.
-          if (portal?.aviso) {
-            warning("Equipamentos", `Orçamento reaberto, mas o portal não foi atualizado: ${portal.aviso}`);
-          } else {
-            const portalTexto = portal?.mensagem ? ` ${portal.mensagem}` : " Envie ou registre uma nova decisão do cliente.";
-            success("Equipamentos", `Orçamento reaberto.${portalTexto}`, "Decisão corrigida");
-          }
-        }}
-      />
 
       <ReabrirOrcamentoDialog
         open={reabrirAlvo !== null}
@@ -3248,6 +3628,7 @@ export default function Equipamentos() {
         onConcluir={handleConcluirVerificacao}
         salvando={salvando || loadingAutomacao}
         tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || "Ivan"}
+        saasMode={IS_SAAS_BUILD}
       />
 
       {/* ═══ Dialog Mudar Status ═══ */}
@@ -3262,7 +3643,7 @@ export default function Equipamentos() {
           }
         }}
       >
-        <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-md">
+        <DialogContent className="flex w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] min-w-0 flex-col overflow-hidden sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {(
@@ -3273,7 +3654,7 @@ export default function Equipamentos() {
           </DialogHeader>
           {selecionado && (
             <>
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            <div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto pr-5">
               {!ajusteOrcamentoSemMudancaStatus && (
                 <>
                   <div className="flex items-center gap-2">
@@ -3338,15 +3719,6 @@ export default function Equipamentos() {
                       ? "Edite o orçamento. O status atual do equipamento será mantido."
                       : "Revise o valor e o prazo para reenviar o orçamento atualizado ao cliente."}
                   </div>
-                  {verificacaoAjusteOrcamento?.servicos_orcamento_original && (
-                    <details className="rounded-md border p-3 text-sm">
-                      <summary className="cursor-pointer font-medium">Orçamento original e decisões do cliente</summary>
-                      <p className="mt-2 text-muted-foreground">Itens da primeira decisão. Serviços reprovados precisam de nova aprovação para consumir peças.</p>
-                      {normalizarServicosOrcamento(verificacaoAjusteOrcamento.servicos_orcamento_original).map((servico) => (
-                        <p key={servico.id} className="mt-1">{servico.descricao} · {verificacaoAjusteOrcamento.decisoes_servicos?.find((d) => d.servico_id === servico.id)?.decisao ?? "Sem decisão"}</p>
-                      ))}
-                    </details>
-                  )}
                   {verificacaoAjusteOrcamento?.adjusted_at && (
                     <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900 flex items-center gap-2">
                       <History className="h-4 w-4 text-blue-700" />
@@ -3379,8 +3751,8 @@ export default function Equipamentos() {
                       <p className="text-xs text-red-600">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
                     )}
                   </div>
-                  {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
-                    <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
+                  {!ajusteOrcamentoSemMudancaStatus && (
+                    <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} onValidityChange={setPrazoAprovacaoValido} /></div>
                   )}
                   <div className="space-y-2">
                     <Label htmlFor="observacoes-ajuste">Observações</Label>
@@ -3394,9 +3766,10 @@ export default function Equipamentos() {
                   </div>
                   {ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status) ? (
                     <div className="space-y-3">
-                    <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                      Ao salvar, você escolhe entre ajustar sem nova aprovação (o cliente já concordou; só a quantidade adicional terá baixa) ou pedir nova aprovação pelo portal.
-                    </p>
+                    <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+                      <input type="checkbox" checked={clienteAprovouAlteracao} onChange={(event) => setClienteAprovouAlteracao(event.target.checked)} />
+                      <span>O cliente aprovou as mudanças de serviços e peças deste ajuste. Só a quantidade adicional aprovada terá baixa.</span>
+                    </label>
                     <FormaPagamentoFields
                       codigo={formaPagamentoAjuste}
                       detalhe={detalhePagamentoAjuste}
@@ -3421,6 +3794,8 @@ export default function Equipamentos() {
                         servicos={servicosAjuste}
                         catalogo={catalogoServicosAjuste}
                         carregandoCatalogo={carregandoCatalogoAjuste}
+                        saasMode={IS_SAAS_BUILD}
+                        onPecasValidityChange={(valido) => setPecasAjusteInvalidas(!valido)}
                         onChange={setServicosAjuste}
                         onRemoverTodos={() => {
                           setConfirmProps({
@@ -3437,7 +3812,7 @@ export default function Equipamentos() {
                         }}
                       />
                       {pecasLegadasAjuste.length > 0 && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 p-2">
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
                           <p className="text-xs font-semibold text-amber-900">Peças antigas sem serviço vinculado</p>
                           <p className="text-xs text-amber-800">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
                           {pecasLegadasAjuste.map((peca, indice) => (
@@ -3448,9 +3823,7 @@ export default function Equipamentos() {
                           ))}
                         </div>
                       )}
-                      {pecasLegadasAjuste.length === 0 && servicosAjuste.length === 0 && (
-                        <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
-                      )}
+                      {pecasLegadasAjuste.length === 0 && servicosAjuste.length === 0 && <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>}
                     </div>
                   )}
                   {valorOrcamentoOriginal != null && (
@@ -3467,7 +3840,7 @@ export default function Equipamentos() {
                   )}
                 </>
               )}
-              {novoStatus === "ENTREGUE" && (
+              {novoStatus === "ENTREGUE" && !IS_SAAS_BUILD && (
                 <div className="space-y-3">
                   <div className="rounded-md border bg-accent/40 px-3 py-2 text-sm">
                     Valor padrão de entrega (verificação técnica):{" "}
@@ -3479,7 +3852,10 @@ export default function Equipamentos() {
                     <input
                       type="checkbox"
                       checked={acordoExcecaoEntrega}
-                      onChange={(e) => setAcordoExcecaoEntrega(e.target.checked)}
+                      onChange={(e) => {
+                        setAcordoExcecaoEntrega(e.target.checked);
+                        if (!e.target.checked) setValorFinalValido(true);
+                      }}
                     />
                     Acordo excepcional (usar valor diferente do verificado)
                   </label>
@@ -3489,6 +3865,7 @@ export default function Equipamentos() {
                       aria-label="Valor final pago"
                       value={Number(valorFinal) || 0}
                       onValueChange={setValorFinal}
+                      onValidityChange={setValorFinalValido}
                       disabled={!acordoExcecaoEntrega}
                     />
                   </div>
@@ -3576,7 +3953,7 @@ export default function Equipamentos() {
             </div>
             <DialogFooter className="shrink-0 bg-background pt-3">
                 <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (novoStatus === "ENTREGUE" && acordoExcecaoEntrega && !valorFinalValido) || pecasAjusteInvalidas || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
@@ -3585,9 +3962,47 @@ export default function Equipamentos() {
         </DialogContent>
       </Dialog>
 
+      <CorrigirDecisaoDialog
+        equipamento={corrigirDecisaoAlvo}
+        open={corrigirDecisaoAlvo !== null}
+        onOpenChange={(open) => { if (!open) setCorrigirDecisaoAlvo(null); }}
+        deps={IS_SAAS_BUILD ? {
+          analisar: async (id) => (await carregarRepositorioOperacoesEquipamento()).analyzeDecisionCorrection(String(id)),
+          corrigir: async (input) => {
+            const result = await (await carregarRepositorioOperacoesEquipamento()).correctQuoteDecision({
+              equipmentId: String(input.equipamento_id),
+              expectedUpdatedAt: input.expected_updated_em,
+              motivo: input.motivo,
+              devolverEstoque: input.devolver_estoque,
+              modo: input.modo,
+            });
+            return { portal: result.portal };
+          },
+        } : undefined}
+        onCorrigido={async (portal) => {
+          setSelecionado(null);
+          await recarregar();
+          if (portal?.aviso) {
+            warning("Equipamentos", `Orçamento reaberto, mas o portal não foi atualizado: ${portal.aviso}`);
+          } else {
+            const portalTexto = portal?.mensagem ? ` ${portal.mensagem}` : " Envie ou registre uma nova decisão do cliente.";
+            success("Equipamentos", `Orçamento reaberto.${portalTexto}`, "Decisão corrigida");
+          }
+        }}
+      />
+
+      <EscolhaAjusteOrcamentoDialog
+        open={escolhaAjuste !== null}
+        variante={escolhaAjuste?.variante ?? "aprovado"}
+        analise={escolhaAjuste?.analise ?? null}
+        onConfirmar={responderEscolhaAjuste}
+        onCancelar={() => responderEscolhaAjuste(null)}
+      />
+
       <Dialog open={consumosDialogOpen} onOpenChange={setConsumosDialogOpen}>
         <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>Peças da OS</DialogTitle><DialogDescription>Reposições ficam disponíveis no estoque. Confirme aqui o consumo das peças pendentes.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Peças da OS</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Reposições ficam disponíveis no estoque. Confirme aqui o consumo das peças pendentes.</p>
           <div className="max-h-72 space-y-2 overflow-y-auto">
             {consumosDetalhes.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma peça vinculada a serviços aprovados.</p>}
             {consumosDetalhes.map((consumo) => (
@@ -3601,15 +4016,18 @@ export default function Equipamentos() {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setConsumosDialogOpen(false)}>Fechar</Button>
-            <Button type="button" disabled={baixandoPendentes || !consumosDetalhes.some((c) => c.quantidade_baixada < c.quantidade_aprovada)}
-              onClick={() => void confirmarBaixaPendente()}>Confirmar baixa pendente</Button>
+            <Button type="button" disabled={baixandoPendentes || !consumosDetalhes.some((consumo) => consumo.quantidade_baixada < consumo.quantidade_aprovada)}
+              onClick={() => void confirmarBaixaPendente()}>{baixandoPendentes ? "Baixando..." : "Confirmar baixa pendente"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={selecaoServicosOpen} onOpenChange={setSelecaoServicosOpen}>
+      <Dialog open={selecaoServicosOpen} onOpenChange={(open) => {
+        setSelecaoServicosOpen(open);
+        if (!open) setPagamentoAprovacaoError(null);
+      }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-          <DialogHeader><DialogTitle>Decisão do cliente sobre o orçamento</DialogTitle><DialogDescription>Registre a decisão do cliente antes de movimentar o estoque.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Aprovação dos serviços pelo cliente</DialogTitle></DialogHeader>
           <div className="space-y-4">
             {servicosAprovacao.length === 0 ? (
               <>
@@ -3619,34 +4037,17 @@ export default function Equipamentos() {
             ) : (
               <>
                 <p className="text-sm">Todos os serviços de troca foram aprovados?</p>
-                <p className="text-sm text-muted-foreground">A seleção inclui todos os serviços do orçamento. Somente peças dos serviços aprovados serão baixadas. Serviços não selecionados serão reprovados, sem baixa. Se faltar estoque, a quantidade restante ficará pendente de confirmação na OS.</p>
+                <p className="text-sm text-muted-foreground">Somente peças dos serviços aprovados serão baixadas. Serviços não selecionados serão reprovados, sem baixa. Se faltar estoque, a quantidade restante ficará pendente para confirmação na OS.</p>
               </>
             )}
             {pagamentoAprovacaoError && <p role="alert" className="text-sm text-destructive">{pagamentoAprovacaoError}</p>}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button type="button" variant={todosServicosAprovados === true ? "default" : "outline"}
-                onClick={() => { setTodosServicosAprovados(true); setIdsAprovados(servicosAprovacao.map((s) => s.id)); }}>{servicosAprovacao.length === 0 ? "Aprovar orçamento" : "Sim, todos"}</Button>
+                onClick={() => { setTodosServicosAprovados(true); setIdsAprovados(servicosAprovacao.map((servico) => servico.id)); }}>{servicosAprovacao.length === 0 ? "Aprovar orçamento" : "Sim, todos"}</Button>
               <Button type="button" variant={todosServicosAprovados === false ? "default" : "outline"}
                 onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>{servicosAprovacao.length === 0 ? "Reprovar orçamento" : "Não, selecionar"}</Button>
             </div>
-            {respostaClienteDecisao && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                <p>O cliente respondeu pelo link: <strong>{respostaClienteDecisao === "APROVAR" ? "aprovou" : "recusou"}</strong> o orçamento.</p>
-                {decisaoDivergeDoCliente && (
-                  <div className="mt-2 space-y-1">
-                    <Label htmlFor="motivo-divergencia">Motivo da divergência *</Label>
-                    <Textarea
-                      id="motivo-divergencia"
-                      value={motivoDivergencia}
-                      onChange={(event) => setMotivoDivergencia(event.target.value)}
-                      placeholder="Ex.: cliente ligou e pediu para aprovar mesmo assim"
-                    />
-                    <p className="text-xs">A decisão aplicada é diferente da resposta do cliente. O motivo fica registrado na auditoria.</p>
-                  </div>
-                )}
-              </div>
-            )}
-            {todosServicosAprovados === false && servicosAprovacao.length > 0 && (
+            {todosServicosAprovados === false && (
               <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
                 {servicosAprovacao.map((servico) => (
                   <label key={servico.id} className="flex cursor-pointer items-start gap-2 text-sm">
@@ -3658,39 +4059,40 @@ export default function Equipamentos() {
                 ))}
               </div>
             )}
-            {servicosAprovacao.length === 0 && (
-              <div className="rounded-md bg-muted/40 p-3 text-sm">
-                <p className="font-semibold">Valor do orçamento: {formatCurrency(totalOrcamentoAprovacao ?? 0)}</p>
-                <p className="mt-1 text-muted-foreground">A aprovação preserva o valor do equipamento e não baixa peças do estoque.</p>
-              </div>
-            )}
             {todosServicosAprovados !== null && (
               <div className="rounded-md bg-muted/40 p-3 text-sm">
-                {servicosAprovacao.length > 0 && <p className="font-medium">{idsAprovados.length} de {servicosAprovacao.length} serviços aprovados</p>}
-                {resumirPecas(servicosAprovacao.filter((s) => idsAprovados.includes(s.id))).map((peca, i) => {
-                  const saldo = produtosAprovacao.find((p) => p.id === peca.produto_id)?.quantidade_estoque ?? 0;
-                  return <p key={`${peca.produto_id}-${i}`} className={saldo < peca.quantidade ? "text-amber-700" : ""}>
+                <p className="font-medium">{idsAprovados.length} de {servicosAprovacao.length} serviços aprovados</p>
+                {resumirPecasAprovadas(servicosAprovacao.filter((servico) => idsAprovados.includes(servico.id))).map((peca) => {
+                  const saldo = produtosAprovacao.find((produto) => String(produto.id) === String(peca.produto_id))?.quantidade_estoque ?? 0;
+                  return <p key={peca.produto_id} className={saldo < peca.quantidade ? "text-amber-700" : ""}>
                     {peca.nome}: {peca.quantidade} necessária(s), saldo {saldo}{saldo < peca.quantidade ? " · pendência" : ""}
                   </p>;
                 })}
-                {servicosAprovacao.length > 0 && <p className="mt-2 font-semibold">Total aprovado: {formatCurrency(idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao != null && totalOrcamentoAprovacao > 0 ? totalOrcamentoAprovacao : servicosAprovacao
-                  .filter((s) => idsAprovados.includes(s.id))
-                  .reduce((total, s) => total + Number(s.valor || 0) + (s.pecas ?? [])
-                    .reduce((subtotal, p) => subtotal + p.quantidade * p.valor_unitario, 0), 0))}</p>}
+                {servicosAprovacao.length === 0 && todosServicosAprovados && (
+                  <p>Valor do orçamento: {formatCurrency(Number(selecionado?.valor_orcamento ?? totalOrcamentoAprovacao ?? 0))}</p>
+                )}
+                <p className="mt-2 font-semibold">Total aprovado: {formatCurrency(
+                  idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao
+                    ? totalOrcamentoAprovacao
+                    : servicosAprovacao.filter((servico) => idsAprovados.includes(servico.id))
+                      .reduce((total, servico) => total + Number(servico.valor || 0)
+                        + (servico.pecas ?? []).reduce((subtotal, peca) => subtotal + peca.quantidade * peca.valor_unitario, 0), 0),
+                )}</p>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setSelecaoServicosOpen(false)}>Cancelar</Button>
-            <Button type="button" disabled={todosServicosAprovados === null || pagamentoAprovacaoLoading || (decisaoDivergeDoCliente && !motivoDivergenciaValido)}
-              onClick={() => {
-                if (decisaoAprovada) {
-                  setSelecaoServicosOpen(false);
-                  setPagamentoDialogOpen(true);
-                } else {
-                  void confirmarAprovacao({ codigo: "A_COMBINAR" }).then((ok) => { if (ok) setSelecaoServicosOpen(false); });
-                }
-              }}>{todosServicosAprovados === null ? "Selecione uma decisão" : decisaoAprovada ? "Continuar para pagamento" : "Confirmar reprovação"}</Button>
+            <Button type="button" variant="outline" onClick={() => setSelecaoServicosOpen(false)} disabled={pagamentoAprovacaoLoading}>Cancelar</Button>
+            <Button type="button" disabled={todosServicosAprovados === null || pagamentoAprovacaoLoading}
+              onClick={() => void confirmarSelecaoServicosAprovados()}>
+              {pagamentoAprovacaoLoading
+                ? "Salvando..."
+                : todosServicosAprovados === null
+                  ? "Escolha uma decisão"
+                  : idsAprovados.length > 0 || (servicosAprovacao.length === 0 && todosServicosAprovados)
+                    ? "Continuar para pagamento"
+                    : "Confirmar reprovação"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -3767,6 +4169,7 @@ export default function Equipamentos() {
         onFechar={() => setEnvioManual(null)}
         onGerarNovaSenha={gerarNovaSenhaDoEnvioManual}
       />
+
       {quemRecebe && (
         <QuemRecebeOrcamentoDialog
           open
@@ -3780,6 +4183,7 @@ export default function Equipamentos() {
           onCancelar={() => setQuemRecebe(null)}
         />
       )}
+
       <CommunicationEmailDialog
         open={emailDialogOpen}
         recipient={emailFlow?.recipient || null}
@@ -3814,7 +4218,7 @@ export default function Equipamentos() {
         validate={(value) => value.trim().length >= 2 ? null : "Informe o tipo do equipamento."}
       />
 
-      <PhotoUploadDialog
+      {!IS_SAAS_BUILD && <PhotoUploadDialog
         equipamentoId={photoUploadNewEquip ? 0 : (selecionado?.id ?? 0)}
         categoria={photoUploadCategoria}
         open={photoUploadOpen}
@@ -3844,7 +4248,7 @@ export default function Equipamentos() {
           };
           setImagensFormulario((prev) => [...prev, draft]);
         } : undefined}
-      />
+      />}
 
       <PdfPreviewDialog
         artifact={pdfPreview?.artifact || null}

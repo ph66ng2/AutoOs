@@ -7,7 +7,7 @@ import { useAcessoPortalCliente } from "@/hooks/useAcessoPortalCliente";
 /** Login do portal do cliente e quem pode entrar nele. A senha nunca aparece aqui. */
 export function AcessoAoPortal() {
   const { equipamento, contatosVersao, abrirContatos } = usePortalCliente();
-  const { data, loading, error } = useAcessoPortalCliente(equipamento.cliente_id, equipamento.empresa_id, contatosVersao);
+  const { data, loading, error } = useAcessoPortalCliente(typeof equipamento.cliente_id === "number" ? equipamento.cliente_id : null, equipamento.empresa_id, contatosVersao);
 
   if (!equipamento.cliente_id) {
     return <p className="text-xs text-muted-foreground">Atendimento sem cliente cadastrado.</p>;

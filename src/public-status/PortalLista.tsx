@@ -105,7 +105,7 @@ export default function PortalLista({ session, onExpirou }: Props) {
 
       <ul className="portal-list">
         {visiveis.map((item) => {
-          const titulo = item.status === "AGUARDANDO_APROVACAO" && !item.aguardaResposta && !item.resposta ? TITULO_EM_PREPARACAO : item.titulo;
+          const titulo = item.status === "AGUARDANDO_APROVACAO" && !(item.orcamentoPublicado ?? item.aguardaResposta) && !item.resposta ? TITULO_EM_PREPARACAO : item.titulo;
           return (
           <li key={item.id}>
             <a className="portal-item" href={`#/atendimentos/${item.id}`} onClick={(event) => { event.preventDefault(); navigate(`#/atendimentos/${item.id}`); }}>

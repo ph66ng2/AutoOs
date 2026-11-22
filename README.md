@@ -17,6 +17,7 @@ O projeto não está mais em fase de scaffold. O estado atual é um app Tauri + 
 
 - Cadastro e gestão de clientes, equipamentos e produtos
 - Controle de estoque com entrada, saída e trilha de movimentações
+- No runtime SaaS: Balcão operacional, paginação de Clientes/Equipamentos, mínimos de estoque por categoria e baixa de peças vinculada aos serviços aprovados
 - Recebimento técnico com defeito relatado, patrimônio, acessórios e imagens de entrada/saída
 - Histórico de comunicações por WhatsApp e email
 - Consulta pública de etapa por link individual, com revogação e QR code
@@ -138,7 +139,19 @@ O app mantém housekeeping local desses diretórios e expõe um snapshot de supo
 
 ## Banco e migrações
 
-As migrações versionadas vivem em `src-tauri/migrations` e são a fonte de verdade do schema. O estado aplicado pode ser conferido no app em `Configurações > Segurança > Banco e schema`.
+O runtime interno usa as migrações SQLx em `src-tauri/migrations`. O runtime SaaS usa as migrações Supabase em `supabase/migrations`, com `supabase/schema.sql` alinhado ao estado versionado. Cada mudança é aditiva; o app não aplica migrations durante a inicialização.
+
+Migrations Supabase são promovidas pelo processo controlado de release. Abrir uma migration neste repositório não significa que ela já foi aplicada em Staging ou Produção. A migration `20260930121301_saas_approved_service_stock.sql` adiciona o vínculo entre serviços aprovados e consumo de peças no estoque; ela e o índice adicional `20260930121822_orcamento_consumos_produto_empresa_index.sql` foram aplicados em Staging.
+
+O estado aplicado do banco interno pode ser conferido no app em `Configurações > Segurança > Banco e schema`.
+
+### Numeração SQLx entre `master` e `feature`
+
+As migrations `0001`–`0022` seguem os arquivos da `master`. As mudanças exclusivas da `feature` receberam `0023` (unicidade de clientes ativos), `0024` (unicidade de produtos e gastos ativos) e `0025` (sessões de upload de fotos), sem alterar o SQL dos arquivos movidos. Contatos e backfill de orçamento apareciam com outros números na `feature`; eram cópias das migrations `0017` e `0016` da `master`, exceto pelo comentário de cabeçalho, e foram retiradas da sequência duplicada. A `master` também recebeu uma `0023` de unicidade de clientes ativos: o DDL é equivalente ao da `feature`, mas o comentário inicial mudou o checksum. O merge mantém a `0023` da `feature`, que já estava versionada. O verificador reconhece o checksum alternativo da `master` e bloqueia a migração de um banco que a tenha aplicado até uma reconciliação auditada. Um único diretório SQLx não pode aceitar os dois checksums na mesma versão.
+
+`npm run check:migrations` falha em versões duplicadas ou ausentes e roda na CI de pull requests para `master` e `feature`. Antes de executar SQLx em um banco existente, rode `AUTOOS_MIGRATION_DATABASE_URL="$DATABASE_URL" npm run check:migrations:db` com a URL do banco alvo. Esse comando só lê `_sqlx_migrations` e bloqueia checksums divergentes, inclusive a sequência antiga da `feature`; ele não altera histórico nem schema. Também roda antes das migrations no banco descartável da CI.
+
+Um banco que já aplicou as versões antigas da `feature` precisa de reconciliação individual após auditoria do schema e backup. Não renumere linhas de `_sqlx_migrations` às cegas. Na checagem de 30/09/2026, Produção e Staging não tinham as versões `0016`–`0022` aplicadas. Staging tinha a `0001` com o checksum do arquivo atual; Produção tinha a `0001` com checksum diferente e **também reprovaria no preflight**. Nenhum histórico remoto foi alterado nesta reconciliação.
 
 ## Regras de Migration
 

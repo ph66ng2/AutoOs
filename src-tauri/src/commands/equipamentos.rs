@@ -305,12 +305,28 @@ fn sanitize_legacy_event_date(candidate: Option<String>, received_at: Option<&st
     }
 }
 
-fn required_concurrency_token(token: Option<&str>, entity_label: &str) -> Result<String, String> {
-    token
+pub(crate) fn required_concurrency_token(token: Option<&str>, entity_label: &str) -> Result<String, String> {
+    let token = token
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(|value| value.to_string())
-        .ok_or_else(|| format!("Token de concorrência de {} é obrigatório para atualizar o registro.", entity_label))
+        .ok_or_else(|| format!("Token de concorrência de {} é obrigatório para atualizar o registro.", entity_label))?;
+    let timestamp_valido = chrono::DateTime::parse_from_rfc3339(token).is_ok()
+        || [
+            "%Y-%m-%d %H:%M:%S%.f%:z",
+            "%Y-%m-%dT%H:%M:%S%.f%:z",
+            "%Y-%m-%d %H:%M:%S%:z",
+            "%Y-%m-%dT%H:%M:%S%:z",
+        ]
+        .iter()
+        .any(|format| chrono::DateTime::parse_from_str(token, format).is_ok())
+        || parse_history_timestamp(token).is_some();
+    if !timestamp_valido {
+        return Err(format!(
+            "A versão de {} está inválida. Atualize os dados e tente novamente.",
+            entity_label
+        ));
+    }
+    Ok(token.to_string())
 }
 
 fn concurrency_conflict_message(entity_label: &str) -> String {
@@ -1332,8 +1348,11 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         return Err("Não é possível aprovar sem uma verificação técnica.".to_string());
     };
     let servicos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
-    let aprovado = input.aprovado.unwrap_or(!input.servicos_aprovados.is_empty());
-    if aprovado && !servicos.is_empty() && input.servicos_aprovados.is_empty() {
+    if input.aprovar_sem_servicos && (!servicos.is_empty() || !input.servicos_aprovados.is_empty()) {
+        return Err("Aprovação sem serviços só é válida para orçamento sem serviços.".to_string());
+    }
+    let aprovado = input.aprovado.unwrap_or(!input.servicos_aprovados.is_empty() || input.aprovar_sem_servicos);
+    if aprovado && !servicos.is_empty() && input.servicos_aprovados.is_empty() && !input.aprovar_sem_servicos {
         return Err("Selecione ao menos um serviço para aprovar este orçamento.".to_string());
     }
     if !aprovado && !input.servicos_aprovados.is_empty() {
@@ -1397,6 +1416,9 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         total = total_original.filter(|value| *value > 0.0).unwrap_or(total);
     }
     if aprovado && servicos.is_empty() {
+        pecas_aceitas = pecas_antigas.clone();
+    }
+    if input.aprovar_sem_servicos {
         pecas_aceitas = pecas_antigas.clone();
     }
     if !aprovado {
@@ -1645,9 +1667,32 @@ mod tests {
     }
 
     #[test]
+    fn concurrency_tokens_reject_invalid_timestamps_with_a_friendly_message() {
+        let error = required_concurrency_token(Some("not-a-timestamp"), "equipamento")
+            .expect_err("timestamp inválido deve ser rejeitado antes do SQL");
+        assert!(error.contains("versão de equipamento está inválida"));
+        assert!(!error.contains("invalid input syntax"));
+    }
+
+    #[test]
+    fn concurrency_tokens_accept_postgres_and_rfc3339_timestamps() {
+        assert!(required_concurrency_token(
+            Some("2026-10-08 12:34:56.123456"),
+            "equipamento"
+        )
+        .is_ok());
+        assert!(required_concurrency_token(
+            Some("2026-10-08T12:34:56.123Z"),
+            "equipamento"
+        )
+        .is_ok());
+    }
+
+    #[test]
     fn equipment_order_is_whitelisted_and_defaults_to_recent_changes() {
         assert!(equipment_order_clause(None).contains("atualizado_em"));
         assert!(equipment_order_clause(None).contains("ultima_atividade_cliente_em"));
+
         assert_eq!(equipment_order_clause(Some("CADASTRO_RECENTE")), " ORDER BY criado_em DESC NULLS LAST, id DESC");
         assert_eq!(equipment_order_clause(Some("id; DROP TABLE equipamentos")), equipment_order_clause(None));
     }

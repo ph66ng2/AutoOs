@@ -1,4 +1,4 @@
-import type { Equipamento } from "@/types";
+import type { Equipamento, EquipamentoId } from "@/types";
 
 export type RecipientChannel = "email" | "telefone";
 export type RecipientOrigin = "responsavel" | "cadastro_empresa" | "manual" | "sem_envio";
@@ -13,7 +13,7 @@ function clean(value?: string | null) {
   return value?.trim() || "";
 }
 
-function recipientName(equipamento: Equipamento) {
+function recipientName(equipamento: Equipamento<EquipamentoId>) {
   return clean(equipamento.responsavel_nome) || clean(equipamento.cliente_nome) || "Cliente";
 }
 
@@ -23,7 +23,7 @@ function recipientName(equipamento: Equipamento) {
  * solicitado; assim, um responsável sem e-mail ainda usa o e-mail geral.
  */
 export function resolveRecipient(
-  equipamento: Equipamento,
+  equipamento: Equipamento<EquipamentoId>,
   canal: RecipientChannel,
   manual?: string,
 ): ResolvedRecipient {

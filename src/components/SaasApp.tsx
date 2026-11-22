@@ -1,0 +1,143 @@
+import { useCallback, useEffect, useState } from "react";
+import { CloudOff, LogOut, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BootSplashGate } from "@/components/BootSplashGate";
+import { SaasLoginScreen } from "@/components/SaasLoginScreen";
+import { SaasProfilePinGate } from "@/components/SaasProfilePinGate";
+import { SaasOperationalShell } from "@/components/SaasOperationalShell";
+import { useSaasAuth } from "@/hooks/useSaasAuth";
+import type { SaasAuthState } from "@/types/saas-auth";
+
+export function SaasApp() {
+  const { state, retry, lock, unlock, signOut, removeThisDevice } = useSaasAuth();
+  // A abertura toca em toda inicialização (regra da master); o login aparece quando ela sai.
+  const [openingComplete, setOpeningComplete] = useState(false);
+  const [bootProgress, setBootProgress] = useState(8);
+
+  useEffect(() => {
+    if (state.kind !== "booting") {
+      setBootProgress(100);
+      return;
+    }
+
+    setBootProgress(12);
+    const timers = [
+      window.setTimeout(() => setBootProgress((p) => Math.max(p, 28)), 180),
+      window.setTimeout(() => setBootProgress((p) => Math.max(p, 52)), 420),
+      window.setTimeout(() => setBootProgress((p) => Math.max(p, 78)), 780),
+    ];
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [state.kind]);
+
+  const onSplashFinished = useCallback(() => {
+    setOpeningComplete(true);
+  }, []);
+
+  function confirmDeviceRemoval() {
+    if (window.confirm("Remover esta máquina? O dispositivo será revogado no servidor e a sessão local será apagada. Esta ação exige novo login nesta instalação.")) {
+      void removeThisDevice();
+    }
+  }
+
+  // Abertura até o fim, depois login.
+  if (!openingComplete) {
+    return (
+      <>
+        <main className="fixed inset-0 bg-slate-950" aria-hidden="true" />
+        <BootSplashGate
+          loading={state.kind === "booting"}
+          progress={bootProgress}
+          onFinished={onSplashFinished}
+        />
+      </>
+    );
+  }
+
+  return (
+    <SaasAppBody
+      state={state}
+      retry={retry}
+      lock={lock}
+      unlock={unlock}
+      signOut={signOut}
+      confirmDeviceRemoval={confirmDeviceRemoval}
+    />
+  );
+}
+
+function SaasAppBody({
+  state,
+  retry,
+  lock,
+  unlock,
+  signOut,
+  confirmDeviceRemoval,
+}: {
+  state: SaasAuthState;
+  retry: () => Promise<void>;
+  lock: () => Promise<void>;
+  unlock: () => void;
+  signOut: () => Promise<void>;
+  confirmDeviceRemoval: () => void;
+}) {
+  const [unlockedIdentityKey, setUnlockedIdentityKey] = useState<string | null>(null);
+  const identityKey = state.kind === "authenticated" || state.kind === "locked"
+    ? `${state.session.identity.userId}:${state.session.identity.companyId}:${state.session.identity.profileId}`
+    : null;
+  useEffect(() => {
+    if (!identityKey) setUnlockedIdentityKey(null);
+  }, [identityKey]);
+  if (state.kind === "booting") {
+    return (
+      <main role="status" className="fixed inset-0 flex items-center justify-center bg-slate-950 text-slate-300">
+        Preparando sessão…
+      </main>
+    );
+  }
+
+  if (state.kind === "signed_out") return <SaasLoginScreen notice={state.message} />;
+  if (state.kind === "expired") return <SaasLoginScreen initialEmail={state.email} notice={state.message} />;
+  if (state.kind === "locked") {
+    return <SaasProfilePinGate
+      key={identityKey ?? "locked"}
+      profile={state.session.profile}
+      session={state.session}
+      locked
+      onUnlocked={() => { setUnlockedIdentityKey(identityKey); unlock(); }}
+      onSignOut={() => { setUnlockedIdentityKey(null); void signOut(); }}
+    />;
+  }
+
+  if (state.kind === "offline_recoverable") {
+    return (
+      <main className="fixed inset-0 flex items-center justify-center bg-slate-950 px-4 text-white">
+        <section className="w-full max-w-lg space-y-5 rounded-2xl border border-amber-400/20 bg-amber-400/[0.05] p-7 text-center">
+          <CloudOff className="mx-auto h-10 w-10 text-amber-300" />
+          <div><h1 className="text-xl font-semibold">Autenticação temporariamente offline</h1><p className="mt-2 text-sm text-slate-300">{state.message}</p></div>
+          <div className="flex justify-center gap-3">
+            <Button onClick={() => void retry()}><RefreshCw className="mr-2 h-4 w-4" />Tentar novamente</Button>
+            <Button variant="outline" onClick={() => void signOut()}><LogOut className="mr-2 h-4 w-4" />Sair neste dispositivo</Button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (unlockedIdentityKey !== identityKey) {
+    return <SaasProfilePinGate
+      key={identityKey ?? "session"}
+      profile={state.session.profile}
+      session={state.session}
+      onUnlocked={() => setUnlockedIdentityKey(identityKey)}
+      onSignOut={() => { setUnlockedIdentityKey(null); void signOut(); }}
+    />;
+  }
+
+  return <SaasOperationalShell
+    session={state.session}
+    profile={state.session.profile}
+    onLock={() => { setUnlockedIdentityKey(null); void lock(); }}
+    onSignOut={() => void signOut()}
+    onRemoveDevice={confirmDeviceRemoval}
+  />;
+}

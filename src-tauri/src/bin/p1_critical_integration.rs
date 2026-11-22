@@ -594,6 +594,7 @@ async fn main() -> Result<()> {
 
     let denied = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
+        aprovar_sem_servicos: false,
         aprovado: None,
         resposta_esperada_id: None,
         motivo_divergencia: None,
@@ -653,6 +654,7 @@ async fn main() -> Result<()> {
 
     let stale_approval = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
+        aprovar_sem_servicos: false,
         aprovado: None,
         resposta_esperada_id: None,
         motivo_divergencia: None,
@@ -681,6 +683,7 @@ async fn main() -> Result<()> {
 
     let equipamento_aprovado = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
+        aprovar_sem_servicos: false,
         aprovado: None,
         resposta_esperada_id: None,
         motivo_divergencia: None,
@@ -868,6 +871,7 @@ async fn main() -> Result<()> {
         expected_updated_em: legacy_token,
         pagamento: FormaPagamento { codigo: FormaPagamentoCodigo::Pix, detalhe: None },
         servicos_aprovados: vec![],
+        aprovar_sem_servicos: true,
         aprovado: Some(true),
         resposta_esperada_id: None,
         motivo_divergencia: None,
@@ -913,6 +917,7 @@ async fn main() -> Result<()> {
             detalhe: None,
         },
         servicos_aprovados: vec![],
+        aprovar_sem_servicos: true,
         aprovado: Some(false),
         resposta_esperada_id: None,
         motivo_divergencia: None,

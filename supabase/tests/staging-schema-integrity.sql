@@ -1,0 +1,124 @@
+-- Executado somente no Supabase staging. Todos os dados de teste são
+-- descartados por ROLLBACK ao fim do arquivo. O script que o invoca abre a
+-- transação antes de carregar este arquivo.
+
+DO $$
+DECLARE
+    checked_table text;
+    schema_column_type text;
+    schema_column_default text;
+BEGIN
+    FOREACH checked_table IN ARRAY ARRAY[
+        'clientes', 'equipamentos', 'produtos', 'movimentacoes_estoque',
+        'security_profiles', 'verificacoes', 'comunicacoes',
+        'security_audit_log', 'equipamento_imagens', 'servicos_catalogo',
+        'gastos_fixos', 'gastos_variaveis', 'configuracoes_sistema'
+    ] LOOP
+        SELECT columns.data_type, columns.column_default
+          INTO schema_column_type, schema_column_default
+          FROM information_schema.columns AS columns
+         WHERE columns.table_schema = 'public'
+           AND columns.table_name = checked_table
+           AND columns.column_name = 'empresa_id';
+
+        IF schema_column_type IS DISTINCT FROM 'uuid' THEN
+            RAISE EXCEPTION '% must expose empresa_id as uuid, got %', checked_table, schema_column_type;
+        END IF;
+
+        IF schema_column_default IS NOT NULL THEN
+            RAISE EXCEPTION '% must not default empresa_id, got %', checked_table, schema_column_default;
+        END IF;
+    END LOOP;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_equipamentos_cliente_empresa')
+       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_movimentacoes_produto_empresa')
+       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_company_admin_identity_profile_empresa')
+       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_company_user_identity_profile_empresa') THEN
+        RAISE EXCEPTION 'tenant-safe composite foreign keys are missing';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'equipamentos'
+           AND column_name = 'cliente_documento' AND data_type = 'text'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'equipamentos'
+           AND column_name = 'responsavel_contato_id' AND data_type = 'uuid'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid = 'public.equipamentos'::regclass
+           AND conname = 'fk_equipamentos_responsavel_cliente_empresa'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid = 'public.cliente_contatos'::regclass
+           AND conname = 'uq_cliente_contatos_empresa_cliente_id'
+    ) THEN
+        RAISE EXCEPTION 'equipment info contact UUID/snapshot contract is incomplete';
+    END IF;
+
+    IF to_regclass('public.company_admin_identities') IS NULL
+       OR to_regclass('public.company_user_identities') IS NULL
+       OR to_regprocedure('public.autoos_custom_access_token_hook(jsonb)') IS NULL THEN
+        RAISE EXCEPTION 'SaaS identity table or Auth hook is missing';
+    END IF;
+
+    IF has_table_privilege('anon', 'public.company_admin_identities', 'SELECT')
+       OR has_table_privilege('authenticated', 'public.company_admin_identities', 'SELECT')
+       OR has_table_privilege('anon', 'public.company_user_identities', 'SELECT')
+       OR has_table_privilege('authenticated', 'public.company_user_identities', 'SELECT')
+       OR has_table_privilege('authenticated', 'public.company_user_identities', 'INSERT')
+       OR has_table_privilege('supabase_auth_admin', 'public.company_user_identities', 'INSERT')
+       OR NOT has_column_privilege(
+           'supabase_auth_admin', 'public.company_user_identities', 'auth_user_id', 'SELECT'
+       )
+       OR has_function_privilege('anon', 'public.autoos_custom_access_token_hook(jsonb)', 'EXECUTE')
+       OR has_function_privilege('authenticated', 'public.autoos_custom_access_token_hook(jsonb)', 'EXECUTE')
+       OR NOT has_function_privilege('supabase_auth_admin', 'public.autoos_custom_access_token_hook(jsonb)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'SaaS identity privileges are unsafe';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_class AS relation
+          JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+         WHERE namespace.nspname = 'public'
+           AND relation.relname = 'company_user_identities'
+           AND relation.relrowsecurity
+    ) THEN
+        RAISE EXCEPTION 'RLS is not enabled on company_user_identities';
+    END IF;
+END;
+$$;
+
+INSERT INTO empresas (id, nome) VALUES
+    ('11111111-1111-1111-1111-111111111111', 'Schema test A'),
+    ('22222222-2222-2222-2222-222222222222', 'Schema test B');
+
+INSERT INTO clientes (id, empresa_id, nome) VALUES
+    ('11111111-1111-1111-1111-111111111112', '11111111-1111-1111-1111-111111111111', 'Cliente A'),
+    ('22222222-2222-2222-2222-222222222222', '22222222-2222-2222-2222-222222222222', 'Cliente B');
+
+INSERT INTO produtos (id, empresa_id, codigo, nome, categoria, preco_custo, preco_venda) VALUES
+    ('11111111-1111-1111-1111-111111111113', '11111111-1111-1111-1111-111111111111', 'TEST-A', 'Produto A', 'Teste', 1, 2),
+    ('22222222-2222-2222-2222-222222222223', '22222222-2222-2222-2222-222222222222', 'TEST-B', 'Produto B', 'Teste', 1, 2);
+
+DO $$
+BEGIN
+    INSERT INTO equipamentos (empresa_id, serial_number, marca, modelo, tipo, data_entrada, defeito_relatado, cliente_id)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'CROSS-TENANT-CLIENTE', 'AutoOS', 'Teste', 'Impressora', '2026-08-19', 'Teste', '22222222-2222-2222-2222-222222222222');
+    RAISE EXCEPTION 'cross-tenant equipment/client FK was accepted';
+EXCEPTION WHEN foreign_key_violation THEN NULL;
+END;
+$$;
+
+DO $$
+BEGIN
+    INSERT INTO movimentacoes_estoque (empresa_id, produto_id, tipo, quantidade, origem)
+    VALUES ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222223', 'ENTRADA', 1, 'Teste');
+    RAISE EXCEPTION 'cross-tenant movement/product FK was accepted';
+EXCEPTION WHEN foreign_key_violation THEN NULL;
+END;
+$$;
+
+ROLLBACK;
