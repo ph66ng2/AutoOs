@@ -17,6 +17,8 @@ import { useBootUi } from "@/components/BootUi";
 import { erroPinNovo } from "@/lib/pin-rules";
 import { ProfileSessionDialog, type FirstAccessOrigin } from "@/components/ProfileSessionDialog";
 import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
+import { definirCopiaGerencia } from "@/lib/copia-gerencia";
+import { assinarMudancas } from "@/lib/ao-vivo";
 import { db } from "@/lib/db";
 import { FirstAccessBridge } from "@/components/perfil/FirstAccessBridge";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
@@ -140,25 +142,34 @@ const KEYRING_BLOCKED_MESSAGE = "O cofre de senhas do sistema está bloqueado ou
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const { bootAnimationComplete } = useBootUi();
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
-  // Técnicos e e-mails profissionais (lib/tecnicos), que e-mail e PDF consultam por nome: só da
-  // empresa da sessão, pelo backend, nunca da lista geral de perfis (outras empresas, desativados).
-  // Recarrega ao desbloquear, trocar de perfil ou mudar a equipe; bloqueada, fica a última lista.
+  // Técnicos e e-mails profissionais (lib/tecnicos), que e-mail e PDF consultam por nome, e a
+  // cópia da gerência (lib/copia-gerencia): só da empresa da sessão, pelo backend, nunca da lista
+  // geral de perfis (outras empresas, desativados). Ao trocar de perfil (e de empresa), bloquear
+  // ou desbloquear, o registro anterior é apagado antes de qualquer envio; desbloqueada, recarrega
+  // também quando a equipe muda aqui, ao voltar o foco da janela ou ao reconectar (ao-vivo), para
+  // a marcação "faz atendimento técnico" feita em outro computador chegar sem sair da tela.
   const versaoDaEquipe = (status?.profiles ?? [])
     .map((p) => [p.id, p.nome, p.ativo, p.atende_tecnico, p.email_profissional].join("|"))
     .join(";");
+  const [pedidoDaEquipe, setPedidoDaEquipe] = useState(0);
+  useEffect(() => assinarMudancas(["security_profiles"], () => setPedidoDaEquipe((n) => n + 1)), []);
   useEffect(() => {
-    if (!status?.active_profile_id) {
-      definirTecnicosDaEmpresa([]);
-      return;
-    }
-    if (!status.unlocked) return;
+    definirTecnicosDaEmpresa([]);
+    definirCopiaGerencia(null);
+  }, [status?.active_profile_id, status?.unlocked]);
+  useEffect(() => {
+    if (!status?.active_profile_id || !status.unlocked) return;
     let vivo = true;
     Promise.resolve()
       .then(() => db.listarTecnicosDaEmpresa())
       .then((lista) => { if (vivo) definirTecnicosDaEmpresa(lista); })
       .catch(() => { if (vivo) definirTecnicosDaEmpresa([]); });
+    Promise.resolve()
+      .then(() => db.copiaGerenciaDaEmpresa())
+      .then((valor) => { if (vivo) definirCopiaGerencia(valor); })
+      .catch(() => { if (vivo) definirCopiaGerencia(null); });
     return () => { vivo = false; };
-  }, [status?.active_profile_id, status?.unlocked, versaoDaEquipe]);
+  }, [status?.active_profile_id, status?.unlocked, versaoDaEquipe, pedidoDaEquipe]);
   const [loading, setLoading] = useState(true);
   const [connectionUnavailable, setConnectionUnavailable] = useState(false);
   const refreshFailuresRef = useRef(0);

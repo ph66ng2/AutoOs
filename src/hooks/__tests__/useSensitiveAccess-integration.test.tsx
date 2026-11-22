@@ -166,13 +166,13 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     const intervalSpy = vi.spyOn(window, "setTimeout");
     const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
     const available = { ...EMPTY_STATUS, unlocked: true, active_profile_id: 1, active_profile_name: "Admin", pin_configured: true, profiles: [profile] };
-    // A lista de técnicos da sessão (lib/tecnicos) é outra chamada: não entra na fila do status.
+    // Técnicos, cópia da gerência e eventos ao vivo são outras chamadas: não entram na fila do status.
     const fila: Array<() => Promise<unknown>> = [
       () => Promise.resolve(available),
       () => Promise.reject("MaxClientsInSessionMode: max clients reached"),
       () => Promise.resolve(available),
     ];
-    mockInvoke.mockImplementation((cmd: string) => (cmd === "listar_tecnicos_da_empresa" ? Promise.resolve([]) : (fila.shift() ?? (() => Promise.resolve(undefined)))()));
+    mockInvoke.mockImplementation((cmd: string) => (cmd !== "get_sensitive_access_status" ? Promise.resolve(undefined) : (fila.shift() ?? (() => Promise.resolve(undefined)))()));
 
     render(<TestHarness><HookInspector capture={captureHook} /><SensitiveAccessBadge /></TestHarness>);
     await waitFor(() => expect(hookRef?.status?.profiles).toHaveLength(1));
@@ -191,13 +191,13 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
   it("remove o aviso quando a primeira consulta ao perfil volta a funcionar", async () => {
     const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
     const available = { ...EMPTY_STATUS, unlocked: true, active_profile_id: 1, active_profile_name: "Admin", pin_configured: true, profiles: [profile] };
-    // A lista de técnicos da sessão (lib/tecnicos) é outra chamada: não entra na fila do status.
+    // Técnicos, cópia da gerência e eventos ao vivo são outras chamadas: não entram na fila do status.
     const fila: Array<() => Promise<unknown>> = [
       () => Promise.resolve(available),
       () => Promise.reject("MaxClientsInSessionMode: max clients reached"),
       () => Promise.resolve(available),
     ];
-    mockInvoke.mockImplementation((cmd: string) => (cmd === "listar_tecnicos_da_empresa" ? Promise.resolve([]) : (fila.shift() ?? (() => Promise.resolve(undefined)))()));
+    mockInvoke.mockImplementation((cmd: string) => (cmd !== "get_sensitive_access_status" ? Promise.resolve(undefined) : (fila.shift() ?? (() => Promise.resolve(undefined)))()));
 
     render(<TestHarness><HookInspector capture={captureHook} /><SensitiveAccessBadge /></TestHarness>);
     await waitFor(() => expect(hookRef?.status?.profiles).toHaveLength(1));
