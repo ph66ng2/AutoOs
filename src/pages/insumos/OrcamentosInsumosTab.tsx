@@ -197,6 +197,19 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
               contagens={contagens}
               onChange={(valor) => setStatus(valor as StatusOrcamentoInsumos | "TODOS")}
             />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                aria-label="Buscar orçamento"
+                placeholder="Número (OI-12), cliente ou CPF/CNPJ"
+                value={busca}
+                onChange={(event) => setBusca(event.target.value)}
+                className="h-11 border-transparent bg-muted pl-10"
+              />
+            </div>
             {/* Só aparece para quem já criou algum orçamento (ou com o filtro ligado). */}
             {perfilId != null && (minhasLigado || (minhasTotal ?? 0) > 0) && (
               <PilulaFiltro
@@ -207,17 +220,6 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                 onClick={() => setMinhasEscolha(minhasLigado ? "nao" : "sim")}
               />
             )}
-          </div>
-
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              aria-label="Buscar orçamento"
-              placeholder="Número (OI-12), cliente ou CPF/CNPJ"
-              value={busca}
-              onChange={(event) => setBusca(event.target.value)}
-              className="h-11 border-transparent bg-muted pl-10"
-            />
           </div>
 
           {error ? (

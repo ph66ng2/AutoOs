@@ -3779,16 +3779,16 @@ export default function Equipamentos() {
           {(selecaoLote.size > 0 || loteOcupado || relatorioLote) && (
             <div className="sticky bottom-0 z-30 rounded-xl bg-card pb-2 shadow-lg">
               <AcoesEmLote
-              selecionados={[...selecaoLote.values()]}
-              ocupado={loteOcupado}
-              onOcupadoChange={setLoteOcupado}
-              relatorio={relatorioLote}
-              onRelatorioChange={setRelatorioLote}
-              onLimpar={() => setSelecaoLote(new Map())}
-              onConcluido={async (idsComFalha, recarregarLista) => {
-                setSelecaoLote((atual) => new Map([...atual].filter(([id]) => idsComFalha.includes(id))));
-                if (recarregarLista) await recarregar();
-              }}
+                selecionados={[...selecaoLote.values()]}
+                ocupado={loteOcupado}
+                onOcupadoChange={setLoteOcupado}
+                relatorio={relatorioLote}
+                onRelatorioChange={setRelatorioLote}
+                onLimpar={() => setSelecaoLote(new Map())}
+                onConcluido={async (idsComFalha, recarregarLista) => {
+                  setSelecaoLote((atual) => new Map([...atual].filter(([id]) => idsComFalha.includes(id))));
+                  if (recarregarLista) await recarregar();
+                }}
               />
             </div>
           )}
