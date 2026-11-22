@@ -1,7 +1,7 @@
 /** Mock mínimo de IPC para Playwright; não substitui Tauri/PostgreSQL real. */
 const status = {
   pin_configured: true, unlocked: true, expires_at: null,
-  active_profile_id: 1, active_profile_name: "Atendente de teste", active_role: "ATENDENTE",
+  active_profile_id: 1, active_empresa_id: 1, active_profile_name: "Atendente de teste", active_role: "ATENDENTE",
   permissions: ["FINANCIAL_ACTIONS"], can_manage_profiles: false, profiles: [],
 };
 

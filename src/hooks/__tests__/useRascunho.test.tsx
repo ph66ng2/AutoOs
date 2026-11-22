@@ -79,3 +79,20 @@ describe("useRascunho: limparSe", () => {
     expect(result.current.ler()).toBeNull();
   });
 });
+
+it("grava a escrita pendente na chave de origem mesmo após trocar de escopo", () => {
+  const { result, rerender } = renderHook(({ chave }) => useRascunho<string>(chave), {
+    initialProps: { chave: "empresa-a:perfil-a" as string | null },
+  });
+  act(() => result.current.salvar("anotação de A"));
+  rerender({ chave: "empresa-b:perfil-b" });
+  expect(result.current.ler()).toBeNull();
+  act(() => result.current.salvar("anotação de B"));
+  rerender({ chave: null });
+  expect(result.current.ler()).toBeNull();
+  act(() => window.dispatchEvent(new Event("pagehide")));
+  rerender({ chave: "empresa-a:perfil-a" });
+  expect(result.current.ler()?.dados).toBe("anotação de A");
+  rerender({ chave: "empresa-b:perfil-b" });
+  expect(result.current.ler()?.dados).toBe("anotação de B");
+});

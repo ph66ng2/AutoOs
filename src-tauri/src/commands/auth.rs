@@ -144,6 +144,7 @@ pub struct SensitiveAccessStatus {
     pub unlocked: bool,
     pub expires_at: Option<String>,
     pub active_profile_id: Option<i32>,
+    pub active_empresa_id: Option<i32>,
     pub active_profile_name: Option<String>,
     pub active_role: Option<String>,
     pub permissions: Vec<String>,
@@ -1399,6 +1400,16 @@ async fn status_snapshot_attempt(last_attempt: bool) -> Result<Option<SensitiveA
         .cloned()
         .ok_or_else(|| "Perfil ativo indisponível".to_string())?;
 
+    let active_empresa_id = match current_session_profile()? {
+        Some((_, profile)) if profile.id == active_summary.id => {
+            match get_pool().await {
+                Ok(pool) => company_id_for_profile(&pool, &profile).await.ok(),
+                Err(_) => None,
+            }
+        }
+        _ => None,
+    };
+
     let (unlocked, expires_at) = match current_session_profile()? {
         Some((until, profile)) if profile.id == active_summary.id => {
             let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
@@ -1440,6 +1451,7 @@ async fn status_snapshot_attempt(last_attempt: bool) -> Result<Option<SensitiveA
         unlocked,
         expires_at,
         active_profile_id: Some(active_summary.id),
+        active_empresa_id: active_empresa_id.filter(|_| unlocked),
         active_profile_name: Some(active_summary.nome.clone()),
         active_role: if unlocked {
             Some(active_summary.role.clone())

@@ -722,13 +722,29 @@ export default function Equipamentos() {
   // Rascunho da Nova entrada: fechar a janela, trocar de tela ou fechar o app não perde o que foi digitado.
   interface RascunhoEntrada {
     form: EquipamentoFormData;
-    cliente: Cliente | null;
-    responsavel: ClienteContato | null;
+    clienteId: number | null;
+    responsavelId: number | null;
     tecnico: string;
     /** Formulário que gravou (sobrevive a sair e voltar da tela): salvar só apaga o próprio rascunho. */
     dono?: string;
   }
-  const rascunhoEntrada = useRascunho<RascunhoEntrada>("nova-entrada");
+  const empresaRascunho = sensitiveStatus?.active_empresa_id;
+  const perfilRascunho = sensitiveStatus?.active_profile_id;
+  const chaveRascunho = sensitiveStatus?.unlocked && empresaRascunho && perfilRascunho
+    ? `nova-entrada:${empresaRascunho}:${perfilRascunho}`
+    : null;
+  const rascunhoEntrada = useRascunho<RascunhoEntrada>(chaveRascunho);
+  const chaveRascunhoAtualRef = useRef(chaveRascunho);
+  chaveRascunhoAtualRef.current = chaveRascunho;
+  const [chaveFormularioEntrada, setChaveFormularioEntrada] = useState(chaveRascunho);
+  const vinculoPendenteRef = useRef<Pick<RascunhoEntrada, "clienteId" | "responsavelId"> | null>(null);
+  const [restaurandoVinculo, setRestaurandoVinculo] = useState(false);
+  const entradaMontadaRef = useRef(false);
+  useEffect(() => {
+    entradaMontadaRef.current = true;
+    try { localStorage.removeItem("autoos:rascunho:nova-entrada"); } catch { /* sem armazenamento */ }
+    return () => { entradaMontadaRef.current = false; };
+  }, []);
   /** Cada Nova entrada aberta ganha uma identidade gravada junto com o rascunho. */
   const donoRascunhoEntrada = useRef("");
   const [rascunhoRecuperadoEm, setRascunhoRecuperadoEm] = useState<string | null>(null);
@@ -751,23 +767,26 @@ export default function Equipamentos() {
     || tecnicoNovoEquipamento !== tecnicoBaseEdicaoRef.current
     || (baselineFotosRef.current != null && !imagensPersistidasIguais(imagensFormulario, baselineFotosRef.current.fotos))
   );
-  /** Autossalvamento do rascunho suspenso enquanto um rascunho é restaurado de propósito. */
-  const rascunhoPausadoRef = useRef(false);
   useEffect(() => {
-    if (!novaEntradaAberta) return;
+    if (!novaEntradaAberta || chaveFormularioEntrada !== chaveRascunho || chaveRascunho === null) return;
+    const dono = donoRascunhoEntrada.current;
     const guardar = () => {
-      if (rascunhoPausadoRef.current) return;
+      if (dono !== donoRascunhoEntrada.current || chaveRascunhoAtualRef.current !== chaveRascunho) return;
       const valores = form.getValues();
-      const temAlgo = entradaTemAlgo(valores, clienteVinculado);
+      const vinculo = vinculoPendenteRef.current ?? {
+        clienteId: clienteVinculado?.id ?? null,
+        responsavelId: responsavelVinculado?.id ?? null,
+      };
+      const temAlgo = entradaTemAlgo(valores, vinculo.clienteId);
       // Formulário vazio não tem rascunho (e cancela um salvamento antigo pendente, como o
       // que o reset de "Começar do zero" agenda com o cliente anterior).
-      if (temAlgo) rascunhoEntrada.salvar({ form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento, dono: donoRascunhoEntrada.current });
+      if (temAlgo) rascunhoEntrada.salvar({ form: valores, ...vinculo, tecnico: tecnicoNovoEquipamento, dono });
       else rascunhoEntrada.limpar();
     };
     guardar();
     const assinatura = form.watch(guardar);
     return () => assinatura.unsubscribe();
-  }, [novaEntradaAberta, form, clienteVinculado, responsavelVinculado, tecnicoNovoEquipamento, rascunhoEntrada]);
+  }, [novaEntradaAberta, form, clienteVinculado, responsavelVinculado, tecnicoNovoEquipamento, rascunhoEntrada, chaveFormularioEntrada, chaveRascunho, restaurandoVinculo]);
 
   /**
    * Cancelar a Nova entrada descarta o rascunho (Esc, o X e trocar de tela guardam).
@@ -776,15 +795,16 @@ export default function Equipamentos() {
   function descartarEntrada() {
     const valores = form.getValues();
     const temAlgo = entradaTemAlgo(valores, clienteVinculado);
-    const copia: RascunhoEntrada = { form: valores, cliente: clienteVinculado, responsavel: responsavelVinculado, tecnico: tecnicoNovoEquipamento, dono: donoRascunhoEntrada.current };
+    const copia: RascunhoEntrada = { form: valores, clienteId: clienteVinculado?.id ?? null, responsavelId: responsavelVinculado?.id ?? null, tecnico: tecnicoNovoEquipamento, dono: donoRascunhoEntrada.current };
     const origemDescartada = origemEntradaRef.current;
     rascunhoEntrada.limpar();
     setRascunhoRecuperadoEm(null);
-    if (!temAlgo) return;
+    if (!temAlgo || chaveRascunho === null) return;
     toast("Entrada descartada", {
       action: {
         label: "Desfazer",
         onClick: () => {
+          if (chaveRascunhoAtualRef.current !== chaveRascunho) return;
           rascunhoEntrada.salvarAgora(copia);
           // Cancelar pode ter voltado para outra tela (Início, Clientes): esta instância já
           // saiu; a página de Nova entrada que abrir lê o rascunho restaurado.
@@ -794,7 +814,13 @@ export default function Equipamentos() {
     });
   }
 
+  function cancelarRestauracaoVinculo() {
+    vinculoPendenteRef.current = null;
+    setRestaurandoVinculo(false);
+  }
+
   function comecarEntradaDoZero() {
+    cancelarRestauracaoVinculo();
     rascunhoEntrada.limpar();
     setRascunhoRecuperadoEm(null);
     setClienteVinculado(null);
@@ -817,6 +843,10 @@ export default function Equipamentos() {
   function abrirNovo(opcoes: { origem?: string; cliente?: Cliente | null; base?: Equipamento } = {}) {
     origemEntradaRef.current = opcoes.origem ?? (rotaNovaEntradaRef.current ? origemEntradaRef.current : pathnameAtualRef.current);
     const preenchido = Boolean(opcoes.cliente || opcoes.base);
+    cancelarRestauracaoVinculo();
+    setChaveFormularioEntrada(chaveRascunho);
+    donoRascunhoEntrada.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const rascunhoGuardado = rascunhoEntrada.ler();
     fotoEdicaoSeq.current += 1;
     fotoEdicaoEquipamentoId.current = null;
     baselineFotosRef.current = null;
@@ -836,27 +866,20 @@ export default function Equipamentos() {
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
       observacoes: "",
     });
-    donoRascunhoEntrada.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     consultaSerieSeq.current += 1; // consulta de um formulário anterior não vale para este
     setConferindoSerie(false);
-    const rascunhoGuardado = rascunhoEntrada.ler();
     const rascunho = preenchido ? null : rascunhoGuardado;
     setRascunhoRecuperadoEm(rascunho?.salvoEm ?? null);
-    if (preenchido && rascunhoGuardado && entradaTemAlgo(rascunhoGuardado.dados.form, rascunhoGuardado.dados.cliente)) {
+    if (preenchido && rascunhoGuardado && entradaTemAlgo(rascunhoGuardado.dados.form, rascunhoGuardado.dados.clienteId)) {
       // A entrada preenchida grava por cima do rascunho: a cópia fica oferecida por alguns segundos.
       const copia = rascunhoGuardado.dados;
       toast("Havia outra entrada em rascunho", {
         action: {
           label: "Recuperar",
           onClick: () => {
-            // O reset do formulário aberto dispararia o autossalvamento por cima da cópia.
-            rascunhoPausadoRef.current = true;
-            try {
-              rascunhoEntrada.salvarAgora(copia);
-              abrirNovo({ origem: origemEntradaRef.current });
-            } finally {
-              rascunhoPausadoRef.current = false;
-            }
+            if (chaveRascunhoAtualRef.current !== chaveRascunho) return;
+            rascunhoEntrada.salvarAgora(copia);
+            abrirNovo({ origem: origemEntradaRef.current });
           },
         },
       });
@@ -865,8 +888,7 @@ export default function Equipamentos() {
     if (opcoes.base) aplicarBaseNaEntrada(opcoes.base);
     if (rascunho) {
       form.reset({ ...form.getValues(), ...rascunho.dados.form, status: "RECEBIDO" });
-      setClienteVinculado(rascunho.dados.cliente);
-      setResponsavelVinculado(rascunho.dados.responsavel);
+      void restaurarVinculoDoRascunho(rascunho.dados);
       if (rascunho.dados.tecnico) setTecnicoNovoEquipamento(rascunho.dados.tecnico);
       // A série do rascunho passa pela mesma conferência de histórico que a digitada:
       // sem isso, dava para cadastrar outro ciclo sem a confirmação obrigatória.
@@ -884,6 +906,34 @@ export default function Equipamentos() {
     setDialogOpen(true);
     formularioAbertoRef.current = true;
     if (!rotaNovaEntradaRef.current) navigate("/equipamentos/nova");
+  }
+
+  async function restaurarVinculoDoRascunho({ clienteId, responsavelId }: RascunhoEntrada) {
+    if (!clienteId || !empresaRascunho || chaveRascunho === null) return;
+    const pendente = { clienteId, responsavelId };
+    vinculoPendenteRef.current = pendente;
+    const vigente = () => entradaMontadaRef.current
+      && vinculoPendenteRef.current === pendente
+      && chaveRascunhoAtualRef.current === chaveRascunho
+      && rotaNovaEntradaRef.current;
+    setRestaurandoVinculo(true);
+    try {
+      const cliente = await db.buscarCliente(clienteId);
+      if (!vigente() || cliente.id !== clienteId || cliente.empresa_id !== empresaRascunho || !cliente.ativo) return;
+      const contatos = responsavelId
+        ? await db.listarClienteContatos(clienteId, empresaRascunho).catch(() => [])
+        : [];
+      if (!vigente()) return;
+      setClienteVinculado(cliente);
+      setResponsavelVinculado(contatos.find((contato) =>
+        contato.id === responsavelId && contato.ativo
+        && contato.cliente_id === clienteId && contato.empresa_id === empresaRascunho
+      ) ?? null);
+    } catch {
+      // Um vínculo indisponível pode ser selecionado novamente no cadastro.
+    } finally {
+      if (vigente()) cancelarRestauracaoVinculo();
+    }
   }
 
   /**
@@ -929,6 +979,7 @@ export default function Equipamentos() {
   function fecharFormulario(navegar = true) {
     if (!formularioAbertoRef.current) return;
     formularioAbertoRef.current = false;
+    cancelarRestauracaoVinculo();
     // Consultas da entrada (série, cliente da passagem anterior) não valem para o próximo formulário.
     consultaSerieSeq.current += 1;
     setConferindoSerie(false);
@@ -966,14 +1017,15 @@ export default function Equipamentos() {
       const pedido = (location.state ?? {}) as { origem?: string; clienteId?: number; baseId?: number };
       if (pedido.clienteId || pedido.baseId) navigate(location.pathname, { replace: true, state: {} });
       const origem = pedido.origem ?? "/equipamentos";
+      const vigente = () => ativo && rotaNovaEntradaRef.current && chaveRascunhoAtualRef.current === chaveRascunho;
       if (pedido.baseId) {
         db.buscarEquipamento(pedido.baseId)
-          .then((base) => { if (ativo) abrirNovo({ origem, base }); })
-          .catch(() => { if (ativo) abrirNovo({ origem }); });
+          .then((base) => { if (vigente()) abrirNovo({ origem, base }); })
+          .catch(() => { if (vigente()) abrirNovo({ origem }); });
       } else if (pedido.clienteId) {
         db.buscarCliente(pedido.clienteId)
-          .then((cliente) => { if (ativo) abrirNovo({ origem, cliente }); })
-          .catch(() => { if (ativo) abrirNovo({ origem }); });
+          .then((cliente) => { if (vigente()) abrirNovo({ origem, cliente }); })
+          .catch(() => { if (vigente()) abrirNovo({ origem }); });
       } else {
         abrirNovo({ origem });
       }
@@ -994,7 +1046,14 @@ export default function Equipamentos() {
       ativo = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chaveRotaFormulario]);
+  }, [chaveRotaFormulario, chaveRascunho]);
+
+  useEffect(() => {
+    if (rotaNovaEntrada && novaEntradaAberta && chaveFormularioEntrada !== chaveRascunho) {
+      abrirNovo({ origem: origemEntradaRef.current });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rotaNovaEntrada, novaEntradaAberta, chaveFormularioEntrada, chaveRascunho]);
 
   async function carregarFotosDaEdicao(equipamentoId: number, sequencia: number) {
     baselineFotosRef.current = null;
@@ -1759,7 +1818,7 @@ export default function Equipamentos() {
     const sequenciaEdicao = fotoEdicaoSeq.current;
     const meuRascunhoEntrada = donoRascunhoEntrada.current;
     // Mesma trava do botão, também para o Enter: série repetida exige confirmar o novo ciclo.
-    if (conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)) return;
+    if (restaurandoVinculo || conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)) return;
     const baselineFotos = editando ? baselineFotosRef.current : null;
     if (editando && (carregandoImagensFormulario || !baselineFotos || baselineFotos.equipamentoId !== editando.id)) {
       setErroImagens("As fotos ainda não foram carregadas com segurança. Recarregue as fotos antes de salvar.");
@@ -3601,7 +3660,7 @@ export default function Equipamentos() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       )}
-      {dialogOpen && (
+      {dialogOpen && (editando || chaveFormularioEntrada === chaveRascunho) && (
         <section aria-labelledby="entrada-titulo" className="-mb-4 flex min-h-[calc(100vh-8rem)] flex-col gap-4 lg:-mb-8">
           <div>
             <button
@@ -3633,8 +3692,8 @@ export default function Equipamentos() {
             <div className="space-y-2">
               <ClienteSelector
                 clienteInicial={clienteVinculado}
-                onClienteSelecionado={(c) => { setClienteVinculado(c); setResponsavelVinculado(null); setErroCliente(null); setAnteriorEmAtendimento(null); }}
-                onClienteRemovido={() => { setClienteVinculado(null); setResponsavelVinculado(null); setAnteriorEmAtendimento(null); }}
+                onClienteSelecionado={(c) => { cancelarRestauracaoVinculo(); setClienteVinculado(c); setResponsavelVinculado(null); setErroCliente(null); setAnteriorEmAtendimento(null); }}
+                onClienteRemovido={() => { cancelarRestauracaoVinculo(); setClienteVinculado(null); setResponsavelVinculado(null); setAnteriorEmAtendimento(null); }}
                 onEquipamentoSelecionado={editando ? undefined : (anterior) => void usarEquipamentoAnterior(anterior)}
                 readOnly={false}
               />
@@ -3920,7 +3979,7 @@ export default function Equipamentos() {
               >
                 Cancelar{editando && <TeclaNoBotao tecla="Esc" />}
               </Button>
-              <Button type="submit" disabled={salvando || conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
+              <Button type="submit" disabled={salvando || restaurandoVinculo || conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
                 {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}
                 {!salvando && <TeclaNoBotao tecla="Enter" />}
               </Button>

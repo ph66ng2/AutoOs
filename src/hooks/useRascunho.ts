@@ -14,79 +14,60 @@ export interface Rascunho<T> {
  * Sobrevive a fechar a janela, trocar de tela e fechar o app; some ao salvar de verdade.
  * Não guarda fotos nem nada binário: só os campos.
  */
-export function useRascunho<T>(chave: string) {
-  const espera = useRef<number | null>(null);
-  /** Último conteúdo ainda não gravado (a gravação espera uma pausa na digitação). */
-  const pendente = useRef<T | null>(null);
-  const chaveCompleta = PREFIXO + chave;
+export function useRascunho<T>(chave: string | null) {
+  const chaveCompleta = chave === null ? null : PREFIXO + chave;
+  const pendente = useRef<{ chave: string; dados: T; timer: number } | null>(null);
 
-  const ler = useCallback((): Rascunho<T> | null => {
-    // Fechou e reabriu dentro da pausa: o que estava pendente vale como rascunho.
-    if (pendente.current != null) {
-      const dados = pendente.current;
-      if (espera.current != null) window.clearTimeout(espera.current);
-      espera.current = null;
-      pendente.current = null;
-      try {
-        localStorage.setItem(chaveCompleta, JSON.stringify({ dados, salvoEm: new Date().toISOString() } satisfies Rascunho<T>));
-      } catch { /* sem armazenamento */ }
-    }
-    try {
-      const bruto = localStorage.getItem(chaveCompleta);
-      if (!bruto) return null;
-      const valor = JSON.parse(bruto) as Rascunho<T>;
-      return valor && typeof valor.salvoEm === "string" && valor.dados != null ? valor : null;
-    } catch {
-      return null;
-    }
-  }, [chaveCompleta]);
-
-  const cancelarEspera = useCallback(() => {
-    if (espera.current != null) window.clearTimeout(espera.current);
-    espera.current = null;
+  const cancelarPendente = useCallback(() => {
+    const atual = pendente.current;
+    if (atual) window.clearTimeout(atual.timer);
     pendente.current = null;
+    return atual;
   }, []);
 
+  const gravarPendente = useCallback(() => {
+    const atual = cancelarPendente();
+    if (atual) gravar(atual.chave, atual.dados);
+  }, [cancelarPendente]);
+
+  const ler = useCallback((): Rascunho<T> | null => {
+    if (chaveCompleta === null) return null;
+    if (pendente.current?.chave === chaveCompleta) gravarPendente();
+    return lerGravado<T>(chaveCompleta);
+  }, [chaveCompleta, gravarPendente]);
+
   const salvarAgora = useCallback((dados: T, salvoEm = new Date().toISOString()) => {
-    cancelarEspera();
-    try {
-      localStorage.setItem(chaveCompleta, JSON.stringify({ dados, salvoEm } satisfies Rascunho<T>));
-    } catch {
-      // Sem armazenamento: o formulário só não tem rascunho.
-    }
-  }, [cancelarEspera, chaveCompleta]);
+    if (chaveCompleta === null) return;
+    if (pendente.current?.chave === chaveCompleta) cancelarPendente();
+    gravar(chaveCompleta, dados, salvoEm);
+  }, [cancelarPendente, chaveCompleta]);
 
   /** Salva depois de uma pausa na digitação. */
   const salvar = useCallback((dados: T) => {
-    cancelarEspera();
-    pendente.current = dados;
-    espera.current = window.setTimeout(() => {
-      espera.current = null;
-      salvarAgora(dados);
-    }, ESPERA_MS);
-  }, [cancelarEspera, salvarAgora]);
+    if (chaveCompleta === null) return;
+    if (pendente.current?.chave === chaveCompleta) cancelarPendente();
+    else gravarPendente();
+    const timer = window.setTimeout(gravarPendente, ESPERA_MS);
+    pendente.current = { chave: chaveCompleta, dados, timer };
+  }, [cancelarPendente, chaveCompleta, gravarPendente]);
 
   /** Apaga o rascunho só se o gravado ainda for o mesmo (`eDoDono`); o pendente também. */
   const limparSe = useCallback((eDoDono: (dados: T) => boolean) => {
-    if (pendente.current != null && eDoDono(pendente.current)) cancelarEspera();
-    try {
-      const bruto = localStorage.getItem(chaveCompleta);
-      if (!bruto) return;
-      const gravado = JSON.parse(bruto) as Rascunho<T>;
-      if (gravado?.dados != null && eDoDono(gravado.dados)) localStorage.removeItem(chaveCompleta);
-    } catch { /* sem armazenamento */ }
-  }, [cancelarEspera, chaveCompleta]);
+    if (chaveCompleta === null) return;
+    const atual = pendente.current;
+    if (atual?.chave === chaveCompleta && eDoDono(atual.dados)) cancelarPendente();
+    const gravado = lerGravado<T>(chaveCompleta);
+    if (gravado && eDoDono(gravado.dados)) remover(chaveCompleta);
+  }, [cancelarPendente, chaveCompleta]);
 
   const limpar = useCallback(() => {
-    cancelarEspera();
-    try { localStorage.removeItem(chaveCompleta); } catch { /* sem armazenamento */ }
-  }, [cancelarEspera, chaveCompleta]);
+    if (chaveCompleta === null) return;
+    if (pendente.current?.chave === chaveCompleta) cancelarPendente();
+    remover(chaveCompleta);
+  }, [cancelarPendente, chaveCompleta]);
 
-  // Sair da tela ou fechar o app no meio da pausa grava na hora o que estava pendente.
+  // Sair da tela ou fechar o app no meio da pausa grava na chave que originou a escrita.
   useEffect(() => {
-    const gravarPendente = () => {
-      if (pendente.current != null) salvarAgora(pendente.current);
-    };
     window.addEventListener("pagehide", gravarPendente);
     window.addEventListener("beforeunload", gravarPendente);
     return () => {
@@ -94,9 +75,30 @@ export function useRascunho<T>(chave: string) {
       window.removeEventListener("beforeunload", gravarPendente);
       gravarPendente();
     };
-  }, [salvarAgora]);
+  }, [gravarPendente]);
 
   return useMemo(() => ({ ler, salvar, salvarAgora, limpar, limparSe }), [ler, salvar, salvarAgora, limpar, limparSe]);
+}
+
+function gravar<T>(chave: string, dados: T, salvoEm = new Date().toISOString()) {
+  try {
+    localStorage.setItem(chave, JSON.stringify({ dados, salvoEm } satisfies Rascunho<T>));
+  } catch { /* sem armazenamento */ }
+}
+
+function lerGravado<T>(chave: string): Rascunho<T> | null {
+  try {
+    const bruto = localStorage.getItem(chave);
+    if (!bruto) return null;
+    const valor = JSON.parse(bruto) as Rascunho<T>;
+    return valor && typeof valor.salvoEm === "string" && valor.dados != null ? valor : null;
+  } catch {
+    return null;
+  }
+}
+
+function remover(chave: string) {
+  try { localStorage.removeItem(chave); } catch { /* sem armazenamento */ }
 }
 
 /** "hoje às 14:32" ou "18/11 às 09:05", para o aviso de rascunho recuperado. */
