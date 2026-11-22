@@ -35,7 +35,10 @@ function anoMes(valor?: string | null): [number, number] | null {
  * Movimento da bancada no ano: quantos entraram (data de entrada), quantos foram entregues
  * (data de saída de quem está ENTREGUE) e quantos foram reprovados (data da reprovação), por mês.
  */
-export function movimentoDaBancada(equipamentos: Equipamento[], ano: number): MesBancada[] {
+export function movimentoDaBancada(
+  equipamentos: Pick<Equipamento, "status" | "data_entrada" | "data_saida" | "data_reprovacao">[],
+  ano: number,
+): MesBancada[] {
   const meses = MESES.map((rotulo, indice) => ({ mes: indice + 1, rotulo, entraram: 0, entregues: 0, reprovados: 0 }));
   const somar = (valor: string | null | undefined, campo: "entraram" | "entregues" | "reprovados") => {
     const data = anoMes(valor);

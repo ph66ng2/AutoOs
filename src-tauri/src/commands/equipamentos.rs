@@ -694,6 +694,47 @@ pub async fn listar_receita_aprovada(ano_inicio: i32, ano_fim: i32) -> Result<Ve
     })
 }
 
+/// Datas de uma OS para o "Movimento da bancada" do Início: só o que a contagem usa.
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct MovimentoBancadaRow {
+    pub status: String,
+    pub data_entrada: Option<String>,
+    pub data_saida: Option<String>,
+    pub data_reprovacao: Option<String>,
+}
+
+/// Entradas, entregas e reprovações da empresa da sessão com alguma dessas datas entre
+/// `ano_inicio` e `ano_fim` (inclusive), sem paginação: o Início não pode contar só as
+/// últimas 50 OS. O mês no fuso da operação é calculado no frontend (`movimentoDaBancada`).
+#[tauri::command]
+#[instrument(skip_all, fields(ano_inicio = ano_inicio, ano_fim = ano_fim))]
+pub async fn listar_movimento_bancada(
+    ano_inicio: i32,
+    ano_fim: i32,
+    segundo_plano: Option<bool>,
+) -> Result<Vec<MovimentoBancadaRow>, String> {
+    let (inicio, fim) = faixa_de_anos_receita(ano_inicio, ano_fim)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    sqlx::query_as::<_, MovimentoBancadaRow>(
+        "SELECT COALESCE(status, '') AS status, data_entrada, data_saida, data_reprovacao
+           FROM equipamentos
+          WHERE empresa_id = $1
+            AND (LEFT(BTRIM(COALESCE(data_entrada, '')), 4) BETWEEN $2 AND $3
+              OR LEFT(BTRIM(COALESCE(data_saida, '')), 4) BETWEEN $2 AND $3
+              OR LEFT(BTRIM(COALESCE(data_reprovacao, '')), 4) BETWEEN $2 AND $3)",
+    )
+    .bind(empresa_id)
+    .bind(inicio)
+    .bind(fim)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao listar o movimento da bancada: {}", e);
+        super::operator_errors::mapear_erro_sql(e)
+    })
+}
+
 /// Lista os equipamentos de um cliente pelo `cliente_id`. Equipamentos antigos sem
 /// `cliente_id` entram apenas se o `cliente_nome` gravado for igual (sem diferenciar
 /// maiúsculas) a um dos `nomes` informados.

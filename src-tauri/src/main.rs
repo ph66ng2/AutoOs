@@ -176,6 +176,7 @@ fn main() {
             commands::auth::obter_empresa_ativa,
             commands::equipamentos::listar_equipamentos_cliente,
             commands::equipamentos::listar_receita_aprovada,
+            commands::equipamentos::listar_movimento_bancada,
             commands::equipamentos::buscar_equipamento,
             commands::equipamentos::listar_historico_equipamento,
             commands::equipamentos::buscar_equipamentos_por_serial,
