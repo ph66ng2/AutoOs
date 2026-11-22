@@ -197,4 +197,21 @@ describe("PortalClientePanel", () => {
     fireEvent.keyDown(screen.getByText("Painel de contatos de Gráfica Exemplo"), { key: "Escape" });
     await waitFor(() => expect(mocks.contatos.mock.calls.length).toBeGreaterThan(antes));
   });
+  it("recarga automática (alerta do portal, ao vivo) é de segundo plano; abrir a OS ou outra renova a sessão", async () => {
+    mocks.obter.mockResolvedValue(info());
+    const { rerender } = render(<PortalClienteProvider equipamento={equipamento}><PortalClienteBotao /></PortalClienteProvider>);
+    await waitFor(() => expect(mocks.obter).toHaveBeenLastCalledWith(7, false));
+
+    rerender(<PortalClienteProvider equipamento={equipamento} sinalPortal={1}><PortalClienteBotao /></PortalClienteProvider>);
+    await waitFor(() => expect(mocks.obter).toHaveBeenCalledTimes(2));
+    expect(mocks.obter).toHaveBeenLastCalledWith(7, true);
+
+    rerender(<PortalClienteProvider equipamento={{ ...equipamento, atualizado_em: "t2" }} sinalPortal={1}><PortalClienteBotao /></PortalClienteProvider>);
+    await waitFor(() => expect(mocks.obter).toHaveBeenCalledTimes(3));
+    expect(mocks.obter).toHaveBeenLastCalledWith(7, true);
+
+    rerender(<PortalClienteProvider equipamento={{ ...equipamento, id: 8 }} sinalPortal={1}><PortalClienteBotao /></PortalClienteProvider>);
+    await waitFor(() => expect(mocks.obter).toHaveBeenCalledTimes(4));
+    expect(mocks.obter).toHaveBeenLastCalledWith(8, false);
+  });
 });

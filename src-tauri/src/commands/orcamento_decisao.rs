@@ -499,13 +499,16 @@ fn resposta_from_row(row: &sqlx::postgres::PgRow) -> Result<RespostaOrcamentoInf
 }
 
 /// Estado do aceite do orçamento: versão mais recente, link, resposta vigente e histórico.
+/// `segundo_plano` = Some(true) é a recarga automática (ao vivo, alerta do portal): exige a
+/// sessão desbloqueada, mas não a renova, senão uma estação abandonada ficaria aberta.
 #[tauri::command]
 #[instrument(skip_all, fields(equipamento_id = equipamento_id))]
 pub async fn obter_decisao_orcamento(
     equipamento_id: i32,
+    segundo_plano: Option<bool>,
 ) -> Result<Option<DecisaoOrcamentoInfo>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let map = super::operator_errors::mapear_erro_sql;
     let ativo = aceite_online_ativo(&pool, empresa_id).await?;
 

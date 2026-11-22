@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "@/lib/db";
 import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
+import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { marcarEnvioAoSuporte } from "@/lib/suporte-ponte";
 import type { AbrirChamadoInput, ChamadoSuporte, ConfigSuporte, MensagemSuporte, ResponderChamadoInput } from "@/types";
 
@@ -30,7 +31,14 @@ export function useSuporte() {
     void carregar();
   }, [carregar]);
 
-  useAtualizacaoAoVivo(["suporte_chamados", "suporte_mensagens"], () => void carregar(true));
+  // Recarga automática (ao vivo, foco da janela): de segundo plano, e nenhuma com a sessão
+  // bloqueada (não renova a sessão nem tenta ler o que é do perfil).
+  const { status } = useSensitiveAccess();
+  const desbloqueadaRef = useRef(Boolean(status?.unlocked));
+  desbloqueadaRef.current = Boolean(status?.unlocked);
+  useAtualizacaoAoVivo(["suporte_chamados", "suporte_mensagens"], () => {
+    if (desbloqueadaRef.current) void carregar(true);
+  });
 
   const abrirChamado = useCallback(async (input: AbrirChamadoInput) => {
     const chamado = await db.abrirChamadoSuporte(input);

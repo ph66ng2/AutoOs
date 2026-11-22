@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Check, ChevronLeft, Download, ExternalLink, FileWarning, Headphones, ImagePlus, Plus, Send, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
 import { TeclaNoBotao } from "@/components/ui/tecla-no-botao";
 import { useMensagensChamado, useSuporte } from "@/hooks/useSuporte";
-import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { formatDateTimeSalvador, parseTimestampPostgres } from "@/lib/date-utils";
@@ -63,17 +63,79 @@ function quando(valor: string) {
  * Suporte (só a BMITAG), em forma de conversa: à esquerda os chamados, à direita o chamado
  * aberto, ou a caixa para escrever um novo. O chamado vira uma thread no Slack; o atendimento
  * responde lá e a resposta aparece aqui.
- */
-/**
+ *
  * A página é do perfil da sessão: trocar de perfil com ela aberta remonta tudo (lista, conversa,
  * rascunhos), e o que ainda chegasse do perfil anterior cai junto com a montagem antiga.
+ *
+ * Com a sessão bloqueada (Ctrl+L ou inatividade), lista e conversa saem da tela e param de
+ * recarregar; ao desbloquear, a página monta de novo e lê tudo outra vez. Os rascunhos ficam
+ * aqui fora (só do mesmo perfil) e o aviso ao sair continua valendo enquanto bloqueada.
  */
 export default function Suporte() {
   const { status } = useSensitiveAccess();
-  return <SuporteDoPerfil key={status?.active_profile_id ?? "sem-perfil"} />;
+  const perfil = status?.active_profile_id ?? null;
+  const [guardados, setGuardados] = useState<{ perfil: number | null; rascunhos: Record<string, Rascunho> }>({ perfil, rascunhos: {} });
+  if (guardados.perfil !== perfil) {
+    setGuardados({ perfil, rascunhos: {} });
+  }
+  const rascunhos = guardados.perfil === perfil ? guardados.rascunhos : SEM_RASCUNHOS;
+  const setRascunhos = useCallback(
+    (proximo: (atual: Record<string, Rascunho>) => Record<string, Rascunho>) =>
+      setGuardados((atual) => atual.perfil === perfil ? { perfil, rascunhos: proximo(atual.rascunhos) } : atual),
+    [perfil],
+  );
+  // O envio continua em andamento mesmo quando o bloqueio desmonta a conversa.
+  const enviosPendentes = useRef(new Set<number | null>());
+  const [perfisEnviando, setPerfisEnviando] = useState<ReadonlySet<number | null>>(() => new Set());
+  async function comTrava(acao: () => Promise<void>, erro: string) {
+    if (enviosPendentes.current.has(perfil)) return;
+    enviosPendentes.current.add(perfil);
+    setPerfisEnviando(new Set(enviosPendentes.current));
+    try {
+      await acao();
+    } catch (causa) {
+      toast.error(erro, { description: mensagemVisivelAoOperador(causa) ?? String(causa) });
+    } finally {
+      enviosPendentes.current.delete(perfil);
+      setPerfisEnviando(new Set(enviosPendentes.current));
+    }
+  }
+  // Sair de /suporte com algo escrito ou print anexado e não enviado pede confirmação.
+  const temRascunho = Object.values(rascunhos).some((r) => r.texto.trim() !== "" || r.prints.length > 0);
+  const avisoAoSair = useAvisoAoSair(temRascunho);
+  return (
+    <>
+      {avisoAoSair.dialogo}
+      {status?.unlocked ? (
+        <SuporteDoPerfil
+          key={perfil ?? "sem-perfil"}
+          rascunhos={rascunhos}
+          setRascunhos={setRascunhos}
+          enviando={perfisEnviando.has(perfil)}
+          comTrava={comTrava}
+        />
+      ) : (
+        <SensitiveRoute title="Suporte bloqueado" description="Os chamados são do perfil da sessão. Desbloqueie com o PIN para ver a conversa.">
+          {null}
+        </SensitiveRoute>
+      )}
+    </>
+  );
 }
 
-function SuporteDoPerfil() {
+const SEM_RASCUNHOS: Record<string, Rascunho> = {};
+
+function SuporteDoPerfil({
+  rascunhos,
+  setRascunhos,
+  enviando,
+  comTrava,
+}: {
+  rascunhos: Record<string, Rascunho>;
+  setRascunhos: (proximo: (atual: Record<string, Rascunho>) => Record<string, Rascunho>) => void;
+  enviando: boolean;
+  comTrava: (acao: () => Promise<void>, erro: string) => Promise<void>;
+}) {
   const location = useLocation();
   const navigate = useNavigate();
   const pedido = (location.state ?? {}) as EstadoSuporte;
@@ -88,31 +150,8 @@ function SuporteDoPerfil() {
   relatorioRef.current = relatorio;
   // No celular, a lista e a conversa não cabem lado a lado: uma de cada vez.
   const [conversaNoCelular, setConversaNoCelular] = useState(Boolean(pedido.relatorioErro || pedido.chamadoId));
-  // Os rascunhos ficam aqui, acima da conversa ("novo" e um por chamado): olhar a lista ou outro
-  // chamado não apaga o que foi escrito.
-  const [rascunhos, setRascunhos] = useState<Record<string, Rascunho>>({});
   const rascunhoDe = (chave: string): Rascunho => rascunhos[chave] ?? RASCUNHO_VAZIO;
   const guardarRascunho = (chave: string) => (proximo: Rascunho) => setRascunhos((atual) => ({ ...atual, [chave]: proximo }));
-  // O envio em andamento também fica aqui: trocar de tela e voltar não libera um segundo envio.
-  const [enviando, setEnviando] = useState<string | null>(null);
-  const enviandoRef = useRef<string | null>(null);
-  // Sair de /suporte com algo escrito ou print anexado e não enviado pede confirmação.
-  const temRascunho = Object.values(rascunhos).some((r) => r.texto.trim() !== "" || r.prints.length > 0);
-  const avisoAoSair = useAvisoAoSair(temRascunho);
-
-  async function comTrava(chave: string, acao: () => Promise<void>, erro: string) {
-    if (enviandoRef.current) return;
-    enviandoRef.current = chave;
-    setEnviando(chave);
-    try {
-      await acao();
-    } catch (causa) {
-      toast.error(erro, { description: mensagemVisivelAoOperador(causa) ?? String(causa) });
-    } finally {
-      enviandoRef.current = null;
-      setEnviando(null);
-    }
-  }
 
   // Relatório de erro pelo estado da navegação, inclusive com a página já aberta ("Enviar ao suporte"
   // no sino estando em /suporte): troca o anexo, abre o novo chamado e limpa o estado para um F5
@@ -158,7 +197,6 @@ function SuporteDoPerfil() {
         )}
       </PageHeader>
 
-      {avisoAoSair.dialogo}
       <div className="grid min-h-0 flex-1 overflow-hidden rounded-2xl border bg-card lg:grid-cols-[300px_minmax(0,1fr)]">
         {mostrarLista && (
           <aside aria-label="Chamados" className="flex min-h-0 flex-col border-b bg-muted/30 lg:border-b-0 lg:border-r">
@@ -218,10 +256,10 @@ function SuporteDoPerfil() {
                 configurado={configurado}
                 rascunho={rascunhoDe(`c${chamadoAberto.id}`)}
                 onRascunho={guardarRascunho(`c${chamadoAberto.id}`)}
-                enviando={enviando != null}
+                enviando={enviando}
                 onResponder={(texto, prints) => {
                   const chave = `c${chamadoAberto.id}`;
-                  void comTrava(chave, async () => {
+                  void comTrava(async () => {
                     const resposta = await responder({ id: chamadoAberto.id, texto, imagens: prints.map(({ nome, base64 }) => ({ nome, base64 })) });
                     const falhos = printsNaoEnviados(resposta, prints);
                     setRascunhos((atual) => ({ ...atual, [chave]: { texto: "", prints: falhos } }));
@@ -229,7 +267,7 @@ function SuporteDoPerfil() {
                   }, "Não foi possível enviar a mensagem.");
                 }}
                 onRetorno={(resolvido) => {
-                  void comTrava(`c${chamadoAberto.id}`, async () => {
+                  void comTrava(async () => {
                     await retorno(chamadoAberto.id, resolvido);
                     if (resolvido) toast.success(`Chamado #${chamadoAberto.id} encerrado. Obrigado pelo retorno.`);
                   }, "Não foi possível registrar o retorno.");
@@ -242,9 +280,9 @@ function SuporteDoPerfil() {
                 rascunho={rascunhoDe("novo")}
                 onRascunho={guardarRascunho("novo")}
                 onRemoverRelatorio={() => setRelatorio(null)}
-                enviando={enviando != null}
+                enviando={enviando}
                 onEnviar={(texto, prints) => {
-                  void comTrava("novo", async () => {
+                  void comTrava(async () => {
                     const relatorioEnviado = relatorio;
                     const chamado = await abrirChamado({
                       texto,

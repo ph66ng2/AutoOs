@@ -16,11 +16,17 @@ const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/db", () => ({ db }));
 import { PdfService } from "@/lib/pdf-service";
 import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
 
-beforeEach(() => semearTecnicosPadrao());
+// Sessão do balcão: por padrão o técnico Ivan (id 901 da fixture), para a entrada já vir com técnico.
+const m = vi.hoisted(() => ({ sessao: { active_profile_id: 901 as number | null, active_profile_name: "Ivan", unlocked: true } }));
+beforeEach(() => {
+  semearTecnicosPadrao();
+  m.sessao = { active_profile_id: 901, active_profile_name: "Ivan", unlocked: true };
+});
 vi.mock("@/lib/email-service", () => ({ EmailService: emailService }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
-  useSensitiveAccess: () => ({ status: { active_profile_name: "Atendente", unlocked: true }, ensureSensitiveAccess, lockSensitiveAccess: vi.fn(), openProfileSelector: vi.fn() }),
+  useSensitiveAccess: () => ({ status: m.sessao, ensureSensitiveAccess, lockSensitiveAccess: vi.fn(), openProfileSelector: vi.fn() }),
 }));
 vi.mock("@/components/equipamentos/ClienteSelector", () => ({
   ClienteSelector: ({ onClienteSelecionado }: { onClienteSelecionado: (client: unknown) => void }) => <button onClick={() => onClienteSelecionado({ id: 9, empresa_id: 7, nome: "Cliente balcão", telefone: "71999999999" })}>Selecionar cliente de teste</button>,
@@ -64,6 +70,26 @@ describe("Modo Balcão", () => {
     await user.click(screen.getByRole("button", { name: /continuar para o laudo/i }));
     await user.click(screen.getByRole("button", { name: /recapitular/i }));
   }
+
+  it("Admin que não atende, com vários técnicos: nenhum vem escolhido e salvar pede a escolha", async () => {
+    m.sessao = { active_profile_id: 1, active_profile_name: "Administrador", unlocked: true };
+    const user = userEvent.setup(); renderCounter(); await reachReview(user);
+    await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
+    expect(await screen.findByText("Escolha o técnico que está operando.")).toBeInTheDocument();
+    expect(db.criarEquipamento).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("empresa sem nenhum técnico marcado não trava: registra no nome de quem opera, sem e-mail", async () => {
+    definirTecnicosDaEmpresa([]);
+    m.sessao = { active_profile_id: 1, active_profile_name: "Administrador", unlocked: true };
+    db.salvarVerificacao.mockResolvedValue({ id: 3 });
+    const user = userEvent.setup(); renderCounter(); await reachReview(user);
+    expect(screen.getByText("Administrador — —")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
+    await waitFor(() => expect(db.criarEquipamento).toHaveBeenCalled());
+    expect(db.criarEquipamento.mock.calls[0]![0].observacoes ?? "").not.toMatch(/Técnico inicial/);
+    await waitFor(() => expect(db.salvarVerificacao).toHaveBeenCalledWith(expect.objectContaining({ tecnico_nome: "Administrador" })));
+  }, 20000);
 
   it("cria uma entrada recebida depois da conferência", async () => {
     const user = userEvent.setup(); renderCounter(); await reachReview(user);

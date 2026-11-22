@@ -75,7 +75,7 @@ vi.mock("@/hooks/useStatusEquipamento", () => ({
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({
     ensureSensitiveAccess: (...args: unknown[]) => mockEnsureSensitiveAccess(...args),
-    status: { active_profile_id: 1, unlocked: true, permissions: mockPermissions.list },
+    status: { active_profile_id: 901, unlocked: true, permissions: mockPermissions.list },
     hasPermission: (permission: string) => mockPermissions.list.includes(permission),
   }),
 }));
@@ -646,7 +646,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(input.custo_total).toBe(150);
     expect(Array.isArray(input.servicos)).toBe(true);
     expect(Array.isArray(input.pecas)).toBe(true);
-    expect(profileId).toBe(1);
+    expect(profileId).toBe(901);
   });
 
   // ─── Test 8: Divergência com peças zeradas ───────────

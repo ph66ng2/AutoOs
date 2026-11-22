@@ -40,7 +40,9 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
     void (async () => {
       try {
         const [receita, resumos] = await Promise.all([
-          db.listarEquipamentos().then(receitaPorMes).catch(() => null),
+          // Todas as OS aprovadas no período (sem o limite de 50 da lista). Um ano a mais de cada
+          // lado: `data_aprovacao` com hora pode cair em outro ano no fuso local.
+          db.listarReceitaAprovada(ano - 2, ano + 1).then(receitaPorMes).catch(() => null),
           Promise.all(
             lista.map(async (m) => {
               if (futuro(m)) return { ok: true as const, total_variavel: 0 };

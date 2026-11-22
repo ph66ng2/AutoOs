@@ -34,6 +34,8 @@ interface Profile {
   ativo: boolean;
   onboarding_pendente?: boolean;
   tour_permissoes_vistas?: string[] | null;
+  atende_tecnico?: boolean;
+  email_profissional?: string | null;
 }
 
 interface Seed {
@@ -152,6 +154,10 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return structuredClone(seed.clientes.find((cliente) => cliente.id === args?.id) ?? seed.clientes[0]) as T;
     case "listar_equipamentos_cliente":
       return structuredClone(seed.equipamentos.filter((equipamento) => equipamento.cliente_id === args?.clienteId)) as T;
+    case "listar_tecnicos_da_empresa":
+      return structuredClone(seed.profiles.filter((p) => p.ativo && p.atende_tecnico)) as T;
+    case "listar_receita_aprovada":
+      return structuredClone(seed.equipamentos) as T;
     case "listar_equipamentos": {
       const statusFiltro = args?.status as string | undefined;
       const items = seed.equipamentos.filter((equipamento) =>

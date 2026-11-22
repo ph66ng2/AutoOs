@@ -27,6 +27,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { emitirOrcamentoPublicado, type ReferenciaPdfPortal } from "@/lib/portal-documentos";
 import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import { reportarFalhaDeComando } from "@/lib/database-health";
+import type { TecnicoDaEmpresa } from "@/lib/tecnicos";
 import type {
   AcessoPortalContato,
   DatabaseInitError,
@@ -199,6 +200,16 @@ export const db = {
   },
 
   /** Busca equipamento por ID → Rust: buscar_equipamento */
+  /** Técnicos da empresa da sessão (perfis ativos com "faz atendimento técnico"); não renova a sessão. */
+  async listarTecnicosDaEmpresa(): Promise<TecnicoDaEmpresa[]> {
+    return invoke<TecnicoDaEmpresa[]>("listar_tecnicos_da_empresa");
+  },
+
+  /** Todas as OS aprovadas da empresa entre os anos (inclusive), sem paginação: faturado de Finanças. */
+  async listarReceitaAprovada(anoInicio: number, anoFim: number): Promise<Pick<Equipamento, "data_aprovacao" | "valor_orcamento" | "valor_final">[]> {
+    return invoke("listar_receita_aprovada", { anoInicio, anoFim });
+  },
+
   async buscarEquipamento(id: number, segundoPlano = false): Promise<Equipamento> {
     return invoke<Equipamento>("buscar_equipamento", { id, ...seSegundoPlano(segundoPlano) });
   },
@@ -479,8 +490,9 @@ export const db = {
     return invoke<ContatoPortalEmpresa>("salvar_contato_portal_empresa", { input });
   },
 
-  async obterDecisaoOrcamento(equipamentoId: number): Promise<DecisaoOrcamentoInfo | null> {
-    return invoke<DecisaoOrcamentoInfo | null>("obter_decisao_orcamento", { equipamentoId });
+  /** `segundoPlano`: recarga automática (ao vivo, alerta do portal), não renova a sessão. */
+  async obterDecisaoOrcamento(equipamentoId: number, segundoPlano = false): Promise<DecisaoOrcamentoInfo | null> {
+    return invoke<DecisaoOrcamentoInfo | null>("obter_decisao_orcamento", { equipamentoId, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Único ponto de envio de WhatsApp ao cliente → Rust: solicitar_envio_whatsapp */

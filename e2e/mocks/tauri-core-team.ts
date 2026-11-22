@@ -23,6 +23,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
   if (command === "unlock_sensitive_access") return structuredClone(status()) as T;
   if (command === "get_sensitive_access_status") return structuredClone(status()) as T;
   if (command === "list_security_profiles") return structuredClone(profiles) as T;
+  if (command === "listar_tecnicos_da_empresa") return structuredClone(profiles.filter(p => p.ativo && p.atende_tecnico)) as T;
   if (command === "list_security_audit_events") return [] as T;
   if (command === "set_active_security_profile") { const profile = profiles.find(p => p.id === args?.profileId)!; if (profile.pin_required && !profile.pin_configured) throw new Error("PIN pendente neste computador"); active = profile; return structuredClone(status()) as T; }
   if (command === "criar_perfil_com_codigo") { const input = args?.input as SecurityProfileInput; const created: SecurityProfile = { ...input, id: Math.max(...profiles.map(p => p.id)) + 1, pin_configured: false, pin_required: true, is_default: false, ativo: true, onboarding_pendente: true }; profiles.push(created); return structuredClone(demoCode(created)) as T; }

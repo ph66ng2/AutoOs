@@ -70,6 +70,7 @@ import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/re
 import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "@/lib/logo-monochrome-base64";
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
 import { useTecnicos } from "@/hooks/useTecnicos";
+import { avisoBalcaoSemTecnicos, linhaTecnicoInicial, tecnicoDoBalcao, tecnicoPadrao } from "@/lib/tecnicos";
 import { todayLocalIsoDate } from "@/lib/date-utils";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
 import {
@@ -516,7 +517,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
 }
 
 function QuickEntry({ onBack }: { onBack: () => void }) {
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess, status: sessaoDoBalcao } = useSensitiveAccess();
   const [step, setStep] = useState(1);
   const [client, setClient] = useState<Cliente | null>(null);
   const [responsavel, setResponsavel] = useState<ClienteContato | null>(null);
@@ -541,11 +542,16 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
   });
   const tecnicos = useTecnicos();
   const [tecnico, setTecnico] = useState<TecnicoDisponivel>("");
-  // Sem escolha ainda: o primeiro técnico da lista (perfis com "faz atendimento técnico").
+  // Sem escolha ainda: o próprio perfil, se faz atendimento técnico, ou o único técnico da
+  // empresa. Com vários e nenhum deles a sessão, a pessoa escolhe (nunca "o primeiro da lista").
+  const padraoDoTecnico = tecnicoPadrao(tecnicos, sessaoDoBalcao?.unlocked ? sessaoDoBalcao.active_profile_id : null);
   useEffect(() => {
-    if (!tecnico && tecnicos.length > 0) setTecnico(tecnicos[0].nome);
-  }, [tecnico, tecnicos]);
+    if (!tecnico && padraoDoTecnico) setTecnico(padraoDoTecnico);
+  }, [tecnico, padraoDoTecnico]);
   const emailDoTecnicoEscolhido = tecnicos.find((t) => t.nome === tecnico)?.email ?? "";
+  // Empresa sem nenhum técnico marcado: a entrada fica no nome de quem está operando.
+  const operadorDoBalcao = sessaoDoBalcao?.unlocked ? sessaoDoBalcao.active_profile_name ?? "" : "";
+  const registroDoTecnico = tecnicoDoBalcao(tecnico, tecnicos, operadorDoBalcao);
   const [emailPromptOpen, setEmailPromptOpen] = useState(false);
   const [emailRecipient, setEmailRecipient] = useState<ResolvedRecipient | null>(null);
   const [emailFeedback, setEmailFeedback] = useState<string | null>(null);
@@ -673,7 +679,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         logo_png: base64ParaBytes(LOGO_BMITAG_MONOCHROME_PNG_BASE64),
         equipamento: `${data.marca} ${data.modelo}`.trim(),
         serial: data.serial_number.trim(),
-        tecnico,
+        tecnico: registroDoTecnico.nome || tecnico,
       });
       setTesteEnviado(true);
     } catch (cause) {
@@ -697,13 +703,13 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       );
     if (history.length && !confirmedCycle)
       return setError("Confirme a criação de um novo ciclo para este serial.");
-    if (!tecnico) return setError("Escolha o técnico que está operando.");
+    if (registroDoTecnico.erro) return setError(registroDoTecnico.erro);
     setSaving(true);
     setError(null);
     try {
       const emailTecnico = emailDoTecnicoEscolhido;
       const observacoes = [
-        `Técnico inicial: ${tecnico}${emailTecnico ? ` (${emailTecnico})` : ""}`,
+        registroDoTecnico.transicao ? "" : linhaTecnicoInicial(registroDoTecnico.nome, emailTecnico),
         data.observacoes.trim(),
       ]
         .filter(Boolean)
@@ -730,7 +736,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       void solicitarEnvioAutomatico(equipment);
       await db.salvarVerificacao({
         equipamento_id: equipment.id!,
-        tecnico_nome: tecnico,
+        tecnico_nome: registroDoTecnico.nome,
         problema_relatado: data.defeito_relatado,
         diagnostico: [
           data.laudo_tecnico.trim(),
@@ -1000,7 +1006,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
                 onValueChange={(value: TecnicoDisponivel) => setTecnico(value)}
               >
                 <SelectTrigger className={inputClass}>
-                  <SelectValue />
+                  <SelectValue placeholder="Escolha o técnico" />
                 </SelectTrigger>
                 <SelectContent>
                   {tecnicos.map((option) => (
@@ -1012,7 +1018,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               </Select>
               <p className="text-sm text-muted-foreground">
                 {tecnicos.length === 0
-                  ? "Nenhum perfil marcado como técnico. Marque em Equipe e acessos."
+                  ? avisoBalcaoSemTecnicos(operadorDoBalcao)
                   : `E-mail do técnico: ${emailDoTecnicoEscolhido || "não informado"}`}
               </p>
             </div>
@@ -1239,7 +1245,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
             />
             <Info
               label="Técnico"
-              value={`${tecnico || "—"} — ${emailDoTecnicoEscolhido || "—"}`}
+              value={`${registroDoTecnico.nome || "—"} — ${emailDoTecnicoEscolhido || "—"}`}
             />
             <Info
               label="Teste de impressão"

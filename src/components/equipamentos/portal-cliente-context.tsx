@@ -90,12 +90,15 @@ export function PortalClienteProvider({ equipamento, sinalPortal, onConfigurarPo
   const atualRef = useRef(equipamentoId);
   atualRef.current = equipamentoId;
 
-  const carregar = useCallback(async () => {
+  // Equipamento já consultado nesta montagem: recargas automáticas dele são de segundo plano.
+  const consultadoRef = useRef<number | null>(null);
+
+  const carregar = useCallback(async (segundoPlano = false) => {
     if (!equipamentoId) return;
-    setLoading(true);
+    if (!segundoPlano) setLoading(true);
     setError(null);
     try {
-      const next = await db.obterDecisaoOrcamento(equipamentoId);
+      const next = await db.obterDecisaoOrcamento(equipamentoId, segundoPlano);
       if (atualRef.current !== equipamentoId) return;
       setInfo(next);
     } catch (cause) {
@@ -109,9 +112,17 @@ export function PortalClienteProvider({ equipamento, sinalPortal, onConfigurarPo
     }
   }, [equipamentoId]);
 
+  // Abrir o equipamento é ação da pessoa (renova a sessão). Mudança de `atualizado_em` ou de
+  // `sinalPortal` no mesmo equipamento vem da atualização ao vivo ou de um alerta do portal:
+  // leitura de segundo plano, que não mantém aberta uma estação abandonada.
+  // Recarga pedida pela pessoa (painel, diálogos): renova a sessão normalmente.
+  const recarregar = useCallback(() => carregar(), [carregar]);
+
   useEffect(() => {
-    void carregar();
-  }, [carregar, equipamento.atualizado_em, sinalPortal]);
+    const segundoPlano = consultadoRef.current === equipamentoId;
+    consultadoRef.current = equipamentoId ?? null;
+    void carregar(segundoPlano);
+  }, [carregar, equipamentoId, equipamento.atualizado_em, sinalPortal]);
 
   // Outro equipamento: o painel do anterior não deve continuar aberto nem mostrar dados dele.
   useEffect(() => {
@@ -213,7 +224,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, onConfigurarPo
       solicitacoesAbertas,
       pendencias: (respostaFinal ? 1 : 0) + solicitacoesAbertas.length,
       contatosVersao,
-      carregar,
+      carregar: recarregar,
       publicar,
       tratarSolicitacao,
       abrirPainel: () => setPainelAberto(true),
@@ -227,7 +238,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, onConfigurarPo
       },
       configurarPortal: onConfigurarPortal,
     };
-  }, [equipamento, equipamentoId, info, loading, busy, error, consultado, contatosVersao, carregar, publicar, tratarSolicitacao, onConfigurarPortal]);
+  }, [equipamento, equipamentoId, info, loading, busy, error, consultado, contatosVersao, recarregar, publicar, tratarSolicitacao, onConfigurarPortal]);
 
   return (
     <PortalClienteContext.Provider value={valor}>
@@ -238,7 +249,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, onConfigurarPo
           open={prorrogarAberto}
           onOpenChange={setProrrogarAberto}
           equipamentoId={equipamentoId}
-          onConcluido={carregar}
+          onConcluido={recarregar}
           onEnvioManual={setEnvioManual}
         />
       ) : null}

@@ -1,11 +1,43 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ listarMensagensChamado: vi.fn() }));
-vi.mock("@/lib/db", () => ({ db: { listarMensagensChamado: mocks.listarMensagensChamado } }));
-vi.mock("@/hooks/useAtualizacaoAoVivo", () => ({ useAtualizacaoAoVivo: () => undefined }));
+const mocks = vi.hoisted(() => ({
+  listarMensagensChamado: vi.fn(),
+  listarChamadosSuporte: vi.fn(),
+  obterConfigSuporte: vi.fn(),
+  aoVivo: null as null | (() => void),
+  unlocked: true,
+}));
+vi.mock("@/lib/db", () => ({
+  db: { listarMensagensChamado: mocks.listarMensagensChamado, listarChamadosSuporte: mocks.listarChamadosSuporte, obterConfigSuporte: mocks.obterConfigSuporte },
+}));
+vi.mock("@/hooks/useAtualizacaoAoVivo", () => ({
+  useAtualizacaoAoVivo: (_tabelas: string[], recarregar: () => void) => { mocks.aoVivo = recarregar; },
+}));
+vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ status: { unlocked: mocks.unlocked } }) }));
 
-import { useMensagensChamado } from "./useSuporte";
+import { useMensagensChamado, useSuporte } from "./useSuporte";
+
+describe("useSuporte", () => {
+  it("abrir a página lê renovando a sessão; recarga ao vivo é de segundo plano e não roda bloqueada", async () => {
+    mocks.unlocked = true;
+    mocks.obterConfigSuporte.mockResolvedValue({ token_neste_computador: true, canal: "C0CE5M6GTRV" });
+    mocks.listarChamadosSuporte.mockResolvedValue([]);
+    const { result, rerender } = renderHook(() => useSuporte());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mocks.listarChamadosSuporte).toHaveBeenLastCalledWith(false);
+
+    mocks.aoVivo?.();
+    await waitFor(() => expect(mocks.listarChamadosSuporte).toHaveBeenCalledTimes(2));
+    expect(mocks.listarChamadosSuporte).toHaveBeenLastCalledWith(true);
+
+    mocks.unlocked = false;
+    rerender();
+    mocks.aoVivo?.();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mocks.listarChamadosSuporte).toHaveBeenCalledTimes(2);
+  });
+});
 
 const msg = (id: number, texto: string) => ({ id, autor: "suporte", autor_nome: "Erykah", texto, automatica: true, criado_em: "2026-11-21 10:00:00+00" });
 
