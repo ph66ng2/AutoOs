@@ -242,6 +242,21 @@ describe("Suporte", () => {
     expect(screen.queryByText("Tela de clientes")).not.toBeInTheDocument();
   });
 
+  it("sair de /suporte com resposta pela metade num chamado também pede confirmação", async () => {
+    const user = userEvent.setup();
+    m.chamados = [aberto12];
+    const router = createMemoryRouter(
+      [{ path: "/suporte", element: <Suporte /> }, { path: "/clientes", element: <p>Tela de clientes</p> }],
+      { initialEntries: ["/suporte"] },
+    );
+    render(<RouterProvider router={router} />);
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    await user.type(screen.getByLabelText(/Responder/), "Resposta pela metade");
+    await act(async () => { void router.navigate("/clientes"); });
+    expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+    expect(screen.queryByText("Tela de clientes")).not.toBeInTheDocument();
+  });
+
   it("sessão bloqueada esconde lista e conversa; ao desbloquear volta com o rascunho", async () => {
     const user = userEvent.setup();
     m.chamados = [{ id: 12, texto: "Não salva a OS", situacao: "aberto", criado_em: "2026-11-21 09:00:00+00", atualizado_em: "2026-11-21 10:00:00+00", respostas: 1 }];
