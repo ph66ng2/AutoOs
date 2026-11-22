@@ -1,11 +1,15 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Equipamentos from "./Equipamentos";
 
-const { dbMocks, status } = vi.hoisted(() => ({
+Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => {} });
+
+const { dbMocks, status, enviarOrcamento, recarregar } = vi.hoisted(() => ({
   dbMocks: {
     buscarEquipamento: vi.fn(),
+    obterDestinatarioOrcamento: vi.fn(),
+    salvarVerificacao: vi.fn(),
     buscarCliente: vi.fn(),
     listarClienteContatos: vi.fn(),
     listarEquipamentosCliente: vi.fn(),
@@ -14,18 +18,30 @@ const { dbMocks, status } = vi.hoisted(() => ({
     listarImagensEquipamento: vi.fn(),
     listarHistoricoEquipamento: vi.fn(),
   },
+  enviarOrcamento: vi.fn(),
+  recarregar: vi.fn(),
   status: { unlocked: true, active_profile_id: 1, active_empresa_id: 4, profiles: [] },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMocks }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
-  useSensitiveAccess: () => ({ status, hasPermission: () => true }),
+  useSensitiveAccess: () => ({ status, hasPermission: () => true, ensureSensitiveAccess: async () => true }),
 }));
 vi.mock("@/hooks/useEquipamentos", () => {
   const equipamentos = [];
-  return { useEquipamentos: () => ({ equipamentos, total: 0, contagens: {}, destaques: new Set() }) };
+  return { useEquipamentos: () => ({ equipamentos, total: 0, contagens: {}, destaques: new Set(), recarregar }) };
 });
 vi.mock("@/hooks/useTecnicos", () => ({ useTecnicos: () => [], useNomesFiltroTecnico: () => [] }));
 vi.mock("@/hooks/useAtualizacaoAoVivo", () => ({ useAtualizacaoAoVivo: () => {} }));
+
+vi.mock("@/lib/envio-orcamento", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/envio-orcamento")>(),
+  enviarOrcamentoAoCliente: enviarOrcamento,
+}));
+vi.mock("@/components/equipamentos/VerificacaoTecnica", () => ({
+  VerificacaoTecnica: ({ open, onConcluir }) => open && (
+    <button onClick={() => void onConcluir({ custo_total: 150 })}>Finalizar verificação</button>
+  ),
+}));
 
 function RotaDeTeste() {
   const navigate = useNavigate();
@@ -61,6 +77,7 @@ function buscaPendente() {
 beforeEach(() => {
   vi.resetAllMocks();
   Object.assign(status, { unlocked: true, active_profile_id: 1, active_empresa_id: 4 });
+  recarregar.mockResolvedValue({ status: "atualizado" });
   dbMocks.buscarVerificacao.mockResolvedValue(null);
   dbMocks.listarComunicacoes.mockResolvedValue([]);
   dbMocks.listarEquipamentosCliente.mockResolvedValue([]);
@@ -168,4 +185,40 @@ describe("rascunho da Nova entrada", () => {
     expect(localStorage.getItem("autoos:rascunho:nova-entrada:4:2")).toBeNull();
     expect(localStorage.getItem(chave)).not.toBeNull();
   });
+});
+
+it("volta à OS salva e permite enviar o orçamento quando a recarga falha", async () => {
+  const anterior = { ...os(1), status: "EM_VERIFICACAO" };
+  const salvo = {
+    ...anterior,
+    status: "AGUARDANDO_APROVACAO",
+    cliente_nome: "Cliente da OS",
+    cliente_telefone: "71999999999",
+    valor_orcamento: 150,
+    prazo_aprovacao: "2099-12-31",
+  };
+  const verificacao = { equipamento_id: 1, tecnico_nome: "Técnico", custo_total: 150 };
+  dbMocks.buscarEquipamento.mockResolvedValueOnce(anterior).mockRejectedValue(new Error("OS indisponível"));
+  dbMocks.buscarVerificacao.mockRejectedValue(new Error("Consulta da verificação indisponível"));
+  dbMocks.obterDestinatarioOrcamento.mockResolvedValue({ precisaContato: false });
+  dbMocks.salvarVerificacao.mockResolvedValue({ equipamento: salvo, verificacao });
+  recarregar.mockResolvedValue({ status: "falhou" });
+  enviarOrcamento.mockRejectedValueOnce(new Error("Provedor indisponível")).mockResolvedValue({
+    canais: { whatsapp: { enviado: true }, email: { enviado: false } },
+    avisos: [],
+  });
+
+  abrir("/equipamentos/1/verificacao");
+  fireEvent.click(await screen.findByRole("button", { name: "Finalizar verificação" }));
+
+  expect(await screen.findByText("/equipamentos/1")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Aprovar" })).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole("combobox", { name: "Mais ações" }), { key: "ArrowDown" });
+  fireEvent.keyDown(await screen.findByRole("option", { name: "WhatsApp" }), { key: "Enter" });
+
+  await waitFor(() => expect(enviarOrcamento).toHaveBeenNthCalledWith(
+    2, salvo, verificacao, { reenvioManual: true, enviarEmail: false },
+  ));
+  expect(dbMocks.salvarVerificacao).toHaveBeenCalledTimes(1);
+  expect(dbMocks.buscarEquipamento).toHaveBeenCalledTimes(2);
 });

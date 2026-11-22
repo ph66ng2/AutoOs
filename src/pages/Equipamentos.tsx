@@ -90,7 +90,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { equipamentoSchema, type EquipamentoFormData } from "@/lib/validations";
 import { useEquipamentos } from "@/hooks/useEquipamentos";
-import { useStatusEquipamento } from "@/hooks/useStatusEquipamento";
+import { useStatusEquipamento, type ResultadoFinalizarVerificacao } from "@/hooks/useStatusEquipamento";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
@@ -1414,27 +1414,35 @@ export default function Equipamentos() {
    * Conecta-se a: db.buscarVerificacao, db.listarComunicacoes
    */
   const detalhesSeq = useRef(0);
-  const abrirDetalhes = useCallback(async (eq: Equipamento, rota = `/equipamentos/${eq.id}`) => {
+  const abrirDetalhes = useCallback(async (
+    eq: Equipamento,
+    rota = `/equipamentos/${eq.id}`,
+    verificacaoSalva?: Verificacao,
+  ) => {
     // Trocar de atendimento com a janela aberta: só a última abertura grava os dados.
     const seq = ++detalhesSeq.current;
     setSelecionado(eq);
     setIdDetalhesAberto(eq.id ?? null);
     if (pathnameAtualRef.current !== rota) navigate(rota);
     setCarregandoDetalhes(true);
-    setVerificacaoDetalhes(null);
+    setVerificacaoDetalhes(verificacaoSalva ?? null);
     setComunicacoes([]);
     setImagensDetalhes([]);
     setHistoricoDetalhes([]);
     setHistoricoDetalhesError(null);
     try {
-      const [verif, comms, imagens, historico] = await Promise.allSettled([
+      const [verif, comms, imagens, historico, osAtualizada] = await Promise.allSettled([
         db.buscarVerificacao(eq.id!),
         db.listarComunicacoes(eq.id!),
         carregarImagensComPreview(eq.id!),
         db.listarHistoricoEquipamento(eq.id!),
+        verificacaoSalva ? db.buscarEquipamento(eq.id!) : undefined,
       ]);
       if (seq !== detalhesSeq.current) return;
-      setVerificacaoDetalhes(verif.status === "fulfilled" ? verif.value : null);
+      if (pathnameAtualRef.current === rota && osAtualizada.status === "fulfilled" && osAtualizada.value) {
+        setSelecionado(osAtualizada.value);
+      }
+      setVerificacaoDetalhes((verif.status === "fulfilled" ? verif.value : null) ?? verificacaoSalva ?? null);
       setComunicacoes(comms.status === "fulfilled" ? comms.value : []);
       setImagensDetalhes(imagens.status === "fulfilled" ? imagens.value : []);
       setHistoricoDetalhes(historico.status === "fulfilled" ? historico.value : []);
@@ -1506,7 +1514,7 @@ export default function Equipamentos() {
    * Sai da página da verificação e volta para onde a pessoa estava. Voltando aos detalhes, eles
    * são carregados de novo: depois de finalizar mudaram, e num link direto nunca foram carregados.
    */
-  function fecharPaginaVerificacao() {
+  function fecharPaginaVerificacao(salvo?: ResultadoFinalizarVerificacao["salvo"]) {
     // Finalizar já fecha; o "fechar" que a página manda logo depois não navega de novo.
     if (!paginaVerificacaoAbertaRef.current) return;
     paginaVerificacaoAbertaRef.current = false;
@@ -1514,7 +1522,12 @@ export default function Equipamentos() {
     setVerificacaoDialogOpen(false);
     const origem = origemVerificacaoRef.current;
     if (alvo?.id && origem === `/equipamentos/${alvo.id}`) {
-      db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
+      if (salvo?.equipamento.id === alvo.id) {
+        avisoVerificacao.liberarProximaSaida();
+        void abrirDetalhes(salvo.equipamento, origem, salvo.verificacao);
+      } else {
+        db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
+      }
       return;
     }
     if (pathnameAtualRef.current !== origem) {
@@ -2052,8 +2065,8 @@ export default function Equipamentos() {
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
+        fecharPaginaVerificacao(resultado.salvo);
         await recarregar();
-        fecharPaginaVerificacao();
         const resumoCanais = mensagemResultadoCanais(resultado);
         if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Finalizar verificação");
@@ -2749,8 +2762,11 @@ export default function Equipamentos() {
     try {
       verificacao = await db.buscarVerificacao(eq.id!);
     } catch (err) {
-      showError("Equipamentos", "Enviar WhatsApp", err);
-      return;
+      if (eq !== selecionado || !verificacaoDetalhes || verificacaoDetalhes.equipamento_id !== eq.id) {
+        showError("Equipamentos", "Enviar WhatsApp", err);
+        return;
+      }
+      verificacao = verificacaoDetalhes;
     }
     if (!verificacao) {
       warning("Equipamentos", "Verificação não encontrada; o orçamento não foi enviado.");
