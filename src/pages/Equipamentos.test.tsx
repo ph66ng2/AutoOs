@@ -371,13 +371,28 @@ describe("reenvio de orçamento por e-mail", () => {
       .toBeLessThan(dbMocks.obterDestinatarioOrcamento.mock.invocationCallOrder[1]);
   });
 
-  it("recusa reenvio se o destinatário do backend não tem e-mail", async () => {
-    dbMocks.obterDestinatarioOrcamento.mockResolvedValue({ ...destinatario, email: null });
+  it.each([
+    [null, "O contato Contato do portal não tem e-mail; cadastre em Clientes › Contatos."],
+    ["  ", "O contato Contato do portal não tem e-mail; cadastre em Clientes › Contatos."],
+    ["inválido", "O contato Contato do portal tem um e-mail inválido. Corrija em Clientes › Contatos."],
+  ])("explica por que o e-mail %j impede o reenvio", async (email, mensagem) => {
+    dbMocks.obterDestinatarioOrcamento.mockResolvedValue({ ...destinatario, email });
     await abrirReenvio();
 
-    await waitFor(() => expect(toastMock.warning).toHaveBeenCalled());
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalledWith("Equipamentos", mensagem));
     expect(screen.queryByRole("button", { name: "Reenviar e-mail" })).not.toBeInTheDocument();
     expect(ensureSensitiveAccess).not.toHaveBeenCalled();
+    expect(enviarEmailOrcamento).not.toHaveBeenCalled();
+  });
+
+  it("avisa se a OS deixou de aguardar aprovação", async () => {
+    dbMocks.buscarEquipamento.mockResolvedValueOnce(equipamento)
+      .mockResolvedValue({ ...equipamento, status: "APROVADO" });
+    await abrirReenvio();
+
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalledWith(
+      "Equipamentos", "A OS deve estar aguardando aprovação para reenviar o orçamento.",
+    ));
     expect(enviarEmailOrcamento).not.toHaveBeenCalled();
   });
 
