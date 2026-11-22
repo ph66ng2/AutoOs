@@ -164,7 +164,7 @@ export default function Insumos() {
     // Só na abertura da página.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
 
   const form = useForm<ProdutoFormData>({
     resolver: zodResolver(produtoSchema),
@@ -365,7 +365,9 @@ export default function Insumos() {
 
   const contagemCategoria = (categoria: string) =>
     resumo?.porCategoria.find((item) => item.categoria === categoria)?.total ?? 0;
-  const mostrarValor = resumo?.valorEstoque != null;
+  // O valor vem do backend só para quem vê despesas; a tela confere a sessão atual também,
+  // para não mostrar um valor lido por outro perfil.
+  const mostrarValor = resumo?.valorEstoque != null && hasPermission(SENSITIVE_PERMISSIONS.VIEW_EXPENSES);
 
   return (
     <div className="space-y-5">
