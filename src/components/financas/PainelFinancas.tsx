@@ -448,7 +448,7 @@ export function PesoNoFaturamento({ gastos, faturado, ocultar, disponivel = true
         {!disponivel ? (
           <p className="text-sm text-muted-foreground">Indisponível</p>
         ) : fracao == null ? (
-          <p className="text-sm text-muted-foreground">Sem faturado neste mês.</p>
+          <p className="text-sm text-muted-foreground">Sem faturamento neste mês.</p>
         ) : (
           <>
             <div className="min-w-0">
