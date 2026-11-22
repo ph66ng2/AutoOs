@@ -479,8 +479,9 @@ export const db = {
     return invoke<ContatoPortalEmpresa>("salvar_contato_portal_empresa", { input });
   },
 
-  async obterDecisaoOrcamento(equipamentoId: number): Promise<DecisaoOrcamentoInfo | null> {
-    return invoke<DecisaoOrcamentoInfo | null>("obter_decisao_orcamento", { equipamentoId });
+  /** `segundoPlano`: recarga automática (ao vivo, alerta do portal), não renova a sessão. */
+  async obterDecisaoOrcamento(equipamentoId: number, segundoPlano = false): Promise<DecisaoOrcamentoInfo | null> {
+    return invoke<DecisaoOrcamentoInfo | null>("obter_decisao_orcamento", { equipamentoId, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Único ponto de envio de WhatsApp ao cliente → Rust: solicitar_envio_whatsapp */
