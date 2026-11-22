@@ -24,6 +24,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
 import { PdfService } from "@/lib/pdf-service";
 import { formatDatePtBr } from "@/lib/date-utils";
+import { formatCurrency } from "@/lib/utils";
 import type {
   EmailAttachment,
   EmailSendRequest,
@@ -478,7 +479,7 @@ function gerarCorpoOrcamentoTexto(
   const total = verificacao.custo_total ?? servicos.reduce((acc, s) => acc + (Number(s.valor) || 0), 0);
 
   const linhasServicos = servicos.length > 0
-    ? servicos.map((s) => `  • ${s.descricao}: ${formatarMoeda(s.valor)}`).join("\n")
+    ? servicos.map((s) => `  • ${s.descricao}: ${formatCurrency(s.valor)}`).join("\n")
     : "  • Nenhum serviço registrado";
 
   const prazoLinha = equipamento.prazo_aprovacao
@@ -503,7 +504,7 @@ SERVIÇOS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${linhasServicos}
 ─────────────────────────────
-TOTAL: ${formatarMoeda(total)}${prazoLinha}
+TOTAL: ${formatCurrency(total)}${prazoLinha}
 
 ${AVISO_TROCA_PECAS_TEXTO}
 
@@ -527,7 +528,7 @@ function gerarCorpoOrcamentoHtml(
     ? servicos
         .map(
           (servico) =>
-            `<tr><td style="padding:6px 0;">${escapeHtml(servico.descricao)}</td><td style="padding:6px 0;text-align:right;">${escapeHtml(formatarMoeda(servico.valor))}</td></tr>`,
+            `<tr><td style="padding:6px 0;">${escapeHtml(servico.descricao)}</td><td style="padding:6px 0;text-align:right;">${escapeHtml(formatCurrency(servico.valor))}</td></tr>`,
         )
         .join("")
     : `<tr><td style="padding:6px 0;color:#6b7280;" colspan="2">Nenhum serviço registrado.</td></tr>`;
@@ -554,7 +555,7 @@ function gerarCorpoOrcamentoHtml(
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
         <tbody>
           ${linhasServicosHtml}
-          <tr><td style="padding:12px 0 6px;font-weight:700;border-top:1px solid #d1d5db;">Total</td><td style="padding:12px 0 6px;font-weight:700;border-top:1px solid #d1d5db;text-align:right;">${escapeHtml(formatarMoeda(total))}</td></tr>
+          <tr><td style="padding:12px 0 6px;font-weight:700;border-top:1px solid #d1d5db;">Total</td><td style="padding:12px 0 6px;font-weight:700;border-top:1px solid #d1d5db;text-align:right;">${escapeHtml(formatCurrency(total))}</td></tr>
           ${linhaPrazoHtml}
         </tbody>
       </table>
