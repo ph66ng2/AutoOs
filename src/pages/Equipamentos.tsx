@@ -232,7 +232,7 @@ import { TeclaNoBotao } from "@/components/ui/tecla-no-botao";
 import { classeDestaque } from "@/lib/ao-vivo";
 import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { cn } from "@/lib/utils";
-import { quandoRascunho, useRascunho } from "@/hooks/useRascunho";
+import { quandoRascunho, useRascunho, type Rascunho } from "@/hooks/useRascunho";
 import { BotaoCopiar } from "@/components/ui/botao-copiar";
 import { AcoesEmLote, type RelatorioLote } from "@/components/equipamentos/AcoesEmLote";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -745,6 +745,7 @@ export default function Equipamentos() {
   const entradaDaChaveAtual = chaveRascunho === null
     || chaveFormularioEntrada === null
     || chaveFormularioEntrada === chaveRascunho;
+  const adotouChaveRef = useRef(false);
   const vinculoPendenteRef = useRef<Pick<RascunhoEntrada, "clienteId" | "responsavelId"> | null>(null);
   const [restaurandoVinculo, setRestaurandoVinculo] = useState(false);
   const entradaMontadaRef = useRef(false);
@@ -778,6 +779,10 @@ export default function Equipamentos() {
   useEffect(() => {
     if (!novaEntradaAberta || chaveFormularioEntrada !== chaveRascunho || chaveRascunho === null) return;
     const dono = donoRascunhoEntrada.current;
+    // Logo após adotar a chave, o formulário vazio não apaga o rascunho que já estava nela.
+    const preservarGravado = adotouChaveRef.current;
+    adotouChaveRef.current = false;
+    let primeira = true;
     const guardar = () => {
       if (dono !== donoRascunhoEntrada.current || chaveRascunhoAtualRef.current !== chaveRascunho) return;
       const valores = form.getValues();
@@ -788,8 +793,10 @@ export default function Equipamentos() {
       const temAlgo = entradaTemAlgo(valores, vinculo.clienteId);
       // Formulário vazio não tem rascunho (e cancela um salvamento antigo pendente, como o
       // que o reset de "Começar do zero" agenda com o cliente anterior).
+      const inicial = primeira;
+      primeira = false;
       if (temAlgo) rascunhoEntrada.salvar({ form: valores, ...vinculo, tecnico: tecnicoNovoEquipamento, dono });
-      else rascunhoEntrada.limpar();
+      else if (!(inicial && preservarGravado)) rascunhoEntrada.limpar();
     };
     guardar();
     const assinatura = form.watch(guardar);
@@ -886,40 +893,69 @@ export default function Equipamentos() {
     setRascunhoRecuperadoEm(rascunho?.salvoEm ?? null);
     if (preenchido && rascunhoGuardado && entradaTemAlgo(rascunhoGuardado.dados.form, rascunhoGuardado.dados.clienteId)) {
       // A entrada preenchida grava por cima do rascunho: a cópia fica oferecida por alguns segundos.
-      const copia = rascunhoGuardado.dados;
-      toast("Havia outra entrada em rascunho", {
-        action: {
-          label: "Recuperar",
-          onClick: () => {
-            if (chaveRascunhoAtualRef.current !== chaveRascunho) return;
-            rascunhoEntrada.salvarAgora(copia);
-            abrirNovo({ origem: origemEntradaRef.current });
-          },
-        },
-      });
+      oferecerRascunhoAnterior(rascunhoGuardado.dados);
     }
     if (opcoes.cliente) setClienteVinculado(opcoes.cliente);
     if (opcoes.base) aplicarBaseNaEntrada(opcoes.base);
-    if (rascunho) {
-      form.reset({ ...form.getValues(), ...rascunho.dados.form, status: "RECEBIDO" });
-      void restaurarVinculoDoRascunho(rascunho.dados);
-      if (rascunho.dados.tecnico) setTecnicoNovoEquipamento(rascunho.dados.tecnico);
-      // A série do rascunho passa pela mesma conferência de histórico que a digitada:
-      // sem isso, dava para cadastrar outro ciclo sem a confirmação obrigatória.
-      const serieRascunho = rascunho.dados.form.serial_number?.trim() ?? "";
-      if (serieRascunho.length >= 3) {
-        const seq = ++consultaSerieSeq.current;
-        const vale = () => seq === consultaSerieSeq.current && form.getValues("serial_number")?.trim() === serieRascunho;
-        setConferindoSerie(true);
-        db.buscarEquipamentosPorSerial(serieRascunho)
-          .then((registros) => { if (vale()) setRegistrosAnteriores(registros); })
-          .catch((err) => console.error("Erro ao buscar registros anteriores:", err))
-          .finally(() => { if (seq === consultaSerieSeq.current) setConferindoSerie(false); });
-      }
-    }
+    if (rascunho) aplicarRascunhoNaEntrada(rascunho);
     setDialogOpen(true);
     formularioAbertoRef.current = true;
     if (!rotaNovaEntradaRef.current) navigate("/equipamentos/nova");
+  }
+
+  function oferecerRascunhoAnterior(copia: RascunhoEntrada) {
+    toast("Havia outra entrada em rascunho", {
+      action: {
+        label: "Recuperar",
+        onClick: () => {
+          if (chaveRascunhoAtualRef.current !== chaveRascunho) return;
+          rascunhoEntrada.salvarAgora(copia);
+          abrirNovo({ origem: origemEntradaRef.current });
+        },
+      },
+    });
+  }
+
+  function aplicarRascunhoNaEntrada(rascunho: Rascunho<RascunhoEntrada>) {
+    form.reset({ ...form.getValues(), ...rascunho.dados.form, status: "RECEBIDO" });
+    void restaurarVinculoDoRascunho(rascunho.dados);
+    if (rascunho.dados.tecnico) setTecnicoNovoEquipamento(rascunho.dados.tecnico);
+    // A série do rascunho passa pela mesma conferência de histórico que a digitada:
+    // sem isso, dava para cadastrar outro ciclo sem a confirmação obrigatória.
+    const serieRascunho = rascunho.dados.form.serial_number?.trim() ?? "";
+    if (serieRascunho.length >= 3) {
+      const seq = ++consultaSerieSeq.current;
+      const vale = () => seq === consultaSerieSeq.current && form.getValues("serial_number")?.trim() === serieRascunho;
+      setConferindoSerie(true);
+      db.buscarEquipamentosPorSerial(serieRascunho)
+        .then((registros) => { if (vale()) setRegistrosAnteriores(registros); })
+        .catch((err) => console.error("Erro ao buscar registros anteriores:", err))
+        .finally(() => { if (seq === consultaSerieSeq.current) setConferindoSerie(false); });
+    }
+  }
+
+  /**
+   * A Nova entrada aberta sem chave (sessão bloqueada, empresa ainda indisponível) recebe a chave
+   * real: o rascunho dela é lido antes de o salvamento automático voltar. Formulário vazio
+   * recupera o rascunho; preenchido mantém o que está na tela e oferece o rascunho pelo aviso.
+   */
+  function adotarChaveDaEntrada() {
+    const guardado = rascunhoEntrada.ler();
+    const vinculo = vinculoPendenteRef.current ?? {
+      clienteId: clienteVinculado?.id ?? null,
+      responsavelId: responsavelVinculado?.id ?? null,
+    };
+    const temAlgo = entradaTemAlgo(form.getValues(), vinculo.clienteId);
+    if (guardado && entradaTemAlgo(guardado.dados.form, guardado.dados.clienteId)) {
+      if (temAlgo) {
+        oferecerRascunhoAnterior(guardado.dados);
+      } else {
+        setRascunhoRecuperadoEm(guardado.salvoEm);
+        aplicarRascunhoNaEntrada(guardado);
+      }
+    }
+    adotouChaveRef.current = true;
+    setChaveFormularioEntrada(chaveRascunho);
   }
 
   async function restaurarVinculoDoRascunho({ clienteId, responsavelId }: RascunhoEntrada) {
@@ -1065,7 +1101,7 @@ export default function Equipamentos() {
   useEffect(() => {
     if (!rotaNovaEntrada || !novaEntradaAberta || chaveRascunho === null || chaveFormularioEntrada === chaveRascunho) return;
     // Aberta sem chave (sessão ainda bloqueada): adota a chave sem apagar o que já foi preenchido.
-    if (chaveFormularioEntrada === null) setChaveFormularioEntrada(chaveRascunho);
+    if (chaveFormularioEntrada === null) adotarChaveDaEntrada();
     else abrirNovo({ origem: origemEntradaRef.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rotaNovaEntrada, novaEntradaAberta, chaveFormularioEntrada, chaveRascunho]);

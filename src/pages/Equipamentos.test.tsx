@@ -238,6 +238,37 @@ describe("rascunho da Nova entrada", () => {
     await waitFor(() => expect(JSON.parse(localStorage.getItem(chave)!).dados.form.defeito_relatado).toBe("Não liga"));
   });
 
+  it("aberta sem chave, recupera o rascunho da chave que chega com o formulário vazio", async () => {
+    gravarRascunho();
+    dbMocks.buscarCliente.mockReturnValue(new Promise(() => {}));
+    Object.assign(status, { active_empresa_id: null });
+    const { rerender } = abrir("/equipamentos/nova");
+    expect(campoDefeito()).toHaveValue("");
+
+    Object.assign(status, { active_empresa_id: 4 });
+    rerender(<MemoryRouter initialEntries={["/equipamentos/nova"]}><RotaDeTeste /></MemoryRouter>);
+    expect(campoDefeito()).toHaveValue(defeito);
+    await waitFor(() => expect(dbMocks.buscarCliente).toHaveBeenCalledWith(8));
+    act(() => window.dispatchEvent(new Event("pagehide")));
+    const { dados } = JSON.parse(localStorage.getItem(chave)!);
+    expect(dados).toMatchObject({ form: { defeito_relatado: defeito }, clienteId: 8, responsavelId: 9 });
+  });
+
+  it("aberta sem chave e já preenchida, oferece o rascunho da chave que chega", async () => {
+    gravarRascunho();
+    Object.assign(status, { active_empresa_id: null });
+    const { rerender } = abrir("/equipamentos/nova");
+    fireEvent.change(campoDefeito(), { target: { value: "Não liga" } });
+
+    Object.assign(status, { active_empresa_id: 4 });
+    rerender(<MemoryRouter initialEntries={["/equipamentos/nova"]}><RotaDeTeste /></MemoryRouter>);
+    expect(campoDefeito()).toHaveValue("Não liga");
+    const chamada = toastMock.mock.calls.find(([titulo]) => titulo === "Havia outra entrada em rascunho");
+    expect(chamada).toBeDefined();
+    act(() => chamada![1].action.onClick());
+    expect(campoDefeito()).toHaveValue(defeito);
+  });
+
   it("limpa os dados exibidos quando o perfil muda com o formulário aberto", async () => {
     gravarRascunho();
     const { rerender } = abrir("/equipamentos/nova");
