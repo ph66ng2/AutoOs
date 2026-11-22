@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { definirTecnicosDaEmpresa, emailDoTecnico, tecnicosAtivos } from "./tecnicos";
+import { definirTecnicosDaEmpresa, emailDoTecnico, erroTecnicoDaEntrada, linhaTecnicoInicial, tecnicosAtivos } from "./tecnicos";
 import type { SecurityProfile } from "@/types";
 
 const perfil = (id: number, nome: string, email: string) =>
@@ -38,5 +38,22 @@ describe("emailDoTecnico", () => {
     definirTecnicosDaEmpresa([perfil(1, "Ivan", "ivan@empresa.test")]);
     definirTecnicosDaEmpresa(undefined);
     expect(emailDoTecnico("Ivan")).toBe("");
+  });
+});
+
+describe("Nova entrada sem nenhum técnico marcado (upgrade da 0051 sem papel TECNICO)", () => {
+  it("empresa com zero técnicos não trava a entrada e não inventa e-mail", () => {
+    // Quem atende usa perfil ADMIN/ATENDENTE, sem "faz atendimento técnico": o backend devolve lista vazia.
+    definirTecnicosDaEmpresa([]);
+    expect(tecnicosAtivos()).toEqual([]);
+    expect(erroTecnicoDaEntrada("", tecnicosAtivos())).toBeNull();
+    expect(linhaTecnicoInicial("", emailDoTecnico(""))).toBe("");
+  });
+
+  it("com técnicos marcados, a escolha continua obrigatória", () => {
+    definirTecnicosDaEmpresa([perfil(1, "Ivan", "ivan@empresa.test")]);
+    expect(erroTecnicoDaEntrada("", tecnicosAtivos())).toMatch(/Escolha o técnico/);
+    expect(erroTecnicoDaEntrada("Ivan", tecnicosAtivos())).toBeNull();
+    expect(linhaTecnicoInicial("Ivan", emailDoTecnico("Ivan"))).toBe("Técnico inicial: Ivan (ivan@empresa.test)");
   });
 });

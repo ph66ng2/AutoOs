@@ -63,6 +63,31 @@ export function emailDoTecnico(nome?: string | null): string {
   return parecidos.length === 1 ? parecidos[0].email_profissional ?? "" : "";
 }
 
+/**
+ * Aviso da Nova entrada quando a empresa não tem nenhum técnico marcado (ex.: a 0051 só marcou
+ * quem tinha o papel exato TECNICO e quem atende usa perfil administrativo). A entrada não trava:
+ * salva sem técnico, e nenhum e-mail é inventado.
+ */
+export const AVISO_ENTRADA_SEM_TECNICOS =
+  "Nenhum perfil desta empresa está marcado como técnico. A OS pode ser salva sem técnico; peça a um administrador para marcar quem faz atendimento técnico em Equipe e acessos.";
+
+/**
+ * Erro da Nova entrada sobre o técnico, ou null se pode salvar. Exige a escolha só quando há
+ * técnicos para escolher; sem nenhum, salvar sem técnico é a saída de transição.
+ */
+export function erroTecnicoDaEntrada(escolhido: string | null | undefined, tecnicos: readonly Tecnico[]): string | null {
+  if (escolhido?.trim()) return null;
+  if (tecnicos.length === 0) return null;
+  return "Escolha o técnico da verificação inicial. Marque os técnicos em Equipe e acessos.";
+}
+
+/** "Técnico inicial: <nome> (<e-mail>)" para as observações; vazio sem técnico. */
+export function linhaTecnicoInicial(nome: string | null | undefined, email: string): string {
+  const limpo = nome?.trim() ?? "";
+  if (!limpo) return "";
+  return `Técnico inicial: ${limpo}${email ? ` (${email})` : ""}`;
+}
+
 /** Linha "Técnico inicial: <nome> (<e-mail>)" que a entrada grava nas observações da OS; devolve só o nome. */
 export function extrairTecnicoInicial(observacoes?: string | null): string {
   return observacoes?.match(/^Técnico inicial:[ \t]*(.+?)(?:[ \t]*\([^)\n]*\))?[ \t]*$/m)?.[1] ?? "";

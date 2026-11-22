@@ -234,7 +234,7 @@ import { quandoRascunho, useRascunho } from "@/hooks/useRascunho";
 import { BotaoCopiar } from "@/components/ui/botao-copiar";
 import { AcoesEmLote, type RelatorioLote } from "@/components/equipamentos/AcoesEmLote";
 import { Checkbox } from "@/components/ui/checkbox";
-import { emailDoTecnico } from "@/lib/tecnicos";
+import { AVISO_ENTRADA_SEM_TECNICOS, emailDoTecnico, erroTecnicoDaEntrada, linhaTecnicoInicial } from "@/lib/tecnicos";
 import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
 import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
 import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGrande";
@@ -1763,8 +1763,9 @@ export default function Equipamentos() {
       return;
     }
     setErroCliente(null);
-    if (!tecnicoNovoEquipamento) {
-      showError("Equipamentos", "Salvar equipamento", new Error("Escolha o técnico da verificação inicial. Marque os técnicos em Equipe e acessos."));
+    const erroTecnico = erroTecnicoDaEntrada(tecnicoNovoEquipamento, tecnicos);
+    if (erroTecnico) {
+      showError("Equipamentos", "Salvar equipamento", new Error(erroTecnico));
       return;
     }
     setSalvando(true);
@@ -1777,14 +1778,14 @@ export default function Equipamentos() {
       const acessoriosTexto = (data.acessorios || []).filter(Boolean).join(", ");
 
       const observacoesSemTecnico = removerTecnicoInicialDasObservacoes(data.observacoes || "");
-      const emailTecnicoInicial = emailDoTecnico(tecnicoNovoEquipamento);
-      const linhaTecnicoInicial = `Técnico inicial: ${tecnicoNovoEquipamento}${emailTecnicoInicial ? ` (${emailTecnicoInicial})` : ""}`;
+      // Sem técnico (empresa sem nenhum marcado): a linha fica de fora.
+      const linhaTecnico = linhaTecnicoInicial(tecnicoNovoEquipamento, emailDoTecnico(tecnicoNovoEquipamento));
       // Retorno dentro da garantia: a OS nova registra de onde veio (só avisa; ninguém marca garantia sozinho).
       const ultimaAnterior = !editando && confirmouNovoCiclo ? ultimaPassagem(registrosAnteriores) : null;
       const linhaGarantia = ultimaAnterior && garantiaServicos.dias != null && retornoNaGarantia(ultimaAnterior, garantiaServicos.dias, todayLocalIsoDate())
         ? linhaRetornoGarantia(ultimaAnterior, garantiaServicos.dias)
         : "";
-      const observacoesComTecnico = [linhaTecnicoInicial, linhaGarantia && !observacoesSemTecnico.includes(linhaGarantia) ? linhaGarantia : "", observacoesSemTecnico]
+      const observacoesComTecnico = [linhaTecnico, linhaGarantia && !observacoesSemTecnico.includes(linhaGarantia) ? linhaGarantia : "", observacoesSemTecnico]
         .filter(Boolean)
         .join("\n");
 
@@ -3770,6 +3771,7 @@ export default function Equipamentos() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {tecnicos.length === 0 && <p className="text-sm text-muted-foreground">{AVISO_ENTRADA_SEM_TECNICOS}</p>}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
