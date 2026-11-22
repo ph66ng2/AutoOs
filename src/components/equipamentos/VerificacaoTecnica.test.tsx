@@ -101,6 +101,7 @@ describe("VerificacaoTecnica", () => {
     );
     await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
     await user.type(screen.getByPlaceholderText("Nome do serviço"), "Atendimento em garantia");
+    expect(screen.queryByText(/^Garantia$/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Finalizar Verificação/i }));
     expect(onConcluir).not.toHaveBeenCalled();
     expect(screen.getByText("Confirmar OS só de garantia?")).toBeInTheDocument();
