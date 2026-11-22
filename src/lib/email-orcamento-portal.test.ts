@@ -153,11 +153,17 @@ describe("email-orcamento-portal", () => {
     expect(mockEnviarEmail).toHaveBeenCalledTimes(1);
   });
 
-  it("falha da cópia não invalida o envio ao cliente", async () => {
+  it("falha da cópia para o e-mail profissional do técnico não invalida o envio ao cliente", async () => {
+    definirCopiaGerencia(false);
+    definirTecnicosDaEmpresa([{ id: 50, nome: "Ivan", email_profissional: "ivan@empresa-b.test" }]);
     mockEnviarEmail.mockResolvedValueOnce(undefined).mockRejectedValueOnce("smtp caiu");
     const r = await enviarEmailOrcamentoPortal(equip, verificacao, preparoBase());
     expect(r.cliente.enviado).toBe(true);
     expect(r.copia).toEqual({ enviado: false, erro: "smtp caiu" });
+    expect(mockEnviarEmail).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      destinatario: "Cópia interna",
+      email: "ivan@empresa-b.test",
+    }));
   });
 
   it("sem e-mail do contato não envia", async () => {

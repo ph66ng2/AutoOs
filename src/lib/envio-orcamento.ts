@@ -155,6 +155,9 @@ export async function enviarOrcamentoAoCliente(
       email = r?.cliente
         ? { enviado: !!r.cliente.enviado, ...(r.cliente.erro ? { erro: r.cliente.erro } : {}) }
         : { enviado: false, erro: "Sem resposta do envio de e-mail." };
+      if (r?.copia?.enviado === false && r.copia.erro) {
+        avisos.push("Não foi possível enviar a cópia interna do orçamento.");
+      }
     } catch (error) {
       email = { enviado: false, erro: msgErro(error, "Falha ao enviar e-mail") };
     }

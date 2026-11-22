@@ -224,7 +224,7 @@ export function gerarCorpoOrcamentoPortalHtml(
 }
 
 function mensagemErro(error: unknown, padrao: string): string {
-  if (typeof error === "string") return error;
+  if (typeof error === "string" && error) return error;
   if (error && typeof error === "object" && "message" in error) {
     const msg = (error as { message?: unknown }).message;
     if (typeof msg === "string" && msg) return msg;
@@ -324,7 +324,7 @@ export async function enviarEmailOrcamentoPortal(
     if (!principal) return resultado;
     try {
       const copia: EmailSendRequest = {
-        destinatario: principal,
+        destinatario: "Cópia interna",
         email: principal,
         cc: restoCc,
         assunto: `[Cópia] ${assunto}`,
