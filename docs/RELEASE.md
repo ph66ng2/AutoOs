@@ -151,3 +151,8 @@ O suporte pelo Slack exige um único cadastro de empresa com o CNPJ da BMITAG
 no PostgreSQL e que esse cadastro esteja ativo. O backend verifica se o perfil
 pertence a essa empresa antes de gravar ou publicar chamados e antes de
 salvar a configuração do canal.
+
+O AutoOS consulta até dez chamados abertos por ciclo, priorizando os que
+esperam há mais tempo. Abrir uma conversa consulta a thread correspondente
+quando há orçamento disponível no Slack. Em caso de limite, as estações
+mantêm o histórico local acessível e aguardam o prazo informado pela API.

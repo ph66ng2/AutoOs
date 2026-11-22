@@ -609,6 +609,12 @@ pub async fn listar_mensagens_chamado(id: i32, segundo_plano: Option<bool>) -> R
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     buscar_chamado(&pool, empresa_id, perfil.id, id).await?;
+    if segundo_plano != Some(true) {
+        // A conversa local continua disponível se o Slack estiver fora ou em pausa.
+        if let Err(erro) = sincronizar_threads(&pool, perfil.id, Some(id)).await {
+            error!("Não foi possível atualizar o chamado #{}: {}", id, erro);
+        }
+    }
     sqlx::query_as::<_, MensagemSuporte>(
         "SELECT id, autor, autor_nome, texto, automatica, criado_em::TEXT AS criado_em
          FROM suporte_mensagens WHERE chamado_id = $1 AND empresa_id = $2 ORDER BY criado_em, id",
@@ -771,12 +777,6 @@ pub struct RespostaNova {
     pub automatica: bool,
 }
 
-const CHAMADOS_ABERTOS_SQL: &str =
-    "SELECT id, slack_canal, slack_thread_ts FROM suporte_chamados
-     WHERE empresa_id = $1 AND profile_id = $2 AND situacao = 'aberto'
-       AND slack_canal IS NOT NULL AND slack_thread_ts IS NOT NULL
-     ORDER BY id";
-
 /// Busca na thread de cada chamado aberto do perfil as respostas que ainda não estão no banco.
 /// Chamado em segundo plano (a cada poucos segundos): não renova a sessão. Devolve só o que
 /// entrou agora, para o aviso; os outros computadores veem pela atualização ao vivo.
@@ -784,13 +784,32 @@ const CHAMADOS_ABERTOS_SQL: &str =
 #[instrument(skip_all)]
 pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<RespostaNova>, String> {
     let perfil = perfil_da_leitura(segundo_plano)?;
-    let Some(token) = token_suporte() else { return Ok(Vec::new()) };
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
-    let abertos: Vec<(i32, String, String)> = sqlx::query_as(CHAMADOS_ABERTOS_SQL)
+    sincronizar_threads(&pool, perfil.id, None).await
+}
+
+const LIMITE_CHAMADOS_POR_CICLO: i64 = 10;
+const CHAMADOS_PARA_CONSULTAR: &str =
+    "SELECT id, slack_canal, slack_thread_ts FROM suporte_chamados
+     WHERE empresa_id = $1 AND profile_id = $2
+       AND slack_canal IS NOT NULL AND slack_thread_ts IS NOT NULL
+       AND (($3::INTEGER IS NULL AND situacao = 'aberto') OR id = $3)
+       AND (consultado_em IS NULL OR consultado_em <= NOW() - INTERVAL '10 seconds')
+     ORDER BY consultado_em NULLS FIRST, id LIMIT $4";
+
+async fn sincronizar_threads(
+    pool: &sqlx::PgPool,
+    perfil_id: i32,
+    alvo: Option<i32>,
+) -> Result<Vec<RespostaNova>, String> {
+    let Some(token) = token_suporte() else { return Ok(Vec::new()) };
+    let empresa_id = empresa_do_suporte(pool, perfil_id).await?;
+    let abertos: Vec<(i32, String, String)> = sqlx::query_as(CHAMADOS_PARA_CONSULTAR)
         .bind(empresa_id)
-        .bind(perfil.id)
-        .fetch_all(&pool)
+        .bind(perfil_id)
+        .bind(alvo)
+        .bind(LIMITE_CHAMADOS_POR_CICLO)
+        .fetch_all(pool)
         .await
         .map_err(super::operator_errors::mapear_erro_sql)?;
     if abertos.is_empty() {
@@ -800,9 +819,43 @@ pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<Resp
     let bot = bot_proprio(&client, &token).await;
     let mut novas = Vec::new();
     for (chamado_id, canal, thread_ts) in abertos {
-        // Uma thread com problema (apagada, sem acesso) não para as outras nem perde o que já entrou.
-        let mensagens = match mensagens_da_thread(&client, &token, &canal, &thread_ts).await {
-            Ok(mensagens) => mensagens,
+        let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+        let turno = sqlx::query(
+            "UPDATE suporte_chamados SET consultado_em = NOW()
+             WHERE id = $1 AND empresa_id = $2 AND profile_id = $3
+               AND ($4 OR situacao = 'aberto')
+               AND (consultado_em IS NULL OR consultado_em <= NOW() - INTERVAL '10 seconds')",
+        )
+        .bind(chamado_id)
+        .bind(empresa_id)
+        .bind(perfil_id)
+        .bind(alvo.is_some())
+        .execute(&mut *tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+        if turno.rows_affected() == 0 {
+            tx.rollback().await.map_err(super::operator_errors::mapear_erro_sql)?;
+            continue;
+        }
+
+        if !reservar_consulta_slack(&mut *tx).await? {
+            tx.rollback().await.map_err(super::operator_errors::mapear_erro_sql)?;
+            break;
+        }
+        tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+
+        let ultima_resposta: Option<String> = sqlx::query_scalar(
+            "SELECT MAX(slack_ts) FROM suporte_mensagens
+             WHERE chamado_id = $1 AND empresa_id = $2 AND autor = 'suporte'",
+        )
+        .bind(chamado_id)
+        .bind(empresa_id)
+        .fetch_one(pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+        // Uma thread com problema não impede a consulta das outras.
+        let (mensagens, pausado) = match mensagens_da_thread(pool, &client, &token, &canal, &thread_ts, ultima_resposta.as_deref()).await {
+            Ok(resultado) => resultado,
             Err(erro) => {
                 error!("Respostas do chamado #{} não puderam ser lidas: {}", chamado_id, erro);
                 continue;
@@ -814,7 +867,7 @@ pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<Resp
             let ja_existe: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM suporte_mensagens WHERE chamado_id = $1 AND slack_ts = $2)")
                 .bind(chamado_id)
                 .bind(&item.ts)
-                .fetch_one(&pool)
+                .fetch_one(pool)
                 .await
                 .map_err(super::operator_errors::mapear_erro_sql)?;
             if ja_existe {
@@ -836,7 +889,7 @@ pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<Resp
             .bind(&item.texto)
             .bind(item.automatica)
             .bind(&item.ts)
-            .fetch_optional(&pool)
+            .fetch_optional(pool)
             .await
             .map_err(super::operator_errors::mapear_erro_sql)?;
             if inserida.is_some() {
@@ -848,22 +901,76 @@ pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<Resp
             sqlx::query("UPDATE suporte_chamados SET atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2")
                 .bind(chamado_id)
                 .bind(empresa_id)
-                .execute(&pool)
+                .execute(pool)
                 .await
                 .map_err(super::operator_errors::mapear_erro_sql)?;
+        }
+        if pausado {
+            break;
         }
     }
     Ok(novas)
 }
 
+// Margem abaixo do limite Tier 3 do app interno, compartilhada entre estações.
+async fn reservar_consulta_slack<'a>(
+    executor: impl sqlx::Executor<'a, Database = sqlx::Postgres>,
+) -> Result<bool, String> {
+    let atualizadas = sqlx::query(
+        "UPDATE configuracoes_sistema
+         SET suporte_consulta_total = CASE WHEN suporte_consulta_janela > NOW() - INTERVAL '1 minute'
+                                           THEN suporte_consulta_total + 1 ELSE 1 END,
+             suporte_consulta_janela = CASE WHEN suporte_consulta_janela > NOW() - INTERVAL '1 minute'
+                                            THEN suporte_consulta_janela ELSE NOW() END
+         WHERE id = 1 AND (suporte_consulta_pausada_ate IS NULL OR suporte_consulta_pausada_ate <= NOW())
+           AND (suporte_consulta_janela IS NULL OR suporte_consulta_janela <= NOW() - INTERVAL '1 minute'
+                OR suporte_consulta_total < 40)",
+    )
+    .execute(executor)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(atualizadas.rows_affected() == 1)
+}
+
+fn espera_slack(cabecalhos: &reqwest::header::HeaderMap) -> i64 {
+    cabecalhos.get(reqwest::header::RETRY_AFTER)
+        .and_then(|valor| valor.to_str().ok())
+        .and_then(|valor| valor.parse::<i32>().ok())
+        .filter(|segundos| *segundos > 0)
+        .map(i64::from)
+        .unwrap_or(60)
+}
+
+async fn pausar_consulta_slack(pool: &sqlx::PgPool, segundos: i64) -> Result<(), String> {
+    sqlx::query(
+        "UPDATE configuracoes_sistema
+         SET suporte_consulta_pausada_ate = GREATEST(suporte_consulta_pausada_ate, NOW() + ($1::BIGINT * INTERVAL '1 second'))
+         WHERE id = 1",
+    )
+    .bind(segundos)
+    .execute(pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(())
+}
+
 /// Todas as mensagens da thread, página por página (o Slack devolve as mais antigas primeiro e
 /// pagina por cursor: sem seguir o cursor, respostas depois da primeira página nunca chegariam).
-async fn mensagens_da_thread(client: &Client, token: &str, canal: &str, thread_ts: &str) -> Result<Vec<Value>, String> {
+async fn mensagens_da_thread(
+    pool: &sqlx::PgPool, client: &Client, token: &str, canal: &str, thread_ts: &str,
+    ultima_resposta: Option<&str>,
+) -> Result<(Vec<Value>, bool), String> {
     const MAX_PAGINAS: usize = 20;
     let mut mensagens = Vec::new();
     let mut cursor: Option<String> = None;
-    for _ in 0..MAX_PAGINAS {
+    for pagina in 0..MAX_PAGINAS {
+        if pagina > 0 && !reservar_consulta_slack(pool).await? {
+            return Ok((mensagens, true));
+        }
         let mut consulta = vec![("channel", canal.to_string()), ("ts", thread_ts.to_string()), ("limit", "200".to_string())];
+        if let Some(ultima_resposta) = ultima_resposta {
+            consulta.push(("oldest", ultima_resposta.to_string()));
+        }
         if let Some(cursor) = cursor.as_ref() {
             consulta.push(("cursor", cursor.clone()));
         }
@@ -873,10 +980,18 @@ async fn mensagens_da_thread(client: &Client, token: &str, canal: &str, thread_t
             .query(&consulta)
             .send()
             .await
-            .map_err(|e| format!("Sem conexão com o Slack: {e}"))?
-            .json::<Value>()
+            .map_err(|e| format!("Sem conexão com o Slack: {e}"))?;
+        if resposta.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            pausar_consulta_slack(pool, espera_slack(resposta.headers())).await?;
+            return Ok((mensagens, true));
+        }
+        let resposta = resposta.json::<Value>()
             .await
             .map_err(|e| format!("Resposta inválida do Slack: {e}"))?;
+        if resposta.get("error").and_then(Value::as_str) == Some("ratelimited") {
+            pausar_consulta_slack(pool, 60).await?;
+            return Ok((mensagens, true));
+        }
         let resposta = conferir(resposta, "conversations.replies")?;
         mensagens.extend(resposta.get("messages").and_then(Value::as_array).cloned().unwrap_or_default());
         cursor = resposta
@@ -889,7 +1004,7 @@ async fn mensagens_da_thread(client: &Client, token: &str, canal: &str, thread_t
             break;
         }
     }
-    Ok(mensagens)
+    Ok((mensagens, false))
 }
 
 /// Chamado aberto do perfil da sessão, com o que é preciso para escrever na thread.
@@ -1155,3 +1270,14 @@ fn relatorio_externo_retem_apenas_metadados_permitidos() {
     assert!(montar_mensagem(1, "Perfil", "Papel", "Texto", tela, None, Some(&limpo)).contains(&limpo));
 }
 
+
+#[cfg(test)]
+#[test]
+fn espera_da_api_respeita_retry_after() {
+    let mut cabecalhos = reqwest::header::HeaderMap::new();
+    assert_eq!(espera_slack(&cabecalhos), 60);
+    cabecalhos.insert(reqwest::header::RETRY_AFTER, "120".parse().unwrap());
+    assert_eq!(espera_slack(&cabecalhos), 120);
+    cabecalhos.insert(reqwest::header::RETRY_AFTER, "invalido".parse().unwrap());
+    assert_eq!(espera_slack(&cabecalhos), 60);
+}
