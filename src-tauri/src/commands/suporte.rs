@@ -518,8 +518,8 @@ pub async fn abrir_chamado_suporte(input: AbrirChamadoInput) -> Result<ChamadoSu
         &perfil.nome,
         &perfil.role,
         &texto,
-        input.tela.as_deref(),
-        input.versao.as_deref(),
+        tela,
+        Some(versao),
         relatorio.as_deref(),
     );
     let postado = slack_post(&client, &token, "chat.postMessage", &json!({ "channel": canal, "text": mensagem })).await?;
