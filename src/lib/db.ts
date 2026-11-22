@@ -210,6 +210,11 @@ export const db = {
     return invoke("listar_receita_aprovada", { anoInicio, anoFim });
   },
 
+  /** Datas de entrada/entrega/reprovação de todas as OS com movimento nos anos pedidos (Início, sem paginação) → Rust: listar_movimento_bancada */
+  async listarMovimentoBancada(anoInicio: number, anoFim: number, segundoPlano = false): Promise<Pick<Equipamento, "status" | "data_entrada" | "data_saida" | "data_reprovacao">[]> {
+    return invoke("listar_movimento_bancada", { anoInicio, anoFim, ...seSegundoPlano(segundoPlano) });
+  },
+
   async buscarEquipamento(id: number, segundoPlano = false): Promise<Equipamento> {
     return invoke<Equipamento>("buscar_equipamento", { id, ...seSegundoPlano(segundoPlano) });
   },

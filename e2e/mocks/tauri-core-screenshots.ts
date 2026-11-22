@@ -157,7 +157,13 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     case "listar_tecnicos_da_empresa":
       return structuredClone(seed.profiles.filter((p) => p.ativo && p.atende_tecnico)) as T;
     case "listar_receita_aprovada":
+    case "listar_movimento_bancada":
       return structuredClone(seed.equipamentos) as T;
+    case "contar_equipamentos_por_status": {
+      const totais = new Map<string, number>();
+      for (const equipamento of seed.equipamentos) totais.set(equipamento.status, (totais.get(equipamento.status) ?? 0) + 1);
+      return [...totais].map(([status, total]) => ({ status, total })) as T;
+    }
     case "listar_equipamentos": {
       const statusFiltro = args?.status as string | undefined;
       const items = seed.equipamentos.filter((equipamento) =>

@@ -44,11 +44,11 @@ import { movimentoDaBancada, saudacao, variacaoPercentual } from "@/lib/inicio";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
-import { formatDatePtBr } from "@/lib/date-utils";
+import { formatDatePtBr, todayLocalIsoDate } from "@/lib/date-utils";
 import type { Equipamento, Produto } from "@/types";
 import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 import { PageHeader } from "@/components/PageHeader";
-import { etapaOsAtual } from "@/lib/status-familia";
+import { etapaOsAtual, statusDaEtapaOs } from "@/lib/status-familia";
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
 
 
@@ -71,7 +71,10 @@ export default function Dashboard() {
     aguardandoAprovacao: 0, emManutencao: 0, prontos: 0, entregues: 0,
     totalProdutos: 0, estoqueBaixo: 0,
   });
-  const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
+  /** Total por status da empresa inteira: os mesmos números das pílulas da lista de equipamentos. */
+  const [porStatus, setPorStatus] = useState<Record<string, number>>({});
+  /** Datas de todas as OS com movimento nos últimos anos (sem o limite de 50 da lista). */
+  const [movimentoBruto, setMovimentoBruto] = useState<Pick<Equipamento, "status" | "data_entrada" | "data_saida" | "data_reprovacao">[]>([]);
   const [equipamentosRecentes, setEquipamentosRecentes] = useState<Equipamento[]>([]);
   const [produtosEstoqueBaixo, setProdutosEstoqueBaixo] = useState<Produto[]>([]);
   const [acoesPendentes, setAcoesPendentes] = useState<Equipamento[]>([]);
@@ -83,32 +86,36 @@ export default function Dashboard() {
   // Carrega o painel; a atualização ao vivo chama de novo em silêncio (os números só trocam).
   const carregarPainel = useCallback(async (segundoPlano = false) => {
       try {
-        const [equipamentos, produtos] = await Promise.all([
+        // A lista simples traz só as 50 OS mais novas: serve para os itens de "Ações pendentes",
+        // nunca para contar. Contagens vêm por status; o movimento, das datas de todas as OS.
+        const anoAtual = new Date().getFullYear();
+        const [equipamentos, produtos, contagens, datas] = await Promise.all([
           segundoPlano ? db.listarEquipamentos(undefined, undefined, true) : db.listarEquipamentos(),
           segundoPlano ? db.listarProdutos(undefined, undefined, undefined, 0, true) : db.listarProdutos(),
+          db.contarEquipamentosPorStatus(undefined, undefined, segundoPlano),
+          // Um ano a mais de cada lado: dezembro do ano anterior para comparar e o instante UTC
+          // da virada do ano que ainda é 31/12 em Salvador.
+          db.listarMovimentoBancada(anoAtual - 2, anoAtual + 1, segundoPlano),
         ]);
+        const total = (status: string) => contagens[status] ?? 0;
         const estoqueBaixo = produtos.filter(p => p.quantidade_estoque < p.quantidade_minima);
 
         // Ações pendentes: aguardando aprovação, orçamento vencido, prontos para entrega, recebidos sem verificação
-        const pendentes = equipamentos.filter(e =>
-          e.status === "AGUARDANDO_APROVACAO" ||
-          e.status === "ORCAMENTO_VENCIDO" ||
-          e.status === "PRONTO" ||
-          e.status === "RECEBIDO"
-        );
+        const pendentes = equipamentos.filter(e => STATUS_PENDENTES.includes(e.status));
 
         setMetrics({
-          totalEquipamentos: equipamentos.length,
-          recebidos: equipamentos.filter(e => e.status === "RECEBIDO").length,
-          emVerificacao: equipamentos.filter(e => e.status === "EM_VERIFICACAO").length,
-          aguardandoAprovacao: equipamentos.filter(e => e.status === "AGUARDANDO_APROVACAO").length,
-          emManutencao: equipamentos.filter(e => e.status === "EM_MANUTENCAO").length,
-          prontos: equipamentos.filter(e => e.status === "PRONTO").length,
-          entregues: equipamentos.filter(e => e.status === "ENTREGUE").length,
+          totalEquipamentos: Object.values(contagens).reduce((soma, valor) => soma + valor, 0),
+          recebidos: total("RECEBIDO"),
+          emVerificacao: total("EM_VERIFICACAO"),
+          aguardandoAprovacao: total("AGUARDANDO_APROVACAO"),
+          emManutencao: total("EM_MANUTENCAO"),
+          prontos: total("PRONTO"),
+          entregues: total("ENTREGUE"),
           totalProdutos: produtos.length,
           estoqueBaixo: estoqueBaixo.length,
         });
-        setEquipamentos(equipamentos);
+        setPorStatus(contagens);
+        setMovimentoBruto(datas);
         setEquipamentosRecentes(equipamentos.slice(0, 5));
         setProdutosEstoqueBaixo(estoqueBaixo.slice(0, 5));
         setAcoesPendentes(pendentes);
@@ -132,19 +139,21 @@ export default function Dashboard() {
   }
 
 
-  const movimento = useMemo(() => movimentoDaBancada(equipamentos, mesSel.ano), [equipamentos, mesSel.ano]);
+  const movimento = useMemo(() => movimentoDaBancada(movimentoBruto, mesSel.ano), [movimentoBruto, mesSel.ano]);
   /** O mês anterior pode cair no ano passado (janeiro compara com dezembro). */
-  const movimentoAnoAnterior = useMemo(() => movimentoDaBancada(equipamentos, mesSel.ano - 1), [equipamentos, mesSel.ano]);
+  const movimentoAnoAnterior = useMemo(() => movimentoDaBancada(movimentoBruto, mesSel.ano - 1), [movimentoBruto, mesSel.ano]);
 
+  // Cada etapa soma os status dela (Manutenção = Aprovado + Em manutenção + Aguardando peça) e
+  // o clique abre a lista com esses mesmos status marcados, para o número bater com as pílulas.
   const filaPorEtapa = useMemo(() => {
     const etapas = ["Recebido", "Verificação", "Orçamento", "Manutenção", "Pronto"];
     const contagem = etapas.map(() => 0);
-    for (const eq of equipamentos) {
-      const indice = etapaOsAtual(eq.status);
-      if (indice >= 0 && indice < etapas.length) contagem[indice] += 1;
+    for (const [status, valor] of Object.entries(porStatus)) {
+      const indice = etapaOsAtual(status);
+      if (indice >= 0 && indice < etapas.length) contagem[indice] += valor;
     }
     return etapas.map((nome, indice) => ({ nome, valor: contagem[indice], cor: COR_ETAPA[indice] }));
-  }, [equipamentos]);
+  }, [porStatus]);
 
 
   if (loading) {
@@ -155,12 +164,14 @@ export default function Dashboard() {
     );
   }
 
-  const hoje = new Date().toISOString().slice(0, 10);
-  const emAtendimento = equipamentos.filter((eq) => eq.status !== "ENTREGUE" && eq.status !== "ABANDONADO");
-  const entraramHoje = equipamentos.filter((eq) => (eq.data_entrada ?? "").slice(0, 10) === hoje).length;
-  const aguardandoPeca = equipamentos.filter((eq) => eq.status === "AGUARDANDO_PECA").length;
+  const hoje = todayLocalIsoDate();
+  const totalPendencias = STATUS_PENDENTES.reduce((soma, status) => soma + (porStatus[status] ?? 0), 0);
+  const statusEmAtendimento = Object.keys(porStatus).filter((status) => status !== "ENTREGUE" && status !== "ABANDONADO" && status !== "");
+  const emAtendimento = statusEmAtendimento.reduce((soma, status) => soma + (porStatus[status] ?? 0), 0);
+  const entraramHoje = movimentoBruto.filter((eq) => (eq.data_entrada ?? "").slice(0, 10) === hoje).length;
+  const aguardandoPeca = porStatus.AGUARDANDO_PECA ?? 0;
   const cartoes = [
-    { titulo: "Em atendimento", valor: emAtendimento.length, rodape: `${entraramHoje} ${entraramHoje === 1 ? "entrou" : "entraram"} hoje`, cor: "bg-primary", status: "TODOS" },
+    { titulo: "Em atendimento", valor: emAtendimento, rodape: `${entraramHoje} ${entraramHoje === 1 ? "entrou" : "entraram"} hoje`, cor: "bg-primary", status: statusEmAtendimento.length > 0 ? statusEmAtendimento.join(",") : "TODOS" },
     { titulo: "Aguardando aprovação", valor: metrics.aguardandoAprovacao, rodape: "Orçamentos com o cliente", cor: "bg-status-wait", status: "AGUARDANDO_APROVACAO" },
     { titulo: "Prontos para entrega", valor: metrics.prontos, rodape: "Avisar o cliente e registrar a entrega", cor: "bg-status-ok", status: "PRONTO" },
     { titulo: "Aguardando peça", valor: aguardandoPeca, rodape: "Retomar quando a peça chegar", cor: "bg-status-wait", status: "AGUARDANDO_PECA" },
@@ -203,7 +214,7 @@ export default function Dashboard() {
       {/* CartaoKPI: número, traços de proporção e o próximo passo no rodapé. Sem valores em R$. */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cartoes.map((cartao) => {
-          const cheios = Math.round((cartao.valor / Math.max(1, emAtendimento.length)) * TRACOS);
+          const cheios = Math.round((cartao.valor / Math.max(1, emAtendimento)) * TRACOS);
           return (
             <button
               key={cartao.titulo}
@@ -289,7 +300,7 @@ export default function Dashboard() {
         {/* Pendências (as mesmas de antes) */}
         <Card className="rounded-2xl">
           <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-lg">Ações pendentes {acoesPendentes.length > 0 && <span className="ml-1 text-sm font-semibold text-muted-foreground">· {acoesPendentes.length}</span>}</CardTitle>
+            <CardTitle className="text-lg">Ações pendentes {totalPendencias > 0 && <span className="ml-1 text-sm font-semibold text-muted-foreground">· {totalPendencias}</span>}</CardTitle>
             <Button variant="outline" size="sm" onClick={() => navigate("/equipamentos")}>Ver todos</Button>
           </CardHeader>
           <CardContent>
@@ -320,8 +331,8 @@ export default function Dashboard() {
                 })}
               </ul>
             )}
-            {acoesPendentes.length > 6 && (
-              <p className="pt-2 text-center text-xs text-muted-foreground">+ {acoesPendentes.length - 6} outras pendências</p>
+            {totalPendencias > Math.min(6, acoesPendentes.length) && (
+              <p className="pt-2 text-center text-xs text-muted-foreground">+ {totalPendencias - Math.min(6, acoesPendentes.length)} outras pendências</p>
             )}
           </CardContent>
         </Card>
@@ -355,7 +366,7 @@ export default function Dashboard() {
                         key={etapa.nome}
                         fill={etapa.cor}
                         className={naFila > 0 ? "cursor-pointer" : undefined}
-                        onClick={naFila > 0 ? () => navigate("/equipamentos", { state: { statusFiltro: STATUS_DA_ETAPA[indice] } }) : undefined}
+                        onClick={naFila > 0 ? () => navigate("/equipamentos", { state: { statusFiltro: STATUS_DA_ETAPA[indice].join(",") } }) : undefined}
                       />
                     ))}
                   </Pie>
@@ -371,7 +382,7 @@ export default function Dashboard() {
                 <li key={etapa.nome}>
                   <button
                     type="button"
-                    onClick={() => navigate("/equipamentos", { state: { statusFiltro: STATUS_DA_ETAPA[indice] } })}
+                    onClick={() => navigate("/equipamentos", { state: { statusFiltro: STATUS_DA_ETAPA[indice].join(",") } })}
                     className="flex w-full items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left transition-colors duration-rapida hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <span className="inline-flex items-center gap-2">
@@ -469,7 +480,11 @@ function nomeMes(mes: number) {
  * Status que a lista de Equipamentos filtra ao clicar em cada etapa da fila. A lista filtra um
  * status por vez: a etapa abre no status principal dela (Orçamento → Aguardando aprovação).
  */
-const STATUS_DA_ETAPA = ["RECEBIDO", "EM_VERIFICACAO", "AGUARDANDO_APROVACAO", "EM_MANUTENCAO", "PRONTO"];
+/** Ações pendentes: aguardando aprovação, orçamento vencido, prontos e recebidos sem verificação. */
+const STATUS_PENDENTES = ["AGUARDANDO_APROVACAO", "ORCAMENTO_VENCIDO", "PRONTO", "RECEBIDO"];
+
+/** Status de cada etapa da fila, os mesmos que `etapaOsAtual` soma (o clique abre a lista com todos). */
+const STATUS_DA_ETAPA = [0, 1, 2, 3, 4].map(statusDaEtapaOs);
 
 const COR_ETAPA = [
   "hsl(var(--st-neutral))",

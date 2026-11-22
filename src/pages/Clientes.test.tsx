@@ -8,12 +8,14 @@ const mocks = vi.hoisted(() => ({
   criar: vi.fn(),
   atualizar: vi.fn(),
   clientes: [] as unknown[],
+  erro: null as string | null,
+  recarregar: vi.fn(),
 }));
 
 vi.mock("@/hooks/useClientes", () => ({
   useClientes: () => ({
-    clientes: mocks.clientes, total: mocks.clientes.length, loading: false, error: null,
-    criar: mocks.criar, atualizar: mocks.atualizar, deletar: vi.fn(), recarregar: vi.fn(),
+    clientes: mocks.clientes, total: mocks.clientes.length, loading: false, error: mocks.erro,
+    criar: mocks.criar, atualizar: mocks.atualizar, deletar: vi.fn(), recarregar: mocks.recarregar,
   }),
 }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: vi.fn() }) }));
@@ -64,10 +66,27 @@ describe("Clientes: ordem de compra e preferências", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.clientes = [];
+    mocks.erro = null;
     mocks.criar.mockResolvedValue({ sucesso: true });
     mocks.atualizar.mockResolvedValue({ sucesso: true });
     dbMocks.listarEquipamentosCliente.mockResolvedValue([]);
     dbMocks.listarClienteContatos.mockResolvedValue([]);
+  });
+
+  it("lista que não carregou (banco fora) não mostra o convite de base vazia e oferece tentar de novo", async () => {
+    mocks.erro = "A conexão com o banco excedeu 6 segundos.";
+    renderPagina();
+    expect(screen.getByText("Não foi possível carregar os clientes")).toBeInTheDocument();
+    expect(screen.queryByText("Nenhum cliente encontrado")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Clique em "Novo cliente"/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
+    expect(mocks.recarregar).toHaveBeenCalled();
+  });
+
+  it("base vazia de verdade continua com o convite para cadastrar", () => {
+    renderPagina();
+    expect(screen.getByText("Nenhum cliente encontrado")).toBeInTheDocument();
+    expect(screen.queryByText("Não foi possível carregar os clientes")).not.toBeInTheDocument();
   });
 
   it("mostra o selo Exige OC só para quem exige", () => {

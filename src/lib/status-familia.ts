@@ -99,3 +99,10 @@ const ETAPA_OS_ATUAL: Record<string, number> = {
 export function etapaOsAtual(status: string): number {
   return ETAPA_OS_ATUAL[normalizeStatusKey(status)] ?? -1;
 }
+
+/** Status que formam cada etapa da barra grande, na ordem do mapa acima (Início › Fila por etapa). */
+export function statusDaEtapaOs(indice: number): string[] {
+  return Object.entries(ETAPA_OS_ATUAL)
+    .filter(([, etapa]) => etapa === indice)
+    .map(([status]) => status);
+}

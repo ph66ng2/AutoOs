@@ -158,6 +158,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return status.profiles.filter((p) => p.ativo && p.atende_tecnico) as T;
     case "listar_equipamentos_cliente":
     case "listar_receita_aprovada":
+    case "listar_movimento_bancada":
       return [equipamento] as T;
     case "listar_equipamentos": {
       const statusFiltro = args?.status as string | undefined;
