@@ -964,6 +964,7 @@ export interface SensitiveAccessStatus {
   unlocked: boolean;
   expires_at?: string | null;
   active_profile_id?: number | null;
+  active_empresa_id?: number | null;
   active_profile_name?: string | null;
   active_role?: string | null;
   permissions: SensitivePermission[];
