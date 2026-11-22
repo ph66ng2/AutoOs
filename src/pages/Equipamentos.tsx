@@ -199,6 +199,7 @@ import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { ListaIndisponivel } from "@/components/ui/lista-indisponivel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
 import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
@@ -3436,6 +3437,8 @@ export default function Equipamentos() {
           )}
           {loading ? (
             <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
+          ) : equipamentos.length === 0 && erroListaEquipamentos ? (
+            <ListaIndisponivel oque="equipamentos" onTentarDeNovo={() => void recarregar()} />
           ) : equipamentos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Printer className="h-16 w-16 mx-auto mb-4 opacity-20" />

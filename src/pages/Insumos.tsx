@@ -56,6 +56,7 @@ import { useInsumos } from "@/hooks/useInsumos";
 import { useNotification } from "@/hooks/useNotification";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { ListaIndisponivel } from "@/components/ui/lista-indisponivel";
 import { SENSITIVE_PERMISSIONS, type Produto, type UsoProdutoOrcamentos } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -455,6 +456,8 @@ export default function Insumos() {
             <div className="flex items-center justify-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
+          ) : produtos.length === 0 && error ? (
+            <ListaIndisponivel oque="insumos e peças" onTentarDeNovo={() => { void recarregar(); void recarregarResumo(); }} />
           ) : produtos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Package className="h-16 w-16 mx-auto mb-4 opacity-20" />

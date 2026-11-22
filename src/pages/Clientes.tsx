@@ -70,6 +70,7 @@ import {
 } from "@/types";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { ListaIndisponivel } from "@/components/ui/lista-indisponivel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { nomeExibicaoCliente, documentoExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import {
@@ -573,6 +574,8 @@ export default function Clientes() {
             )}
             {loading ? (
               <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
+            ) : clientes.length === 0 && error ? (
+              <ListaIndisponivel oque="clientes" onTentarDeNovo={() => { void recarregar(); void recarregarContagem(); }} />
             ) : clientes.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <Users className="h-16 w-16 mx-auto mb-4 opacity-20" />
