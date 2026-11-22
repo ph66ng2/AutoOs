@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import Clientes from "@/pages/Clientes";
+import { distribuirMudancas } from "@/lib/ao-vivo";
 
 const mocks = vi.hoisted(() => ({
   status: { unlocked: true, active_profile_id: 1, permissions: [] as string[] },
@@ -29,6 +30,7 @@ vi.mock("@/hooks/useNotification", () => ({
 }));
 const dbMocks = vi.hoisted(() => ({
   resumoCliente: vi.fn(),
+  contarClientesPorFiltro: vi.fn().mockResolvedValue(null),
   listarEquipamentosCliente: vi.fn().mockResolvedValue([]),
   listarClienteContatos: vi.fn().mockResolvedValue([]),
   abrirUrl: vi.fn().mockResolvedValue(undefined),
@@ -123,6 +125,32 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(mocks.criar.mock.calls[0]![0]).toMatchObject({
       exige_ordem_compra: true, receber_email: true, receber_whatsapp: true,
     });
+  });
+
+  it("atualiza o resumo em segundo plano e pelo botão de atualizar", async () => {
+    mocks.clientes = [clienteSalvo()];
+    const resumo = { osAbertas: 41, noAno: 52, faturado: null };
+    dbMocks.resumoCliente.mockResolvedValueOnce(resumo);
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    expect(await screen.findByText("41")).toBeVisible();
+
+    let responder!: (dados: typeof resumo) => void;
+    dbMocks.resumoCliente.mockReturnValueOnce(new Promise((resolve) => { responder = resolve; }));
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 1, referencia: null, operacao: "U" }]));
+    expect(dbMocks.resumoCliente).toHaveBeenLastCalledWith(7, true);
+    expect(screen.getByText("41")).toBeVisible();
+
+    dbMocks.resumoCliente.mockResolvedValueOnce({ ...resumo, osAbertas: 43 });
+    fireEvent.click(screen.getByRole("button", { name: "Atualizar clientes" }));
+    expect(dbMocks.resumoCliente).toHaveBeenLastCalledWith(7, false);
+    expect(await screen.findByText("43")).toBeVisible();
+    await act(async () => responder({ ...resumo, osAbertas: 42 }));
+    expect(screen.queryByText("42")).not.toBeInTheDocument();
+
+    dbMocks.resumoCliente.mockResolvedValueOnce({ ...resumo, osAbertas: 44 });
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 2, referencia: null, operacao: "I" }]));
+    expect(await screen.findByText("44")).toBeVisible();
   });
 
   it("protege o faturado ao mudar de perfil, permissão ou bloqueio", async () => {

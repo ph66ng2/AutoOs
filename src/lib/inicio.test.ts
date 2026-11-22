@@ -18,6 +18,15 @@ describe("movimentoDaBancada", () => {
     expect(meses[0]).toMatchObject({ entraram: 0, reprovados: 1 });
   });
 
+  it.each(["2026-13-22", "2026-00-22", "2026-02-30"])("ignora a data impossível %s", (data) => {
+    const meses = movimentoDaBancada([
+      eq({ status: "ENTREGUE", data_entrada: data, data_saida: `${data}T12:00:00Z`, data_reprovacao: data }),
+      eq({ data_entrada: "2026-02-28" }),
+    ], 2026);
+    expect(meses[1].entraram).toBe(1);
+    expect(meses.reduce((total, mes) => total + mes.entraram + mes.entregues + mes.reprovados, 0)).toBe(1);
+  });
+
   it("agrupa instante UTC no mês de America/Bahia e preserva data só-dia", () => {
     const meses = movimentoDaBancada([
       eq({ status: "ENTREGUE", data_saida: "2026-12-01T01:00:00Z" }),

@@ -11,6 +11,13 @@ describe("db: clientes", () => {
     mockInvoke.mockResolvedValue(undefined);
   });
 
+  it("envia segundoPlano no resumo apenas nas recargas de segundo plano", async () => {
+    await db.resumoCliente(3);
+    expect(mockInvoke).toHaveBeenLastCalledWith("resumo_cliente", { clienteId: 3 });
+    await db.resumoCliente(3, true);
+    expect(mockInvoke).toHaveBeenLastCalledWith("resumo_cliente", { clienteId: 3, segundoPlano: true });
+  });
+
   it("não força receber_email/receber_whatsapp quando o cliente não os informa", async () => {
     await db.atualizarCliente(3, { telefone: "71999990000", atualizado_em: "t" });
     const input = (mockInvoke.mock.calls[0]![1] as { input: Record<string, unknown> }).input;

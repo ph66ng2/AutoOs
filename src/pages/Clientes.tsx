@@ -131,7 +131,7 @@ export default function Clientes() {
   const { clientes, total: totalClientes, loading, error, criar, atualizar, deletar, recarregar, destaques: destaquesAoVivo } =
     useClientes({ busca: busca || undefined, page: abaAtual, filtro });
   const { data: contagem, recarregar: recarregarContagem } = useContagemClientes(busca || undefined);
-  const { data: resumo } = useResumoCliente(contatosExpandido);
+  const { data: resumo, recarregar: recarregarResumo } = useResumoCliente(contatosExpandido);
   // Em tela larga o painel cabe ao lado: abre o primeiro cliente, como no desenho. Sem como
   // medir a tela, não abre sozinho; se a pessoa fechar o painel, ele não reabre.
   const painelAoLado = useLarguraMinima(1280, false);
@@ -568,7 +568,7 @@ export default function Clientes() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Nome, CPF/CNPJ, contato ou telefone" aria-label="Buscar clientes" value={busca} onChange={e => setBusca(e.target.value)} className="h-10 bg-muted pl-9" />
               </div>
-              <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" aria-label="Atualizar clientes" onClick={() => { void recarregar(); void recarregarContagem(); }}><RefreshCw className="h-4 w-4" /></Button>
+              <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" aria-label="Atualizar clientes" onClick={() => { void recarregar(); void recarregarContagem(); void recarregarResumo(); }}><RefreshCw className="h-4 w-4" /></Button>
             </div>
             {error && (
               <ErrorAlert variant="error" context="Clientes" message={error} action="Carregar" />

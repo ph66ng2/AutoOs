@@ -533,9 +533,9 @@ pub(crate) async fn contar_clientes_por_filtro_on_pool(
 /// (entregues no ano, valor final ou orçado). O faturado só vai para quem tem VIEW_EXPENSES.
 #[tauri::command]
 #[instrument(skip_all, fields(cliente_id = cliente_id))]
-pub async fn resumo_cliente(cliente_id: i32) -> Result<ResumoCliente, String> {
+pub async fn resumo_cliente(cliente_id: i32, segundo_plano: Option<bool>) -> Result<ResumoCliente, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let ver_faturado = crate::commands::auth::session_has_permission(crate::commands::auth::PERMISSION_VIEW_EXPENSES);
     resumo_cliente_on_pool(&pool, empresa_id, cliente_id, ver_faturado).await
 }

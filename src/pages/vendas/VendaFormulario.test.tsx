@@ -57,6 +57,16 @@ describe("VendaFormulario (/vendas/novo e /vendas/:id/editar)", () => {
     expect(screen.getByRole("button", { name: "Salvar orçamento" })).toBeDisabled();
   });
 
+  it("bloqueia a edição quando o orçamento carregado pertence a outra rota", () => {
+    mocks.editor = editor({
+      detalhe: { id: 34, numero_exibicao: "OI-34", status: "RASCUNHO" },
+      podeSalvar: true,
+    });
+    renderEm("/vendas/35/editar");
+    expect(screen.getByRole("alert")).toHaveTextContent("Orçamento não encontrado.");
+    expect(screen.queryByRole("button", { name: "Salvar orçamento" })).not.toBeInTheDocument();
+  });
+
   it("editar um enviado avisa que volta para Rascunho; salvar vai para a página do orçamento", async () => {
     const salvar = vi.fn().mockResolvedValue({ id: 34 });
     mocks.editor = editor({

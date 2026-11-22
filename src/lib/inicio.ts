@@ -13,12 +13,16 @@ const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "O
 
 /** Ano e mês (1..12) de uma data do banco ("2026-11-09", "2026-11-09 17:02:00" ou ISO). */
 function anoMes(valor?: string | null): [number, number] | null {
-  if (!valor) return null;
-  const texto = valor.trim();
+  const texto = valor?.trim() ?? "";
+  const calendario = /^(\d{4})-(\d{2})-(\d{2})(?=$|[T ])/.exec(texto);
+  if (!calendario) return null;
+  const [data, anoCalendario, mesCalendario, diaCalendario] = calendario;
+  const mesNumero = Number(mesCalendario);
+  if (mesNumero < 1 || mesNumero > 12) return null;
+  // A conversão de timestamps pode normalizar dias impossíveis para o mês seguinte.
+  if (new Date(`${data}T00:00:00Z`).getUTCDate() !== Number(diaCalendario)) return null;
   // Data só-dia (entrada na bancada) fica no calendário; instante UTC vai para o fuso da operação.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) {
-    return [Number(texto.slice(0, 4)), Number(texto.slice(5, 7))];
-  }
+  if (texto === data) return [Number(anoCalendario), mesNumero];
   const instante = parseDbTimestampUtc(texto);
   if (!instante) return null;
   const partes = new Intl.DateTimeFormat("en-CA", {

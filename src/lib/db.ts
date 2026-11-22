@@ -290,8 +290,8 @@ export const db = {
   },
 
   /** Números do painel do cliente → Rust: resumo_cliente (faturado só com permissão de Finanças) */
-  async resumoCliente(clienteId: number): Promise<ResumoCliente> {
-    return invoke<ResumoCliente>("resumo_cliente", { clienteId });
+  async resumoCliente(clienteId: number, segundoPlano = false): Promise<ResumoCliente> {
+    return invoke<ResumoCliente>("resumo_cliente", { clienteId, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Busca cliente por ID → Rust: buscar_cliente */
