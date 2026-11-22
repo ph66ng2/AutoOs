@@ -737,6 +737,14 @@ export default function Equipamentos() {
   const chaveRascunhoAtualRef = useRef(chaveRascunho);
   chaveRascunhoAtualRef.current = chaveRascunho;
   const [chaveFormularioEntrada, setChaveFormularioEntrada] = useState(chaveRascunho);
+  /**
+   * Chave nula (sessão bloqueada por inatividade, empresa indisponível por erro passageiro) só
+   * suspende o salvamento automático: o formulário aberto continua na tela com textos e fotos.
+   * Só a troca real de perfil/empresa (uma chave para outra) reabre a Nova entrada.
+   */
+  const entradaDaChaveAtual = chaveRascunho === null
+    || chaveFormularioEntrada === null
+    || chaveFormularioEntrada === chaveRascunho;
   const vinculoPendenteRef = useRef<Pick<RascunhoEntrada, "clienteId" | "responsavelId"> | null>(null);
   const [restaurandoVinculo, setRestaurandoVinculo] = useState(false);
   const entradaMontadaRef = useRef(false);
@@ -1055,9 +1063,10 @@ export default function Equipamentos() {
   }, [chaveRotaFormulario, chaveRascunho]);
 
   useEffect(() => {
-    if (rotaNovaEntrada && novaEntradaAberta && chaveFormularioEntrada !== chaveRascunho) {
-      abrirNovo({ origem: origemEntradaRef.current });
-    }
+    if (!rotaNovaEntrada || !novaEntradaAberta || chaveRascunho === null || chaveFormularioEntrada === chaveRascunho) return;
+    // Aberta sem chave (sessão ainda bloqueada): adota a chave sem apagar o que já foi preenchido.
+    if (chaveFormularioEntrada === null) setChaveFormularioEntrada(chaveRascunho);
+    else abrirNovo({ origem: origemEntradaRef.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rotaNovaEntrada, novaEntradaAberta, chaveFormularioEntrada, chaveRascunho]);
 
@@ -3682,7 +3691,7 @@ export default function Equipamentos() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       )}
-      {dialogOpen && (editando || chaveFormularioEntrada === chaveRascunho) && (
+      {dialogOpen && (editando || entradaDaChaveAtual) && (
         <section aria-labelledby="entrada-titulo" className="-mb-4 flex min-h-[calc(100vh-8rem)] flex-col gap-4 lg:-mb-8">
           <div>
             <button

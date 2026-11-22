@@ -38,6 +38,18 @@ vi.mock("@/hooks/useEquipamentos", () => {
   const equipamentos = [];
   return { useEquipamentos: () => ({ equipamentos, total: 0, contagens: {}, destaques: new Set(), recarregar }) };
 });
+vi.mock("@/lib/equipamento-imagem-utils", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/equipamento-imagem-utils")>(),
+  arquivoParaImagemEquipamento: async (arquivo: File, ordem: number, categoria: string) => ({
+    nome_arquivo: arquivo.name, mime_type: "image/jpeg", data_url: "data:image/jpeg;base64,AA==",
+    categoria, ordem, legenda: "",
+  }),
+}));
+vi.mock("@/pages/equipamentos/EquipamentosPageGallery", () => ({
+  GaleriaImagensEquipamento: ({ imagens }: { imagens: { nome_arquivo: string }[] }) => (
+    <ul aria-label="Fotos da entrada">{imagens.map((imagem) => <li key={imagem.nome_arquivo}>{imagem.nome_arquivo}</li>)}</ul>
+  ),
+}));
 vi.mock("@/hooks/useTecnicos", () => ({ useTecnicos: () => [], useNomesFiltroTecnico: () => [] }));
 vi.mock("@/hooks/useAtualizacaoAoVivo", () => ({ useAtualizacaoAoVivo: () => {} }));
 
@@ -201,6 +213,29 @@ describe("rascunho da Nova entrada", () => {
     act(() => chamada![1].action.onClick());
     const { dados } = JSON.parse(localStorage.getItem(chave)!);
     expect(dados).toMatchObject({ clienteId: 8, responsavelId: 9 });
+  });
+
+  it.each([
+    { caso: "bloqueio por inatividade", sessao: { unlocked: false } },
+    { caso: "empresa indisponível por erro passageiro", sessao: { active_empresa_id: null } },
+  ])("mantém texto e fotos da Nova entrada aberta no $caso", async ({ sessao }) => {
+    const { container, rerender } = abrir("/equipamentos/nova");
+    const novaRota = () => rerender(<MemoryRouter initialEntries={["/equipamentos/nova"]}><RotaDeTeste /></MemoryRouter>);
+    fireEvent.change(campoDefeito(), { target: { value: "Não liga" } });
+    const entrada = container.querySelector<HTMLInputElement>("#equipamento-imagens-entrada")!;
+    fireEvent.change(entrada, { target: { files: [new File(["x"], "frente.jpg", { type: "image/jpeg" })] } });
+    expect(await screen.findByText("frente.jpg")).toBeInTheDocument();
+
+    Object.assign(status, sessao);
+    novaRota();
+    expect(campoDefeito()).toHaveValue("Não liga");
+    expect(screen.getByText("frente.jpg")).toBeInTheDocument();
+
+    Object.assign(status, { unlocked: true, active_profile_id: 1, active_empresa_id: 4 });
+    novaRota();
+    expect(campoDefeito()).toHaveValue("Não liga");
+    expect(screen.getByText("frente.jpg")).toBeInTheDocument();
+    await waitFor(() => expect(JSON.parse(localStorage.getItem(chave)!).dados.form.defeito_relatado).toBe("Não liga"));
   });
 
   it("limpa os dados exibidos quando o perfil muda com o formulário aberto", async () => {
