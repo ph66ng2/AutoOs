@@ -391,6 +391,7 @@ describe("encaixePainelNotificacoes", () => {
       { width: 1280, height: 800 },
     );
     expect(estilo.position).toBe("fixed");
+    expect(estilo.height).toBe(384);
     expect(estilo.left).toBe(248);
     expect(estilo.bottom).toBe(108);
     expect(estilo.top).toBeUndefined();

@@ -148,7 +148,7 @@ export function encaixePainelNotificacoes(
       left,
       bottom: viewport.height - ancora.top + gap,
       width: largura,
-      maxHeight: Math.max(0, Math.min(maxPainel, acima)),
+      height: Math.max(0, Math.min(384, maxPainel, acima)),
     };
   }
   return {
@@ -156,7 +156,7 @@ export function encaixePainelNotificacoes(
     left,
     top: ancora.bottom + gap,
     width: largura,
-    maxHeight: Math.max(0, Math.min(maxPainel, abaixo)),
+    height: Math.max(0, Math.min(384, maxPainel, abaixo)),
   };
 }
 

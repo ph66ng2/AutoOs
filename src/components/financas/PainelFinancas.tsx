@@ -127,6 +127,11 @@ function Selo({ fracao, bom }: { fracao: number; bom: boolean }) {
   );
 }
 
+const formatoEixo = new Intl.NumberFormat("pt-BR", {
+  notation: "compact",
+  maximumFractionDigits: 3,
+});
+
 function DicaMes({ active, payload }: { active?: boolean; payload?: { payload: MesFinancas }[] }) {
   if (!active || !payload?.length) return null;
   const m = payload[0].payload;
@@ -247,8 +252,8 @@ export function GraficoFaturamento({
               <YAxis
                 tickLine={false}
                 axisLine={false}
-                width={40}
-                tickFormatter={(v: number) => (ocultar ? "" : `${Math.round(v / 1000)}k`)}
+                width={68}
+                tickFormatter={(v: number) => (ocultar ? "" : formatoEixo.format(v))}
                 tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
               />
               <Tooltip cursor={{ fill: "hsl(var(--muted))", radius: 8 }} content={ocultar ? () => null : <DicaMes />} />
