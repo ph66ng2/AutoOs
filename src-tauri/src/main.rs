@@ -125,6 +125,10 @@ fn main() {
         commands::smtp::enviar_email_saas,
         commands::whatsapp::enviar_whatsapp_saas,
         commands::cnpj::consultar_cnpj,
+        // Salvar PDFs em Documentos ("Baixar"): só gravam arquivo local, sem banco nem permissão.
+        commands::util::salvar_orcamento_pdf,
+        commands::util::salvar_ordem_servico_pdf,
+        commands::util::salvar_relatorio_status_pdf,
     ]);
 
     #[cfg(not(feature = "saas"))]
@@ -184,6 +188,7 @@ fn main() {
             commands::util::testar_config_banco,
             commands::util::verificar_status_banco,
             commands::util::obter_erro_inicializacao_banco,
+            commands::util::tentar_reconectar_banco,
             commands::util::reiniciar_banco_com_config,
             // Equipamentos
             commands::equipamentos::listar_equipamentos,

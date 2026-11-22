@@ -28,6 +28,7 @@ import { emitirOrcamentoPublicado, type ReferenciaPdfPortal } from "@/lib/portal
 import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import type {
   AcessoPortalContato,
+  DatabaseInitError,
   AjusteOrcamentoInput,
   AlertaPortal,
   ContatoPortalEmpresa,
@@ -136,6 +137,9 @@ function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
 }
 
 export const db = {
+  /** Reconecta com a configuração de banco já salva. `null` significa que conectou. */
+  tentarReconectarBanco: () => invoke<DatabaseInitError | null>("tentar_reconectar_banco"),
+  obterErroInicializacaoBanco: () => invoke<DatabaseInitError | null>("obter_erro_inicializacao_banco"),
   getSeenReleaseHighlights: () => invoke<string | null>("get_seen_release_highlights"),
   markReleaseHighlightsSeen: () => invoke<void>("mark_release_highlights_seen"),
 

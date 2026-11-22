@@ -38,7 +38,33 @@ pub struct KnownMigration {
 }
 
 static POOL: Mutex<Option<PgPool>> = Mutex::new(None);
-static INIT_ERROR: Mutex<Option<String>> = Mutex::new(None);
+static INIT_ERROR: Mutex<Option<DatabaseInitError>> = Mutex::new(None);
+
+/// Causa da falha de inicialização, para a tela de fallback decidir entre o
+/// formulário de configuração e a tela de reconexão.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseErrorKind {
+    /// Nenhuma URL encontrada na cadeia de resolução.
+    NaoConfigurado,
+    /// URL presente, mas inválida ou apontando para banco inexistente.
+    ConfiguracaoInvalida,
+    /// Usuário ou senha recusados.
+    Credencial,
+    /// Banco alcançado, mas incompatível com este AutoOS.
+    Incompativel,
+    /// Rede, DNS, TLS ou timeout: costuma passar sozinho.
+    Rede,
+    /// Limite de conexões do servidor atingido.
+    Capacidade,
+    Desconhecido,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DatabaseInitError {
+    pub tipo: DatabaseErrorKind,
+    pub mensagem: String,
+}
 
 const DATABASE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(6);
 const DATABASE_SCHEMA_TIMEOUT: Duration = Duration::from_secs(6);
@@ -101,7 +127,8 @@ pub async fn get_pool() -> Result<PgPool, String> {
             .lock()
             .unwrap_or_else(|e| panic!("Lock de erro corrompido: {}", e));
         err_guard
-            .clone()
+            .as_ref()
+            .map(|init_error| init_error.mensagem.clone())
             .unwrap_or_else(|| "Pool de conexões não inicializado".to_string())
     })
 }
@@ -110,7 +137,7 @@ pub fn is_database_initialized() -> bool {
     POOL.lock().map(|g| g.is_some()).unwrap_or(false)
 }
 
-pub fn database_init_error() -> Option<String> {
+pub fn database_init_error() -> Option<DatabaseInitError> {
     INIT_ERROR.lock().ok().and_then(|g| g.clone())
 }
 
@@ -163,9 +190,42 @@ pub fn clear_database_init_error() {
     }
 }
 
-fn set_database_init_error(message: impl Into<String>) {
+fn set_database_init_error(error: &sqlx::Error) {
+    let init_error = DatabaseInitError {
+        tipo: database_error_kind(error),
+        mensagem: database_error_message(error),
+    };
     if let Ok(mut guard) = INIT_ERROR.lock() {
-        *guard = Some(message.into());
+        *guard = Some(init_error);
+    }
+}
+
+/// Classifica o erro na mesma ordem de `database_error_message`, sem efeitos
+/// colaterais (não registra o backoff de capacidade).
+pub fn database_error_kind(error: &sqlx::Error) -> DatabaseErrorKind {
+    match error {
+        sqlx::Error::PoolTimedOut | sqlx::Error::Io(_) | sqlx::Error::Tls(_) => DatabaseErrorKind::Rede,
+        sqlx::Error::Configuration(source) => {
+            let missing = source
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io_error| io_error.kind() == std::io::ErrorKind::NotFound);
+            if missing {
+                DatabaseErrorKind::NaoConfigurado
+            } else {
+                DatabaseErrorKind::ConfiguracaoInvalida
+            }
+        }
+        sqlx::Error::ConfigFile(_) => DatabaseErrorKind::ConfiguracaoInvalida,
+        sqlx::Error::Database(database_error) if database_error.code().as_deref() == Some("28P01") => {
+            DatabaseErrorKind::Credencial
+        }
+        sqlx::Error::Database(database_error) if database_error.code().as_deref() == Some("3D000") => {
+            DatabaseErrorKind::ConfiguracaoInvalida
+        }
+        error if is_database_capacity_error(error) => DatabaseErrorKind::Capacidade,
+        sqlx::Error::Database(_) => DatabaseErrorKind::Desconhecido,
+        sqlx::Error::Migrate(_) => DatabaseErrorKind::Incompativel,
+        _ => DatabaseErrorKind::Desconhecido,
     }
 }
 
@@ -174,6 +234,9 @@ pub fn database_error_message(error: &sqlx::Error) -> String {
         sqlx::Error::PoolTimedOut => {
             "A conexão com o banco excedeu 6 segundos. Verifique a internet e tente novamente."
                 .to_string()
+        }
+        sqlx::Error::Io(io_error) if io_error.kind() == std::io::ErrorKind::TimedOut => {
+            format!("O banco demorou para responder: {}", io_error)
         }
         sqlx::Error::Io(_) => {
             "Não foi possível alcançar o banco. Verifique a internet, DNS ou compatibilidade IPv4/IPv6."
@@ -430,7 +493,32 @@ const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
     ("verificacoes", "adjusted_by_profile_id", "int4"),
 ];
 
+/// Falha da validação estrutural: a consulta em si falhou (rede, servidor
+/// lotado) ou o banco respondeu e falta estrutura. Só o segundo caso prova
+/// incompatibilidade.
+#[derive(Debug)]
+enum SchemaCheckFailure {
+    Query(sqlx::Error),
+    Mismatch(String),
+}
+
+/// Consulta que falhou mantém o tipo original (rede, capacidade...); só
+/// estrutura ausente vira erro de banco incompatível.
+fn schema_failure_into_error(failure: SchemaCheckFailure) -> sqlx::Error {
+    match failure {
+        SchemaCheckFailure::Query(error) => error,
+        SchemaCheckFailure::Mismatch(message) => schema_validation_error(message),
+    }
+}
+
 async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String> {
+    check_runtime_schema(pool).await.map_err(|failure| match failure {
+        SchemaCheckFailure::Query(error) => crate::commands::operator_errors::mapear_erro_sql(error),
+        SchemaCheckFailure::Mismatch(message) => message,
+    })
+}
+
+async fn check_runtime_schema(pool: &PgPool) -> Result<usize, SchemaCheckFailure> {
     let table_names = REQUIRED_RUNTIME_TABLES
         .iter()
         .map(|value| value.to_string())
@@ -444,7 +532,7 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     .bind(table_names)
     .fetch_all(pool)
     .await
-    .map_err(crate::commands::operator_errors::mapear_erro_sql)?;
+    .map_err(SchemaCheckFailure::Query)?;
 
     let missing_indexes = sqlx::query_scalar::<_, String>(
         "SELECT required_name
@@ -455,7 +543,7 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     .bind(REQUIRED_RUNTIME_INDEXES.iter().map(|value| value.to_string()).collect::<Vec<_>>())
     .fetch_all(pool)
     .await
-    .map_err(|error| format!("Não foi possível verificar os índices do AutoOS: {error}"))?;
+    .map_err(SchemaCheckFailure::Query)?;
 
     let column_tables = REQUIRED_RUNTIME_COLUMNS
         .iter()
@@ -480,7 +568,7 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     .bind(column_names)
     .fetch_all(pool)
     .await
-    .map_err(crate::commands::operator_errors::mapear_erro_sql)?;
+    .map_err(SchemaCheckFailure::Query)?;
 
     let typed_tables = REQUIRED_RUNTIME_COLUMN_TYPES
         .iter()
@@ -511,7 +599,7 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     .bind(expected_types)
     .fetch_all(pool)
     .await
-    .map_err(crate::commands::operator_errors::mapear_erro_sql)?;
+    .map_err(SchemaCheckFailure::Query)?;
 
     if !missing_tables.is_empty()
         || !missing_columns.is_empty()
@@ -522,10 +610,10 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
         missing.extend(missing_columns);
         missing.extend(incompatible_columns);
         missing.extend(missing_indexes);
-        return Err(format!(
+        return Err(SchemaCheckFailure::Mismatch(format!(
             "Estruturas obrigatórias ausentes: {}.",
             missing.join(", ")
-        ));
+        )));
     }
 
     Ok(REQUIRED_RUNTIME_TABLES.len()
@@ -579,6 +667,16 @@ fn schema_validation_error(message: String) -> sqlx::Error {
     sqlx::Error::Migrate(Box::new(sqlx::migrate::MigrateError::Source(Box::new(
         std::io::Error::new(std::io::ErrorKind::InvalidData, message),
     ))))
+}
+
+fn schema_validation_timeout_error() -> sqlx::Error {
+    sqlx::Error::Io(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        format!(
+            "a validação estrutural excedeu {} segundos.",
+            DATABASE_SCHEMA_TIMEOUT.as_secs()
+        ),
+    ))
 }
 
 fn database_url_missing_error() -> sqlx::Error {
@@ -680,7 +778,7 @@ pub async fn init_database() -> Result<PgPool, sqlx::Error> {
     .await;
 
     if let Err(error) = &result {
-        set_database_init_error(database_error_message(error));
+        set_database_init_error(error);
     }
     result
 }
@@ -690,7 +788,7 @@ pub async fn init_database_with_url(database_url: &str) -> Result<PgPool, sqlx::
     let _init_guard = INIT_LOCK.lock().await;
     let result = connect_and_setup_pool(database_url).await;
     if let Err(error) = &result {
-        set_database_init_error(database_error_message(error));
+        set_database_init_error(error);
     }
     result
 }
@@ -742,22 +840,21 @@ async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Erro
     // disputa DDL/locks com outras máquinas e aceita históricos legados válidos.
     let schema_result = match tokio::time::timeout(
         DATABASE_SCHEMA_TIMEOUT,
-        validate_runtime_schema_on_pool(&pool),
+        check_runtime_schema(&pool),
     )
     .await
     {
         Ok(result) => result,
         Err(_) => {
             pool.close().await;
-            return Err(schema_validation_error(format!(
-                "A validação estrutural excedeu {} segundos.",
-                DATABASE_SCHEMA_TIMEOUT.as_secs()
-            )));
+            // Lentidão não prova incompatibilidade: vira erro de rede, que a
+            // tela de reconexão trata como passageiro e tenta de novo.
+            return Err(schema_validation_timeout_error());
         }
     };
-    if let Err(message) = schema_result {
+    if let Err(failure) = schema_result {
         pool.close().await;
-        return Err(schema_validation_error(message));
+        return Err(schema_failure_into_error(failure));
     }
 
     // Troca de pool (ex.: nova configuração): fecha o antigo para não deixar
@@ -824,6 +921,57 @@ mod tests {
         fn kind(&self) -> sqlx::error::ErrorKind {
             sqlx::error::ErrorKind::Other
         }
+    }
+
+    fn database_error(code: &'static str, message: &'static str) -> sqlx::Error {
+        sqlx::Error::Database(Box::new(TestDatabaseError { code, message }))
+    }
+
+    #[test]
+    fn classifies_error_kind_for_the_fallback_screen() {
+        assert_eq!(database_error_kind(&database_url_missing_error()), DatabaseErrorKind::NaoConfigurado);
+        let malformed = sqlx::Error::Configuration(Box::new(io::Error::new(io::ErrorKind::InvalidInput, "url")));
+        assert_eq!(database_error_kind(&malformed), DatabaseErrorKind::ConfiguracaoInvalida);
+        assert_eq!(database_error_kind(&sqlx::Error::PoolTimedOut), DatabaseErrorKind::Rede);
+        let io_error = sqlx::Error::Io(io::Error::new(io::ErrorKind::ConnectionRefused, "x"));
+        assert_eq!(database_error_kind(&io_error), DatabaseErrorKind::Rede);
+        assert_eq!(database_error_kind(&database_error("28P01", "auth")), DatabaseErrorKind::Credencial);
+        assert_eq!(database_error_kind(&database_error("3D000", "db")), DatabaseErrorKind::ConfiguracaoInvalida);
+        assert_eq!(database_error_kind(&database_error("53300", "too many clients")), DatabaseErrorKind::Capacidade);
+        assert_eq!(database_error_kind(&database_error("XX000", "boom")), DatabaseErrorKind::Desconhecido);
+    }
+
+    #[test]
+    fn schema_query_failure_keeps_its_own_kind() {
+        // Uma consulta da validação que cai por rede não pode virar "outra versão".
+        let reset = sqlx::Error::Io(io::Error::new(io::ErrorKind::ConnectionReset, "reset"));
+        let error = schema_failure_into_error(SchemaCheckFailure::Query(reset));
+        assert_eq!(database_error_kind(&error), DatabaseErrorKind::Rede);
+
+        let lotado = schema_failure_into_error(SchemaCheckFailure::Query(database_error("53300", "too many clients")));
+        assert_eq!(database_error_kind(&lotado), DatabaseErrorKind::Capacidade);
+
+        let faltando = schema_failure_into_error(SchemaCheckFailure::Mismatch("tabela x ausente".to_string()));
+        assert_eq!(database_error_kind(&faltando), DatabaseErrorKind::Incompativel);
+    }
+
+    #[test]
+    fn slow_schema_validation_is_transient_not_incompatible() {
+        let slow = schema_validation_timeout_error();
+        assert_eq!(database_error_kind(&slow), DatabaseErrorKind::Rede);
+        assert!(database_error_message(&slow).contains("demorou para responder"));
+        let mismatch = schema_validation_error("tabela ausente".to_string());
+        assert_eq!(database_error_kind(&mismatch), DatabaseErrorKind::Incompativel);
+    }
+
+    #[test]
+    fn init_error_keeps_kind_and_sanitized_message() {
+        set_database_init_error(&sqlx::Error::PoolTimedOut);
+        let init_error = database_init_error().expect("erro registrado");
+        assert_eq!(init_error.tipo, DatabaseErrorKind::Rede);
+        assert!(init_error.mensagem.contains("6 segundos"));
+        clear_database_init_error();
+        assert!(database_init_error().is_none());
     }
 
     #[test]

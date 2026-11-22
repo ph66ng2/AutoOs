@@ -23,7 +23,7 @@ import { Toaster } from "sonner";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { BootSplash } from "@/components/BootSplash";
-import { DatabaseConfigDialog } from "@/components/DatabaseConfigDialog";
+import { DatabaseFallback } from "@/components/DatabaseUnavailableScreen";
 import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 import { Layout } from "@/components/Layout";
@@ -224,7 +224,7 @@ function InternalApp() {
       <>
         <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
         <ErrorBoundary>
-          <DatabaseConfigDialog onConfigured={() => setDbReady(true)} />
+          <DatabaseFallback onConnected={() => setDbReady(true)} />
         </ErrorBoundary>
       </>
     );
