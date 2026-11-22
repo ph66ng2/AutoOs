@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { EVENT_LABELS } from "@/lib/eventos-auditoria";
+import { EVENT_LABELS, resumirStatusAuditado } from "@/lib/eventos-auditoria";
 import { AppearancePicker } from "@/components/perfil/AppearancePicker";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -182,7 +182,12 @@ function VisaoGeral({
               <ul className="space-y-2.5">
                 {activity.map((event) => (
                   <li key={event.id} className="flex justify-between gap-3 text-sm">
-                    <span className="truncate">{EVENT_LABELS[event.event_type] ?? event.details ?? event.event_type}</span>
+                    <span className="min-w-0 break-words">
+                      {EVENT_LABELS[event.event_type] ?? event.event_type}
+                      {resumirStatusAuditado(event.details) && (
+                        <span className="block text-muted-foreground">{resumirStatusAuditado(event.details)}</span>
+                      )}
+                    </span>
                     <span className="shrink-0 text-muted-foreground">{formatWhen(event.created_at)}</span>
                   </li>
                 ))}

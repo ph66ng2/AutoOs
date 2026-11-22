@@ -1,3 +1,4 @@
+import { EVENT_LABELS, resumirStatusAuditado } from "@/lib/eventos-auditoria";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorAlert } from "@/components/ui/error-alert";
@@ -208,13 +209,13 @@ export function ConfiguracoesTabObservabilidade({
             ) : filteredAuditEvents.map((event) => (
               <div key={event.id} className="rounded-lg border p-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="font-medium">{event.event_type}</div>
+                  <div className="font-medium">{EVENT_LABELS[event.event_type] ?? event.event_type}</div>
                   <span className={event.success ? "text-status-ok" : "text-destructive"}>
                     {event.success ? "sucesso" : "falha"}
                   </span>
                 </div>
                 <div className="text-muted-foreground">Perfil: {event.profile_name || "sistema"}</div>
-                {event.details && <div className="text-muted-foreground">{event.details}</div>}
+                {event.details && <div className="text-muted-foreground">{resumirStatusAuditado(event.details) ?? event.details}</div>}
                 <div className="text-xs text-muted-foreground mt-1">
                   {event.created_at ? new Date(event.created_at).toLocaleString("pt-BR") : "sem data"}
                 </div>
