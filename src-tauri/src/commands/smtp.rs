@@ -259,16 +259,22 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
     let actor = require_sensitive_access()?;
     debug!("Enviando email via SMTP");
 
-    let audit_details = format!(
+    let mut audit_details = format!(
         "destinatario={}; email={}; assunto={}",
         input.destinatario.trim(),
         input.email.trim(),
         input.assunto.trim(),
     );
 
+    let evento_envio = if let Some(id) = input.orcamento_equipamento_id {
+        audit_details.push_str(&format!("; equipamento_id={id}"));
+        "BUDGET_EMAIL_SENT"
+    } else {
+        "EMAIL_SENT"
+    };
     let resultado = enviar_email_smtp(&input).await;
     match &resultado {
-        Ok(()) => record_security_event("EMAIL_SENT", Some(&actor), audit_details, true).await,
+        Ok(()) => record_security_event(evento_envio, Some(&actor), audit_details, true).await,
         Err(erro) => {
             let details = format!("{}; motivo={}", audit_details, erro);
             record_security_event("EMAIL_SEND_FAILED", Some(&actor), details, false).await;

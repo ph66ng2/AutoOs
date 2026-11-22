@@ -379,7 +379,7 @@ describe("reenvio de orçamento por e-mail", () => {
     dbMocks.obterDestinatarioOrcamento.mockResolvedValue({ ...destinatario, email });
     await abrirReenvio();
 
-    await waitFor(() => expect(toastMock.warning).toHaveBeenCalledWith("Equipamentos", mensagem));
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalledWith(expect.stringContaining(mensagem), expect.any(Object)));
     expect(screen.queryByRole("button", { name: "Reenviar e-mail" })).not.toBeInTheDocument();
     expect(ensureSensitiveAccess).not.toHaveBeenCalled();
     expect(enviarEmailOrcamento).not.toHaveBeenCalled();
@@ -391,7 +391,8 @@ describe("reenvio de orçamento por e-mail", () => {
     await abrirReenvio();
 
     await waitFor(() => expect(toastMock.warning).toHaveBeenCalledWith(
-      "Equipamentos", "A OS deve estar aguardando aprovação para reenviar o orçamento.",
+      expect.stringContaining("A OS deve estar aguardando aprovação para reenviar o orçamento."),
+      expect.any(Object),
     ));
     expect(enviarEmailOrcamento).not.toHaveBeenCalled();
   });

@@ -21,6 +21,10 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+vi.mock("@/lib/whatsapp-service", () => ({
+  WhatsAppService: { solicitarEnvio: vi.fn().mockResolvedValue({ sucesso: true, estado: "ENVIADA" }) },
+}));
+
 vi.mock("@/lib/pdf-service", () => ({
   PdfService: { gerarOrcamentoAjustado: (...args: unknown[]) => mockGerarOrcamentoAjustado(...args), gerarOrcamento: (...args: unknown[]) => mockGerarOrcamento(...args) },
 }));
@@ -35,6 +39,7 @@ import {
   gerarCorpoOrcamentoPortalTexto,
   SENHA_MASCARADA,
 } from "@/lib/email-orcamento-portal";
+import { enviarOrcamentoAoCliente } from "@/lib/envio-orcamento";
 import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
 import { definirCopiaGerencia } from "@/lib/copia-gerencia";
 import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
@@ -124,6 +129,24 @@ describe("email-orcamento-portal", () => {
     expect(copia.corpo_texto).toContain(SENHA_MASCARADA);
   });
 
+  it.each([
+    [false, false],
+    [true, false],
+    [true, true],
+  ])("envia o orçamento por e-mail com portal disponível=%s e respostas=%s", async (portalDisponivel, portalAtivo) => {
+    const r = await enviarEmailOrcamentoPortal(equip, verificacao, preparoBase({
+      portalDisponivel, portalAtivo, credenciais: null,
+    }));
+
+    expect(r.cliente.enviado).toBe(true);
+    expect(mockPublicarOrcamento).toHaveBeenCalledTimes(portalDisponivel ? 1 : 0);
+    if (portalDisponivel) expect(mockPublicarOrcamento).toHaveBeenCalledWith(equip.id);
+    expect(mockEnviarEmail).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      orcamento_equipamento_id: equip.id,
+    }));
+    expect(mockEnviarEmail.mock.calls[1][0]).not.toHaveProperty("orcamento_equipamento_id");
+  });
+
   it("registra uma única comunicação sem a senha", async () => {
     await enviarEmailOrcamentoPortal(equip, verificacao, preparoBase());
     expect(mockRegistrarComunicacao).toHaveBeenCalledTimes(1);
@@ -153,13 +176,13 @@ describe("email-orcamento-portal", () => {
     expect(mockEnviarEmail).toHaveBeenCalledTimes(1);
   });
 
-  it("falha da cópia para o e-mail profissional do técnico não invalida o envio ao cliente", async () => {
+  it("avisa sobre a falha da cópia para o e-mail profissional do técnico", async () => {
     definirCopiaGerencia(false);
     definirTecnicosDaEmpresa([{ id: 50, nome: "Ivan", email_profissional: "ivan@empresa-b.test" }]);
     mockEnviarEmail.mockResolvedValueOnce(undefined).mockRejectedValueOnce("smtp caiu");
-    const r = await enviarEmailOrcamentoPortal(equip, verificacao, preparoBase());
-    expect(r.cliente.enviado).toBe(true);
-    expect(r.copia).toEqual({ enviado: false, erro: "smtp caiu" });
+    const r = await enviarOrcamentoAoCliente(equip, verificacao, { preparo: preparoBase() });
+    expect(r.canais.email.enviado).toBe(true);
+    expect(r.avisos).toEqual(["Não foi possível enviar a cópia interna do orçamento."]);
     expect(mockEnviarEmail).toHaveBeenNthCalledWith(2, expect.objectContaining({
       destinatario: "Cópia interna",
       email: "ivan@empresa-b.test",

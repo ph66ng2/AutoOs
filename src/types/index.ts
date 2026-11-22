@@ -238,6 +238,7 @@ export interface DestinatarioOrcamento {
 
 export interface PreparoAcessoPortal {
   destinatario: DestinatarioOrcamento;
+  portalDisponivel?: boolean;
   portalAtivo: boolean;
   credenciais: { usuario: string; senha: string } | null;
   senhaExistente: boolean;
@@ -848,6 +849,7 @@ export interface EmailAttachment {
 }
 
 export interface EmailSendRequest {
+  orcamento_equipamento_id?: number;
   destinatario: string;
   email: string;
   cc?: string[];

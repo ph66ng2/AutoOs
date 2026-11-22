@@ -514,6 +514,7 @@ pub(crate) struct CredenciaisPortal {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreparoAcessoPortal {
     pub destinatario: DestinatarioOrcamento,
+    pub portal_disponivel: bool,
     pub portal_ativo: bool,
     /// Só quando uma senha foi criada agora; é a única vez em que ela aparece.
     pub credenciais: Option<CredenciaisPortal>,
@@ -561,15 +562,18 @@ pub async fn preparar_acesso_portal(
     let map = super::operator_errors::mapear_erro_sql;
     let mut tx = pool.begin().await.map_err(map)?;
 
-    let portal_ativo: bool = sqlx::query_scalar("SELECT public.autoos_portal_respostas_ligadas($1)")
-        .bind(empresa_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(map)?;
+    let (portal_disponivel, portal_ativo): (bool, bool) = sqlx::query_as(
+        "SELECT public.autoos_portal_ligado($1), public.autoos_portal_respostas_ligadas($1)",
+    )
+    .bind(empresa_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(map)?;
     let destinatario = resolver_destinatario_orcamento(&mut *tx, empresa_id, equipamento_id).await?;
     let Some(contato_id) = destinatario.contato_id.filter(|_| portal_ativo) else {
         return Ok(PreparoAcessoPortal {
             destinatario,
+            portal_disponivel,
             portal_ativo,
             credenciais: None,
             senha_existente: false,
@@ -658,6 +662,7 @@ pub async fn preparar_acesso_portal(
 
     Ok(PreparoAcessoPortal {
         destinatario,
+        portal_disponivel,
         portal_ativo,
         senha_existente: credenciais.is_none(),
         credenciais,
@@ -686,6 +691,7 @@ async fn publicar_versao(
 ) -> Result<OrcamentoPublicado, String> {
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
+    super::orcamento_decisao::exigir_portal_ligado_para_publicar(&mut tx, empresa_id).await?;
     let antes: Option<i64> = sqlx::query_scalar(
         "SELECT MAX(id) FROM orcamento_versoes WHERE equipamento_id = $1 AND empresa_id = $2",
     )

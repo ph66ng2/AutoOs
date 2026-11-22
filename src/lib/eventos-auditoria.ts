@@ -4,6 +4,8 @@ import { STATUS_LABELS, type StatusEquipamento } from "@/types";
 export const EVENT_LABELS: Record<string, string> = {
   EQUIPMENT_STATUS_UPDATED: "Atualizou o status da OS",
   EQUIPMENT_STATUS_CORRECTED: "Corrigiu o status da OS",
+  BUDGET_PUBLISHED_TO_PORTAL: "Publicou o orçamento no portal",
+  BUDGET_EMAIL_SENT: "Enviou o orçamento por e-mail",
   BUDGET_APPROVED: "Aprovou o orçamento",
   BUDGET_REJECTED: "Reprovou o orçamento",
   PROFILE_SWITCH: "Entrou no perfil",

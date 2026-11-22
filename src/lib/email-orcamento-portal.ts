@@ -250,7 +250,7 @@ export async function enviarEmailOrcamentoPortal(
   const corpoMascHtml = gerarCorpoOrcamentoPortalHtml(equip, verificacao, preparo, { mascarar: true });
 
   // O envio por e-mail também pode ser usado quando o WhatsApp falhou antes de publicar.
-  if (equip.id && equip.status === "AGUARDANDO_APROVACAO") {
+  if ((preparo.portalDisponivel ?? preparo.portalAtivo) && equip.id && equip.status === "AGUARDANDO_APROVACAO") {
     try {
       await db.publicarOrcamentoPortal(equip.id);
     } catch {
@@ -298,6 +298,7 @@ export async function enviarEmailOrcamentoPortal(
 
   try {
     const emailCliente1: EmailSendRequest = {
+      orcamento_equipamento_id: equip.id,
       destinatario: nomeContato,
       email: emailCliente,
       cc: [],

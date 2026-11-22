@@ -404,6 +404,24 @@ pub(crate) async fn desfazer_resposta_pendente(
     Ok(())
 }
 
+/// Confere a configuração na transação que publica a versão.
+pub(crate) async fn exigir_portal_ligado_para_publicar(
+    tx: &mut Transaction<'_, Postgres>,
+    empresa_id: i32,
+) -> Result<(), String> {
+    let ligado = sqlx::query_scalar::<_, bool>(
+        "SELECT portal_enabled FROM portal_config_empresa WHERE empresa_id = $1 FOR SHARE",
+    )
+    .bind(empresa_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    if ligado != Some(true) {
+        return Err("O Portal do Cliente está desligado para esta empresa.".into());
+    }
+    Ok(())
+}
+
 /// Publica o orçamento atual numa transação própria (depois de o ajuste já ter sido gravado).
 pub(crate) async fn publicar_versao_isolada(
     pool: &PgPool,
@@ -412,6 +430,7 @@ pub(crate) async fn publicar_versao_isolada(
     profile_id: i32,
 ) -> Result<VersaoCongelada, String> {
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    exigir_portal_ligado_para_publicar(&mut tx, empresa_id).await?;
     let versao = obter_ou_criar_versao(&mut tx, empresa_id, equipamento_id, profile_id).await?;
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
     Ok(versao)
