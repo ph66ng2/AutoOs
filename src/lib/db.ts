@@ -596,8 +596,8 @@ export const db = {
   },
 
   /** Números do topo de Insumos e peças → Rust: resumo_estoque */
-  async resumoEstoque(): Promise<ResumoEstoque> {
-    return invoke<ResumoEstoque>("resumo_estoque");
+  async resumoEstoque(segundoPlano = false): Promise<ResumoEstoque> {
+    return invoke<ResumoEstoque>("resumo_estoque", seSegundoPlano(segundoPlano));
   },
 
   async listarProdutosPaginados(

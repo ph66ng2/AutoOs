@@ -22,8 +22,13 @@ vi.mock("@/hooks/useInsumos", () => ({
     recarregar: vi.fn(),
   }),
 }));
+const acesso = vi.hoisted(() => ({ veDespesas: true }));
+const resumoMock = vi.hoisted(() => ({ resumo: null as unknown }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
-  useSensitiveAccess: () => ({ ensureSensitiveAccess: vi.fn().mockResolvedValue(true) }),
+  useSensitiveAccess: () => ({ ensureSensitiveAccess: vi.fn().mockResolvedValue(true), hasPermission: () => acesso.veDespesas }),
+}));
+vi.mock("@/hooks/useResumoEstoque", () => ({
+  useResumoEstoque: () => ({ resumo: resumoMock.resumo, recarregar: vi.fn() }),
 }));
 vi.mock("@/hooks/useNotification", () => ({
   useNotification: () => ({ success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() }),
@@ -68,6 +73,20 @@ describe("Insumos: só o estoque", () => {
     render(<Insumos />);
     expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.queryByTestId("aba-orcamentos")).toBeNull();
+  });
+});
+
+describe("Insumos: valor em estoque", () => {
+  it("some na hora quando o perfil atual não vê despesas, mesmo com um valor já lido", () => {
+    resumoMock.resumo = { totalItens: 3, porCategoria: [], abaixoMinimo: 0, aguardandoPeca: 0, saidasMes: 0, saidasMesOs: 0, valorEstoque: 1500 };
+    acesso.veDespesas = true;
+    const { rerender } = render(<Insumos />);
+    expect(screen.getByText("Valor em estoque")).toBeInTheDocument();
+    acesso.veDespesas = false;
+    rerender(<Insumos />);
+    expect(screen.queryByText("Valor em estoque")).toBeNull();
+    resumoMock.resumo = null;
+    acesso.veDespesas = true;
   });
 });
 
