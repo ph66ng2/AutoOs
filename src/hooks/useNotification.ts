@@ -14,11 +14,24 @@ export const PREFIXO_TOAST_ERRO = 'erro-app-';
  */
 export const DURACAO_TOAST_ERRO = 8000;
 
-/** Fecha os avisos de erro do app ainda na tela (são da tela em que o erro aconteceu). */
+/**
+ * Erros mostrados logo antes de uma navegação que os leva para outra tela
+ * (ex.: "Abrir edição" falhou e a tela volta para a lista). Sobrevivem à próxima troca de tela.
+ */
+const errosQueSobrevivemATroca = new Set<string>();
+
+/**
+ * Fecha os avisos de erro do app ainda na tela (são da tela em que o erro aconteceu).
+ * Os marcados com `manterAoTrocarDeTela` ficam e perdem a marca: fecham na troca seguinte.
+ */
 export function fecharAvisosDeErro() {
   for (const aviso of toast.getToasts()) {
-    if (String(aviso.id).startsWith(PREFIXO_TOAST_ERRO)) toast.dismiss(aviso.id);
+    const id = String(aviso.id);
+    if (!id.startsWith(PREFIXO_TOAST_ERRO)) continue;
+    if (errosQueSobrevivemATroca.delete(id)) continue;
+    toast.dismiss(aviso.id);
   }
+  errosQueSobrevivemATroca.clear();
 }
 
 /** Ao trocar de tela (rota), fecha os avisos de erro da tela anterior. Montado no Layout. */
@@ -36,12 +49,19 @@ export function useFecharErrosAoTrocarDeTela() {
  * Mostra o aviso de erro e guarda o erro na aba "Erros" das notificações.
  * Pode ser chamado fora de componentes (ex.: providers, callbacks).
  */
-export function notificarErro(context: string, action: string, error: unknown) {
+export interface OpcoesAvisoErro {
+  /** O erro é seguido de uma navegação (ex.: volta para a lista): não fechar na próxima troca de tela. */
+  manterAoTrocarDeTela?: boolean;
+}
+
+export function notificarErro(context: string, action: string, error: unknown, opcoes?: OpcoesAvisoErro) {
   const appError = formatAppError({ context, action, error });
   const registrado = registrarErro(appError);
   const errMsg = appError.message;
+  const idToast = `${PREFIXO_TOAST_ERRO}${registrado.id}`;
+  if (opcoes?.manterAoTrocarDeTela) errosQueSobrevivemATroca.add(idToast);
   toast.error(formatToastMessage({ context, action, message: errMsg }), {
-    id: `${PREFIXO_TOAST_ERRO}${registrado.id}`,
+    id: idToast,
     description: errMsg,
     duration: DURACAO_TOAST_ERRO,
     // Com o banco conectado, o erro vai direto para um chamado de suporte; copiar continua no sino.
@@ -82,8 +102,8 @@ export function useNotification() {
     });
   };
 
-  const error = (context: string, action: string, error: unknown) => {
-    notificarErro(context, action, error);
+  const error = (context: string, action: string, error: unknown, opcoes?: OpcoesAvisoErro) => {
+    notificarErro(context, action, error, opcoes);
   };
 
   const warning = (context: string, message: string, action?: string) => {

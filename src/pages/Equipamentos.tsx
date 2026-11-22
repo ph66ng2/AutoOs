@@ -983,7 +983,7 @@ export default function Equipamentos() {
         .then((eq) => { if (ativo) abrirEditar(eq, origem); })
         .catch((err) => {
           if (!ativo) return;
-          showError("Equipamentos", "Abrir edição", err);
+          showError("Equipamentos", "Abrir edição", err, { manterAoTrocarDeTela: true });
           navigate("/equipamentos", { replace: true });
         });
     } else if (chaveRotaFormulario == null && anterior != null && formularioAbertoRef.current) {
@@ -1398,7 +1398,7 @@ export default function Equipamentos() {
     db.buscarEquipamento(idDetalhesRota)
       .then((eq) => abrirDetalhes(eq))
       .catch((err) => {
-        showError("Equipamentos", "Abrir atendimento", err);
+        showError("Equipamentos", "Abrir atendimento", err, { manterAoTrocarDeTela: true });
         navigate("/equipamentos", { replace: true });
       });
   }, [idDetalhesRota, abrirDetalhes, navigate]);
@@ -1476,7 +1476,7 @@ export default function Equipamentos() {
         })
         .catch((err) => {
           if (!ativo) return;
-          showError("Equipamentos", "Abrir verificação", err);
+          showError("Equipamentos", "Abrir verificação", err, { manterAoTrocarDeTela: true });
           navigate("/equipamentos", { replace: true });
         });
     } else if (idVerificacaoRota == null && anterior != null && paginaVerificacaoAbertaRef.current) {
@@ -1706,7 +1706,7 @@ export default function Equipamentos() {
         })
         .catch((err) => {
           if (!ativo) return;
-          showError("Equipamentos", "Abrir ajuste de orçamento", err);
+          showError("Equipamentos", "Abrir ajuste de orçamento", err, { manterAoTrocarDeTela: true });
           navigate("/equipamentos", { replace: true });
         });
     } else if (idAjusteRota == null && anterior != null && paginaAjusteAbertaRef.current) {
