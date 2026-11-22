@@ -373,7 +373,7 @@ export function ProfileSessionDialog({
                             placeholder="Digite o PIN"
                             aria-label="PIN do perfil"
                             autoComplete="current-password"
-                            className={pinInputClass}
+                            className={cn(pinInputClass, "placeholder:text-sm placeholder:font-normal placeholder:tracking-normal")}
                             autoFocus
                           />
                           {accepted && (
