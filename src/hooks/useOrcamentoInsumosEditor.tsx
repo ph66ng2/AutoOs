@@ -3,7 +3,7 @@
  * carga, campos, totais, validação e salvar. As outras ações (enviar, aprovar, cancelar…)
  * ficam em useAcoesOrcamentoInsumos e abrem como modais (AcaoVendaDialog).
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAcoesOrcamentoInsumos } from "@/hooks/useAcoesOrcamentoInsumos";
 import { db } from "@/lib/db";
 import {
@@ -58,7 +58,8 @@ export function useOrcamentoInsumosEditor({ orcamentoId = null, onChanged }: Par
   const [validade, setValidade] = useState("");
   const [observacoes, setObservacoes] = useState("");
   const [alterado, setAlterado] = useState(false);
-  const [carregando, setCarregando] = useState(false);
+  const [carregando, setCarregando] = useState(orcamentoId != null);
+  const pedido = useRef(0);
 
   const aplicarDetalhe = useCallback((novo: OrcamentoInsumosDetalhe) => {
     setDetalhe(novo);
@@ -74,41 +75,38 @@ export function useOrcamentoInsumosEditor({ orcamentoId = null, onChanged }: Par
 
   // Abre em branco (novo) ou carrega o orçamento e o cliente (existente).
   useEffect(() => {
-    let ativo = true;
+    const meu = ++pedido.current;
     setErro(null);
-    if (orcamentoId == null) {
-      setCarregando(false);
-      setDetalhe(null);
-      setCliente(null);
-      setContato(null);
-      setLinhas([]);
-      setDesconto("");
-      setValidade(validadePadraoOrcamentoInsumos());
-      setObservacoes("");
-      setAlterado(false);
-      return;
-    }
-    setCarregando(true);
+    setDetalhe(null);
+    setCliente(null);
+    setContato(null);
+    setLinhas([]);
+    setDesconto("");
+    setValidade(orcamentoId == null ? validadePadraoOrcamentoInsumos() : "");
+    setObservacoes("");
+    setAlterado(false);
+    setCarregando(orcamentoId != null);
+    const invalidar = () => { pedido.current += 1; };
+    if (orcamentoId == null) return invalidar;
+
     db.obterOrcamentoInsumos(orcamentoId)
       .then(async (carregado) => {
+        if (meu !== pedido.current || carregado.id !== orcamentoId) return;
         const clienteCarregado = await db.buscarCliente(carregado.cliente_id).catch(() => null);
-        if (!ativo) return;
+        if (meu !== pedido.current) return;
         setCliente(clienteCarregado);
         aplicarDetalhe(carregado);
       })
       .catch((causa) => {
-        if (ativo) setErro(String(causa));
+        if (meu === pedido.current) setErro(String(causa));
       })
       .finally(() => {
-        if (ativo) setCarregando(false);
+        if (meu === pedido.current) setCarregando(false);
       });
-    return () => {
-      ativo = false;
-    };
-    // setErro é estável (useState).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orcamentoId, aplicarDetalhe]);
+    return invalidar;
+  }, [orcamentoId, aplicarDetalhe, setErro]);
 
+  const rotaCarregada = (detalhe?.id ?? null) === orcamentoId;
   const status = detalhe?.status ?? null;
   const acoes = acoesOrcamentoInsumos(status);
   const descontoNumero = Number(desconto) || 0;
@@ -119,7 +117,8 @@ export function useOrcamentoInsumosEditor({ orcamentoId = null, onChanged }: Par
   const faltas = useMemo(() => linhasSemSaldo(linhas), [linhas]);
   const quantidadesValidas = linhas.every((linha) => Number.isInteger(linha.quantidade) && linha.quantidade > 0);
   const podeSalvar =
-    acoes.salvar
+    rotaCarregada
+    && acoes.salvar
     && !ocupado
     && cliente?.id != null
     && linhas.length > 0
@@ -147,7 +146,9 @@ export function useOrcamentoInsumosEditor({ orcamentoId = null, onChanged }: Par
   /** Devolve o orçamento salvo, ou null se não salvou (sem permissão, PIN recusado ou erro). */
   async function salvar(): Promise<OrcamentoInsumosDetalhe | null> {
     if (!podeSalvar || cliente?.id == null) return null;
+    const meu = pedido.current;
     if (!(await liberar("Salvar orçamento de insumos", "Informe o PIN para salvar valores do orçamento."))) return null;
+    if (meu !== pedido.current) return null;
     const entrada = {
       cliente_id: cliente.id,
       contato_id: contato?.id ?? null,
@@ -171,7 +172,7 @@ export function useOrcamentoInsumosEditor({ orcamentoId = null, onChanged }: Par
       "Orçamento salvo.",
       "Salvar orçamento",
     );
-    return falha ? null : salvo.orcamento;
+    return falha || meu !== pedido.current ? null : salvo.orcamento;
   }
 
   return {
@@ -196,7 +197,7 @@ export function useOrcamentoInsumosEditor({ orcamentoId = null, onChanged }: Par
     status,
     totais,
     faltas,
-    editavel: acoes.editar,
+    editavel: rotaCarregada && acoes.editar,
     podeSalvar,
     motivoSemSalvar,
     salvar,

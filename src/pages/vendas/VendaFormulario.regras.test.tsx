@@ -4,7 +4,7 @@
  * /vendas/novo e /vendas/:id/editar (V.4) e aos modais por ação (V.5).
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { Cliente, OrcamentoInsumosDetalhe, StatusOrcamentoInsumos } from "@/types";
 
@@ -46,6 +46,7 @@ vi.mock("react-router-dom", async (original) => ({
 }));
 
 import VendaFormulario from "./VendaFormulario";
+import { useOrcamentoInsumosEditor } from "@/hooks/useOrcamentoInsumosEditor";
 
 const CLIENTE: Cliente = { id: 3, empresa_id: 1, nome: "Gráfica Alfa", tipo_pessoa: "PJ", documento: "57522734000158" };
 const PRODUTO = {
@@ -179,6 +180,30 @@ describe("Formulário da venda: novo orçamento", () => {
 });
 
 describe("Formulário da venda: editar", () => {
+  it("limpa o orçamento anterior se a próxima rota falhar e ignora uma resposta atrasada", async () => {
+    mocks.db.obterOrcamentoInsumos.mockResolvedValueOnce(detalhe());
+    const { result, rerender } = renderHook(
+      (orcamentoId: number) => useOrcamentoInsumosEditor({ orcamentoId }),
+      { initialProps: 7 },
+    );
+    await waitFor(() => expect(result.current.podeSalvar).toBe(true));
+
+    let responder!: (valor: OrcamentoInsumosDetalhe) => void;
+    mocks.db.obterOrcamentoInsumos.mockReturnValueOnce(new Promise((resolve) => { responder = resolve; }));
+    rerender(8);
+    expect(result.current).toMatchObject({ detalhe: null, cliente: null, linhas: [], editavel: false, podeSalvar: false });
+
+    mocks.db.obterOrcamentoInsumos.mockRejectedValueOnce("Falha ao carregar orçamento");
+    rerender(9);
+    await waitFor(() => expect(result.current.erro).toBe("Falha ao carregar orçamento"));
+    await act(async () => responder(detalhe("RASCUNHO", { id: 8 })));
+
+    expect(result.current).toMatchObject({ detalhe: null, cliente: null, linhas: [], carregando: false, podeSalvar: false });
+    expect(await result.current.salvar()).toBeNull();
+    expect(mocks.db.atualizarOrcamentoInsumos).not.toHaveBeenCalled();
+    expect(mocks.db.criarOrcamentoInsumos).not.toHaveBeenCalled();
+  });
+
   it("carrega o cliente do orçamento e salva com o token de concorrência", async () => {
     mocks.db.atualizarOrcamentoInsumos.mockResolvedValue(detalhe("RASCUNHO", { atualizado_em: "token-novo" }));
     await editarExistente("RASCUNHO");

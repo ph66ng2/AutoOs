@@ -36,9 +36,13 @@ function Secao({ titulo, nota, children }: { titulo: string; nota?: string; chil
  * os mesmos comandos de sempre, com o mesmo PIN (useOrcamentoInsumosEditor).
  */
 export default function VendaFormulario() {
-  const navigate = useNavigate();
   const { id } = useParams();
   const orcamentoId = id && /^\d+$/.test(id) ? Number(id) : null;
+  return <FormularioDaVenda key={orcamentoId ?? "novo"} orcamentoId={orcamentoId} />;
+}
+
+function FormularioDaVenda({ orcamentoId }: { orcamentoId: number | null }) {
+  const navigate = useNavigate();
   const { hasPermission } = useSensitiveAccess();
   const podeAgir = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
   const editor = useOrcamentoInsumosEditor({ orcamentoId });
@@ -62,6 +66,7 @@ export default function VendaFormulario() {
   }, [carregando]);
 
   async function salvarEVoltar() {
+    if (!podeSalvar || (detalhe?.id ?? null) !== orcamentoId) return;
     const salvo = await salvar();
     if (!salvo) return;
     aviso.liberarProximaSaida();
@@ -99,7 +104,7 @@ export default function VendaFormulario() {
       </div>
     );
   }
-  if (orcamentoId != null && !detalhe) {
+  if (orcamentoId != null && detalhe?.id !== orcamentoId) {
     return (
       <div className="space-y-4">
         {voltar}
