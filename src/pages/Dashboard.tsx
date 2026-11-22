@@ -321,10 +321,8 @@ export default function Dashboard() {
                           <span className="block truncate text-sm font-semibold">{eq.marca} {eq.modelo}</span>
                           <span className={`block truncate text-xs ${acao.cor}`}>{acao.label}{eq.prazo_aprovacao ? ` · prazo ${formatDatePtBr(eq.prazo_aprovacao)}` : ""}</span>
                         </span>
-                        <span className="flex min-w-0 max-w-[40%] items-center gap-2 text-xs text-muted-foreground">
-                          <span className="hidden truncate sm:inline">{eq.cliente_nome || eq.serial_number}</span>
-                          <ArrowRight className="h-4 w-4" />
-                        </span>
+                        <span className="max-w-[50%] break-words text-right text-xs text-muted-foreground">{eq.cliente_nome || eq.serial_number}</span>
+                        <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                       </button>
                     </li>
                   );

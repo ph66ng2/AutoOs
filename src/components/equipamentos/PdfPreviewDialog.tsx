@@ -170,7 +170,7 @@ export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, onBeforeP
               {downloading ? <Loader2 className="animate-spin" /> : <Download />} Baixar
             </Button>
           )}
-          <Button className="h-9 gap-2" disabled={!previewReady || ocupado} onClick={() => void print()}>
+          <Button variant="outline" className="h-9 gap-2 text-foreground" disabled={!previewReady || ocupado} onClick={() => void print()}>
             {prazoExecucao?.updating || preparingPrint ? <Loader2 className="animate-spin" /> : <Printer />} Imprimir
           </Button>
         </DialogHeader>
