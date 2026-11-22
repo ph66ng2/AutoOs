@@ -7,6 +7,8 @@ import {
   getStatusCorrecao,
   mensagemAjusteTotalZero,
   precisaPerguntarQuemRecebeOrcamento,
+  extrairTecnicoInicialDeObservacoes,
+  removerTecnicoInicialDasObservacoes,
   secaoAcaoOs,
   totalOrcamentoAjusteValido,
   totalOrcamentoAprovacaoValido,
@@ -133,5 +135,19 @@ describe("entradaTemAlgo", () => {
     expect(entradaTemAlgo({ ...vazio, acessorios: ["Fonte"] }, null)).toBe(true);
     expect(entradaTemAlgo({ ...vazio, observacoes: "  " }, null)).toBe(false);
     expect(entradaTemAlgo(vazio, { id: 1 })).toBe(true);
+  });
+});
+
+describe("linha interna \"Técnico inicial\" nas observações", () => {
+  const gravado = "Técnico inicial: QA Orçamentista (PREPARE_QUOTES) (orc@teste.invalid)\nArranhão na tampa";
+
+  it("some do texto mostrado, mas continua legível para o parser", () => {
+    expect(removerTecnicoInicialDasObservacoes(gravado)).toBe("Arranhão na tampa");
+    expect(extrairTecnicoInicialDeObservacoes(gravado)).toBeTruthy();
+  });
+
+  it("observação só com a linha interna fica vazia (o bloco não aparece)", () => {
+    expect(removerTecnicoInicialDasObservacoes("Técnico inicial: Ana (ana@x.invalid)")).toBe("");
+    expect(removerTecnicoInicialDasObservacoes(null)).toBe("");
   });
 });

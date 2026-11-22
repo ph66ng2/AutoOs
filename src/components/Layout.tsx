@@ -59,6 +59,7 @@ import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { abrirPainelAtualizacao, useAtualizacaoDisponivel } from "@/lib/atualizacao-disponivel";
 import { EVENTO_CONFIG_SUPORTE, registrarAbrirSuporte } from "@/lib/suporte-ponte";
 import { useBuscaRespostasSuporte } from "@/hooks/useBuscaRespostasSuporte";
+import { useFecharErrosAoTrocarDeTela } from "@/hooks/useNotification";
 
 
 interface NavItem {
@@ -173,6 +174,7 @@ export function Layout() {
     .map((grupo) => ({ ...grupo, itens: grupo.itens.filter((item) => navItemVisible(item, status) && (item.path !== "/suporte" || suporteHabilitado)) }))
     .filter((grupo) => grupo.itens.length > 0);
   const navigate = useNavigate();
+  useFecharErrosAoTrocarDeTela();
   // A ação dos avisos acompanha a elegibilidade do perfil verificada pelo backend.
   useEffect(() => {
     if (!suporteHabilitado) {

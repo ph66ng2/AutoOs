@@ -117,7 +117,7 @@ function notificar(alerta: AlertaPortal, ver: () => void) {
         <visual.Icone className="h-4 w-4" />
       </span>
     ),
-    // Erro fica até alguém fechar, como os avisos de erro do app.
+    // Alerta de erro do portal pede ação (Ver): fica até alguém fechar e não some ao trocar de tela.
     duration: visual.erro ? Infinity : 10_000,
     action: { label: "Ver", onClick: ver },
     classNames: { description: "!whitespace-pre-line", icon: "!m-0 !h-7 !w-7", toast: visual.toast },
