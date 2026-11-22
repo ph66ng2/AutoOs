@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { db } from "@/lib/db";
 import type { ContagemClientes, ResumoCliente } from "@/types";
@@ -28,24 +29,26 @@ export function useResumoCliente(clienteId: number | null) {
     : null;
   const chave = JSON.stringify([clienteId, sessao]);
   const [cache, setCache] = useState<{ chave: string; resumo: ResumoCliente } | null>(null);
-  const [versao, setVersao] = useState(0);
   const pedido = useRef(0);
 
-  useEffect(() => {
-    const meu = ++pedido.current;
-    setCache(null);
+  const carregar = useCallback(async (segundoPlano = false) => {
     if (clienteId == null || sessao == null) return;
-    (async () => {
-      try {
-        const resumo = await db.resumoCliente(clienteId);
-        if (meu === pedido.current) setCache({ chave, resumo });
-      } catch (err) {
-        if (meu === pedido.current) console.error("Erro ao carregar resumo do cliente:", err);
-      }
-    })();
-    return () => { pedido.current += 1; };
-  }, [clienteId, sessao, chave, versao]);
+    const meu = ++pedido.current;
+    try {
+      const resumo = await db.resumoCliente(clienteId, segundoPlano);
+      if (meu === pedido.current) setCache({ chave, resumo });
+    } catch (err) {
+      if (meu === pedido.current) console.error("Erro ao carregar resumo do cliente:", err);
+    }
+  }, [clienteId, sessao, chave]);
 
-  const recarregar = useCallback(() => setVersao((v) => v + 1), []);
+  useEffect(() => {
+    setCache(null);
+    void carregar();
+    return () => { pedido.current += 1; };
+  }, [carregar]);
+
+  useAtualizacaoAoVivo(["equipamentos", "clientes"], () => { void carregar(true); });
+  const recarregar = useCallback(() => carregar(), [carregar]);
   return { data: cache?.chave === chave ? cache.resumo : null, recarregar };
 }
