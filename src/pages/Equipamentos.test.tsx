@@ -5,7 +5,11 @@ import Equipamentos from "./Equipamentos";
 
 Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => {} });
 
-const { dbMocks, status, enviarOrcamento, recarregar } = vi.hoisted(() => ({
+const { dbMocks, status, enviarOrcamento, recarregar, toastMock } = vi.hoisted(() => ({
+  toastMock: Object.assign(vi.fn(), {
+    error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn(), message: vi.fn(),
+    loading: vi.fn(), dismiss: vi.fn(), promise: vi.fn(),
+  }),
   dbMocks: {
     buscarEquipamento: vi.fn(),
     obterDestinatarioOrcamento: vi.fn(),
@@ -23,6 +27,10 @@ const { dbMocks, status, enviarOrcamento, recarregar } = vi.hoisted(() => ({
   status: { unlocked: true, active_profile_id: 1, active_empresa_id: 4, profiles: [] },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMocks }));
+vi.mock("sonner", async (importOriginal) => ({
+  ...await importOriginal<typeof import("sonner")>(),
+  toast: toastMock,
+}));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ status, hasPermission: () => true, ensureSensitiveAccess: async () => true }),
 }));
@@ -173,6 +181,26 @@ describe("rascunho da Nova entrada", () => {
     expect(campoDefeito()).toHaveValue(defeito);
     expect(screen.queryByText("Cliente externo")).not.toBeInTheDocument();
     expect(dbMocks.listarClienteContatos).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { caso: "com texto", form: { defeito_relatado: defeito } },
+    { caso: "só com o cliente", form: {} },
+  ])("Desfazer o Cancelar preserva o cliente e o contato ainda carregando ($caso)", async ({ form }) => {
+    localStorage.setItem(chave, JSON.stringify({
+      salvoEm: new Date().toISOString(),
+      dados: { form, clienteId: 8, responsavelId: 9 },
+    }));
+    dbMocks.buscarCliente.mockReturnValue(new Promise(() => {}));
+    abrir("/equipamentos/nova");
+    await waitFor(() => expect(dbMocks.buscarCliente).toHaveBeenCalledWith(8));
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(localStorage.getItem(chave)).toBeNull();
+    const chamada = toastMock.mock.calls.find(([titulo]) => titulo === "Entrada descartada");
+    expect(chamada).toBeDefined();
+    act(() => chamada![1].action.onClick());
+    const { dados } = JSON.parse(localStorage.getItem(chave)!);
+    expect(dados).toMatchObject({ clienteId: 8, responsavelId: 9 });
   });
 
   it("limpa os dados exibidos quando o perfil muda com o formulário aberto", async () => {

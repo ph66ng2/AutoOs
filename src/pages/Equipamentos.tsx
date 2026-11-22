@@ -794,8 +794,14 @@ export default function Equipamentos() {
    */
   function descartarEntrada() {
     const valores = form.getValues();
-    const temAlgo = entradaTemAlgo(valores, clienteVinculado);
-    const copia: RascunhoEntrada = { form: valores, clienteId: clienteVinculado?.id ?? null, responsavelId: responsavelVinculado?.id ?? null, tecnico: tecnicoNovoEquipamento, dono: donoRascunhoEntrada.current };
+    // Com o cliente/contato do rascunho ainda carregando, os vínculos vêm do pendente (como no
+    // salvamento automático), para o "Desfazer" não perder o cliente.
+    const vinculo = vinculoPendenteRef.current ?? {
+      clienteId: clienteVinculado?.id ?? null,
+      responsavelId: responsavelVinculado?.id ?? null,
+    };
+    const temAlgo = entradaTemAlgo(valores, vinculo.clienteId);
+    const copia: RascunhoEntrada = { form: valores, ...vinculo, tecnico: tecnicoNovoEquipamento, dono: donoRascunhoEntrada.current };
     const origemDescartada = origemEntradaRef.current;
     rascunhoEntrada.limpar();
     setRascunhoRecuperadoEm(null);
