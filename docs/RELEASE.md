@@ -143,3 +143,11 @@ Checklist extra antes da tag:
 Não imprima a chave privada, a senha ou `AUTOOS_DATABASE_URL` em logs, PRs ou evidências. Authenticode (thumbprint) e assinatura do updater (minisign) são camadas distintas.
 
 A jornada N para N+1 usa o workflow `updater-homolog.yml`, a tag `updater-homolog` e o endpoint de `tauri.homolog.conf.json`. O disparo é manual (confirmação `HOMOLOG`) ou por tag `homolog-X.Y.Z` / `hotfix-X.Y.Z`; não embute banco e não pode ocupar o release latest. O build de homologação consulta primeiro o canal isolado e só cai para o endpoint de produção se o canal não responder. O `build.yml` permanece o único caminho do canal de produção.
+
+
+## Suporte pelo Slack
+
+O suporte pelo Slack exige um único cadastro de empresa com o CNPJ da BMITAG
+no PostgreSQL e que esse cadastro esteja ativo. O backend verifica se o perfil
+pertence a essa empresa antes de gravar ou publicar chamados e antes de
+salvar a configuração do canal.

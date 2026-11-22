@@ -4,7 +4,7 @@
 //! O endereço da API pode ser trocado por `AUTOOS_SLACK_API_URL` (testes com servidor falso).
 
 use crate::commands::auth::{
-    record_security_event, require_active_session_company_id, require_permission, require_sensitive_access,
+    record_security_event, require_permission, require_sensitive_access,
     PERMISSION_COMMUNICATION_SETTINGS,
 };
 use crate::db::get_pool;
@@ -68,6 +68,52 @@ pub(crate) fn canal_valido(canal: &str) -> bool {
         && canal.len() <= 20
         && (canal.starts_with('C') || canal.starts_with('G'))
         && canal.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+}
+
+// Mesmo CNPJ impresso nos documentos da empresa. A busca falha fechada em caso de duplicidade.
+const CNPJ_EMPRESA_SUPORTE: &str = "57522734000158";
+const EMPRESA_SUPORTE_SQL: &str =
+    "SELECT CASE WHEN COUNT(*) = 1 AND COUNT(*) FILTER (WHERE status = 'ativo') = 1
+                 THEN MIN(id) END
+       FROM empresas WHERE regexp_replace(cnpj, '[^0-9]', '', 'g') = $1";
+
+fn validar_empresa_suporte(empresa_id: i32, empresa_elegivel: Option<i32>) -> Result<(), String> {
+    if empresa_elegivel == Some(empresa_id) {
+        Ok(())
+    } else {
+        Err("O suporte pelo AutoOS está disponível apenas para a empresa BMITAG.".to_string())
+    }
+}
+
+async fn exigir_empresa_suporte(pool: &sqlx::PgPool, empresa_id: i32) -> Result<(), String> {
+    let elegivel = id_empresa_suporte(pool).await?;
+    validar_empresa_suporte(empresa_id, elegivel)
+}
+
+async fn id_empresa_suporte(pool: &sqlx::PgPool) -> Result<Option<i32>, String> {
+    sqlx::query_scalar(EMPRESA_SUPORTE_SQL)
+        .bind(CNPJ_EMPRESA_SUPORTE)
+        .fetch_one(pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+async fn empresa_do_perfil(pool: &sqlx::PgPool, perfil_id: i32) -> Result<Option<i32>, String> {
+    sqlx::query_scalar(
+        "SELECT e.id FROM security_profiles p
+         JOIN empresas e ON e.id = p.empresa_id AND LOWER(e.status) = 'ativo'
+         WHERE p.id = $1 AND p.ativo = true",
+    )
+    .bind(perfil_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+async fn empresa_do_suporte(pool: &sqlx::PgPool, perfil_id: i32) -> Result<i32, String> {
+    let empresa_id = empresa_do_perfil(pool, perfil_id).await?.ok_or("Perfil sem empresa ativa.")?;
+    exigir_empresa_suporte(pool, empresa_id).await?;
+    Ok(empresa_id)
 }
 
 async fn canal_configurado(pool: &sqlx::PgPool) -> Result<Option<String>, String> {
@@ -181,16 +227,29 @@ pub struct ConfigSuporte {
     /// O token em uso veio no instalador (nada guardado no cofre deste computador).
     pub token_da_instalacao: bool,
     pub canal: Option<String>,
+    pub empresa_elegivel: bool,
 }
 
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn obter_config_suporte() -> Result<ConfigSuporte, String> {
+    let indisponivel = ConfigSuporte {
+        token_neste_computador: false,
+        token_da_instalacao: false,
+        canal: None,
+        empresa_elegivel: false,
+    };
+    let Ok(perfil) = perfil_da_leitura(Some(true)) else { return Ok(indisponivel) };
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = empresa_do_perfil(&pool, perfil.id).await?;
+    if empresa_id.is_none() || empresa_id != id_empresa_suporte(&pool).await? {
+        return Ok(indisponivel);
+    }
     Ok(ConfigSuporte {
         token_neste_computador: token_suporte().is_some(),
         token_da_instalacao: token_do_cofre().is_none() && token_da_instalacao().is_some(),
         canal: canal_configurado(&pool).await?,
+        empresa_elegivel: true,
     })
 }
 
@@ -206,6 +265,8 @@ pub struct ConfigSuporteInput {
 #[instrument(skip_all)]
 pub async fn salvar_config_suporte(input: ConfigSuporteInput) -> Result<ConfigSuporte, String> {
     let actor = require_permission(PERMISSION_COMMUNICATION_SETTINGS)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    empresa_do_suporte(&pool, actor.id).await?;
     let canal = input.canal.trim().to_string();
     if !canal_valido(&canal) {
         return Err("Informe o ID do canal do Slack (começa com C, ex.: C0CE5M6GTRV).".to_string());
@@ -222,7 +283,6 @@ pub async fn salvar_config_suporte(input: ConfigSuporteInput) -> Result<ConfigSu
     } else if token_suporte().is_none() {
         return Err("Informe o token do bot do suporte (xoxb-) neste computador.".to_string());
     }
-    let pool = get_pool().await.map_err(|e| e.to_string())?;
     sqlx::query("UPDATE configuracoes_sistema SET suporte_slack_canal = $1, updated_at = NOW() WHERE id = 1")
         .bind(&canal)
         .execute(&pool)
@@ -239,6 +299,7 @@ pub async fn salvar_config_suporte(input: ConfigSuporteInput) -> Result<ConfigSu
         token_neste_computador: token_suporte().is_some(),
         token_da_instalacao: token_do_cofre().is_none() && token_da_instalacao().is_some(),
         canal: Some(canal),
+        empresa_elegivel: true,
     })
 }
 
@@ -416,15 +477,15 @@ fn decodificar_imagens(imagens: &[ImagemChamado]) -> Result<Vec<(String, Vec<u8>
 #[instrument(skip_all)]
 pub async fn abrir_chamado_suporte(input: AbrirChamadoInput) -> Result<ChamadoSuporte, String> {
     let perfil = require_sensitive_access()?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = empresa_do_suporte(&pool, perfil.id).await?;
     let texto = input.texto.trim().to_string();
     if texto.is_empty() || texto.chars().count() > MAX_TEXTO {
         return Err("Descreva o problema (até 4000 caracteres).".to_string());
     }
     let imagens = decodificar_imagens(&input.imagens)?;
     let token = token_suporte().ok_or("Suporte não configurado neste computador. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
-    let pool = get_pool().await.map_err(|e| e.to_string())?;
     let canal = canal_configurado(&pool).await?.ok_or("Canal do suporte não configurado. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
 
     let tela = tela_do_diagnostico(input.tela.as_deref());
     let versao = env!("CARGO_PKG_VERSION");
@@ -710,6 +771,12 @@ pub struct RespostaNova {
     pub automatica: bool,
 }
 
+const CHAMADOS_ABERTOS_SQL: &str =
+    "SELECT id, slack_canal, slack_thread_ts FROM suporte_chamados
+     WHERE empresa_id = $1 AND profile_id = $2 AND situacao = 'aberto'
+       AND slack_canal IS NOT NULL AND slack_thread_ts IS NOT NULL
+     ORDER BY id";
+
 /// Busca na thread de cada chamado aberto do perfil as respostas que ainda não estão no banco.
 /// Chamado em segundo plano (a cada poucos segundos): não renova a sessão. Devolve só o que
 /// entrou agora, para o aviso; os outros computadores veem pela atualização ao vivo.
@@ -720,18 +787,12 @@ pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<Resp
     let Some(token) = token_suporte() else { return Ok(Vec::new()) };
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
-    let abertos: Vec<(i32, String, String)> = sqlx::query_as(
-        "SELECT id, slack_canal, slack_thread_ts FROM suporte_chamados
-         WHERE empresa_id = $1 AND profile_id = $2 AND situacao = 'aberto'
-           AND slack_canal IS NOT NULL AND slack_thread_ts IS NOT NULL
-           AND criado_em > NOW() - INTERVAL '30 days'
-         ORDER BY id DESC LIMIT 10",
-    )
-    .bind(empresa_id)
-    .bind(perfil.id)
-    .fetch_all(&pool)
-    .await
-    .map_err(super::operator_errors::mapear_erro_sql)?;
+    let abertos: Vec<(i32, String, String)> = sqlx::query_as(CHAMADOS_ABERTOS_SQL)
+        .bind(empresa_id)
+        .bind(perfil.id)
+        .fetch_all(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     if abertos.is_empty() {
         return Ok(Vec::new());
     }
@@ -862,14 +923,14 @@ pub struct ResponderChamadoInput {
 #[instrument(skip_all)]
 pub async fn responder_chamado_suporte(input: ResponderChamadoInput) -> Result<ChamadoSuporte, String> {
     let perfil = require_sensitive_access()?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = empresa_do_suporte(&pool, perfil.id).await?;
     let texto = input.texto.trim().to_string();
     if texto.is_empty() || texto.chars().count() > MAX_TEXTO {
         return Err("Escreva a mensagem (até 4000 caracteres).".to_string());
     }
     let imagens = decodificar_imagens(&input.imagens)?;
     let token = token_suporte().ok_or("Suporte não configurado neste computador. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
-    let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
     let (situacao, canal, thread_ts) = thread_do_chamado(&pool, empresa_id, perfil.id, input.id).await?;
     if situacao != "aberto" {
         return Err("Este chamado já foi resolvido. Abra um novo para outro assunto.".to_string());
@@ -932,9 +993,9 @@ pub(crate) fn texto_do_retorno(resolvido: bool, perfil: &str) -> String {
 #[instrument(skip_all)]
 pub async fn retorno_chamado_suporte(id: i32, resolvido: bool) -> Result<ChamadoSuporte, String> {
     let perfil = require_sensitive_access()?;
-    let token = token_suporte().ok_or("Suporte não configurado neste computador. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = empresa_do_suporte(&pool, perfil.id).await?;
+    let token = token_suporte().ok_or("Suporte não configurado neste computador. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
     let (situacao, canal, thread_ts) = thread_do_chamado(&pool, empresa_id, perfil.id, id).await?;
     if situacao != "aberto" {
         return Err("Este chamado já foi resolvido.".to_string());
@@ -974,6 +1035,13 @@ pub async fn retorno_chamado_suporte(id: i32, resolvido: bool) -> Result<Chamado
 mod tests {
     use super::{canal_valido, conferir, decodificar_imagens, montar_mensagem, ImagemChamado};
     use serde_json::json;
+
+    #[test]
+    fn suporte_so_autoriza_o_id_da_empresa_elegivel() {
+        assert!(super::validar_empresa_suporte(3, Some(3)).is_ok());
+        assert!(super::validar_empresa_suporte(4, Some(3)).is_err());
+        assert!(super::validar_empresa_suporte(3, None).is_err());
+    }
 
     #[test]
     fn token_do_cofre_vale_mais_que_o_da_instalacao() {
@@ -1043,11 +1111,11 @@ mod tests {
 
     #[test]
     fn mensagem_leva_texto_citado_contexto_e_erro() {
-        let texto = montar_mensagem(12, "Ivan", "TECNICO", "Não salva\nfica girando", Some("/equipamentos/10"), Some("0.6.4"), Some("ERR ```x```"));
+        let texto = montar_mensagem(12, "Ivan", "TECNICO", "Não salva\nfica girando", Some("/equipamentos/10"), Some("0.6.4"), Some("AutoOS — relatório de erro"));
         assert!(texto.starts_with(":sos: *Chamado #12* — Ivan (TECNICO)"));
         assert!(texto.contains("> Não salva\n> fica girando"));
         assert!(texto.contains("*Tela:* /equipamentos/10 · *Versão:* 0.6.4"));
-        assert!(texto.contains("*Erro:*\n```ERR '''x'''```"));
+        assert!(texto.contains("*Erro:*\n```AutoOS — relatório de erro```"));
         let simples = montar_mensagem(1, "Ana", "ATENDENTE", "Oi", None, None, None);
         assert!(!simples.contains("Tela") && !simples.contains("Erro"));
     }
@@ -1086,3 +1154,4 @@ fn relatorio_externo_retem_apenas_metadados_permitidos() {
     }
     assert!(montar_mensagem(1, "Perfil", "Papel", "Texto", tela, None, Some(&limpo)).contains(&limpo));
 }
+
