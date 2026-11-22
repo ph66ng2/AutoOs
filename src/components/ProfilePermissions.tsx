@@ -33,8 +33,9 @@ export function ProfilePermissions({
         Permissões adicionais
       </legend>
       <p className="text-sm text-muted-foreground">
-        Sem liberações adicionais, a pessoa mantém apenas o acesso operacional
-        básico. As restrições de cada módulo continuam valendo.
+        {permissions.length === 0
+          ? "Nenhuma permissão adicional selecionada. O acesso operacional básico continua disponível."
+          : "As permissões marcadas complementam o acesso operacional básico."}
       </p>
       {restrito && (
         <p className="text-xs text-status-wait">
