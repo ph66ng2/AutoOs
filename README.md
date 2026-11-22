@@ -22,6 +22,8 @@ O projeto não está mais em fase de scaffold. O estado atual é um app Tauri + 
 - Consulta pública de etapa por link individual, com revogação e QR code
 - Perfis locais com PIN, permissões granulares e auditoria mínima
 - O envio operacional de e-mails usa o SMTP já configurado e exige sessão com PIN desbloqueado; a ordem de entrada só é enviada com o PDF anexado. Consultar ou alterar a configuração SMTP exige a permissão `CONFIG_SMTP`.
+- Depois de salvar uma Nova entrada, o AutoOS abre a OS criada. Entradas abertas a partir do cadastro de clientes voltam ao contexto do cliente.
+- Em **Aguardando aprovação**, quem pode elaborar orçamentos ou executar ações financeiras pode usar **Reenviar orçamento por e-mail** no menu da OS. O envio usa o SMTP e mantém o status e o prazo da OS.
 - O envio operacional de WhatsApp usa a API já configurada e exige sessão com PIN desbloqueado; consultar ou alterar a configuração da API exige a permissão `CONFIG_WHATSAPP`.
 - A criação de perfis fica em `Perfil > Criar perfil` e exige uma sessão com permissão para gerenciar perfis. Informe nome, tipo de acesso, permissões e PIN com confirmação. Depois de criar, use `Ver perfis e decidir` para entrar com o PIN do novo perfil. O perfil ativo só muda após validar o PIN de destino.
 - Painel de conferência do schema em `Configurações > Segurança`
