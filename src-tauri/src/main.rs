@@ -308,6 +308,7 @@ fn main() {
             commands::smtp::salvar_config_smtp,
             commands::smtp::carregar_config_smtp,
             commands::smtp::enviar_email,
+            commands::smtp::copia_gerencia_da_empresa,
             // WhatsApp
             commands::whatsapp::salvar_config_whatsapp,
             commands::whatsapp::carregar_config_whatsapp,

@@ -318,7 +318,10 @@ export async function enviarEmailOrcamentoPortal(
       return resultado;
     }
 
+    // Cópia interna só para o técnico da empresa da sessão e, se for o caso, a gerência
+    // (lib/copia-gerencia); sem nenhum dos dois, não há cópia a enviar.
     const [principal, ...restoCc] = montarCcs(emailTecnicoPorNome(verificacao.tecnico_nome));
+    if (!principal) return resultado;
     try {
       const copia: EmailSendRequest = {
         destinatario: principal,

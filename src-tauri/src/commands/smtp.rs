@@ -12,6 +12,7 @@ use crate::commands::types::{
 use crate::commands::auth::{
     record_security_event, require_permission, require_sensitive_access, PERMISSION_COMMUNICATION_SETTINGS,
 };
+use crate::db::get_pool;
 use keyring::Entry;
 use lettre::{
     Address,
@@ -473,4 +474,47 @@ fn get_attachment_bytes(anexo: &EmailAttachmentInput) -> Result<Vec<u8>, String>
         "Anexo {} não tem bytes nem caminho",
         anexo.filename
     ))
+}
+
+/// A cópia fixa da gerência (CC_GERENCIA no frontend) é da BMITAG. Vale para a empresa da sessão
+/// quando a instalação tem uma só empresa ativa (instalações atuais, de empresa única) ou quando
+/// ela é a empresa vinculada ao canal de suporte (só a BMITAG, por desenho). Numa instalação com
+/// várias empresas e canal sem vínculo, nenhuma empresa leva a cópia.
+pub(crate) fn copia_gerencia_permitida(empresas_ativas: i64, empresa_vinculada: Option<i32>, empresa_id: i32) -> bool {
+    empresas_ativas == 1 || empresa_vinculada == Some(empresa_id)
+}
+
+/// Se os e-mails automáticos da empresa da sessão levam a cópia da gerência. Lido sozinho quando
+/// a sessão muda: exige a sessão desbloqueada, mas não a renova.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn copia_gerencia_da_empresa() -> Result<bool, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = crate::commands::auth::require_active_session_company_id_without_touch(&pool).await?;
+    let (empresas_ativas, vinculada): (i64, Option<i32>) = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM empresas WHERE LOWER(status) = 'ativo'),
+                (SELECT suporte_slack_empresa_id FROM configuracoes_sistema WHERE id = 1)",
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(copia_gerencia_permitida(empresas_ativas, vinculada, empresa_id))
+}
+
+#[cfg(test)]
+mod copia_gerencia_tests {
+    use super::copia_gerencia_permitida;
+
+    #[test]
+    fn empresa_unica_mantem_a_copia() {
+        assert!(copia_gerencia_permitida(1, None, 5));
+        assert!(copia_gerencia_permitida(1, Some(9), 5));
+    }
+
+    #[test]
+    fn varias_empresas_so_a_vinculada_ao_suporte() {
+        assert!(copia_gerencia_permitida(2, Some(5), 5));
+        assert!(!copia_gerencia_permitida(2, Some(9), 5));
+        assert!(!copia_gerencia_permitida(3, None, 5));
+    }
 }
