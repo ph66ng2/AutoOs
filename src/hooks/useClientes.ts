@@ -84,16 +84,14 @@ export function useClientes(params?: UseClientesParams) {
     carregar();
   }, [carregar]);
 
-  // Outro computador mudou algo desta lista: recarrega em silêncio e destaca o que mudou.
-
+  // Outro computador mudou algo desta lista: recarrega em silêncio (segundo plano, sem renovar
+  // a sessão) e destaca o que mudou. Equipamentos entram porque o filtro "Com OS aberta", a
+  // contagem de OS abertas e o último atendimento de cada cliente dependem deles.
   const { destaques, lembrar } = useDestaquesAoVivo(clientes, (item) => item.id, (item) => JSON.stringify(item));
 
-  useAtualizacaoAoVivo(["clientes", "cliente_contatos"], () => {
-
+  useAtualizacaoAoVivo(["clientes", "cliente_contatos", "equipamentos"], () => {
     lembrar();
-
     void carregar({ silencioso: true });
-
   });
 
   /**
