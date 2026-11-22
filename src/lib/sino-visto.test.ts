@@ -1,43 +1,54 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { contarNovos, lerVistos, marcarVistos } from "@/lib/sino-visto";
+import { aoAbrir, comChaves, contarNovos, gravarVistos, lerVistos, subirMarcaPortal, type Vistos } from "@/lib/sino-visto";
 
-describe("sino visto", () => {
+const vistos = (chaves: string[], portalAte = 0): Vistos => ({ chaves: new Set(chaves), portalAte });
+
+describe("regras do visto do sino", () => {
   beforeEach(() => localStorage.clear());
 
-  it("abrir marca as não lidas de agora como vistas; só o que chega depois conta", () => {
-    let vistos = lerVistos(7);
-    expect(contarNovos(["aviso:a"], vistos)).toBe(1);
-    vistos = marcarVistos(7, vistos, ["aviso:a"], 0);
-    expect(contarNovos(["aviso:a"], vistos)).toBe(0);
-    expect(contarNovos(["aviso:a", "aviso:b"], vistos)).toBe(1);
+  it("abrir: as não lidas de agora viram vistas; só o que chega depois conta", () => {
+    const aberto = aoAbrir(vistos([]), { chavesNaoLidas: ["aviso:a"], avisosCarregados: true, portalMaiorId: 0 });
+    expect(contarNovos(["aviso:a"], aberto)).toBe(0);
+    expect(contarNovos(["aviso:a", "aviso:b"], aberto)).toBe(1);
   });
 
-  it("guarda só as pendentes: lida sai, pendente continua vista (sem limite que a expulse)", () => {
+  it("abrir com os avisos carregados poda o que já foi lido (sem limite que expulse pendente)", () => {
     const muitas = Array.from({ length: 800 }, (_, i) => `aviso:${i}`);
-    let vistos = marcarVistos(7, lerVistos(7), muitas, 0);
-    vistos = marcarVistos(7, vistos, muitas.slice(1), 0);
-    expect(vistos.chaves.has("aviso:0")).toBe(false);
-    expect(contarNovos(muitas.slice(1), lerVistos(7))).toBe(0);
+    const depois = aoAbrir(vistos(muitas), { chavesNaoLidas: muitas.slice(1), avisosCarregados: true, portalMaiorId: 0 });
+    expect(depois.chaves.has("aviso:0")).toBe(false);
+    expect(contarNovos(muitas.slice(1), depois)).toBe(0);
   });
 
-  it("portal usa marca d'água que só sobe", () => {
-    let vistos = marcarVistos(7, lerVistos(7), [], 40);
-    expect(lerVistos(7).portalAte).toBe(40);
-    vistos = marcarVistos(7, vistos, [], 12);
-    expect(vistos.portalAte).toBe(40);
+  it("abrir antes de os avisos carregarem (ou com a busca falhando) mantém as chaves de aviso já vistas", () => {
+    const depois = aoAbrir(vistos(["aviso:a", "erro:1"]), { chavesNaoLidas: ["erro:2"], avisosCarregados: false, portalMaiorId: 0 });
+    expect([...depois.chaves].sort()).toEqual(["aviso:a", "erro:2"]);
+  });
+
+  it("marca do portal só sobe", () => {
+    expect(aoAbrir(vistos([], 40), { chavesNaoLidas: [], avisosCarregados: true, portalMaiorId: 12 }).portalAte).toBe(40);
+    expect(subirMarcaPortal(vistos([], 40), 41).portalAte).toBe(41);
+    const igual = vistos([], 40);
+    expect(subirMarcaPortal(igual, 39)).toBe(igual);
+  });
+
+  it("com o sino aberto, o que aparece entra no visto; sem nada novo, nada muda", () => {
+    const atual = vistos(["aviso:a"]);
+    expect(comChaves(atual, ["aviso:a"])).toBe(atual);
+    expect([...comChaves(atual, ["aviso:b"]).chaves]).toEqual(["aviso:a", "aviso:b"]);
+  });
+
+  it("grava e lê por perfil, neste computador; sem perfil não grava", () => {
+    gravarVistos(7, vistos(["aviso:a"], 5));
+    expect(lerVistos(7)).toEqual(vistos(["aviso:a"], 5));
+    expect(lerVistos(8).chaves.size).toBe(0);
+    gravarVistos(null, vistos(["aviso:x"]));
+    expect(lerVistos(null).chaves.size).toBe(0);
   });
 
   it("lê o formato antigo (lista de chaves) e tira a marca do portal dele", () => {
     localStorage.setItem("autoos:sino-visto:7", JSON.stringify(["aviso:a", "portal:9", "portal:31"]));
-    const vistos = lerVistos(7);
-    expect(vistos.portalAte).toBe(31);
-    expect([...vistos.chaves]).toEqual(["aviso:a"]);
-  });
-
-  it("guarda por perfil, neste computador", () => {
-    marcarVistos(7, lerVistos(7), ["aviso:a"], 0);
-    expect(lerVistos(7).chaves.has("aviso:a")).toBe(true);
-    expect(lerVistos(8).chaves.has("aviso:a")).toBe(false);
-    expect(lerVistos(null).chaves.size).toBe(0);
+    const lido = lerVistos(7);
+    expect(lido.portalAte).toBe(31);
+    expect([...lido.chaves]).toEqual(["aviso:a"]);
   });
 });

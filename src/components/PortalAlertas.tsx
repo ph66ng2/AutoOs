@@ -41,7 +41,8 @@ import { PREFIXO_TOAST_ERRO } from "@/hooks/useNotification";
 import { cn } from "@/lib/utils";
 import { destinoDoAviso, ROTULO_ABRIR_AVISO, VISUAL_AVISO } from "@/lib/avisos-internos";
 import { notificarSistema } from "@/lib/notificacao-sistema";
-import { contarNovos, lerVistos, marcarVistos, type Vistos } from "@/lib/sino-visto";
+import { contarNovos } from "@/lib/sino-visto";
+import { useVistoDoSino } from "@/hooks/useVistoDoSino";
 import type { AvisoInterno } from "@/types";
 import type { AlertaPortal } from "@/types";
 
@@ -159,6 +160,12 @@ export function encaixePainelNotificacoes(
   };
 }
 
+/** Maior id de alerta do portal ainda não lido (o que o painel mostra no topo). */
+async function buscarMaiorAlertaNaoLido(): Promise<number> {
+  const lista = await db.listarAlertasPortal(true, 1);
+  return lista[0]?.id ?? 0;
+}
+
 /**
  * `perfilId`: perfil ativo. Ao trocar de perfil, o sino esquece os avisos e o "lido" do anterior
  * e consulta de novo; respostas de consultas da sessão anterior são descartadas.
@@ -174,13 +181,6 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const [naoLidosPortal, setNaoLidosPortal] = useState(0);
   /** Maior id de alerta do portal não lido: vira a marca do "visto" ao abrir o sino. */
   const [portalMaiorId, setPortalMaiorId] = useState(0);
-  /** Alertas do portal não lidos que chegaram depois da última abertura (conta do banco). */
-  const [novosPortal, setNovosPortal] = useState(0);
-  const [vistos, setVistos] = useState<Vistos>(() => lerVistos(perfilId));
-  const vistosRef = useRef(vistos);
-  vistosRef.current = vistos;
-  /** Sobe a cada abertura do sino: conta do portal pedida antes dela não vale mais. */
-  const aberturas = useRef(0);
   const [avisos, setAvisos] = useState<AvisoInterno[]>([]);
   const avisosVistos = useRef<Set<string> | null>(null);
   /** A lista de avisos internos já veio do banco com sucesso (falha não conta como lista vazia). */
@@ -199,44 +199,21 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   const avisosNaoLidos = avisos.filter((aviso) => !aviso.lido).length;
   const naoLidos = (portalDesligado ? 0 : naoLidosPortal) + avisosNaoLidos;
   // O número do sino conta só o não lido que chegou depois da última abertura (visto ≠ lido).
+  // Regras e proteções do "visto" ficam em useVistoDoSino / sino-visto.ts.
   const chavesNaoLidasAvisos = avisos.filter((aviso) => !aviso.lido).map((aviso) => `aviso:${aviso.chave}`);
   const chavesErrosNaoLidos = erros.filter((item) => !item.lido).map((item) => `erro:${item.id}`);
-  const novos = contarNovos(chavesNaoLidasAvisos, vistos) + (portalDesligado ? 0 : novosPortal);
-  const errosNovos = contarNovos(chavesErrosNaoLidos, vistos);
+  const visto = useVistoDoSino({
+    perfilId,
+    aberto,
+    chavesNaoLidas: [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos],
+    buscarMaiorPortal: portalDesligado ? null : buscarMaiorAlertaNaoLido,
+  });
+  const novos = contarNovos(chavesNaoLidasAvisos, visto.vistos) + (portalDesligado ? 0 : visto.novosPortal);
+  const errosNovos = contarNovos(chavesErrosNaoLidos, visto.vistos);
   const abrirSino = () => {
-    const chaves = [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos];
-    const minhaGeracao = geracao.current;
-    aberturas.current += 1;
-    // Avisos internos ainda carregando ou com a busca falhando: as chaves já vistas ficam (a lista vazia de agora não quer
-    // dizer que foram lidas); a poda acontece numa abertura com a lista carregada.
-    const avisosCarregados = avisosCarregadosOk.current;
-    setVistos((atual) => marcarVistos(
-      perfilId,
-      atual,
-      avisosCarregados ? chaves : [...new Set([...[...atual.chaves].filter((chave) => chave.startsWith("aviso:")), ...chaves])],
-      portalMaiorId,
-    ));
-    setNovosPortal(0);
-    // A marca do portal pode estar atrasada (a lista da última consulta ainda não chegou): busca o
-    // maior não lido de agora, que é o que o painel mostra, e sobe a marca até ele.
-    if (!portalDesligado) {
-      void db.listarAlertasPortal(true, 1).then((lista) => {
-        const maior = lista[0]?.id ?? 0;
-        if (minhaGeracao !== geracao.current || maior <= vistosRef.current.portalAte) return;
-        setVistos((atual) => marcarVistos(perfilId, atual, [...atual.chaves], maior));
-      }).catch(() => undefined);
-    }
+    visto.abrir({ avisosCarregados: avisosCarregadosOk.current, portalMaiorId });
     setAberto(true);
   };
-  // Com o sino aberto, aviso ou erro que chega (ex.: a lista ainda carregava ao abrir) já está à
-  // vista no painel: entra no "visto" sem virar lido.
-  const chavesAbertas = [...chavesNaoLidasAvisos, ...chavesErrosNaoLidos].join("|");
-  useEffect(() => {
-    if (!aberto || !chavesAbertas) return;
-    const chaves = chavesAbertas.split("|");
-    if (chaves.every((chave) => vistos.chaves.has(chave))) return;
-    setVistos((atual) => marcarVistos(perfilId, atual, [...new Set([...atual.chaves, ...chaves])], atual.portalAte));
-  }, [aberto, chavesAbertas, perfilId, vistos]);
   const abrirSinoRef = useRef(abrirSino);
   abrirSinoRef.current = abrirSino;
   const portalDesligadoRef = useRef(portalDesligado);
@@ -299,16 +276,14 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     void verificarAvisos();
     const minhaGeracao = geracao.current;
     try {
-      const marca = vistosRef.current.portalAte;
-      const aberturaDaConsulta = aberturas.current;
+      const consulta = visto.iniciarConsultaPortal();
       const [total, depoisDaMarca] = await Promise.all([
         db.contarAlertasPortalNaoLidos(),
-        db.contarAlertasPortalNaoLidos(marca),
+        db.contarAlertasPortalNaoLidos(consulta.portalAte),
       ]);
       if (minhaGeracao !== geracao.current) return;
       setNaoLidosPortal(Number(total) || 0);
-      // Abriu o sino enquanto a conta chegava: ela é de antes da abertura.
-      if (marca === vistosRef.current.portalAte && aberturaDaConsulta === aberturas.current) setNovosPortal(Number(depoisDaMarca) || 0);
+      visto.registrarContaPortal(consulta, Number(depoisDaMarca) || 0);
       if (!total) setPortalMaiorId(0);
       if (!total) {
         ultimoVisto.current ??= 0;
@@ -345,6 +320,7 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
       // Sessão bloqueada ou banco sem a migration 0035: só os erros do app contam.
       setNaoLidosPortal(0);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- as funções do `visto` são estáveis
   }, [abrirAtendimento, verificarAvisos]);
   const verificarRef = useRef(verificar);
   verificarRef.current = verificar;
@@ -358,11 +334,7 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
     setAvisos([]);
     setNaoLidosPortal(0);
     setPortalMaiorId(0);
-    setNovosPortal(0);
-    // O ref já recebe o "visto" do perfil novo: a consulta logo abaixo usa a marca dele.
-    const vistosDoPerfil = lerVistos(perfilId);
-    vistosRef.current = vistosDoPerfil;
-    setVistos(vistosDoPerfil);
+    // O "visto" do perfil novo já foi carregado por useVistoDoSino (efeito declarado antes deste).
     avisosVistos.current = null;
     avisosCarregadosOk.current = false;
     ultimoVisto.current = null;
