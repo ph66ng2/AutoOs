@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "@/lib/db";
+import { argSegundoPlano } from "@/lib/ao-vivo";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import type { ResumoEstoque } from "@/types";
 
 /**
  * Números do topo de Insumos e peças. Falha silenciosa: os números somem, a lista continua.
  * O valor em estoque depende das permissões do perfil: ao trocar de perfil, bloquear ou mudar
- * permissões, o resumo anterior é descartado na hora e lido de novo.
+ * permissões, o resumo anterior é descartado na hora e lido de novo. Mudanças de outro
+ * computador (itens e OS esperando peça) releem em segundo plano, sem renovar a sessão.
  */
 export function useResumoEstoque() {
   const { status } = useSensitiveAccess();
@@ -16,10 +19,10 @@ export function useResumoEstoque() {
   const [resumo, setResumo] = useState<ResumoEstoque | null>(null);
   const pedido = useRef(0);
 
-  const carregar = useCallback(async () => {
+  const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
     const meu = ++pedido.current;
     try {
-      const dados = (await db.resumoEstoque()) ?? null;
+      const dados = (await db.resumoEstoque(...argSegundoPlano(opcoes?.silencioso === true))) ?? null;
       if (meu === pedido.current) setResumo(dados);
     } catch {
       if (meu === pedido.current) setResumo(null);
@@ -32,6 +35,10 @@ export function useResumoEstoque() {
     setResumo(null);
     void carregar();
   }, [carregar]);
+
+  useAtualizacaoAoVivo(["produtos", "equipamentos"], () => {
+    void carregar({ silencioso: true });
+  });
 
   return { resumo, recarregar: carregar };
 }

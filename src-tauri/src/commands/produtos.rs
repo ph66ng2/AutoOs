@@ -172,12 +172,12 @@ async fn preencher_ultima_movimentacao(pool: &PgPool, empresa_id: i32, items: &m
 }
 
 /// Números do topo de Insumos e peças. O valor em estoque usa o preço de custo e só
-/// volta para quem pode consultar despesas.
+/// volta para quem pode consultar despesas. `segundo_plano` (atualização ao vivo) não renova a sessão.
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn resumo_estoque() -> Result<ResumoEstoque, String> {
+pub async fn resumo_estoque(segundo_plano: Option<bool>) -> Result<ResumoEstoque, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = crate::commands::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let ver_valor = crate::commands::auth::session_has_permission(crate::commands::auth::PERMISSION_VIEW_EXPENSES);
     resumo_estoque_on_pool(&pool, empresa_id, ver_valor).await
 }
