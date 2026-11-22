@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConfigSuporte } from "@/hooks/useSuporte";
+import { EVENTO_CONFIG_SUPORTE } from "@/lib/suporte-ponte";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 
 /**
@@ -25,15 +26,17 @@ export function SuporteSlackCard() {
     try {
       await salvar(canal.trim(), token.trim() || null);
       setToken("");
+      window.dispatchEvent(new Event(EVENTO_CONFIG_SUPORTE));
       toast.success("Suporte configurado neste computador.");
     } catch (causa) {
-      toast.error(mensagemVisivelAoOperador(causa) ?? "Não foi possível salvar.");
+      toast.error(mensagemVisivelAoOperador(causa) ?? (typeof causa === "string" ? causa : "Não foi possível salvar."));
     } finally {
       setSalvando(false);
     }
   }
 
-  const precisaToken = !config?.token_neste_computador;
+  // Configuração legada multiempresa pode exigir vínculo antes de informar se há token.
+  const precisaToken = config?.token_neste_computador === false;
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">

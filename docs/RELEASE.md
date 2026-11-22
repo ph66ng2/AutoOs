@@ -147,10 +147,15 @@ A jornada N para N+1 usa o workflow `updater-homolog.yml`, a tag `updater-homolo
 
 ## Suporte pelo Slack
 
-O suporte pelo Slack exige um único cadastro de empresa com o CNPJ da BMITAG
-no PostgreSQL e que esse cadastro esteja ativo. O backend verifica se o perfil
-pertence a essa empresa antes de gravar ou publicar chamados e antes de
-salvar a configuração do canal.
+Com uma única empresa ativa, essa empresa pode usar o canal de suporte
+existente, inclusive se ele ainda estiver sem vínculo. Com várias empresas
+ativas, somente a empresa vinculada ao canal pode usar o suporte. Ao salvar
+o canal em Configurações › Integrações, o AutoOS grava a empresa da sessão.
+
+Se uma instalação multiempresa tiver um canal legado sem vínculo, o suporte
+fica indisponível até um administrador da empresa que recebe o suporte salvar
+o canal novamente. Depois do vínculo, as outras empresas ativas ficam sem
+acesso ao canal e à sua configuração.
 
 O AutoOS consulta até dez chamados abertos por ciclo, priorizando os que
 esperam há mais tempo. Abrir uma conversa consulta a thread correspondente

@@ -57,7 +57,7 @@ import { TourController } from "@/components/tour/TourController";
 import { profileAppearance } from "@/lib/profile-appearance";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { abrirPainelAtualizacao, useAtualizacaoDisponivel } from "@/lib/atualizacao-disponivel";
-import { registrarAbrirSuporte } from "@/lib/suporte-ponte";
+import { EVENTO_CONFIG_SUPORTE, registrarAbrirSuporte } from "@/lib/suporte-ponte";
 import { useBuscaRespostasSuporte } from "@/hooks/useBuscaRespostasSuporte";
 
 
@@ -151,6 +151,12 @@ export function Layout() {
 
   const perfilSuporte = sessaoAtiva && !connectionUnavailable ? status?.active_profile_id : null;
   const [perfilElegivel, setPerfilElegivel] = useState<number | null>(null);
+  const [versaoConfigSuporte, setVersaoConfigSuporte] = useState(0);
+  useEffect(() => {
+    const atualizar = () => setVersaoConfigSuporte((versao) => versao + 1);
+    window.addEventListener(EVENTO_CONFIG_SUPORTE, atualizar);
+    return () => window.removeEventListener(EVENTO_CONFIG_SUPORTE, atualizar);
+  }, []);
   const suporteHabilitado = perfilSuporte != null && perfilSuporte === perfilElegivel;
   useEffect(() => {
     let atual = true;
@@ -161,7 +167,7 @@ export function Layout() {
       }).catch(() => {});
     }
     return () => { atual = false; };
-  }, [perfilSuporte]);
+  }, [perfilSuporte, versaoConfigSuporte]);
 
   const visibleGroups = navGroups
     .map((grupo) => ({ ...grupo, itens: grupo.itens.filter((item) => navItemVisible(item, status) && (item.path !== "/suporte" || suporteHabilitado)) }))

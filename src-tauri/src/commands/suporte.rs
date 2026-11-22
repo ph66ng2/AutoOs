@@ -70,58 +70,65 @@ pub(crate) fn canal_valido(canal: &str) -> bool {
         && canal.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
 }
 
-// Mesmo CNPJ impresso nos documentos da empresa. A busca falha fechada em caso de duplicidade.
-const CNPJ_EMPRESA_SUPORTE: &str = "57522734000158";
-const EMPRESA_SUPORTE_SQL: &str =
-    "SELECT CASE WHEN COUNT(*) = 1 AND COUNT(*) FILTER (WHERE status = 'ativo') = 1
-                 THEN MIN(id) END
-       FROM empresas WHERE regexp_replace(cnpj, '[^0-9]', '', 'g') = $1";
+const SUPORTE_SEM_VINCULO: &str =
+    "Há várias empresas ativas e o canal de suporte está sem vínculo. Um administrador da empresa de suporte precisa salvar o canal novamente em Configurações › Integrações.";
 
-fn validar_empresa_suporte(empresa_id: i32, empresa_elegivel: Option<i32>) -> Result<(), String> {
-    if empresa_elegivel == Some(empresa_id) {
-        Ok(())
-    } else {
-        Err("O suporte pelo AutoOS está disponível apenas para a empresa BMITAG.".to_string())
+#[derive(Debug, FromRow)]
+struct DestinoSuporte {
+    empresa_perfil: Option<i32>,
+    empresa_vinculada: Option<i32>,
+    empresas_ativas: i64,
+    canal: Option<String>,
+}
+
+impl DestinoSuporte {
+    fn empresa_elegivel(&self) -> Result<Option<i32>, String> {
+        let Some(empresa_id) = self.empresa_perfil else { return Ok(None) };
+        match (self.empresas_ativas, self.empresa_vinculada) {
+            (1, _) => Ok(Some(empresa_id)),
+            (2.., None) => Err(SUPORTE_SEM_VINCULO.to_string()),
+            (2.., Some(vinculada)) if vinculada == empresa_id => Ok(Some(empresa_id)),
+            _ => Ok(None),
+        }
+    }
+
+    fn empresa_para_salvar(&self, administrador: bool) -> Result<i32, String> {
+        if let Some(empresa_id) = self.empresa_perfil.filter(|_| {
+            administrador && self.empresas_ativas > 1 && self.empresa_vinculada.is_none()
+        }) {
+            return Ok(empresa_id);
+        }
+        self.exigir_empresa_elegivel()
+    }
+
+    fn exigir_empresa_elegivel(&self) -> Result<i32, String> {
+        self.empresa_elegivel()?
+            .ok_or_else(|| "O suporte pelo Slack não está disponível para a empresa deste perfil.".to_string())
     }
 }
 
-async fn exigir_empresa_suporte(pool: &sqlx::PgPool, empresa_id: i32) -> Result<(), String> {
-    let elegivel = id_empresa_suporte(pool).await?;
-    validar_empresa_suporte(empresa_id, elegivel)
-}
-
-async fn id_empresa_suporte(pool: &sqlx::PgPool) -> Result<Option<i32>, String> {
-    sqlx::query_scalar(EMPRESA_SUPORTE_SQL)
-        .bind(CNPJ_EMPRESA_SUPORTE)
-        .fetch_one(pool)
-        .await
-        .map_err(super::operator_errors::mapear_erro_sql)
-}
-
-async fn empresa_do_perfil(pool: &sqlx::PgPool, perfil_id: i32) -> Result<Option<i32>, String> {
-    sqlx::query_scalar(
-        "SELECT e.id FROM security_profiles p
-         JOIN empresas e ON e.id = p.empresa_id AND LOWER(e.status) = 'ativo'
-         WHERE p.id = $1 AND p.ativo = true",
+async fn destino_suporte<'a>(
+    executor: impl sqlx::Executor<'a, Database = sqlx::Postgres>,
+    perfil_id: i32,
+) -> Result<DestinoSuporte, String> {
+    sqlx::query_as(
+        "SELECT
+            (SELECT e.id FROM security_profiles p
+             JOIN empresas e ON e.id = p.empresa_id AND LOWER(e.status) = 'ativo'
+             WHERE p.id = $1 AND p.ativo = true) AS empresa_perfil,
+            suporte_slack_empresa_id AS empresa_vinculada,
+            (SELECT COUNT(*) FROM empresas WHERE LOWER(status) = 'ativo') AS empresas_ativas,
+            NULLIF(BTRIM(suporte_slack_canal), '') AS canal
+         FROM configuracoes_sistema WHERE id = 1",
     )
     .bind(perfil_id)
-    .fetch_optional(pool)
+    .fetch_one(executor)
     .await
     .map_err(super::operator_errors::mapear_erro_sql)
 }
 
 async fn empresa_do_suporte(pool: &sqlx::PgPool, perfil_id: i32) -> Result<i32, String> {
-    let empresa_id = empresa_do_perfil(pool, perfil_id).await?.ok_or("Perfil sem empresa ativa.")?;
-    exigir_empresa_suporte(pool, empresa_id).await?;
-    Ok(empresa_id)
-}
-
-async fn canal_configurado(pool: &sqlx::PgPool) -> Result<Option<String>, String> {
-    let canal: Option<Option<String>> = sqlx::query_scalar("SELECT suporte_slack_canal FROM configuracoes_sistema WHERE id = 1")
-        .fetch_optional(pool)
-        .await
-        .map_err(super::operator_errors::mapear_erro_sql)?;
-    Ok(canal.flatten().filter(|c| !c.trim().is_empty()))
+    destino_suporte(pool, perfil_id).await?.exigir_empresa_elegivel()
 }
 
 // ─── API do Slack ──────────────────────────────────────────
@@ -241,14 +248,14 @@ pub async fn obter_config_suporte() -> Result<ConfigSuporte, String> {
     };
     let Ok(perfil) = perfil_da_leitura(Some(true)) else { return Ok(indisponivel) };
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = empresa_do_perfil(&pool, perfil.id).await?;
-    if empresa_id.is_none() || empresa_id != id_empresa_suporte(&pool).await? {
+    let destino = destino_suporte(&pool, perfil.id).await?;
+    if destino.empresa_elegivel()?.is_none() {
         return Ok(indisponivel);
     }
     Ok(ConfigSuporte {
         token_neste_computador: token_suporte().is_some(),
         token_da_instalacao: token_do_cofre().is_none() && token_da_instalacao().is_some(),
-        canal: canal_configurado(&pool).await?,
+        canal: destino.canal,
         empresa_elegivel: true,
     })
 }
@@ -266,11 +273,18 @@ pub struct ConfigSuporteInput {
 pub async fn salvar_config_suporte(input: ConfigSuporteInput) -> Result<ConfigSuporte, String> {
     let actor = require_permission(PERMISSION_COMMUNICATION_SETTINGS)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    empresa_do_suporte(&pool, actor.id).await?;
     let canal = input.canal.trim().to_string();
     if !canal_valido(&canal) {
         return Err("Informe o ID do canal do Slack (começa com C, ex.: C0CE5M6GTRV).".to_string());
     }
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    // Serializa as tentativas de vincular um canal legado sem empresa.
+    sqlx::query("SELECT id FROM configuracoes_sistema WHERE id = 1 FOR UPDATE")
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    let empresa_id = destino_suporte(&mut *tx, actor.id).await?
+        .empresa_para_salvar(actor.role == "ADMIN")?;
     let token = input.token.as_deref().map(str::trim).filter(|t| !t.is_empty());
     if let Some(token) = token {
         if !token.starts_with("xoxb-") {
@@ -283,15 +297,21 @@ pub async fn salvar_config_suporte(input: ConfigSuporteInput) -> Result<ConfigSu
     } else if token_suporte().is_none() {
         return Err("Informe o token do bot do suporte (xoxb-) neste computador.".to_string());
     }
-    sqlx::query("UPDATE configuracoes_sistema SET suporte_slack_canal = $1, updated_at = NOW() WHERE id = 1")
+    sqlx::query(
+        "UPDATE configuracoes_sistema
+         SET suporte_slack_canal = $1, suporte_slack_empresa_id = $2, updated_at = NOW()
+         WHERE id = 1",
+    )
         .bind(&canal)
-        .execute(&pool)
+        .bind(empresa_id)
+        .execute(&mut *tx)
         .await
         .map_err(super::operator_errors::mapear_erro_sql)?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
     record_security_event(
         "SUPORTE_SLACK_CONFIGURADO",
         Some(&actor),
-        format!("canal={canal}; token_novo={}", token.is_some()),
+        format!("canal={canal}; empresa_id={empresa_id}; token_novo={}", token.is_some()),
         true,
     )
     .await;
@@ -478,14 +498,15 @@ fn decodificar_imagens(imagens: &[ImagemChamado]) -> Result<Vec<(String, Vec<u8>
 pub async fn abrir_chamado_suporte(input: AbrirChamadoInput) -> Result<ChamadoSuporte, String> {
     let perfil = require_sensitive_access()?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = empresa_do_suporte(&pool, perfil.id).await?;
+    let destino = destino_suporte(&pool, perfil.id).await?;
+    let empresa_id = destino.exigir_empresa_elegivel()?;
     let texto = input.texto.trim().to_string();
     if texto.is_empty() || texto.chars().count() > MAX_TEXTO {
         return Err("Descreva o problema (até 4000 caracteres).".to_string());
     }
     let imagens = decodificar_imagens(&input.imagens)?;
     let token = token_suporte().ok_or("Suporte não configurado neste computador. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
-    let canal = canal_configurado(&pool).await?.ok_or("Canal do suporte não configurado. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
+    let canal = destino.canal.ok_or("Canal do suporte não configurado. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
 
     let tela = tela_do_diagnostico(input.tela.as_deref());
     let versao = env!("CARGO_PKG_VERSION");
@@ -1151,11 +1172,38 @@ mod tests {
     use super::{canal_valido, conferir, decodificar_imagens, montar_mensagem, ImagemChamado};
     use serde_json::json;
 
+    fn destino(perfil: Option<i32>, vinculada: Option<i32>, ativas: i64) -> super::DestinoSuporte {
+        super::DestinoSuporte {
+            empresa_perfil: perfil,
+            empresa_vinculada: vinculada,
+            empresas_ativas: ativas,
+            canal: None,
+        }
+    }
+
     #[test]
-    fn suporte_so_autoriza_o_id_da_empresa_elegivel() {
-        assert!(super::validar_empresa_suporte(3, Some(3)).is_ok());
-        assert!(super::validar_empresa_suporte(4, Some(3)).is_err());
-        assert!(super::validar_empresa_suporte(3, None).is_err());
+    fn empresa_unica_pode_usar_o_canal_legado() {
+        let legado = destino(Some(3), None, 1);
+        assert_eq!(legado.exigir_empresa_elegivel().unwrap(), 3);
+        assert_eq!(legado.empresa_para_salvar(true).unwrap(), 3);
+        assert!(destino(None, None, 0).exigir_empresa_elegivel().is_err());
+    }
+
+    #[test]
+    fn com_varias_empresas_so_a_vinculada_pode_usar_ou_editar_o_canal() {
+        assert_eq!(destino(Some(3), Some(3), 2).exigir_empresa_elegivel().unwrap(), 3);
+        let outra = destino(Some(4), Some(3), 2);
+        assert!(outra.exigir_empresa_elegivel().is_err());
+        assert!(outra.empresa_para_salvar(true).is_err());
+    }
+
+    #[test]
+    fn canal_sem_vinculo_exige_novo_salvamento_por_administrador() {
+        let legado = destino(Some(3), None, 2);
+        assert_eq!(legado.exigir_empresa_elegivel().unwrap_err(), super::SUPORTE_SEM_VINCULO);
+        assert!(legado.empresa_para_salvar(false).is_err());
+        assert_eq!(legado.empresa_para_salvar(true).unwrap(), 3);
+        assert!(destino(None, None, 2).empresa_para_salvar(true).is_err());
     }
 
     #[test]

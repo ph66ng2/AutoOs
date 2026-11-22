@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { linkPermitido } from "@/lib/suporte-links";
 
+export const EVENTO_CONFIG_SUPORTE = "autoos:config-suporte-alterada";
+
 /**
  * Ponte entre os avisos de erro (fora dos componentes) e a página Suporte. O Layout registra
  * a função de abrir só enquanto o banco está conectado: sem banco o chamado não pode ser
