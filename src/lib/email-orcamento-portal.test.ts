@@ -129,18 +129,14 @@ describe("email-orcamento-portal", () => {
     expect(copia.corpo_texto).toContain(SENHA_MASCARADA);
   });
 
-  it.each([
-    [false, false],
-    [true, false],
-    [true, true],
-  ])("envia o orçamento por e-mail com portal disponível=%s e respostas=%s", async (portalDisponivel, portalAtivo) => {
+  it.each([false, true])("congela uma versão no envio por e-mail com preparo de acesso=%s", async (portalAtivo) => {
     const r = await enviarEmailOrcamentoPortal(equip, verificacao, preparoBase({
-      portalDisponivel, portalAtivo, credenciais: null,
+      portalAtivo, credenciais: null,
     }));
 
     expect(r.cliente.enviado).toBe(true);
-    expect(mockPublicarOrcamento).toHaveBeenCalledTimes(portalDisponivel ? 1 : 0);
-    if (portalDisponivel) expect(mockPublicarOrcamento).toHaveBeenCalledWith(equip.id);
+    expect(mockPublicarOrcamento).toHaveBeenCalledExactlyOnceWith(equip.id);
+    expect(mockPublicarOrcamento.mock.invocationCallOrder[0]).toBeLessThan(mockEnviarEmail.mock.invocationCallOrder[0]);
     expect(mockEnviarEmail).toHaveBeenNthCalledWith(1, expect.objectContaining({
       orcamento_equipamento_id: equip.id,
     }));

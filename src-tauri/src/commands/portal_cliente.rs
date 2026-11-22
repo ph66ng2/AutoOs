@@ -514,7 +514,6 @@ pub(crate) struct CredenciaisPortal {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreparoAcessoPortal {
     pub destinatario: DestinatarioOrcamento,
-    pub portal_disponivel: bool,
     pub portal_ativo: bool,
     /// Só quando uma senha foi criada agora; é a única vez em que ela aparece.
     pub credenciais: Option<CredenciaisPortal>,
@@ -562,18 +561,15 @@ pub async fn preparar_acesso_portal(
     let map = super::operator_errors::mapear_erro_sql;
     let mut tx = pool.begin().await.map_err(map)?;
 
-    let (portal_disponivel, portal_ativo): (bool, bool) = sqlx::query_as(
-        "SELECT public.autoos_portal_ligado($1), public.autoos_portal_respostas_ligadas($1)",
-    )
-    .bind(empresa_id)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(map)?;
+    let portal_ativo: bool = sqlx::query_scalar("SELECT public.autoos_portal_respostas_ligadas($1)")
+        .bind(empresa_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(map)?;
     let destinatario = resolver_destinatario_orcamento(&mut *tx, empresa_id, equipamento_id).await?;
     let Some(contato_id) = destinatario.contato_id.filter(|_| portal_ativo) else {
         return Ok(PreparoAcessoPortal {
             destinatario,
-            portal_disponivel,
             portal_ativo,
             credenciais: None,
             senha_existente: false,
@@ -662,7 +658,6 @@ pub async fn preparar_acesso_portal(
 
     Ok(PreparoAcessoPortal {
         destinatario,
-        portal_disponivel,
         portal_ativo,
         senha_existente: credenciais.is_none(),
         credenciais,
@@ -681,8 +676,7 @@ pub async fn publicar_orcamento_portal(equipamento_id: i32) -> Result<OrcamentoP
     publicar_versao(&pool, empresa_id, &actor, equipamento_id).await
 }
 
-/// Cria ou reaproveita a versão publicada de uma OS. Cada chamada tem a sua transação e grava o
-/// evento `BUDGET_PUBLISHED_TO_PORTAL`.
+/// Cria ou reaproveita a versão congelada de uma OS e audita após confirmar a transação.
 async fn publicar_versao(
     pool: &PgPool,
     empresa_id: i32,
@@ -691,7 +685,6 @@ async fn publicar_versao(
 ) -> Result<OrcamentoPublicado, String> {
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
-    super::orcamento_decisao::exigir_portal_ligado_para_publicar(&mut tx, empresa_id).await?;
     let antes: Option<i64> = sqlx::query_scalar(
         "SELECT MAX(id) FROM orcamento_versoes WHERE equipamento_id = $1 AND empresa_id = $2",
     )
@@ -704,14 +697,41 @@ async fn publicar_versao(
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     let nova = antes.is_none_or(|id| versao.id > id);
-    record_security_event(
-        "BUDGET_PUBLISHED_TO_PORTAL",
-        Some(actor),
+    auditar_versao_orcamento(
+        pool,
+        empresa_id,
+        actor,
         format!("empresa_id={empresa_id}; equipamento_id={equipamento_id}; versao={}; nova={nova}", versao.numero),
-        true,
     )
     .await;
     Ok(OrcamentoPublicado { versao_id: versao.id, versao: versao.numero, nova })
+}
+
+pub(crate) async fn auditar_versao_orcamento(
+    pool: &PgPool,
+    empresa_id: i32,
+    actor: &SecurityProfileSummary,
+    detalhes: String,
+) {
+    // A versão já foi gravada. A leitura do portal serve apenas à auditoria.
+    match sqlx::query_scalar::<_, bool>("SELECT public.autoos_portal_ligado($1)")
+        .bind(empresa_id)
+        .fetch_one(pool)
+        .await
+    {
+        Ok(ligado) => {
+            record_security_event(evento_versao_orcamento(ligado), Some(actor), detalhes, true).await;
+        }
+        Err(erro) => tracing::warn!(empresa_id, %erro, "Falha ao consultar o portal para auditar a versão do orçamento"),
+    }
+}
+
+fn evento_versao_orcamento(portal_ligado: bool) -> &'static str {
+    if portal_ligado {
+        "BUDGET_PUBLISHED_TO_PORTAL"
+    } else {
+        "BUDGET_VERSION_FROZEN"
+    }
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -867,6 +887,12 @@ pub async fn salvar_contato_portal_empresa(input: ContatoPortalEmpresa) -> Resul
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn estado_do_portal_define_o_evento_da_versao() {
+        assert_eq!(super::evento_versao_orcamento(true), "BUDGET_PUBLISHED_TO_PORTAL");
+        assert_eq!(super::evento_versao_orcamento(false), "BUDGET_VERSION_FROZEN");
+    }
+
     use super::*;
 
     #[test]

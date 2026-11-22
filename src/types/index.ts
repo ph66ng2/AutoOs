@@ -238,7 +238,6 @@ export interface DestinatarioOrcamento {
 
 export interface PreparoAcessoPortal {
   destinatario: DestinatarioOrcamento;
-  portalDisponivel?: boolean;
   portalAtivo: boolean;
   credenciais: { usuario: string; senha: string } | null;
   senhaExistente: boolean;
