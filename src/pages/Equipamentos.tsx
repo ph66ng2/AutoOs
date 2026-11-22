@@ -128,6 +128,7 @@ import {
 } from "@/components/equipamentos/VerificacaoTecnica";
 import { HistoricoComunicacoes } from "@/components/equipamentos/HistoricoComunicacoes";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
+import { ChecklistVerificacao } from "@/components/equipamentos/ChecklistVerificacao";
 import { ContatoResponsavelSelector } from "@/components/equipamentos/ContatoResponsavelSelector";
 import { EnvioManualOrcamentoDialog } from "@/components/equipamentos/EnvioManualOrcamentoDialog";
 import { QuemRecebeOrcamentoDialog } from "@/components/equipamentos/QuemRecebeOrcamentoDialog";
@@ -3063,19 +3064,7 @@ export default function Equipamentos() {
         </div>
         <div className="text-sm"><p className="text-muted-foreground mb-1">Problema Relatado:</p><p className="bg-accent/50 p-2 rounded">{v.problema_relatado}</p></div>
         {v.diagnostico && <div className="text-sm"><p className="text-muted-foreground mb-1">Diagnóstico:</p><p className="bg-accent/50 p-2 rounded">{v.diagnostico}</p></div>}
-        {itens.length > 0 && (
-          <div>
-            <p className="text-sm font-medium mb-2">Checklist</p>
-            <div className="space-y-1">
-              {itens.map(item => (
-                <div key={item.id} className="flex items-center gap-2 text-sm">
-                  {item.verificado ? <CheckCircle className="h-4 w-4 text-status-ok" /> : <XCircle className="h-4 w-4 text-destructive" />}
-                  <span className={item.verificado ? "" : "text-muted-foreground"}>{item.nome}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <ChecklistVerificacao itens={itens} />
         {servs.length > 0 && (
           <div>
             <p className="text-sm font-medium mb-2">Serviços</p>
@@ -4176,8 +4165,8 @@ export default function Equipamentos() {
                     {selecionado.defeito_relatado && (
                       <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Defeito relatado</p><p className="whitespace-pre-wrap">{selecionado.defeito_relatado}</p></div>
                     )}
-                    {selecionado.observacoes && (
-                      <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Observação física</p><p className="whitespace-pre-wrap">{selecionado.observacoes}</p></div>
+                    {removerTecnicoInicialDasObservacoes(selecionado.observacoes) && (
+                      <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Observação física</p><p className="whitespace-pre-wrap">{removerTecnicoInicialDasObservacoes(selecionado.observacoes)}</p></div>
                     )}
                   </CardContent>
                 </Card>
