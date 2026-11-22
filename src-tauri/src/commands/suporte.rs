@@ -255,7 +255,6 @@ pub struct ImagemChamado {
 pub struct AbrirChamadoInput {
     pub texto: String,
     pub tela: Option<String>,
-    pub versao: Option<String>,
     /// Relatório técnico do erro (quando o chamado vem de "Enviar ao suporte").
     pub relatorio_erro: Option<String>,
     #[serde(default)]
@@ -288,7 +287,76 @@ pub struct MensagemSuporte {
     pub criado_em: String,
 }
 
-/// Texto da mensagem que abre a thread. O atendimento lê tudo daqui.
+/// Somente rotas conhecidas, sem IDs, parâmetros ou segmentos vindos do usuário.
+fn tela_do_diagnostico(tela: Option<&str>) -> Option<&'static str> {
+    let segmento = tela?.strip_prefix('/')?.split(['/', '?', '#']).next()?;
+    match segmento {
+        "" => Some("/"),
+        "equipamentos" => Some("/equipamentos"),
+        "clientes" => Some("/clientes"),
+        "insumos" => Some("/insumos"),
+        "vendas" => Some("/vendas"),
+        "servicos" => Some("/servicos"),
+        "gastos" => Some("/gastos"),
+        "configuracoes" => Some("/configuracoes"),
+        "balcao" => Some("/balcao"),
+        "perfil" => Some("/perfil"),
+        "equipe" => Some("/equipe"),
+        "suporte" => Some("/suporte"),
+        _ => None,
+    }
+}
+
+/// A frase vem do catálogo do backend. Respostas livres de comandos podem conter dados
+/// sensíveis em qualquer formato, inclusive credenciais sem marcador ou separador.
+fn sanitizar_relatorio(bruto: &str, tela: Option<&str>) -> String {
+    use chrono::{DateTime, Utc};
+
+    let campo = |prefixo: &str| bruto.lines().take(8)
+        .find_map(|linha| linha.strip_prefix(prefixo));
+    let codigo = campo("Código: ").unwrap_or_default();
+    let (codigo, mensagem) = if codigo == "AUTOOS:23505" || codigo.starts_with("AUTOOS:23505:") {
+        ("AUTOOS:23505", "Cadastro duplicado.")
+    } else if codigo == "AUTOOS:DB" || codigo.starts_with("AUTOOS:DB:") {
+        ("AUTOOS:DB", "Falha no banco de dados.")
+    } else if codigo == "AUTOOS:OP" {
+        ("AUTOOS:OP", "Falha operacional.")
+    } else {
+        ("COMANDO", "Falha ao executar uma ação. Detalhes disponíveis localmente.")
+    };
+    let data = campo("Data/Hora: ")
+        .and_then(|valor| DateTime::parse_from_rfc3339(valor.split(' ').next()?).ok())
+        .map(|data| data.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+    let versao = env!("CARGO_PKG_VERSION");
+    let tela = tela.unwrap_or("indisponível");
+    let mut relatorio = format!(
+        "AutoOS — relatório de erro\nVersão: {versao}\nTela: {tela}\nCódigo: {codigo}\nMensagem: {mensagem}\nData/Hora: {}",
+        data.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+    );
+    for (prefixo, valida) in [
+        ("Registro local: ", registro_local_valido as fn(&str) -> bool),
+        ("Referência no log: ", referencia_log_valida),
+    ] {
+        if let Some(valor) = campo(prefixo).filter(|valor| valida(valor)) {
+            relatorio.push_str(&format!("\n{prefixo}{valor}"));
+        }
+    }
+    relatorio
+}
+
+fn registro_local_valido(valor: &str) -> bool {
+    valor.split_once('-').is_some_and(|(data, sufixo)| {
+        (8..=10).contains(&data.len())
+            && sufixo.len() == 5
+            && data.bytes().chain(sufixo.bytes()).all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
+    })
+}
+
+fn referencia_log_valida(valor: &str) -> bool {
+    valor.len() == 8 && valor.bytes().all(|b| b"ABCDEFGHJKMNPQRSTUVWXYZ23456789".contains(&b))
+}
+
 pub(crate) fn montar_mensagem(
     numero: i32,
     perfil: &str,
@@ -311,8 +379,7 @@ pub(crate) fn montar_mensagem(
         partes.push(contexto.join(" · "));
     }
     if let Some(relatorio) = relatorio.filter(|r| !r.trim().is_empty()) {
-        let limpo: String = relatorio.trim().replace("```", "'''").chars().take(2500).collect();
-        partes.push(format!("*Erro:*\n```{limpo}```"));
+        partes.push(format!("*Erro:*\n```{relatorio}```"));
     }
     partes.join("\n\n")
 }
@@ -359,10 +426,15 @@ pub async fn abrir_chamado_suporte(input: AbrirChamadoInput) -> Result<ChamadoSu
     let canal = canal_configurado(&pool).await?.ok_or("Canal do suporte não configurado. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
     let empresa_id = require_active_session_company_id(&pool).await?;
 
+    let tela = tela_do_diagnostico(input.tela.as_deref());
+    let versao = env!("CARGO_PKG_VERSION");
+    let relatorio = input.relatorio_erro.as_deref()
+        .filter(|texto| !texto.trim().is_empty())
+        .map(|texto| sanitizar_relatorio(texto, tela));
     let contexto = json!({
-        "tela": input.tela,
-        "versao": input.versao,
-        "relatorio_erro": input.relatorio_erro,
+        "tela": tela,
+        "versao": versao,
+        "relatorio_erro": relatorio,
         "prints": imagens.len(),
         "perfil": perfil.nome,
     });
@@ -387,7 +459,7 @@ pub async fn abrir_chamado_suporte(input: AbrirChamadoInput) -> Result<ChamadoSu
         &texto,
         input.tela.as_deref(),
         input.versao.as_deref(),
-        input.relatorio_erro.as_deref(),
+        relatorio.as_deref(),
     );
     let postado = slack_post(&client, &token, "chat.postMessage", &json!({ "channel": canal, "text": mensagem })).await?;
     let thread_ts = postado.get("ts").and_then(Value::as_str).ok_or("Slack não devolveu a mensagem.")?.to_string();
@@ -997,4 +1069,20 @@ mod tests {
         assert!(decodificar_imagens(&muitos).is_err());
         assert!(decodificar_imagens(&[ImagemChamado { nome: "a.png".into(), base64: "***".into() }]).is_err());
     }
+}
+
+#[cfg(test)]
+#[test]
+fn relatorio_externo_retem_apenas_metadados_permitidos() {
+    let bruto = "Código: AUTOOS:DB:42P01\nRegistro local: mk123456-abc19\nReferência no log: ABCD2345\nData/Hora: 2026-11-22T12:00:00Z\nMensagem: user@example.invalid senha=segredo 12345678901\nResposta original: https://user:senha@example.invalid";
+    let tela = tela_do_diagnostico(Some("/equipamentos/12345678901?privado=segredo"));
+    let limpo = sanitizar_relatorio(bruto, tela);
+    assert!(limpo.contains("Tela: /equipamentos\nCódigo: AUTOOS:DB\nMensagem: Falha no banco de dados."));
+    assert!(limpo.contains("2026-11-22T12:00:00.000Z"));
+    assert!(limpo.contains("Registro local: mk123456-abc19"));
+    assert!(limpo.contains("Referência no log: ABCD2345"));
+    for removido in ["42P01", "example.invalid", "senha", "segredo", "12345678901", "privado"] {
+        assert!(!limpo.contains(removido), "{removido}");
+    }
+    assert!(montar_mensagem(1, "Perfil", "Papel", "Texto", tela, None, Some(&limpo)).contains(&limpo));
 }
