@@ -91,6 +91,10 @@ describe("useStatusEquipamento", () => {
 
     expect(resposta).toEqual({
       sucesso: true,
+      salvo: {
+        equipamento: expect.objectContaining({ status: "AGUARDANDO_APROVACAO", valor_orcamento: 80 }),
+        verificacao: verificacaoBase,
+      },
       canais: {
         whatsapp: { enviado: true },
         email: { enviado: true },
@@ -155,6 +159,7 @@ describe("useStatusEquipamento", () => {
 
     expect(db.atualizarStatusEquipamento).not.toHaveBeenCalled();
     expect(resposta?.sucesso).toBe(true);
+    expect(resposta?.salvo?.equipamento.status).toBe("AGUARDANDO_APROVACAO");
     expect(resposta?.canais?.whatsapp?.enviado).toBe(false);
     expect(resposta?.canais?.email?.enviado).toBe(false);
     expect(resposta?.avisos?.[0]).toContain("boom");

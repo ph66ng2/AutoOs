@@ -21,7 +21,7 @@ import { useState } from "react";
 import { db } from "@/lib/db";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
-import type { Equipamento, ResultadoAutomacao } from "@/types";
+import type { Equipamento, ResultadoAutomacao, Verificacao } from "@/types";
 import type { DadosVerificacao } from "@/components/equipamentos/VerificacaoTecnica";
 import { resolveRecipient } from "@/lib/recipient-resolver";
 import { calcularPrazoAprovacao, enviarOrcamentoAoCliente } from "@/lib/envio-orcamento";
@@ -29,6 +29,7 @@ import { calcularPrazoAprovacao, enviarOrcamentoAoCliente } from "@/lib/envio-or
 /** Resultado de `finalizarVerificacao`: contrato de `ResultadoAutomacao` + avisos do envio. */
 export interface ResultadoFinalizarVerificacao extends ResultadoAutomacao {
   avisos?: string[];
+  salvo?: { equipamento: Equipamento; verificacao: Verificacao };
 }
 
 /**
@@ -48,7 +49,7 @@ export function useStatusEquipamento() {
    * Fluxo: EM_VERIFICACAO → AGUARDANDO_APROVACAO (uma transação no backend) + notificações
    */
   async function finalizarVerificacao(
-    equipamento: Equipamento,
+    _equipamento: Equipamento,
     dadosVerificacao: DadosVerificacao,
     _emailContato?: string,
     _emailDestinatario?: string,
@@ -58,14 +59,17 @@ export function useStatusEquipamento() {
       // 1. Uma gravação só: itens da verificação + AGUARDANDO_APROVACAO com valor e prazo (3 dias
       //    úteis). Se algo falha, nada fica pela metade (antes, itens gravados com valor_orcamento 0).
       //    OS só de garantia já sai APROVADO na mesma transação.
-      const { equipamento: equipamentoAposVerificacao, verificacao } = await db.salvarVerificacao({
+      const salvo = await db.salvarVerificacao({
         ...dadosVerificacao,
         enviar_para_aprovacao_prazo: calcularPrazoAprovacao(3),
       });
 
+      const { equipamento: equipamentoAposVerificacao, verificacao } = salvo;
+
       if (equipamentoAposVerificacao.status === "APROVADO") {
         return {
           sucesso: true,
+          salvo,
           canais: {
             whatsapp: { enviado: false },
             email: { enviado: false },
@@ -79,6 +83,7 @@ export function useStatusEquipamento() {
         const envio = await enviarOrcamentoAoCliente(equipamentoAposVerificacao, verificacao);
         return {
           sucesso: true,
+          salvo,
           canais: envio.canais,
           ...(envio.envioManual ? { envioManual: envio.envioManual } : {}),
           avisos: envio.avisos,
@@ -87,6 +92,7 @@ export function useStatusEquipamento() {
         const erro = error?.message || String(error);
         return {
           sucesso: true,
+          salvo,
           canais: {
             whatsapp: { enviado: false, erro },
             email: { enviado: false, erro },
