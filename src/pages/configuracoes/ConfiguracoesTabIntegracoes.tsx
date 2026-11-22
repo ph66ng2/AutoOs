@@ -37,7 +37,7 @@ export type ConfiguracoesTabIntegracoesProps = {
   photoTunnelHasToken: boolean;
   photoTunnelEnvOverride: boolean;
   photoTunnelPublicHost: string;
-  /** Valores atuais do SMTP, para o resumo do cartão. */
+  /** Valores salvos do SMTP, para o resumo do cartão. */
   resumoSmtp: { host: string; port: number; use_tls: boolean; from_email: string };
   whatsappUrl: string;
 };
