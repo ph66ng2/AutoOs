@@ -989,7 +989,8 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
     render(<Equipamentos />);
     fireEvent.click(screen.getByTestId("action-reenviar_orcamento_email"));
-    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Reenviar e-mail" })));
+    const confirmar = await screen.findByRole("button", { name: "Reenviar e-mail" });
+    await act(async () => fireEvent.click(confirmar));
 
     expect(mockBuscarEquipamento).toHaveBeenCalledTimes(2);
     expect(mockEnviarOrcamentoEmail).not.toHaveBeenCalled();
