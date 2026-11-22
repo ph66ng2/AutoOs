@@ -1,4 +1,3 @@
-import { destinoNovaEntrada } from "@/pages/equipamentos/equipamentos-page-utils";
 /**
  * ╔══════════════════════════════════════════════════════════════╗
  * ║  Equipamentos.tsx — Página Principal de Equipamentos        ║
@@ -39,6 +38,7 @@ import {
   Trash2,
   RefreshCw,
   RotateCcw,
+  Mail,
   MessageSquare,
   ClipboardCheck,
   Play,
@@ -193,6 +193,8 @@ import {
   totalOrcamentoAprovacaoValido,
   whatsappNaoConfigurado,
   entradaTemAlgo,
+  destinoNovaEntrada,
+  emailValido,
 } from "@/pages/equipamentos/equipamentos-page-utils";
 import { DateIsoInput } from "@/components/ui/date-iso-input";
 import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
@@ -859,7 +861,7 @@ export default function Equipamentos() {
 
   /**
    * Abre a página de Nova entrada (/equipamentos/nova). `origem` é para onde Cancelar
-   * voltam. `cliente` ou `base` (OS encerrada do mesmo aparelho) chegam já preenchidos; nesse
+   * volta. `cliente` ou `base` (OS encerrada do mesmo aparelho) chegam já preenchidos; nesse
    * caso o rascunho guardado não é carregado, mas pode ser recuperado pelo aviso.
    */
   function abrirNovo(opcoes: { origem?: string; cliente?: Cliente | null; base?: Equipamento } = {}) {
@@ -2857,6 +2859,63 @@ export default function Equipamentos() {
     if (envio.avisos.length) warning("Equipamentos", envio.avisos.join("\n"));
   }
 
+  async function reenviarOrcamentoPorEmail(eq: Equipamento) {
+    if (eq.id == null) return;
+    const id = eq.id;
+    const acao = "Reenviar orçamento por e-mail";
+    const liberado = await ensureSensitiveAccess({
+      title: acao,
+      description: "Confirme seu acesso para reenviar o orçamento.",
+      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
+    });
+    if (!liberado) return;
+
+    try {
+      const atual = await db.buscarEquipamento(id);
+      const recipient = resolveRecipient(atual, "email");
+      if (atual.status !== "AGUARDANDO_APROVACAO" || !emailValido(recipient.endereco)) {
+        warning("Equipamentos", "A OS deve estar aguardando aprovação e ter um e-mail válido para o reenvio.");
+        return;
+      }
+
+      const confirmado = await confirmarComOperador(
+        acao,
+        `Enviar o orçamento da OS #${id} para ${recipient.nome} (${recipient.endereco})?`,
+        "Reenviar e-mail",
+      );
+      if (!confirmado) return;
+      setSalvando(true);
+      try {
+        const [recente, verificacao] = await Promise.all([db.buscarEquipamento(id), db.buscarVerificacao(id)]);
+        const contato = resolveRecipient(recente, "email");
+        if (recente.status !== "AGUARDANDO_APROVACAO" || recente.atualizado_em !== atual.atualizado_em
+          || contato.endereco !== recipient.endereco || contato.nome !== recipient.nome) {
+          warning("Equipamentos", "A OS mudou. Revise o orçamento e o destinatário antes de reenviar.");
+          return;
+        }
+        if (!verificacao) {
+          warning("Equipamentos", "Verificação não encontrada. O orçamento não foi reenviado.");
+          return;
+        }
+        const resultado = await EmailService.enviarOrcamento({
+          ...recente,
+          cliente_nome: recipient.nome,
+          cliente_email: recipient.endereco,
+        }, verificacao);
+        if (!resultado.sucesso) throw new Error(resultado.erro || "Falha ao enviar o orçamento.");
+        success("Equipamentos", "Orçamento reenviado por e-mail.", acao);
+        if (selecionadoIdRef.current === id && detalhesAbertoRef.current) {
+          const lista = await db.listarComunicacoes(id).catch(() => null);
+          if (lista && selecionadoIdRef.current === id && detalhesAbertoRef.current) setComunicacoes(lista);
+        }
+      } finally {
+        setSalvando(false);
+      }
+    } catch (err) {
+      showError("Equipamentos", acao, err);
+    }
+  }
+
   async function prorrogarPrazoEEnviar(eq: Equipamento, preparo?: PreparoAcessoPortal | null) {
     const liberado = await ensureSensitiveAccess({
       title: "Prorrogar prazo e enviar",
@@ -3157,6 +3216,13 @@ export default function Equipamentos() {
         editarIndex >= 0 ? editarIndex : overflow.length,
         0,
         acaoOrcamentoPdf,
+        ...(eq.status === "AGUARDANDO_APROVACAO" && podeOrcamentoValores ? [{
+          id: "reenviar_orcamento_email",
+          label: "Reenviar orçamento por e-mail",
+          icon: <Mail className="h-3.5 w-3.5" />,
+          onClick: () => void reenviarOrcamentoPorEmail(eq),
+          disabled: salvando,
+        }] : []),
         ...(podeAlterarOrcamento ? [acaoAlterarOrcamento] : []),
       );
     }
