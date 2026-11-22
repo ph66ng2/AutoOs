@@ -95,6 +95,11 @@ export function ConfiguracoesTabInfra({
                 </div>
               </div>
 
+              <p className="text-xs text-muted-foreground">
+                A versão aplicada é o maior número aplicado. O total conta os arquivos desta edição.
+                As versões 45 e 46 foram reservadas para a edição SaaS.
+              </p>
+
               <div className="space-y-3">
                 {schemaStatus.migrations.map((migration) => (
                   <div key={migration.version} className="rounded-lg border p-3 text-sm">

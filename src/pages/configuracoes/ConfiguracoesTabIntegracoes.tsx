@@ -16,7 +16,7 @@ export type ConfiguracoesTabIntegracoesProps = {
   register: UseFormRegister<SmtpFormValues>;
   handleSubmit: UseFormHandleSubmit<SmtpFormValues>;
   control: Control<SmtpFormValues>;
-  onSubmit: SubmitHandler<SmtpFormValues>;
+  onSubmit: (values: SmtpFormValues) => Promise<boolean | void>;
   saving: boolean;
   status: string | null;
   smtpEditUnlocked: boolean;
@@ -132,7 +132,7 @@ export function ConfiguracoesTabIntegracoes({
             <>
               <LinhaResumo
                 rotulo="Servidor"
-                detalhe={`Porta ${resumoSmtp.port}${resumoSmtp.use_tls ? (resumoSmtp.port === 465 ? " com TLS" : " com STARTTLS") : " sem TLS"}`}
+                detalhe={resumoSmtp.host ? `Porta ${resumoSmtp.port}${resumoSmtp.use_tls ? (resumoSmtp.port === 465 ? " com TLS" : " com STARTTLS") : " sem TLS"}` : undefined}
                 valor={resumoSmtp.host || "—"}
               />
               <LinhaResumo rotulo="Remetente" valor={resumoSmtp.from_email || "—"} />
@@ -141,7 +141,9 @@ export function ConfiguracoesTabIntegracoes({
             </>
           )}
           {canConfigureSmtp && editandoSmtp ? (
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={handleSubmit(async (values) => {
+              if (await onSubmit(values)) fecharSmtp();
+            })} className="space-y-4">
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -161,7 +163,7 @@ export function ConfiguracoesTabIntegracoes({
 
                 <div className="space-y-2">
                   <Label htmlFor="from_name">Nome do Remetente</Label>
-                  <Input id="from_name" placeholder="BMITAG" {...register("from_name")} disabled={!smtpEditUnlocked || saving} />
+                  <Input id="from_name" placeholder="Nome da empresa" {...register("from_name")} disabled={!smtpEditUnlocked || saving} />
                 </div>
 
                 <div className="space-y-2">
