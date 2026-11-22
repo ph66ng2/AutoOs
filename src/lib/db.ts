@@ -199,6 +199,11 @@ export const db = {
   },
 
   /** Busca equipamento por ID → Rust: buscar_equipamento */
+  /** Todas as OS aprovadas da empresa entre os anos (inclusive), sem paginação: faturado de Finanças. */
+  async listarReceitaAprovada(anoInicio: number, anoFim: number): Promise<Pick<Equipamento, "data_aprovacao" | "valor_orcamento" | "valor_final">[]> {
+    return invoke("listar_receita_aprovada", { anoInicio, anoFim });
+  },
+
   async buscarEquipamento(id: number, segundoPlano = false): Promise<Equipamento> {
     return invoke<Equipamento>("buscar_equipamento", { id, ...seSegundoPlano(segundoPlano) });
   },

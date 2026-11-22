@@ -12,7 +12,7 @@ export interface ReceitaMes {
  * Receita aprovada por mês (valor do orçamento, ou o final, na data de aprovação).
  * Mesmo cálculo que o Início fazia; saiu de lá porque o Início não mostra R$.
  */
-export function receitaPorMes(equipamentos: Equipamento[]): ReceitaMes[] {
+export function receitaPorMes(equipamentos: ReadonlyArray<Pick<Equipamento, "data_aprovacao" | "valor_orcamento" | "valor_final">>): ReceitaMes[] {
   const mapa = new Map<string, ReceitaMes>();
   for (const eq of equipamentos) {
     if (!eq.data_aprovacao) continue;

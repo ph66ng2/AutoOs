@@ -641,6 +641,59 @@ pub(crate) async fn listar_equipamentos_on_connection(
     Ok(rows)
 }
 
+/// Aprovação de uma OS para o faturado de Finanças: só os campos que o cálculo usa.
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct ReceitaAprovadaRow {
+    pub data_aprovacao: Option<String>,
+    pub valor_orcamento: Option<f64>,
+    pub valor_final: Option<f64>,
+}
+
+/// Faixa de anos (texto de 4 dígitos) para filtrar `data_aprovacao`, que é TEXT em formatos
+/// variados: a comparação por prefixo não converte nada, então um valor legado estranho não
+/// derruba a consulta (o frontend descarta o que não for data).
+pub(crate) fn faixa_de_anos_receita(ano_inicio: i32, ano_fim: i32) -> Result<(String, String), String> {
+    if !(1900..=9999).contains(&ano_inicio) || !(1900..=9999).contains(&ano_fim) || ano_inicio > ano_fim {
+        return Err("Período inválido para o faturado.".to_string());
+    }
+    Ok((format!("{ano_inicio:04}"), format!("{ano_fim:04}")))
+}
+
+/// Todas as OS aprovadas da empresa da sessão com aprovação entre `ano_inicio` e `ano_fim`
+/// (inclusive), sem paginação: o saldo de Finanças não pode depender das últimas 50 OS.
+/// O valor segue o de `EQUIPAMENTO_SELECT` (orçamento, ou o custo da última verificação).
+#[tauri::command]
+#[instrument(skip_all, fields(ano_inicio = ano_inicio, ano_fim = ano_fim))]
+pub async fn listar_receita_aprovada(ano_inicio: i32, ano_fim: i32) -> Result<Vec<ReceitaAprovadaRow>, String> {
+    require_permission(crate::commands::auth::PERMISSION_VIEW_EXPENSES)?;
+    let (inicio, fim) = faixa_de_anos_receita(ano_inicio, ano_fim)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    sqlx::query_as::<_, ReceitaAprovadaRow>(
+        "SELECT data_aprovacao,
+                COALESCE(
+                    valor_orcamento,
+                    (SELECT v.custo_total FROM verificacoes v
+                      WHERE v.equipamento_id = equipamentos.id
+                      ORDER BY v.id DESC LIMIT 1)
+                )::FLOAT8 AS valor_orcamento,
+                valor_final::FLOAT8 AS valor_final
+           FROM equipamentos
+          WHERE empresa_id = $1
+            AND data_aprovacao IS NOT NULL
+            AND LEFT(BTRIM(data_aprovacao), 4) BETWEEN $2 AND $3",
+    )
+    .bind(empresa_id)
+    .bind(inicio)
+    .bind(fim)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao listar o faturado: {}", e);
+        super::operator_errors::mapear_erro_sql(e)
+    })
+}
+
 /// Lista os equipamentos de um cliente pelo `cliente_id`. Equipamentos antigos sem
 /// `cliente_id` entram apenas se o `cliente_nome` gravado for igual (sem diferenciar
 /// maiúsculas) a um dos `nomes` informados.
@@ -1601,6 +1654,14 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn faixa_de_anos_do_faturado_e_texto_de_quatro_digitos() {
+        assert_eq!(faixa_de_anos_receita(2024, 2027), Ok(("2024".to_string(), "2027".to_string())));
+        assert!(faixa_de_anos_receita(2027, 2024).is_err());
+        assert!(faixa_de_anos_receita(99, 2024).is_err());
+        assert!(faixa_de_anos_receita(2024, 10_000).is_err());
+    }
 
     #[test]
     fn filtro_aceita_um_ou_varios_status() {

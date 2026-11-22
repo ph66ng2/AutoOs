@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
     listarGastosFixos: vi.fn(),
     listarGastosVariaveis: vi.fn(),
     resumoMensal: vi.fn(),
-    listarEquipamentos: vi.fn(),
+    listarReceitaAprovada: vi.fn(),
     salvarArquivoTemp: vi.fn(),
   },
   success: vi.fn(),
@@ -44,7 +44,7 @@ beforeEach(() => {
   mocks.db.listarGastosVariaveis.mockResolvedValue(variaveis);
   // O resumo pode vir zerado: os totais do mês saem das listas.
   mocks.db.resumoMensal.mockImplementation(async (mes: number) => ({ total_fixo: 0, total_variavel: mes === 10 ? 1000 : 0, total_geral: 0, por_categoria: [] }));
-  mocks.db.listarEquipamentos.mockResolvedValue([
+  mocks.db.listarReceitaAprovada.mockResolvedValue([
     { id: 1, serial_number: "A", marca: "Z", modelo: "Z", tipo: "Impressora", status: "ENTREGUE", data_entrada: "2026-11-01", data_aprovacao: "2026-11-10", valor_orcamento: 12000 },
     { id: 2, serial_number: "B", marca: "Z", modelo: "Z", tipo: "Impressora", status: "ENTREGUE", data_entrada: "2026-10-01", data_aprovacao: "2026-10-10", valor_orcamento: 9000 },
   ]);
@@ -69,7 +69,7 @@ describe("Finanças (fase 8)", () => {
   });
 
   it("saldo e peso ficam indisponíveis se o faturado do ano não carrega", async () => {
-    mocks.db.listarEquipamentos.mockRejectedValue(new Error("rede"));
+    mocks.db.listarReceitaAprovada.mockRejectedValue(new Error("rede"));
     render(<Gastos />);
     const saldo = await screen.findByRole("region", { name: "Saldo do mês" });
     await waitFor(() => expect(saldo).toHaveTextContent("Indisponível"));
@@ -96,9 +96,9 @@ describe("Finanças (fase 8)", () => {
     const usuario = userEvent.setup();
     render(<Gastos />);
     await screen.findByRole("region", { name: "Gastos fixos" });
-    const chamadas = mocks.db.listarEquipamentos.mock.calls.length;
+    const chamadas = mocks.db.listarReceitaAprovada.mock.calls.length;
     await usuario.click(screen.getByRole("button", { name: "Recarregar" }));
-    await waitFor(() => expect(mocks.db.listarEquipamentos.mock.calls.length).toBeGreaterThan(chamadas));
+    await waitFor(() => expect(mocks.db.listarReceitaAprovada.mock.calls.length).toBeGreaterThan(chamadas));
   });
 
   it("não exporta enquanto os lançamentos do mês ainda carregam", async () => {
