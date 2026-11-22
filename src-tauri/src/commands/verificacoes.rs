@@ -6,7 +6,7 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::types::{
-    normalize_forma_pagamento, FormaPagamentoCodigo, VerificacaoInput, VerificacaoRow,
+    normalize_forma_pagamento, FormaPagamentoCodigo, EquipamentoRow, EQUIPAMENTO_SELECT, VerificacaoInput, VerificacaoRow,
     VERIFICACAO_SELECT,
 };
 use crate::commands::auth::{
@@ -247,11 +247,40 @@ fn check_prepare_quotes_status(
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+pub struct VerificacaoSalva {
+    pub equipamento: EquipamentoRow,
+    pub verificacao: VerificacaoRow,
+}
+
+async fn ler_verificacao_salva(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    equipamento_id: i32,
+    empresa_id: i32,
+    verificacao_id: i32,
+) -> Result<VerificacaoSalva, String> {
+    let query = format!("{EQUIPAMENTO_SELECT} WHERE id = $1 AND empresa_id = $2");
+    let equipamento = sqlx::query_as(sqlx::AssertSqlSafe(&*query))
+        .bind(equipamento_id)
+        .bind(empresa_id)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    let query = format!("{VERIFICACAO_SELECT} WHERE id = $1 AND empresa_id = $2");
+    let verificacao = sqlx::query_as(sqlx::AssertSqlSafe(&*query))
+        .bind(verificacao_id)
+        .bind(empresa_id)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(VerificacaoSalva { equipamento, verificacao })
+}
+
 /// Salvar verificação técnica (upsert: cria ou atualiza).
 /// Se já existe verificação para o equipamento, atualiza; senão, cria nova.
 #[tauri::command]
 #[instrument(skip_all, fields(equipamento_id = input.equipamento_id))]
-pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<VerificacaoRow, String> {
+pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<VerificacaoSalva, String> {
     debug!("Salvando verificação técnica para equipamento {}", input.equipamento_id);
     let (payment_code, payment_detail) = normalize_forma_pagamento(
         input.forma_pagamento_codigo.as_ref(),
@@ -366,6 +395,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
             ),
             _ => None,
         };
+        let salva = ler_verificacao_salva(&mut tx, input.equipamento_id, empresa_id, id).await?;
         tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
         auditar_aprovacao_os_garantia(
             aprovador_garantia,
@@ -387,7 +417,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         }
 
         info!("Verificação {} atualizada", id);
-        return buscar_verificacao_tecnica(input.equipamento_id, input.empresa_id).await;
+        return Ok(salva);
     }
 
     // INSERT nova verificação
@@ -445,6 +475,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         ),
         _ => None,
     };
+    let salva = ler_verificacao_salva(&mut tx, input.equipamento_id, empresa_id, verificacao_id).await?;
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
     auditar_aprovacao_os_garantia(
         aprovador_garantia,
@@ -466,7 +497,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     }
 
     info!("Verificação criada para equipamento {}", input.equipamento_id);
-    buscar_verificacao_tecnica(input.equipamento_id, input.empresa_id).await
+    Ok(salva)
 }
 
 /// Buscar verificação técnica por equipamento_id.

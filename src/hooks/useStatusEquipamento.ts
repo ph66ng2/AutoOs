@@ -58,8 +58,10 @@ export function useStatusEquipamento() {
       // 1. Uma gravação só: itens da verificação + AGUARDANDO_APROVACAO com valor e prazo (3 dias
       //    úteis). Se algo falha, nada fica pela metade (antes, itens gravados com valor_orcamento 0).
       //    OS só de garantia já sai APROVADO na mesma transação.
-      await db.salvarVerificacao({ ...dadosVerificacao, enviar_para_aprovacao_prazo: calcularPrazoAprovacao(3) });
-      const equipamentoAposVerificacao = await db.buscarEquipamento(equipamento.id!);
+      const { equipamento: equipamentoAposVerificacao, verificacao } = await db.salvarVerificacao({
+        ...dadosVerificacao,
+        enviar_para_aprovacao_prazo: calcularPrazoAprovacao(3),
+      });
 
       if (equipamentoAposVerificacao.status === "APROVADO") {
         return {
@@ -72,23 +74,9 @@ export function useStatusEquipamento() {
         };
       }
 
-      // 2. Dados atualizados para o envio
-      const eqAtualizado = equipamentoAposVerificacao;
-      const verificacao = await db.buscarVerificacao(equipamento.id!);
-
-      if (!verificacao) {
-        return {
-          sucesso: true,
-          canais: {
-            whatsapp: { enviado: false, erro: "Verificação não encontrada para envio de WhatsApp." },
-            email: { enviado: false, erro: "Verificação não encontrada para envio de Email." },
-          },
-        };
-      }
-
       // O status já foi salvo; falha no envio não desfaz a mudança.
       try {
-        const envio = await enviarOrcamentoAoCliente(eqAtualizado, verificacao);
+        const envio = await enviarOrcamentoAoCliente(equipamentoAposVerificacao, verificacao);
         return {
           sucesso: true,
           canais: envio.canais,
@@ -103,7 +91,7 @@ export function useStatusEquipamento() {
             whatsapp: { enviado: false, erro },
             email: { enviado: false, erro },
           },
-          avisos: [`Não foi possível enviar o orçamento: ${erro}`],
+          avisos: [`Orçamento salvo. Use a ação de envio no detalhe da OS após conferir o resultado: ${erro}`],
         };
       }
     } catch (error: any) {

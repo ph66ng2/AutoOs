@@ -30,7 +30,7 @@ vi.mock("@/lib/email-service", () => ({
 }));
 
 import { db } from "@/lib/db";
-import { enviarOrcamentoAoCliente } from "@/lib/envio-orcamento";
+import { calcularPrazoAprovacao, enviarOrcamentoAoCliente } from "@/lib/envio-orcamento";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
 
@@ -67,7 +67,8 @@ const verificacaoBase: Verificacao = {
 
 describe("useStatusEquipamento", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    vi.mocked(calcularPrazoAprovacao).mockReturnValue("2026-05-01");
     vi.mocked(enviarOrcamentoAoCliente).mockResolvedValue({
       canais: { whatsapp: { enviado: true }, email: { enviado: true } },
       avisos: [],
@@ -76,15 +77,9 @@ describe("useStatusEquipamento", () => {
   });
 
   it("finaliza verificacao e envia o orcamento pela lib de envio", async () => {
-    vi.mocked(db.salvarVerificacao).mockResolvedValue(1);
-    vi.mocked(db.atualizarStatusEquipamento).mockResolvedValue();
-    vi.mocked(db.buscarEquipamento).mockResolvedValueOnce({
-      ...equipamentoBase,
-      status: "AGUARDANDO_APROVACAO",
-      valor_orcamento: 80,
-      atualizado_em: "2026-04-28 12:00:02",
-    });
-    vi.mocked(db.buscarVerificacao).mockResolvedValue(verificacaoBase);
+    prepararFluxoFinalizar();
+    vi.mocked(db.buscarEquipamento).mockRejectedValueOnce(new Error("Leitura indisponível"));
+    vi.mocked(db.buscarVerificacao).mockRejectedValueOnce(new Error("Leitura indisponível"));
     const { result } = renderHook(() => useStatusEquipamento());
     let resposta: Awaited<ReturnType<typeof result.current.finalizarVerificacao>> | undefined;
 
@@ -102,6 +97,8 @@ describe("useStatusEquipamento", () => {
       },
       avisos: [],
     });
+    expect(db.buscarEquipamento).not.toHaveBeenCalled();
+    expect(db.buscarVerificacao).not.toHaveBeenCalled();
     expect(enviarOrcamentoAoCliente).toHaveBeenCalledTimes(1);
     expect(enviarOrcamentoAoCliente).toHaveBeenCalledWith(
       expect.objectContaining({ status: "AGUARDANDO_APROVACAO", valor_orcamento: 80 }),
@@ -113,13 +110,10 @@ describe("useStatusEquipamento", () => {
   });
 
   function prepararFluxoFinalizar() {
-    vi.mocked(db.salvarVerificacao).mockResolvedValue(1);
-    vi.mocked(db.atualizarStatusEquipamento).mockResolvedValue();
-    vi.mocked(db.buscarEquipamento).mockResolvedValue({
-      ...equipamentoBase,
-      status: "AGUARDANDO_APROVACAO",
+    vi.mocked(db.salvarVerificacao).mockResolvedValue({
+      equipamento: { ...equipamentoBase, status: "AGUARDANDO_APROVACAO", valor_orcamento: 80 },
+      verificacao: verificacaoBase,
     });
-    vi.mocked(db.buscarVerificacao).mockResolvedValue(verificacaoBase);
   }
 
   it("repassa envioManual e avisos do envio", async () => {
@@ -167,11 +161,9 @@ describe("useStatusEquipamento", () => {
   });
 
   it("OS só de garantia já aprovada não vai para AGUARDANDO_APROVACAO nem envia orçamento", async () => {
-    vi.mocked(db.salvarVerificacao).mockResolvedValue(1);
-    vi.mocked(db.buscarEquipamento).mockResolvedValue({
-      ...equipamentoBase,
-      status: "APROVADO",
-      valor_orcamento: 0,
+    vi.mocked(db.salvarVerificacao).mockResolvedValue({
+      equipamento: { ...equipamentoBase, status: "APROVADO", valor_orcamento: 0 },
+      verificacao: verificacaoBase,
     });
     const { result } = renderHook(() => useStatusEquipamento());
     let resposta: Awaited<ReturnType<typeof result.current.finalizarVerificacao>> | undefined;

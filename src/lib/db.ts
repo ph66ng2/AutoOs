@@ -365,8 +365,8 @@ export const db = {
   // ─── Verificações ─────────────────────────────────────
 
   /** Salva resultado da verificação técnica → Rust: salvar_verificacao_tecnica */
-  async salvarVerificacao(verificacao: Omit<Verificacao, "id">): Promise<number> {
-    return invoke<number>("salvar_verificacao_tecnica", { input: verificacao });
+  async salvarVerificacao(verificacao: Omit<Verificacao, "id">) {
+    return invoke<{ equipamento: Equipamento; verificacao: Verificacao }>("salvar_verificacao_tecnica", { input: verificacao });
   },
 
   /** Busca última verificação de um equipamento → Rust: buscar_verificacao_tecnica */
