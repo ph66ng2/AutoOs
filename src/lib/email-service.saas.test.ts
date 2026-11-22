@@ -21,7 +21,7 @@ vi.mock("@/lib/pdf-service", () => ({
   PdfService: { construirOrcamento: (...args: unknown[]) => mocks.construirOrcamento(...args) },
 }));
 
-import { EmailService } from "@/lib/email-service";
+import { EmailService, emailTecnicoPorNome, montarCcs } from "@/lib/email-service";
 
 const equipamento: Equipamento = {
   id: "22222222-2222-4222-8222-222222222222",
@@ -83,5 +83,22 @@ describe("EmailService no SaaS", () => {
     await expect(EmailService.enviarOrcamento(equipamento, verificacao)).resolves.toMatchObject({ sucesso: false });
     expect(mocks.registrar).toHaveBeenCalledWith(expect.objectContaining({ equipamento_id: equipamento.id, canal: "EMAIL", enviado: false, erro: "Configure o SMTP primeiro" }));
     expect(mocks.invoke.mock.calls[0]?.[0]).toBe("enviar_email_saas");
+  });
+
+  it("não coloca endereços da BMITAG em cópia nem cita técnico BMITAG no e-mail de outra empresa", async () => {
+    expect(montarCcs()).toEqual([]);
+    expect(montarCcs("ivan@bmitag.com.br")).toEqual([]);
+    expect(emailTecnicoPorNome("Ivan")).toBe("");
+    expect(emailTecnicoPorNome("Isaías")).toBe("");
+
+    await expect(
+      EmailService.enviarOrcamento(equipamento, { ...verificacao, tecnico_nome: "Ivan" }),
+    ).resolves.toEqual({ sucesso: true });
+
+    const [, args] = mocks.invoke.mock.calls[0] as [string, { input: { cc: string[] } }];
+    expect(args.input.cc).toEqual([]);
+    const payload = JSON.stringify(args.input).toLowerCase();
+    expect(payload).not.toContain("medeiros@bmitag.com.br");
+    expect(payload).not.toContain("ivan@bmitag.com.br");
   });
 });

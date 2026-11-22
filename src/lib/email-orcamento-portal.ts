@@ -319,6 +319,7 @@ export async function enviarEmailOrcamentoPortal(
     }
 
     const [principal, ...restoCc] = montarCcs(emailTecnicoPorNome(verificacao.tecnico_nome));
+    if (!principal) return resultado;
     try {
       const copia: EmailSendRequest = {
         destinatario: principal,

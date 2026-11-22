@@ -10,7 +10,7 @@
  * do cliente; aqui também não: o envio é uma ação manual da pessoa na tela, que vê o aviso.
  */
 import { db } from "@/lib/db";
-import { CC_GERENCIA } from "@/lib/email-service";
+import { montarCcs } from "@/lib/email-service";
 import {
   assuntoEmailOrcamentoInsumos,
   emailDestinatario,
@@ -50,7 +50,7 @@ export const OrcamentoInsumosService = {
       const pedido: EmailSendRequest = {
         destinatario: nomeDestinatario(orcamento),
         email,
-        cc: [CC_GERENCIA],
+        cc: montarCcs(),
         assunto: assuntoEmailOrcamentoInsumos(orcamento),
         corpo: texto,
         corpo_texto: texto,

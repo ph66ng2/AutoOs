@@ -29,7 +29,7 @@ vi.mock("@/lib/pdf-service", () => ({
   },
 }));
 
-import { EmailService } from "@/lib/email-service";
+import { EmailService, emailTecnicoPorNome, montarCcs } from "@/lib/email-service";
 
 const equipamentoBase: Equipamento = {
   id: 10,
@@ -58,6 +58,15 @@ const verificacaoBase: Verificacao = {
   concluida: true,
   observacoes: "",
 };
+
+describe("montarCcs no build desktop", () => {
+  it("mantém a gerência e o técnico BMITAG em cópia, sem duplicar", () => {
+    expect(montarCcs()).toEqual(["medeiros@bmitag.com.br"]);
+    expect(montarCcs(emailTecnicoPorNome("Ivan"))).toEqual(["medeiros@bmitag.com.br", "ivan@bmitag.com.br"]);
+    expect(montarCcs(emailTecnicoPorNome("Isaías"))).toEqual(["medeiros@bmitag.com.br", "isaias@bmitag.com.br"]);
+    expect(montarCcs("MEDEIROS@bmitag.com.br")).toEqual(["medeiros@bmitag.com.br"]);
+  });
+});
 
 describe("EmailService", () => {
   beforeEach(() => {

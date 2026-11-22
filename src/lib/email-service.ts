@@ -49,6 +49,9 @@ const AVISO_TROCA_PECAS_HTML =
   "<strong>Atenção:</strong> em caso de troca de peças, o prazo de execução do serviço pode ser estendido.";
 
 export function emailTecnicoPorNome(tecnicoNome?: string) {
+  // Os técnicos mapeados abaixo são da BMITAG. No build SaaS os e-mails são de
+  // outras empresas: nenhum endereço BMITAG pode entrar no corpo ou nas cópias.
+  if (IS_SAAS_BUILD) return "";
   const normalizado = (tecnicoNome || "")
     .trim()
     .normalize("NFD")
@@ -70,8 +73,12 @@ function extrairTecnicoInicialDeObservacoes(observacoes?: string | null) {
  * - Sempre inclui {@link CC_GERENCIA}.
  * - Inclui o email do técnico responsável quando conhecido.
  * - Remove vazios e duplicados (case-insensitive).
+ *
+ * No build SaaS devolve lista vazia: as cópias fixas são da BMITAG e ainda não
+ * existe configuração de cópias por empresa, então nada é copiado.
  */
 export function montarCcs(emailTecnico?: string): string[] {
+  if (IS_SAAS_BUILD) return [];
   const candidatos = [CC_GERENCIA, emailTecnico].filter(
     (email): email is string => !!email && email.trim().length > 0,
   );
