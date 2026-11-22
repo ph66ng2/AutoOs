@@ -122,6 +122,20 @@ export function formatErrorForCopy(error: AppError, ambiente?: { tela?: string; 
   return lines.join('\n');
 }
 
+/** Metadados para o chamado. A mensagem e a resposta do comando ficam no registro local. */
+export function formatarRelatorioSuporte(error: AppError, registroId: string): string {
+  const linhas = [
+    'AutoOS — relatório de erro',
+    `Registro local: ${registroId}`,
+    `Código: ${error.codigo ?? "COMANDO"}`,
+    `Data/Hora: ${error.timestamp.toISOString()}`,
+  ];
+  if (error.referencia && /^[A-HJ-KM-NP-Z2-9]{8}$/.test(error.referencia)) {
+    linhas.push(`Referência no log: ${error.referencia}`);
+  }
+  return linhas.join('\n');
+}
+
 /**
  * Gera título de toast no formato padronizado: "[Contexto] — Ação"
  */

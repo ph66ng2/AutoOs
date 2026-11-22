@@ -1,3 +1,4 @@
+import { db } from "@/lib/db";
 /**
  * ╔══════════════════════════════════════════════════════════════╗
  * ║  Layout.tsx — Layout Principal com Sidebar                    ║
@@ -56,7 +57,7 @@ import { TourController } from "@/components/tour/TourController";
 import { profileAppearance } from "@/lib/profile-appearance";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { abrirPainelAtualizacao, useAtualizacaoDisponivel } from "@/lib/atualizacao-disponivel";
-import { registrarAbrirSuporte } from "@/lib/suporte-ponte";
+import { EVENTO_CONFIG_SUPORTE, registrarAbrirSuporte } from "@/lib/suporte-ponte";
 import { useBuscaRespostasSuporte } from "@/hooks/useBuscaRespostasSuporte";
 
 
@@ -148,21 +149,41 @@ export function Layout() {
   // Desbloqueado vira o ✓ ao lado do nome; bloqueado aparece na linha de baixo do cartão.
   const mostrarAvisoAcesso = connectionUnavailable || !status?.active_profile_id || !status.pin_configured;
 
+  const perfilSuporte = sessaoAtiva && !connectionUnavailable ? status?.active_profile_id : null;
+  const [perfilElegivel, setPerfilElegivel] = useState<number | null>(null);
+  const [versaoConfigSuporte, setVersaoConfigSuporte] = useState(0);
+  useEffect(() => {
+    const atualizar = () => setVersaoConfigSuporte((versao) => versao + 1);
+    window.addEventListener(EVENTO_CONFIG_SUPORTE, atualizar);
+    return () => window.removeEventListener(EVENTO_CONFIG_SUPORTE, atualizar);
+  }, []);
+  const suporteHabilitado = perfilSuporte != null && perfilSuporte === perfilElegivel;
+  useEffect(() => {
+    let atual = true;
+    setPerfilElegivel(null);
+    if (perfilSuporte != null) {
+      void Promise.resolve().then(() => db.obterConfigSuporte()).then((config) => {
+        if (atual && config.empresa_elegivel) setPerfilElegivel(perfilSuporte);
+      }).catch(() => {});
+    }
+    return () => { atual = false; };
+  }, [perfilSuporte, versaoConfigSuporte]);
+
   const visibleGroups = navGroups
-    .map((grupo) => ({ ...grupo, itens: grupo.itens.filter((item) => navItemVisible(item, status)) }))
+    .map((grupo) => ({ ...grupo, itens: grupo.itens.filter((item) => navItemVisible(item, status) && (item.path !== "/suporte" || suporteHabilitado)) }))
     .filter((grupo) => grupo.itens.length > 0);
   const navigate = useNavigate();
-  // "Enviar ao suporte" nos avisos de erro: só com o banco conectado (o chamado é gravado).
+  // A ação dos avisos acompanha a elegibilidade do perfil verificada pelo backend.
   useEffect(() => {
-    if (connectionUnavailable) {
+    if (!suporteHabilitado) {
       registrarAbrirSuporte(null);
       return;
     }
     registrarAbrirSuporte((relatorioErro) => navigate("/suporte", { state: { relatorioErro, tela: window.location.pathname } }));
     return () => registrarAbrirSuporte(null);
-  }, [connectionUnavailable, navigate]);
+  }, [suporteHabilitado, navigate]);
   // Respostas do suporte (thread do Slack) com a sessão aberta e o banco conectado.
-  useBuscaRespostasSuporte(sessaoAtiva && !connectionUnavailable, status?.active_profile_id ?? null);
+  useBuscaRespostasSuporte(suporteHabilitado, status?.active_profile_id ?? null);
   const abrirModoBalcao = () => {
     setMobileOpen(false);
     setAppMode("counter");

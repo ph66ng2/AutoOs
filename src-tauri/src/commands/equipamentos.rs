@@ -916,6 +916,17 @@ pub async fn buscar_equipamentos_por_serial(serial: String) -> Result<Vec<Equipa
 }
 
 /// Criar novo equipamento.
+pub(super) fn prazo_de_aprovacao_valido(prazo: &str) -> Result<String, String> {
+    let prazo = prazo.trim();
+    let data = chrono::NaiveDate::parse_from_str(prazo, "%Y-%m-%d").ok();
+    if prazo.len() == 10 && !prazo.starts_with("0000")
+        && data.is_some_and(|data| data.format("%Y-%m-%d").to_string() == prazo)
+    {
+        return Ok(prazo.to_string());
+    }
+    Err("Prazo de aprovação inválido. Use AAAA-MM-DD.".to_string())
+}
+
 #[tauri::command]
 #[instrument(skip_all, fields(serial = %input.serial_number))]
 pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow, String> {
@@ -931,6 +942,8 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     let status = required_text(&normalize_status_key(&input.status), "Status")?;
     reject_direct_approval(&status)?;
     let data_entrada = required_text(&input.data_entrada, "Data de entrada")?;
+    let prazo_aprovacao = optional_text(input.prazo_aprovacao.as_deref()).as_deref()
+        .map(prazo_de_aprovacao_valido).transpose()?;
 
     validate_non_negative_i32(input.paginas_impressas, "Páginas impressas")?;
     validate_non_negative_f64(input.preco_compra, "Preço de compra")?;
@@ -977,7 +990,7 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     .bind(optional_text(input.cliente_nome.as_deref()))
     .bind(optional_text(input.cliente_telefone.as_deref()))
     .bind(optional_text(input.cliente_email.as_deref()))
-    .bind(optional_text(input.prazo_aprovacao.as_deref()))
+    .bind(prazo_aprovacao)
     .bind(input.valor_orcamento)
     .bind(empresa_id)
     .bind(responsavel.0)
@@ -1023,6 +1036,8 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     let status = required_text(&normalize_status_key(&input.status), "Status")?;
     reject_direct_approval(&status)?;
     let data_entrada = required_text(&input.data_entrada, "Data de entrada")?;
+    let prazo_aprovacao = optional_text(input.prazo_aprovacao.as_deref()).as_deref()
+        .map(prazo_de_aprovacao_valido).transpose()?;
 
     validate_non_negative_i32(input.paginas_impressas, "Páginas impressas")?;
     validate_non_negative_f64(input.preco_compra, "Preço de compra")?;
@@ -1068,7 +1083,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     .bind(optional_text(input.cliente_nome.as_deref()))
     .bind(optional_text(input.cliente_telefone.as_deref()))
     .bind(optional_text(input.cliente_email.as_deref()))
-    .bind(optional_text(input.prazo_aprovacao.as_deref()))
+    .bind(prazo_aprovacao)
     .bind(input.valor_orcamento)
     .bind(responsavel.0)
     .bind(responsavel.1)
@@ -1231,11 +1246,8 @@ pub async fn atualizar_status_equipamento(
     let concurrency_token = required_concurrency_token(expected_updated_em.as_deref(), "equipamento")?;
     let normalized_status = normalize_status_key(&novo_status);
     reject_direct_approval(&normalized_status)?;
-    let prazo_aprovacao_value = prazo_aprovacao
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_string());
+    let prazo_aprovacao_value = optional_text(prazo_aprovacao.as_deref()).as_deref()
+        .map(prazo_de_aprovacao_valido).transpose()?;
     let motivo_correcao_value = optional_text(motivo_correcao.as_deref());
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
@@ -1753,5 +1765,14 @@ mod tests {
         assert!(equipment_order_clause(None).contains("ultima_atividade_cliente_em"));
         assert_eq!(equipment_order_clause(Some("CADASTRO_RECENTE")), " ORDER BY criado_em DESC NULLS LAST, id DESC");
         assert_eq!(equipment_order_clause(Some("id; DROP TABLE equipamentos")), equipment_order_clause(None));
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn prazo_exige_data_real_no_formato_iso() {
+    assert_eq!(prazo_de_aprovacao_valido(" 2028-02-29 ").unwrap(), "2028-02-29");
+    for invalido in ["2026-13-45", "2026-02-29", "2026-2-09", "0000-01-01", "2026-11-22T00:00:00"] {
+        assert!(prazo_de_aprovacao_valido(invalido).is_err(), "{invalido}");
     }
 }

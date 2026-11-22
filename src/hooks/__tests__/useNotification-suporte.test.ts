@@ -17,7 +17,8 @@ describe("aviso de erro → suporte", () => {
     expect(opcoes.action.label).toBe("Enviar ao suporte");
     opcoes.action.onClick();
     expect(abrir).toHaveBeenCalledWith(expect.stringContaining("AutoOS — relatório de erro"));
-    expect(abrir.mock.calls[0][0]).toContain("Ação: Salvar equipamento");
+    expect(abrir.mock.calls[0][0]).toContain("Código: COMANDO");
+    expect(abrir.mock.calls[0][0]).not.toContain("Conflito de concorrência");
   });
 
   it("sem banco (ponte não registrada), fica o Copiar detalhes", () => {

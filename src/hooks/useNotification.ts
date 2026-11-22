@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { formatAppError, copyErrorDetails, formatErrorForCopy, formatToastMessage, versaoDoApp } from '@/lib/error-utils';
+import { formatAppError, copyErrorDetails, formatarRelatorioSuporte, formatToastMessage } from '@/lib/error-utils';
 import { enviarErroAoSuporte, suporteDisponivel } from '@/lib/suporte-ponte';
 import { registrarErro } from '@/lib/error-log';
 
@@ -22,7 +22,7 @@ export function notificarErro(context: string, action: string, error: unknown) {
     action: suporteDisponivel()
       ? {
           label: 'Enviar ao suporte',
-          onClick: () => enviarErroAoSuporte(formatErrorForCopy(appError, { versao: versaoDoApp() })),
+          onClick: () => enviarErroAoSuporte(formatarRelatorioSuporte(appError, registrado.id)),
         }
       : {
           label: 'Copiar detalhes',

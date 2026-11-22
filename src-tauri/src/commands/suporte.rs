@@ -4,7 +4,7 @@
 //! O endereço da API pode ser trocado por `AUTOOS_SLACK_API_URL` (testes com servidor falso).
 
 use crate::commands::auth::{
-    record_security_event, require_active_session_company_id, require_permission, require_sensitive_access,
+    record_security_event, require_permission, require_sensitive_access,
     PERMISSION_COMMUNICATION_SETTINGS,
 };
 use crate::db::get_pool;
@@ -70,12 +70,65 @@ pub(crate) fn canal_valido(canal: &str) -> bool {
         && canal.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
 }
 
-async fn canal_configurado(pool: &sqlx::PgPool) -> Result<Option<String>, String> {
-    let canal: Option<Option<String>> = sqlx::query_scalar("SELECT suporte_slack_canal FROM configuracoes_sistema WHERE id = 1")
-        .fetch_optional(pool)
-        .await
-        .map_err(super::operator_errors::mapear_erro_sql)?;
-    Ok(canal.flatten().filter(|c| !c.trim().is_empty()))
+const SUPORTE_SEM_VINCULO: &str =
+    "Há várias empresas ativas e o canal de suporte está sem vínculo. Um administrador da empresa de suporte precisa salvar o canal novamente em Configurações › Integrações.";
+
+#[derive(Debug, FromRow)]
+struct DestinoSuporte {
+    empresa_perfil: Option<i32>,
+    empresa_vinculada: Option<i32>,
+    empresas_ativas: i64,
+    canal: Option<String>,
+}
+
+impl DestinoSuporte {
+    fn empresa_elegivel(&self) -> Result<Option<i32>, String> {
+        let Some(empresa_id) = self.empresa_perfil else { return Ok(None) };
+        match (self.empresas_ativas, self.empresa_vinculada) {
+            (1, _) => Ok(Some(empresa_id)),
+            (2.., None) => Err(SUPORTE_SEM_VINCULO.to_string()),
+            (2.., Some(vinculada)) if vinculada == empresa_id => Ok(Some(empresa_id)),
+            _ => Ok(None),
+        }
+    }
+
+    fn empresa_para_salvar(&self, administrador: bool) -> Result<i32, String> {
+        if let Some(empresa_id) = self.empresa_perfil.filter(|_| {
+            administrador && self.empresas_ativas > 1 && self.empresa_vinculada.is_none()
+        }) {
+            return Ok(empresa_id);
+        }
+        self.exigir_empresa_elegivel()
+    }
+
+    fn exigir_empresa_elegivel(&self) -> Result<i32, String> {
+        self.empresa_elegivel()?
+            .ok_or_else(|| "O suporte pelo Slack não está disponível para a empresa deste perfil.".to_string())
+    }
+}
+
+async fn destino_suporte<'a>(
+    executor: impl sqlx::Executor<'a, Database = sqlx::Postgres>,
+    perfil_id: i32,
+) -> Result<DestinoSuporte, String> {
+    sqlx::query_as(
+        "SELECT
+            (SELECT e.id FROM security_profiles p
+             JOIN empresas e ON e.id = p.empresa_id AND LOWER(e.status) = 'ativo'
+             WHERE p.id = $1 AND p.ativo = true) AS empresa_perfil,
+            suporte_slack_empresa_id AS empresa_vinculada,
+            (SELECT COUNT(*) FROM empresas WHERE LOWER(status) = 'ativo') AS empresas_ativas,
+            NULLIF(BTRIM(suporte_slack_canal), '') AS canal
+         FROM configuracoes_sistema WHERE id = 1",
+    )
+    .bind(perfil_id)
+    .fetch_one(executor)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+async fn empresa_do_suporte(pool: &sqlx::PgPool, perfil_id: i32) -> Result<i32, String> {
+    destino_suporte(pool, perfil_id).await?.exigir_empresa_elegivel()
 }
 
 // ─── API do Slack ──────────────────────────────────────────
@@ -181,16 +234,29 @@ pub struct ConfigSuporte {
     /// O token em uso veio no instalador (nada guardado no cofre deste computador).
     pub token_da_instalacao: bool,
     pub canal: Option<String>,
+    pub empresa_elegivel: bool,
 }
 
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn obter_config_suporte() -> Result<ConfigSuporte, String> {
+    let indisponivel = ConfigSuporte {
+        token_neste_computador: false,
+        token_da_instalacao: false,
+        canal: None,
+        empresa_elegivel: false,
+    };
+    let Ok(perfil) = perfil_da_leitura(Some(true)) else { return Ok(indisponivel) };
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let destino = destino_suporte(&pool, perfil.id).await?;
+    if destino.empresa_elegivel()?.is_none() {
+        return Ok(indisponivel);
+    }
     Ok(ConfigSuporte {
         token_neste_computador: token_suporte().is_some(),
         token_da_instalacao: token_do_cofre().is_none() && token_da_instalacao().is_some(),
-        canal: canal_configurado(&pool).await?,
+        canal: destino.canal,
+        empresa_elegivel: true,
     })
 }
 
@@ -206,10 +272,19 @@ pub struct ConfigSuporteInput {
 #[instrument(skip_all)]
 pub async fn salvar_config_suporte(input: ConfigSuporteInput) -> Result<ConfigSuporte, String> {
     let actor = require_permission(PERMISSION_COMMUNICATION_SETTINGS)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
     let canal = input.canal.trim().to_string();
     if !canal_valido(&canal) {
         return Err("Informe o ID do canal do Slack (começa com C, ex.: C0CE5M6GTRV).".to_string());
     }
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    // Serializa as tentativas de vincular um canal legado sem empresa.
+    sqlx::query("SELECT id FROM configuracoes_sistema WHERE id = 1 FOR UPDATE")
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    let empresa_id = destino_suporte(&mut *tx, actor.id).await?
+        .empresa_para_salvar(actor.role == "ADMIN")?;
     let token = input.token.as_deref().map(str::trim).filter(|t| !t.is_empty());
     if let Some(token) = token {
         if !token.starts_with("xoxb-") {
@@ -222,16 +297,21 @@ pub async fn salvar_config_suporte(input: ConfigSuporteInput) -> Result<ConfigSu
     } else if token_suporte().is_none() {
         return Err("Informe o token do bot do suporte (xoxb-) neste computador.".to_string());
     }
-    let pool = get_pool().await.map_err(|e| e.to_string())?;
-    sqlx::query("UPDATE configuracoes_sistema SET suporte_slack_canal = $1, updated_at = NOW() WHERE id = 1")
+    sqlx::query(
+        "UPDATE configuracoes_sistema
+         SET suporte_slack_canal = $1, suporte_slack_empresa_id = $2, updated_at = NOW()
+         WHERE id = 1",
+    )
         .bind(&canal)
-        .execute(&pool)
+        .bind(empresa_id)
+        .execute(&mut *tx)
         .await
         .map_err(super::operator_errors::mapear_erro_sql)?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
     record_security_event(
         "SUPORTE_SLACK_CONFIGURADO",
         Some(&actor),
-        format!("canal={canal}; token_novo={}", token.is_some()),
+        format!("canal={canal}; empresa_id={empresa_id}; token_novo={}", token.is_some()),
         true,
     )
     .await;
@@ -239,6 +319,7 @@ pub async fn salvar_config_suporte(input: ConfigSuporteInput) -> Result<ConfigSu
         token_neste_computador: token_suporte().is_some(),
         token_da_instalacao: token_do_cofre().is_none() && token_da_instalacao().is_some(),
         canal: Some(canal),
+        empresa_elegivel: true,
     })
 }
 
@@ -255,7 +336,6 @@ pub struct ImagemChamado {
 pub struct AbrirChamadoInput {
     pub texto: String,
     pub tela: Option<String>,
-    pub versao: Option<String>,
     /// Relatório técnico do erro (quando o chamado vem de "Enviar ao suporte").
     pub relatorio_erro: Option<String>,
     #[serde(default)]
@@ -288,7 +368,76 @@ pub struct MensagemSuporte {
     pub criado_em: String,
 }
 
-/// Texto da mensagem que abre a thread. O atendimento lê tudo daqui.
+/// Somente rotas conhecidas, sem IDs, parâmetros ou segmentos vindos do usuário.
+fn tela_do_diagnostico(tela: Option<&str>) -> Option<&'static str> {
+    let segmento = tela?.strip_prefix('/')?.split(['/', '?', '#']).next()?;
+    match segmento {
+        "" => Some("/"),
+        "equipamentos" => Some("/equipamentos"),
+        "clientes" => Some("/clientes"),
+        "insumos" => Some("/insumos"),
+        "vendas" => Some("/vendas"),
+        "servicos" => Some("/servicos"),
+        "gastos" => Some("/gastos"),
+        "configuracoes" => Some("/configuracoes"),
+        "balcao" => Some("/balcao"),
+        "perfil" => Some("/perfil"),
+        "equipe" => Some("/equipe"),
+        "suporte" => Some("/suporte"),
+        _ => None,
+    }
+}
+
+/// A frase vem do catálogo do backend. Respostas livres de comandos podem conter dados
+/// sensíveis em qualquer formato, inclusive credenciais sem marcador ou separador.
+fn sanitizar_relatorio(bruto: &str, tela: Option<&str>) -> String {
+    use chrono::{DateTime, Utc};
+
+    let campo = |prefixo: &str| bruto.lines().take(8)
+        .find_map(|linha| linha.strip_prefix(prefixo));
+    let codigo = campo("Código: ").unwrap_or_default();
+    let (codigo, mensagem) = if codigo == "AUTOOS:23505" || codigo.starts_with("AUTOOS:23505:") {
+        ("AUTOOS:23505", "Cadastro duplicado.")
+    } else if codigo == "AUTOOS:DB" || codigo.starts_with("AUTOOS:DB:") {
+        ("AUTOOS:DB", "Falha no banco de dados.")
+    } else if codigo == "AUTOOS:OP" {
+        ("AUTOOS:OP", "Falha operacional.")
+    } else {
+        ("COMANDO", "Falha ao executar uma ação. Detalhes disponíveis localmente.")
+    };
+    let data = campo("Data/Hora: ")
+        .and_then(|valor| DateTime::parse_from_rfc3339(valor.split(' ').next()?).ok())
+        .map(|data| data.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+    let versao = env!("CARGO_PKG_VERSION");
+    let tela = tela.unwrap_or("indisponível");
+    let mut relatorio = format!(
+        "AutoOS — relatório de erro\nVersão: {versao}\nTela: {tela}\nCódigo: {codigo}\nMensagem: {mensagem}\nData/Hora: {}",
+        data.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+    );
+    for (prefixo, valida) in [
+        ("Registro local: ", registro_local_valido as fn(&str) -> bool),
+        ("Referência no log: ", referencia_log_valida),
+    ] {
+        if let Some(valor) = campo(prefixo).filter(|valor| valida(valor)) {
+            relatorio.push_str(&format!("\n{prefixo}{valor}"));
+        }
+    }
+    relatorio
+}
+
+fn registro_local_valido(valor: &str) -> bool {
+    valor.split_once('-').is_some_and(|(data, sufixo)| {
+        (8..=10).contains(&data.len())
+            && sufixo.len() == 5
+            && data.bytes().chain(sufixo.bytes()).all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
+    })
+}
+
+fn referencia_log_valida(valor: &str) -> bool {
+    valor.len() == 8 && valor.bytes().all(|b| b"ABCDEFGHJKMNPQRSTUVWXYZ23456789".contains(&b))
+}
+
 pub(crate) fn montar_mensagem(
     numero: i32,
     perfil: &str,
@@ -311,8 +460,7 @@ pub(crate) fn montar_mensagem(
         partes.push(contexto.join(" · "));
     }
     if let Some(relatorio) = relatorio.filter(|r| !r.trim().is_empty()) {
-        let limpo: String = relatorio.trim().replace("```", "'''").chars().take(2500).collect();
-        partes.push(format!("*Erro:*\n```{limpo}```"));
+        partes.push(format!("*Erro:*\n```{relatorio}```"));
     }
     partes.join("\n\n")
 }
@@ -349,20 +497,26 @@ fn decodificar_imagens(imagens: &[ImagemChamado]) -> Result<Vec<(String, Vec<u8>
 #[instrument(skip_all)]
 pub async fn abrir_chamado_suporte(input: AbrirChamadoInput) -> Result<ChamadoSuporte, String> {
     let perfil = require_sensitive_access()?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let destino = destino_suporte(&pool, perfil.id).await?;
+    let empresa_id = destino.exigir_empresa_elegivel()?;
     let texto = input.texto.trim().to_string();
     if texto.is_empty() || texto.chars().count() > MAX_TEXTO {
         return Err("Descreva o problema (até 4000 caracteres).".to_string());
     }
     let imagens = decodificar_imagens(&input.imagens)?;
     let token = token_suporte().ok_or("Suporte não configurado neste computador. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
-    let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let canal = canal_configurado(&pool).await?.ok_or("Canal do suporte não configurado. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let canal = destino.canal.ok_or("Canal do suporte não configurado. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
 
+    let tela = tela_do_diagnostico(input.tela.as_deref());
+    let versao = env!("CARGO_PKG_VERSION");
+    let relatorio = input.relatorio_erro.as_deref()
+        .filter(|texto| !texto.trim().is_empty())
+        .map(|texto| sanitizar_relatorio(texto, tela));
     let contexto = json!({
-        "tela": input.tela,
-        "versao": input.versao,
-        "relatorio_erro": input.relatorio_erro,
+        "tela": tela,
+        "versao": versao,
+        "relatorio_erro": relatorio,
         "prints": imagens.len(),
         "perfil": perfil.nome,
     });
@@ -385,9 +539,9 @@ pub async fn abrir_chamado_suporte(input: AbrirChamadoInput) -> Result<ChamadoSu
         &perfil.nome,
         &perfil.role,
         &texto,
-        input.tela.as_deref(),
-        input.versao.as_deref(),
-        input.relatorio_erro.as_deref(),
+        tela,
+        Some(versao),
+        relatorio.as_deref(),
     );
     let postado = slack_post(&client, &token, "chat.postMessage", &json!({ "channel": canal, "text": mensagem })).await?;
     let thread_ts = postado.get("ts").and_then(Value::as_str).ok_or("Slack não devolveu a mensagem.")?.to_string();
@@ -476,6 +630,12 @@ pub async fn listar_mensagens_chamado(id: i32, segundo_plano: Option<bool>) -> R
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     buscar_chamado(&pool, empresa_id, perfil.id, id).await?;
+    if segundo_plano != Some(true) {
+        // A conversa local continua disponível se o Slack estiver fora ou em pausa.
+        if let Err(erro) = sincronizar_threads(&pool, perfil.id, Some(id)).await {
+            error!("Não foi possível atualizar o chamado #{}: {}", id, erro);
+        }
+    }
     sqlx::query_as::<_, MensagemSuporte>(
         "SELECT id, autor, autor_nome, texto, automatica, criado_em::TEXT AS criado_em
          FROM suporte_mensagens WHERE chamado_id = $1 AND empresa_id = $2 ORDER BY criado_em, id",
@@ -645,21 +805,34 @@ pub struct RespostaNova {
 #[instrument(skip_all)]
 pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<RespostaNova>, String> {
     let perfil = perfil_da_leitura(segundo_plano)?;
-    let Some(token) = token_suporte() else { return Ok(Vec::new()) };
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
-    let abertos: Vec<(i32, String, String)> = sqlx::query_as(
-        "SELECT id, slack_canal, slack_thread_ts FROM suporte_chamados
-         WHERE empresa_id = $1 AND profile_id = $2 AND situacao = 'aberto'
-           AND slack_canal IS NOT NULL AND slack_thread_ts IS NOT NULL
-           AND criado_em > NOW() - INTERVAL '30 days'
-         ORDER BY id DESC LIMIT 10",
-    )
-    .bind(empresa_id)
-    .bind(perfil.id)
-    .fetch_all(&pool)
-    .await
-    .map_err(super::operator_errors::mapear_erro_sql)?;
+    sincronizar_threads(&pool, perfil.id, None).await
+}
+
+const LIMITE_CHAMADOS_POR_CICLO: i64 = 10;
+const CHAMADOS_PARA_CONSULTAR: &str =
+    "SELECT id, slack_canal, slack_thread_ts FROM suporte_chamados
+     WHERE empresa_id = $1 AND profile_id = $2
+       AND slack_canal IS NOT NULL AND slack_thread_ts IS NOT NULL
+       AND (($3::INTEGER IS NULL AND situacao = 'aberto') OR id = $3)
+       AND (consultado_em IS NULL OR consultado_em <= NOW() - INTERVAL '10 seconds')
+     ORDER BY consultado_em NULLS FIRST, id LIMIT $4";
+
+async fn sincronizar_threads(
+    pool: &sqlx::PgPool,
+    perfil_id: i32,
+    alvo: Option<i32>,
+) -> Result<Vec<RespostaNova>, String> {
+    let Some(token) = token_suporte() else { return Ok(Vec::new()) };
+    let empresa_id = empresa_do_suporte(pool, perfil_id).await?;
+    let abertos: Vec<(i32, String, String)> = sqlx::query_as(CHAMADOS_PARA_CONSULTAR)
+        .bind(empresa_id)
+        .bind(perfil_id)
+        .bind(alvo)
+        .bind(LIMITE_CHAMADOS_POR_CICLO)
+        .fetch_all(pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     if abertos.is_empty() {
         return Ok(Vec::new());
     }
@@ -667,9 +840,43 @@ pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<Resp
     let bot = bot_proprio(&client, &token).await;
     let mut novas = Vec::new();
     for (chamado_id, canal, thread_ts) in abertos {
-        // Uma thread com problema (apagada, sem acesso) não para as outras nem perde o que já entrou.
-        let mensagens = match mensagens_da_thread(&client, &token, &canal, &thread_ts).await {
-            Ok(mensagens) => mensagens,
+        let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+        let turno = sqlx::query(
+            "UPDATE suporte_chamados SET consultado_em = NOW()
+             WHERE id = $1 AND empresa_id = $2 AND profile_id = $3
+               AND ($4 OR situacao = 'aberto')
+               AND (consultado_em IS NULL OR consultado_em <= NOW() - INTERVAL '10 seconds')",
+        )
+        .bind(chamado_id)
+        .bind(empresa_id)
+        .bind(perfil_id)
+        .bind(alvo.is_some())
+        .execute(&mut *tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+        if turno.rows_affected() == 0 {
+            tx.rollback().await.map_err(super::operator_errors::mapear_erro_sql)?;
+            continue;
+        }
+
+        if !reservar_consulta_slack(&mut *tx).await? {
+            tx.rollback().await.map_err(super::operator_errors::mapear_erro_sql)?;
+            break;
+        }
+        tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+
+        let ultima_resposta: Option<String> = sqlx::query_scalar(
+            "SELECT MAX(slack_ts) FROM suporte_mensagens
+             WHERE chamado_id = $1 AND empresa_id = $2 AND autor = 'suporte'",
+        )
+        .bind(chamado_id)
+        .bind(empresa_id)
+        .fetch_one(pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+        // Uma thread com problema não impede a consulta das outras.
+        let (mensagens, pausado) = match mensagens_da_thread(pool, &client, &token, &canal, &thread_ts, ultima_resposta.as_deref()).await {
+            Ok(resultado) => resultado,
             Err(erro) => {
                 error!("Respostas do chamado #{} não puderam ser lidas: {}", chamado_id, erro);
                 continue;
@@ -681,7 +888,7 @@ pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<Resp
             let ja_existe: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM suporte_mensagens WHERE chamado_id = $1 AND slack_ts = $2)")
                 .bind(chamado_id)
                 .bind(&item.ts)
-                .fetch_one(&pool)
+                .fetch_one(pool)
                 .await
                 .map_err(super::operator_errors::mapear_erro_sql)?;
             if ja_existe {
@@ -703,7 +910,7 @@ pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<Resp
             .bind(&item.texto)
             .bind(item.automatica)
             .bind(&item.ts)
-            .fetch_optional(&pool)
+            .fetch_optional(pool)
             .await
             .map_err(super::operator_errors::mapear_erro_sql)?;
             if inserida.is_some() {
@@ -715,22 +922,76 @@ pub async fn sincronizar_suporte(segundo_plano: Option<bool>) -> Result<Vec<Resp
             sqlx::query("UPDATE suporte_chamados SET atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2")
                 .bind(chamado_id)
                 .bind(empresa_id)
-                .execute(&pool)
+                .execute(pool)
                 .await
                 .map_err(super::operator_errors::mapear_erro_sql)?;
+        }
+        if pausado {
+            break;
         }
     }
     Ok(novas)
 }
 
+// Margem abaixo do limite Tier 3 do app interno, compartilhada entre estações.
+async fn reservar_consulta_slack<'a>(
+    executor: impl sqlx::Executor<'a, Database = sqlx::Postgres>,
+) -> Result<bool, String> {
+    let atualizadas = sqlx::query(
+        "UPDATE configuracoes_sistema
+         SET suporte_consulta_total = CASE WHEN suporte_consulta_janela > NOW() - INTERVAL '1 minute'
+                                           THEN suporte_consulta_total + 1 ELSE 1 END,
+             suporte_consulta_janela = CASE WHEN suporte_consulta_janela > NOW() - INTERVAL '1 minute'
+                                            THEN suporte_consulta_janela ELSE NOW() END
+         WHERE id = 1 AND (suporte_consulta_pausada_ate IS NULL OR suporte_consulta_pausada_ate <= NOW())
+           AND (suporte_consulta_janela IS NULL OR suporte_consulta_janela <= NOW() - INTERVAL '1 minute'
+                OR suporte_consulta_total < 40)",
+    )
+    .execute(executor)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(atualizadas.rows_affected() == 1)
+}
+
+fn espera_slack(cabecalhos: &reqwest::header::HeaderMap) -> i64 {
+    cabecalhos.get(reqwest::header::RETRY_AFTER)
+        .and_then(|valor| valor.to_str().ok())
+        .and_then(|valor| valor.parse::<i32>().ok())
+        .filter(|segundos| *segundos > 0)
+        .map(i64::from)
+        .unwrap_or(60)
+}
+
+async fn pausar_consulta_slack(pool: &sqlx::PgPool, segundos: i64) -> Result<(), String> {
+    sqlx::query(
+        "UPDATE configuracoes_sistema
+         SET suporte_consulta_pausada_ate = GREATEST(suporte_consulta_pausada_ate, NOW() + ($1::BIGINT * INTERVAL '1 second'))
+         WHERE id = 1",
+    )
+    .bind(segundos)
+    .execute(pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(())
+}
+
 /// Todas as mensagens da thread, página por página (o Slack devolve as mais antigas primeiro e
 /// pagina por cursor: sem seguir o cursor, respostas depois da primeira página nunca chegariam).
-async fn mensagens_da_thread(client: &Client, token: &str, canal: &str, thread_ts: &str) -> Result<Vec<Value>, String> {
+async fn mensagens_da_thread(
+    pool: &sqlx::PgPool, client: &Client, token: &str, canal: &str, thread_ts: &str,
+    ultima_resposta: Option<&str>,
+) -> Result<(Vec<Value>, bool), String> {
     const MAX_PAGINAS: usize = 20;
     let mut mensagens = Vec::new();
     let mut cursor: Option<String> = None;
-    for _ in 0..MAX_PAGINAS {
+    for pagina in 0..MAX_PAGINAS {
+        if pagina > 0 && !reservar_consulta_slack(pool).await? {
+            return Ok((mensagens, true));
+        }
         let mut consulta = vec![("channel", canal.to_string()), ("ts", thread_ts.to_string()), ("limit", "200".to_string())];
+        if let Some(ultima_resposta) = ultima_resposta {
+            consulta.push(("oldest", ultima_resposta.to_string()));
+        }
         if let Some(cursor) = cursor.as_ref() {
             consulta.push(("cursor", cursor.clone()));
         }
@@ -740,10 +1001,18 @@ async fn mensagens_da_thread(client: &Client, token: &str, canal: &str, thread_t
             .query(&consulta)
             .send()
             .await
-            .map_err(|e| format!("Sem conexão com o Slack: {e}"))?
-            .json::<Value>()
+            .map_err(|e| format!("Sem conexão com o Slack: {e}"))?;
+        if resposta.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            pausar_consulta_slack(pool, espera_slack(resposta.headers())).await?;
+            return Ok((mensagens, true));
+        }
+        let resposta = resposta.json::<Value>()
             .await
             .map_err(|e| format!("Resposta inválida do Slack: {e}"))?;
+        if resposta.get("error").and_then(Value::as_str) == Some("ratelimited") {
+            pausar_consulta_slack(pool, 60).await?;
+            return Ok((mensagens, true));
+        }
         let resposta = conferir(resposta, "conversations.replies")?;
         mensagens.extend(resposta.get("messages").and_then(Value::as_array).cloned().unwrap_or_default());
         cursor = resposta
@@ -756,7 +1025,7 @@ async fn mensagens_da_thread(client: &Client, token: &str, canal: &str, thread_t
             break;
         }
     }
-    Ok(mensagens)
+    Ok((mensagens, false))
 }
 
 /// Chamado aberto do perfil da sessão, com o que é preciso para escrever na thread.
@@ -790,14 +1059,14 @@ pub struct ResponderChamadoInput {
 #[instrument(skip_all)]
 pub async fn responder_chamado_suporte(input: ResponderChamadoInput) -> Result<ChamadoSuporte, String> {
     let perfil = require_sensitive_access()?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = empresa_do_suporte(&pool, perfil.id).await?;
     let texto = input.texto.trim().to_string();
     if texto.is_empty() || texto.chars().count() > MAX_TEXTO {
         return Err("Escreva a mensagem (até 4000 caracteres).".to_string());
     }
     let imagens = decodificar_imagens(&input.imagens)?;
     let token = token_suporte().ok_or("Suporte não configurado neste computador. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
-    let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
     let (situacao, canal, thread_ts) = thread_do_chamado(&pool, empresa_id, perfil.id, input.id).await?;
     if situacao != "aberto" {
         return Err("Este chamado já foi resolvido. Abra um novo para outro assunto.".to_string());
@@ -860,9 +1129,9 @@ pub(crate) fn texto_do_retorno(resolvido: bool, perfil: &str) -> String {
 #[instrument(skip_all)]
 pub async fn retorno_chamado_suporte(id: i32, resolvido: bool) -> Result<ChamadoSuporte, String> {
     let perfil = require_sensitive_access()?;
-    let token = token_suporte().ok_or("Suporte não configurado neste computador. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = empresa_do_suporte(&pool, perfil.id).await?;
+    let token = token_suporte().ok_or("Suporte não configurado neste computador. Peça a quem administra para cadastrar em Configurações › Integrações.")?;
     let (situacao, canal, thread_ts) = thread_do_chamado(&pool, empresa_id, perfil.id, id).await?;
     if situacao != "aberto" {
         return Err("Este chamado já foi resolvido.".to_string());
@@ -902,6 +1171,40 @@ pub async fn retorno_chamado_suporte(id: i32, resolvido: bool) -> Result<Chamado
 mod tests {
     use super::{canal_valido, conferir, decodificar_imagens, montar_mensagem, ImagemChamado};
     use serde_json::json;
+
+    fn destino(perfil: Option<i32>, vinculada: Option<i32>, ativas: i64) -> super::DestinoSuporte {
+        super::DestinoSuporte {
+            empresa_perfil: perfil,
+            empresa_vinculada: vinculada,
+            empresas_ativas: ativas,
+            canal: None,
+        }
+    }
+
+    #[test]
+    fn empresa_unica_pode_usar_o_canal_legado() {
+        let legado = destino(Some(3), None, 1);
+        assert_eq!(legado.exigir_empresa_elegivel().unwrap(), 3);
+        assert_eq!(legado.empresa_para_salvar(true).unwrap(), 3);
+        assert!(destino(None, None, 0).exigir_empresa_elegivel().is_err());
+    }
+
+    #[test]
+    fn com_varias_empresas_so_a_vinculada_pode_usar_ou_editar_o_canal() {
+        assert_eq!(destino(Some(3), Some(3), 2).exigir_empresa_elegivel().unwrap(), 3);
+        let outra = destino(Some(4), Some(3), 2);
+        assert!(outra.exigir_empresa_elegivel().is_err());
+        assert!(outra.empresa_para_salvar(true).is_err());
+    }
+
+    #[test]
+    fn canal_sem_vinculo_exige_novo_salvamento_por_administrador() {
+        let legado = destino(Some(3), None, 2);
+        assert_eq!(legado.exigir_empresa_elegivel().unwrap_err(), super::SUPORTE_SEM_VINCULO);
+        assert!(legado.empresa_para_salvar(false).is_err());
+        assert_eq!(legado.empresa_para_salvar(true).unwrap(), 3);
+        assert!(destino(None, None, 2).empresa_para_salvar(true).is_err());
+    }
 
     #[test]
     fn token_do_cofre_vale_mais_que_o_da_instalacao() {
@@ -971,11 +1274,11 @@ mod tests {
 
     #[test]
     fn mensagem_leva_texto_citado_contexto_e_erro() {
-        let texto = montar_mensagem(12, "Ivan", "TECNICO", "Não salva\nfica girando", Some("/equipamentos/10"), Some("0.6.4"), Some("ERR ```x```"));
+        let texto = montar_mensagem(12, "Ivan", "TECNICO", "Não salva\nfica girando", Some("/equipamentos/10"), Some("0.6.4"), Some("AutoOS — relatório de erro"));
         assert!(texto.starts_with(":sos: *Chamado #12* — Ivan (TECNICO)"));
         assert!(texto.contains("> Não salva\n> fica girando"));
         assert!(texto.contains("*Tela:* /equipamentos/10 · *Versão:* 0.6.4"));
-        assert!(texto.contains("*Erro:*\n```ERR '''x'''```"));
+        assert!(texto.contains("*Erro:*\n```AutoOS — relatório de erro```"));
         let simples = montar_mensagem(1, "Ana", "ATENDENTE", "Oi", None, None, None);
         assert!(!simples.contains("Tela") && !simples.contains("Erro"));
     }
@@ -997,4 +1300,32 @@ mod tests {
         assert!(decodificar_imagens(&muitos).is_err());
         assert!(decodificar_imagens(&[ImagemChamado { nome: "a.png".into(), base64: "***".into() }]).is_err());
     }
+}
+
+#[cfg(test)]
+#[test]
+fn relatorio_externo_retem_apenas_metadados_permitidos() {
+    let bruto = "Código: AUTOOS:DB:42P01\nRegistro local: mk123456-abc19\nReferência no log: ABCD2345\nData/Hora: 2026-11-22T12:00:00Z\nMensagem: user@example.invalid senha=segredo 12345678901\nResposta original: https://user:senha@example.invalid";
+    let tela = tela_do_diagnostico(Some("/equipamentos/12345678901?privado=segredo"));
+    let limpo = sanitizar_relatorio(bruto, tela);
+    assert!(limpo.contains("Tela: /equipamentos\nCódigo: AUTOOS:DB\nMensagem: Falha no banco de dados."));
+    assert!(limpo.contains("2026-11-22T12:00:00.000Z"));
+    assert!(limpo.contains("Registro local: mk123456-abc19"));
+    assert!(limpo.contains("Referência no log: ABCD2345"));
+    for removido in ["42P01", "example.invalid", "senha", "segredo", "12345678901", "privado"] {
+        assert!(!limpo.contains(removido), "{removido}");
+    }
+    assert!(montar_mensagem(1, "Perfil", "Papel", "Texto", tela, None, Some(&limpo)).contains(&limpo));
+}
+
+
+#[cfg(test)]
+#[test]
+fn espera_da_api_respeita_retry_after() {
+    let mut cabecalhos = reqwest::header::HeaderMap::new();
+    assert_eq!(espera_slack(&cabecalhos), 60);
+    cabecalhos.insert(reqwest::header::RETRY_AFTER, "120".parse().unwrap());
+    assert_eq!(espera_slack(&cabecalhos), 120);
+    cabecalhos.insert(reqwest::header::RETRY_AFTER, "invalido".parse().unwrap());
+    assert_eq!(espera_slack(&cabecalhos), 60);
 }

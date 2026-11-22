@@ -1414,6 +1414,7 @@ export interface ModeloMensagemInput {
 
 /** Suporte pelo Slack (0059). */
 export interface ConfigSuporte {
+  empresa_elegivel: boolean;
   /** Este computador tem o token do bot guardado. */
   token_neste_computador: boolean;
   /** O token em uso veio no instalador (nada guardado no cofre deste computador). */

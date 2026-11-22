@@ -34,7 +34,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
-import { copyErrorDetails, formatErrorForCopy, versaoDoApp } from "@/lib/error-utils";
+import { copyErrorDetails, formatarRelatorioSuporte } from "@/lib/error-utils";
 import { enviarErroAoSuporte, suporteDisponivel } from "@/lib/suporte-ponte";
 import { marcarErrosLidos, useErrosRegistrados, type ErroRegistrado } from "@/lib/error-log";
 import { PREFIXO_TOAST_ERRO } from "@/hooks/useNotification";
@@ -728,7 +728,7 @@ function ItemErro({ registro }: { registro: ErroRegistrado }) {
               className="flex items-center gap-1 text-[13px] font-semibold text-primary hover:underline"
               onClick={() => {
                 marcarErrosLidos(registro.id);
-                enviarErroAoSuporte(formatErrorForCopy(erro, { versao: versaoDoApp() }));
+                enviarErroAoSuporte(formatarRelatorioSuporte(erro, registro.id));
               }}
             >
               <Headphones className="h-3.5 w-3.5" aria-hidden="true" /> Enviar ao suporte
