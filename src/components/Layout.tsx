@@ -401,16 +401,15 @@ export function Layout() {
                 data-tour="profile-card"
                 onClick={() => setMobileOpen(false)}
                 aria-label={`Perfil de ${activeProfile.nome}`}
-                title="Trocar perfil"
+                title={activeProfile.nome}
                 className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 transition-colors hover:bg-muted", collapsed && "justify-center p-0")}
               >
                 <ProfileAvatar icon={activeLook.icon} color={activeLook.color} size={collapsed ? "sm" : "md"} />
                 {!collapsed && (
                   <span className="flex min-w-0 flex-1 flex-col">
-                    {/* Nome em até duas linhas: nomes compostos não somem atrás de reticências. */}
-                    <span className="line-clamp-2 break-words text-sm font-semibold leading-tight text-foreground [overflow-wrap:anywhere]">
-                      {activeProfile.nome}
-                      {sessaoAtiva && <BadgeCheck className="ml-1 inline h-3.5 w-3.5 align-[-2px] text-primary" aria-label="Acesso ativo" />}
+                    <span className="flex min-w-0 items-center gap-1 text-sm font-semibold leading-tight text-foreground">
+                      <span className="truncate">{activeProfile.nome}</span>
+                      {sessaoAtiva && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Acesso ativo" />}
                     </span>
                     <span className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">
                       {status?.active_role ? securityRoleLabel(status.active_role) : "Sessão bloqueada"}
