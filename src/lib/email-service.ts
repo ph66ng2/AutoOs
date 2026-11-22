@@ -293,15 +293,20 @@ Equipe Técnica BMITAG`;
     }
 
     const assunto = `Orçamento - ${equipamento.marca} ${equipamento.modelo} (SN: ${equipamento.serial_number})`;
-    const emailTecnico = emailTecnicoPorNome(verificacao.tecnico_nome);
+    const orcamento = equipamento.valor_orcamento == null
+      ? verificacao
+      : { ...verificacao, custo_total: equipamento.valor_orcamento };
+    const emailTecnico = emailTecnicoPorNome(orcamento.tecnico_nome);
     const cc = montarCcs(emailTecnico);
-    const corpoTexto = gerarCorpoOrcamentoTexto(equipamento, verificacao, emailTecnico);
-    const corpoHtml = gerarCorpoOrcamentoHtml(equipamento, verificacao, emailTecnico);
+    const corpoTexto = gerarCorpoOrcamentoTexto(equipamento, orcamento, emailTecnico);
+    const corpoHtml = gerarCorpoOrcamentoHtml(equipamento, orcamento, emailTecnico);
 
     let anexos: EmailAttachment[] | undefined;
     let limparAnexoTemp: (() => Promise<void>) | undefined;
     try {
-      const caminhoPdf = await PdfService.gerarOrcamento(equipamento, verificacao);
+      const caminhoPdf = orcamento.adjusted_at
+        ? await PdfService.gerarOrcamentoAjustado(equipamento, orcamento)
+        : await PdfService.gerarOrcamento(equipamento, orcamento);
       if (caminhoPdf) {
         const preparado = await prepararAnexoTemporario(caminhoPdf, "orcamento.pdf");
         if (preparado) {
@@ -325,6 +330,7 @@ Equipe Técnica BMITAG`;
     };
 
     try {
+      if (!anexos) throw new Error("Não foi possível anexar o PDF do orçamento. O e-mail não foi enviado.");
       await invoke<void>("enviar_email", { input: emailData });
 
       await registrarComunicacaoSegura({
@@ -479,23 +485,6 @@ function gerarCorpoOrcamentoTexto(
     ? `\nPRAZO PARA APROVAÇÃO: ${formatarData(equipamento.prazo_aprovacao)}`
     : "";
 
-  const clienteNome = equipamento.cliente_nome || "cliente";
-  const equipamentoInfo = `${equipamento.marca} ${equipamento.modelo}`;
-  const serial = equipamento.serial_number || "N/A";
-  const valorFormatado = formatarMoeda(total);
-  const mensagemAprovacao = `Olá! Eu, ${clienteNome}, aprovo o orçamento para o equipamento ${equipamentoInfo} (Serial: ${serial}). Valor: ${valorFormatado}. Aprovo o início do serviço.`;
-  const encodedMsg = encodeURIComponent(mensagemAprovacao);
-  let whatsappUrl: string;
-  if (equipamento.cliente_telefone) {
-    const phone = equipamento.cliente_telefone.replace(/\D/g, "");
-    whatsappUrl = `https://wa.me/55${phone}?text=${encodedMsg}`;
-  } else {
-    whatsappUrl = `https://wa.me/?text=${encodedMsg}`;
-  }
-  const emailDestino = "bmitag@bmitag.com.br";
-  const assunto = `APROVADO - Orçamento ${equipamentoInfo} (SN: ${serial})`;
-  const mailtoUrl = `mailto:${emailDestino}?subject=${encodeURIComponent(assunto)}&body=${encodedMsg}`;
-
   return `Prezado(a) ${equipamento.cliente_nome},
 
 Seu equipamento foi verificado por nossa equipe técnica e elaboramos o orçamento para o reparo.
@@ -518,17 +507,12 @@ TOTAL: ${formatarMoeda(total)}${prazoLinha}
 
 ${AVISO_TROCA_PECAS_TEXTO}
 
-Para aprovar este orçamento, escolha uma das opções abaixo:
-
-  • WhatsApp: ${whatsappUrl}
-  • Email: responda este email com "APROVADO" no assunto ou use o link: ${mailtoUrl}
-
-Ao enviar, você confirma a aprovação do orçamento.
+Confira o orçamento completo no PDF anexado. Para comunicar sua decisão, responda a este e-mail.
 
 ${fraseContatoTecnicoTexto(emailTecnico)}
 
 Atenciosamente,
-Equipe Técnica BMITAG`.trim();
+Equipe técnica`.trim();
 }
 
 function gerarCorpoOrcamentoHtml(
@@ -551,23 +535,6 @@ function gerarCorpoOrcamentoHtml(
   const linhaPrazoHtml = equipamento.prazo_aprovacao
     ? `<tr><td style="padding:6px 0;font-weight:600;">Prazo para aprovação</td><td style="padding:6px 0;text-align:right;">${escapeHtml(formatarData(equipamento.prazo_aprovacao))}</td></tr>`
     : "";
-
-  const clienteNome = equipamento.cliente_nome || "cliente";
-  const equipamentoInfo = `${equipamento.marca} ${equipamento.modelo}`;
-  const serial = equipamento.serial_number || "N/A";
-  const valorFormatado = formatarMoeda(total);
-  const mensagemAprovacao = `Olá! Eu, ${clienteNome}, aprovo o orçamento para o equipamento ${equipamentoInfo} (Serial: ${serial}). Valor: ${valorFormatado}. Aprovo o início do serviço.`;
-  const encodedMsg = encodeURIComponent(mensagemAprovacao);
-  let whatsappUrl: string;
-  if (equipamento.cliente_telefone) {
-    const phone = equipamento.cliente_telefone.replace(/\D/g, "");
-    whatsappUrl = `https://wa.me/55${phone}?text=${encodedMsg}`;
-  } else {
-    whatsappUrl = `https://wa.me/?text=${encodedMsg}`;
-  }
-  const emailDestino = "bmitag@bmitag.com.br";
-  const assunto = `APROVADO - Orçamento ${equipamentoInfo} (SN: ${serial})`;
-  const mailtoUrl = `mailto:${emailDestino}?subject=${encodeURIComponent(assunto)}&body=${encodedMsg}`;
 
   return `
     <div style="font-family:Segoe UI,Arial,sans-serif;color:#111827;line-height:1.6;max-width:720px;">
@@ -592,28 +559,9 @@ function gerarCorpoOrcamentoHtml(
         </tbody>
       </table>
       <p>${AVISO_TROCA_PECAS_HTML}</p>
-      <div style="margin-top:24px; padding:16px; background:#f3f4f6; border-radius:8px; border:1px solid #e5e7eb;">
-        <p style="margin:0 0 12px 0; font-weight:600; font-size:16px; color:#111827;">Para aprovar este orçamento, escolha uma das opções:</p>
-        <table cellpadding="0" cellspacing="0" style="width:100%;">
-          <tr>
-            <td style="padding:8px 8px 8px 0; vertical-align:top;">
-              <a href="${whatsappUrl}" style="display:inline-block; background:#25D366; color:white; padding:10px 18px; border-radius:6px; text-decoration:none; font-weight:600; font-size:14px; font-family:Segoe UI,Arial,sans-serif;">
-                📱 Aprovar pelo WhatsApp
-              </a>
-            </td>
-            <td style="padding:8px 0; vertical-align:top;">
-              <a href="${mailtoUrl}" style="display:inline-block; background:#3b82f6; color:white; padding:10px 18px; border-radius:6px; text-decoration:none; font-weight:600; font-size:14px; font-family:Segoe UI,Arial,sans-serif;">
-                📧 Aprovar por Email
-              </a>
-            </td>
-          </tr>
-        </table>
-        <p style="margin:12px 0 0 0; font-size:12px; color:#6b7280;">
-          Ao clicar, você poderá revisar a mensagem antes de enviar. Enviar a mensagem confirma a aprovação do orçamento.
-        </p>
-      </div>
+      <p>Confira o orçamento completo no PDF anexado. Para comunicar sua decisão, responda a este e-mail.</p>
       <p>${fraseContatoTecnicoHtml(emailTecnico)}</p>
-      <p>Atenciosamente,<br />Equipe Técnica BMITAG</p>
+      <p>Atenciosamente,<br />Equipe técnica</p>
     </div>
   `.trim();
 }
