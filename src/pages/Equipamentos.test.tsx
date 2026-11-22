@@ -5,7 +5,7 @@ import Equipamentos from "./Equipamentos";
 
 Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => {} });
 
-const { dbMocks, status, enviarOrcamento, recarregar, toastMock } = vi.hoisted(() => ({
+const { dbMocks, status, enviarOrcamento, enviarEmailOrcamento, ensureSensitiveAccess, recarregar, toastMock } = vi.hoisted(() => ({
   toastMock: Object.assign(vi.fn(), {
     error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn(), message: vi.fn(),
     loading: vi.fn(), dismiss: vi.fn(), promise: vi.fn(),
@@ -23,6 +23,8 @@ const { dbMocks, status, enviarOrcamento, recarregar, toastMock } = vi.hoisted((
     listarHistoricoEquipamento: vi.fn(),
   },
   enviarOrcamento: vi.fn(),
+  enviarEmailOrcamento: vi.fn(),
+  ensureSensitiveAccess: vi.fn(),
   recarregar: vi.fn(),
   status: { unlocked: true, active_profile_id: 1, active_empresa_id: 4, profiles: [] },
 }));
@@ -32,7 +34,7 @@ vi.mock("sonner", async (importOriginal) => ({
   toast: toastMock,
 }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
-  useSensitiveAccess: () => ({ status, hasPermission: () => true, ensureSensitiveAccess: async () => true }),
+  useSensitiveAccess: () => ({ status, hasPermission: () => true, ensureSensitiveAccess }),
 }));
 vi.mock("@/hooks/useEquipamentos", () => {
   const equipamentos = [];
@@ -57,6 +59,10 @@ vi.mock("@/lib/envio-orcamento", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/envio-orcamento")>(),
   enviarOrcamentoAoCliente: enviarOrcamento,
 }));
+vi.mock("@/lib/email-service", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/email-service")>();
+  return { ...original, EmailService: { ...original.EmailService, enviarOrcamento: enviarEmailOrcamento } };
+});
 vi.mock("@/components/equipamentos/VerificacaoTecnica", () => ({
   VerificacaoTecnica: ({ open, onConcluir }) => open && (
     <button onClick={() => void onConcluir({ custo_total: 150 })}>Finalizar verificação</button>
@@ -96,6 +102,7 @@ function buscaPendente() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  ensureSensitiveAccess.mockResolvedValue(true);
   Object.assign(status, { unlocked: true, active_profile_id: 1, active_empresa_id: 4 });
   recarregar.mockResolvedValue({ status: "atualizado" });
   dbMocks.buscarVerificacao.mockResolvedValue(null);
@@ -315,4 +322,72 @@ it("volta à OS salva e permite enviar o orçamento quando a recarga falha", asy
   ));
   expect(dbMocks.salvarVerificacao).toHaveBeenCalledTimes(1);
   expect(dbMocks.buscarEquipamento).toHaveBeenCalledTimes(2);
+});
+
+describe("reenvio de orçamento por e-mail", () => {
+  const destinatario = { contatoId: 9, nome: "Contato do portal", email: "portal@example.com" };
+  const equipamento = {
+    ...os(1),
+    status: "AGUARDANDO_APROVACAO",
+    cliente_nome: "Cliente da OS",
+    cliente_email: "cliente@example.com",
+    responsavel_nome: "Responsável antigo",
+    responsavel_email: "antigo@example.com",
+    atualizado_em: "2026-11-22T12:00:00Z",
+  };
+  const verificacao = { equipamento_id: 1, tecnico_nome: "Técnico", custo_total: 150 };
+
+  beforeEach(() => {
+    dbMocks.buscarEquipamento.mockResolvedValue(equipamento);
+    dbMocks.buscarVerificacao.mockResolvedValue(verificacao);
+    dbMocks.obterDestinatarioOrcamento.mockResolvedValue(destinatario);
+    enviarEmailOrcamento.mockResolvedValue({ sucesso: true });
+  });
+
+  async function abrirReenvio() {
+    abrir();
+    const menu = await screen.findByRole("combobox", { name: "Mais ações" });
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    fireEvent.keyDown(await screen.findByRole("option", { name: "Reenviar orçamento por e-mail" }), { key: "Enter" });
+  }
+
+  async function confirmarReenvio() {
+    expect(await screen.findByText("Enviar o orçamento da OS #1 para Contato do portal (portal@example.com)?")).toBeVisible();
+    expect(dbMocks.obterDestinatarioOrcamento).toHaveBeenCalledExactlyOnceWith(1);
+    expect(ensureSensitiveAccess).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Reenviar e-mail" }));
+  }
+
+  it("confirma e envia ao destinatário resolvido pelo backend", async () => {
+    await abrirReenvio();
+    await confirmarReenvio();
+
+    await waitFor(() => expect(enviarEmailOrcamento).toHaveBeenCalledExactlyOnceWith(
+      { ...equipamento, cliente_nome: destinatario.nome, cliente_email: destinatario.email },
+      verificacao,
+    ));
+    expect(dbMocks.obterDestinatarioOrcamento).toHaveBeenNthCalledWith(2, 1);
+    expect(ensureSensitiveAccess.mock.invocationCallOrder[0])
+      .toBeLessThan(dbMocks.obterDestinatarioOrcamento.mock.invocationCallOrder[1]);
+  });
+
+  it("recusa reenvio se o destinatário do backend não tem e-mail", async () => {
+    dbMocks.obterDestinatarioOrcamento.mockResolvedValue({ ...destinatario, email: null });
+    await abrirReenvio();
+
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "Reenviar e-mail" })).not.toBeInTheDocument();
+    expect(ensureSensitiveAccess).not.toHaveBeenCalled();
+    expect(enviarEmailOrcamento).not.toHaveBeenCalled();
+  });
+
+  it.each(["novo@example.com", null])("recusa reenvio se o e-mail passa a ser %s após o PIN", async (email) => {
+    dbMocks.obterDestinatarioOrcamento.mockResolvedValueOnce(destinatario).mockResolvedValue({ ...destinatario, email });
+    await abrirReenvio();
+    await confirmarReenvio();
+
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalled());
+    expect(dbMocks.obterDestinatarioOrcamento).toHaveBeenNthCalledWith(2, 1);
+    expect(enviarEmailOrcamento).not.toHaveBeenCalled();
+  });
 });

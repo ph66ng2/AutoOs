@@ -2865,16 +2865,19 @@ export default function Equipamentos() {
     const acao = "Reenviar orçamento por e-mail";
 
     try {
-      const atual = await db.buscarEquipamento(id);
-      const recipient = resolveRecipient(atual, "email");
-      if (atual.status !== "AGUARDANDO_APROVACAO" || !emailValido(recipient.endereco)) {
+      const [atual, destinatario] = await Promise.all([
+        db.buscarEquipamento(id),
+        db.obterDestinatarioOrcamento(id),
+      ]);
+      const { email, nome, contatoId } = destinatario;
+      if (atual.status !== "AGUARDANDO_APROVACAO" || !email || !emailValido(email)) {
         warning("Equipamentos", "A OS deve estar aguardando aprovação e ter um e-mail válido para o reenvio.");
         return;
       }
 
       setConfirmProps({
         title: acao,
-        description: `Enviar o orçamento da OS #${id} para ${recipient.nome} (${recipient.endereco})?`,
+        description: `Enviar o orçamento da OS #${id} para ${nome} (${email})?`,
         confirmLabel: "Reenviar e-mail",
         cancelLabel: "Cancelar",
         onConfirm: () => void enviar(),
@@ -2891,10 +2894,13 @@ export default function Equipamentos() {
           });
           if (!liberado) return;
 
-          const [recente, verificacao] = await Promise.all([db.buscarEquipamento(id), db.buscarVerificacao(id)]);
-          const contato = resolveRecipient(recente, "email");
+          const [recente, verificacao, contato] = await Promise.all([
+            db.buscarEquipamento(id),
+            db.buscarVerificacao(id),
+            db.obterDestinatarioOrcamento(id),
+          ]);
           if (recente.status !== "AGUARDANDO_APROVACAO" || recente.atualizado_em !== atual.atualizado_em
-            || contato.endereco !== recipient.endereco || contato.nome !== recipient.nome) {
+            || !contato.email || contato.email !== email || contato.nome !== nome || contato.contatoId !== contatoId) {
             warning("Equipamentos", "A OS mudou. Revise o orçamento e o destinatário antes de reenviar.");
             return;
           }
@@ -2904,8 +2910,8 @@ export default function Equipamentos() {
           }
           const resultado = await EmailService.enviarOrcamento({
             ...recente,
-            cliente_nome: recipient.nome,
-            cliente_email: recipient.endereco,
+            cliente_nome: contato.nome,
+            cliente_email: contato.email,
           }, verificacao);
           if (!resultado.sucesso) throw new Error(resultado.erro || "Falha ao enviar o orçamento.");
           success("Equipamentos", "Orçamento reenviado por e-mail.", acao);

@@ -95,6 +95,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     listarProdutos: vi.fn().mockResolvedValue([]),
     buscarEquipamento: mockBuscarEquipamento,
+    obterDestinatarioOrcamento: vi.fn().mockResolvedValue({ contatoId: null, nome: "Cliente A", email: "a@ex.com" }),
     buscarVerificacao: (...args: unknown[]) => mockBuscarVerificacao(...args),
     listarServicosCatalogoAtivos: (...args: unknown[]) => mockListarServicosCatalogoAtivos(...args),
     atualizarServicosVerificacao: (...args: unknown[]) => mockAtualizarServicosVerificacao(...args),
