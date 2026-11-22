@@ -3506,6 +3506,8 @@ export default function Equipamentos() {
               onChange={setStatusFiltro}
               multiplo
             />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
             {/* "Minhas": as OS em que este perfil é o técnico. Só aparece para quem já tem alguma. */}
             {meuNomeTecnico && (
               <PilulaFiltro
@@ -3515,9 +3517,7 @@ export default function Equipamentos() {
                 onClick={() => setTecnicoFiltro(tecnicoFiltro === meuNomeTecnico ? "TODOS" : meuNomeTecnico)}
               />
             )}
-          </div>
-          <div className="flex flex-col gap-3 lg:flex-row">
-            <div className="relative flex-1">
+            <div className="relative min-w-48 flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input aria-label="Pesquisar equipamentos" placeholder="Série, patrimônio, equipamento, cliente, contato ou CPF/CNPJ" value={busca} onChange={e => setBusca(e.target.value)} className="h-10 bg-muted pl-9 pr-10" />
               {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
@@ -3626,7 +3626,7 @@ export default function Equipamentos() {
                     <TableHead className="w-[12rem]">Equipamento</TableHead>
                     <TableHead className="w-[11rem]">Cliente</TableHead>
                     <TableHead className="w-[11rem]">Andamento</TableHead>
-                    <TableHead className="w-[5.5rem]">Técnico</TableHead>
+                    <TableHead className="w-[8.5rem]">Técnico</TableHead>
                     <TableHead className="w-[5rem]">Entrada</TableHead>
                     <TableHead className="w-[7.5rem] text-right">Orçamento</TableHead>
                     <TableHead className="sticky right-0 z-20 w-[15.5rem] min-w-[15.5rem] bg-muted text-right">Próxima ação</TableHead>
@@ -3691,7 +3691,7 @@ export default function Equipamentos() {
                         </div>
                       </TableCell>
                       <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <span className="block truncate" title={eq.tecnico_nome ?? undefined}>{eq.tecnico_nome || "—"}</span>
+                        <span className="block break-words" title={eq.tecnico_nome ?? undefined}>{eq.tecnico_nome || "—"}</span>
                       </TableCell>
                       <TableCell className={`overflow-hidden text-sm text-muted-foreground tabular-nums ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <span className="block truncate" title={`Entrada em ${formatDatePtBr(eq.data_entrada)} · última alteração: ${formatDatePtBr(eq.atualizado_em || eq.criado_em)}`}>{formatDatePtBr(eq.data_entrada).slice(0, 5)}</span>
@@ -4277,6 +4277,8 @@ export default function Equipamentos() {
                   }
                 />
 
+                <ResumoComunicacoes comunicacoes={comunicacoes} onVerTodas={() => setAbaDetalhe("comunicacoes")} />
+
                 <Card className="rounded-2xl">
                   <CardContent className="space-y-3 p-5">
                     <h2 className="text-base font-bold">Equipamento</h2>
@@ -4308,8 +4310,6 @@ export default function Equipamentos() {
                     )}
                   </CardContent>
                 </Card>
-
-                <ResumoComunicacoes comunicacoes={comunicacoes} onVerTodas={() => setAbaDetalhe("comunicacoes")} />
               </div>
             </div>
           </section>
