@@ -1416,6 +1416,8 @@ export interface ModeloMensagemInput {
 export interface ConfigSuporte {
   /** Este computador tem o token do bot guardado. */
   token_neste_computador: boolean;
+  /** O token em uso veio no instalador (nada guardado no cofre deste computador). */
+  token_da_instalacao?: boolean;
   canal: string | null;
 }
 

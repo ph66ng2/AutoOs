@@ -192,7 +192,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     case "obter_garantia_servicos_dias":
       return 90 as T;
     case "obter_config_suporte":
-      return { token_neste_computador: true, canal: "C0CE5M6GTRV" } as T;
+      return { token_neste_computador: true, token_da_instalacao: true, canal: "C0CE5M6GTRV" } as T;
     case "listar_chamados_suporte":
       return [
         { id: 12, texto: "A OS do Mercado Bom Preço não salva, fica girando.", situacao: "aberto", criado_em: agora, atualizado_em: agora, respostas: 1 },

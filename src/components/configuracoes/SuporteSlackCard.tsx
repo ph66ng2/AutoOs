@@ -39,7 +39,9 @@ export function SuporteSlackCard() {
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle>Suporte (Slack)</CardTitle>
         <span className="text-xs font-semibold text-muted-foreground">
-          {config?.token_neste_computador && config.canal ? "Configurado neste computador" : "Não configurado neste computador"}
+          {!config?.token_neste_computador || !config.canal
+            ? "Não configurado neste computador"
+            : config.token_da_instalacao ? "Configurado pela instalação" : "Configurado neste computador"}
         </span>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -50,7 +52,9 @@ export function SuporteSlackCard() {
             <Input id="suporte-canal" value={canal} onChange={(e) => setCanal(e.target.value)} placeholder="C0CE5M6GTRV" className="font-mono" />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="suporte-token">Token do bot {precisaToken ? "" : "(guardado; preencha só para trocar)"}</Label>
+            <Label htmlFor="suporte-token">
+              Token do bot {precisaToken ? "" : config?.token_da_instalacao ? "(veio na instalação; preencha só para usar outro neste computador)" : "(guardado; preencha só para trocar)"}
+            </Label>
             <Input id="suporte-token" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="xoxb-…" />
           </div>
         </div>

@@ -37,8 +37,28 @@ fn entrada_token() -> Result<Entry, String> {
     })
 }
 
-pub(crate) fn token_suporte() -> Option<String> {
+fn token_do_cofre() -> Option<String> {
     entrada_token().ok()?.get_password().ok().filter(|t| !t.trim().is_empty())
+}
+
+/// Token que veio no instalador (secret `AUTOOS_SLACK_BOT_TOKEN` do release).
+fn token_da_instalacao() -> Option<String> {
+    option_env!("COMPILE_TIME_SLACK_BOT_TOKEN").and_then(|token| escolher_token(None, Some(token)))
+}
+
+/// O token guardado no cofre deste computador vale mais que o da instalação (permite trocar
+/// num computador sem gerar outra versão). Só aceita token de bot (`xoxb-`).
+pub(crate) fn escolher_token(cofre: Option<&str>, instalacao: Option<&str>) -> Option<String> {
+    [cofre, instalacao]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|token| !token.is_empty() && (token.starts_with("xoxb-") || cofre == Some(token)))
+        .map(str::to_string)
+}
+
+pub(crate) fn token_suporte() -> Option<String> {
+    escolher_token(token_do_cofre().as_deref(), token_da_instalacao().as_deref())
 }
 
 /// Canal no formato do Slack (C… público, G… privado antigo).
@@ -158,6 +178,8 @@ async fn slack_enviar_arquivo(
 pub struct ConfigSuporte {
     /// Este computador tem o token do bot no cofre.
     pub token_neste_computador: bool,
+    /// O token em uso veio no instalador (nada guardado no cofre deste computador).
+    pub token_da_instalacao: bool,
     pub canal: Option<String>,
 }
 
@@ -165,7 +187,11 @@ pub struct ConfigSuporte {
 #[instrument(skip_all)]
 pub async fn obter_config_suporte() -> Result<ConfigSuporte, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    Ok(ConfigSuporte { token_neste_computador: token_suporte().is_some(), canal: canal_configurado(&pool).await? })
+    Ok(ConfigSuporte {
+        token_neste_computador: token_suporte().is_some(),
+        token_da_instalacao: token_do_cofre().is_none() && token_da_instalacao().is_some(),
+        canal: canal_configurado(&pool).await?,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -209,7 +235,11 @@ pub async fn salvar_config_suporte(input: ConfigSuporteInput) -> Result<ConfigSu
         true,
     )
     .await;
-    Ok(ConfigSuporte { token_neste_computador: true, canal: Some(canal) })
+    Ok(ConfigSuporte {
+        token_neste_computador: token_suporte().is_some(),
+        token_da_instalacao: token_do_cofre().is_none() && token_da_instalacao().is_some(),
+        canal: Some(canal),
+    })
 }
 
 // ─── Chamados ─────────────────────────────────────────────
@@ -872,6 +902,17 @@ pub async fn retorno_chamado_suporte(id: i32, resolvido: bool) -> Result<Chamado
 mod tests {
     use super::{canal_valido, conferir, decodificar_imagens, montar_mensagem, ImagemChamado};
     use serde_json::json;
+
+    #[test]
+    fn token_do_cofre_vale_mais_que_o_da_instalacao() {
+        use super::escolher_token;
+        assert_eq!(escolher_token(Some("xoxb-cofre"), Some("xoxb-instalacao")).as_deref(), Some("xoxb-cofre"));
+        assert_eq!(escolher_token(None, Some("xoxb-instalacao")).as_deref(), Some("xoxb-instalacao"));
+        assert_eq!(escolher_token(Some("  "), Some("xoxb-instalacao")).as_deref(), Some("xoxb-instalacao"));
+        // Da instalação só entra token de bot.
+        assert_eq!(escolher_token(None, Some("xapp-1-abc")), None);
+        assert_eq!(escolher_token(None, None), None);
+    }
 
     #[test]
     fn texto_do_slack_fica_legivel() {
