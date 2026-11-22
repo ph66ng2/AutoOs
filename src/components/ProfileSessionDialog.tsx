@@ -275,7 +275,7 @@ export function ProfileSessionDialog({
                 <DialogDescription className="max-w-xl">{description}</DialogDescription>
               </DialogHeader>
 
-              <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <div className="mt-4 flex max-h-[min(26dvh,15rem)] flex-wrap justify-center gap-3 overflow-y-auto overscroll-contain p-1">
                 {profiles.map((profile) => {
                   const isSelected = String(profile.id) === selectedProfileId;
                   const isCurrent = profile.id === activeProfileId && unlocked;
@@ -291,7 +291,7 @@ export function ProfileSessionDialog({
                       aria-pressed={isSelected}
                       onClick={() => onSelectProfile(String(profile.id))}
                       className={cn(
-                        "flex w-[144px] flex-col items-center gap-2.5 rounded-2xl border-2 px-2 pb-3 pt-3 transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "flex w-[176px] flex-col items-center gap-2.5 rounded-2xl border-2 px-2 pb-3 pt-3 transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         isSelected ? "border-primary bg-acc-soft/40" : "border-transparent hover:bg-muted",
                       )}
                     >
@@ -303,7 +303,7 @@ export function ProfileSessionDialog({
                         <ProfileAvatar icon={look.icon} color={look.color} size="lg" pending={neverSetUp} />
                       </span>
                       <span className="flex w-full min-w-0 flex-col items-center gap-0.5">
-                        <span className="block w-full truncate text-center text-[15px] font-semibold" title={profile.nome}>{profile.nome}</span>
+                        <span className="block w-full break-words text-center text-[15px] font-semibold" title={profile.nome}>{profile.nome}</span>
                         <span className="block w-full truncate text-center text-xs text-muted-foreground">
                           {neverSetUp ? "Primeiro acesso" : pendingHere ? "Ativar neste computador" : securityRoleLabel(profile.role)}
                         </span>
@@ -370,10 +370,10 @@ export function ProfileSessionDialog({
                             inputMode="numeric"
                             value={pin}
                             onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                            placeholder="••••"
+                            placeholder="Digite o PIN"
                             aria-label="PIN do perfil"
                             autoComplete="current-password"
-                            className={pinInputClass}
+                            className={cn(pinInputClass, "placeholder:text-sm placeholder:font-normal placeholder:tracking-normal")}
                             autoFocus
                           />
                           {accepted && (

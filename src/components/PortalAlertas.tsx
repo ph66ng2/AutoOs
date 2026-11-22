@@ -148,7 +148,7 @@ export function encaixePainelNotificacoes(
       left,
       bottom: viewport.height - ancora.top + gap,
       width: largura,
-      maxHeight: Math.max(0, Math.min(maxPainel, acima)),
+      height: Math.max(0, Math.min(384, maxPainel, acima)),
     };
   }
   return {
@@ -156,7 +156,7 @@ export function encaixePainelNotificacoes(
     left,
     top: ancora.bottom + gap,
     width: largura,
-    maxHeight: Math.max(0, Math.min(maxPainel, abaixo)),
+    height: Math.max(0, Math.min(384, maxPainel, abaixo)),
   };
 }
 
@@ -198,7 +198,7 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
   // Só avisos contam no número; erros do app ficam na aba Sistema (um ponto discreto no sino).
   const avisosNaoLidos = avisos.filter((aviso) => !aviso.lido).length;
   const naoLidos = (portalDesligado ? 0 : naoLidosPortal) + avisosNaoLidos;
-  // O número do sino conta só o não lido que chegou depois da última abertura (visto ≠ lido).
+  // O número conta os não lidos. A cor destaca o que chegou desde a última abertura.
   // Regras e proteções do "visto" ficam em useVistoDoSino / sino-visto.ts.
   const chavesNaoLidasAvisos = avisos.filter((aviso) => !aviso.lido).map((aviso) => `aviso:${aviso.chave}`);
   const chavesErrosNaoLidos = erros.filter((item) => !item.lido).map((item) => `erro:${item.id}`);
@@ -400,12 +400,15 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
         onClick={() => (aberto ? setAberto(false) : abrirSino())}
         aria-haspopup="dialog"
         aria-expanded={aberto}
-        aria-label={novos > 0 ? `Notificações: ${novos} nova(s)` : errosNovos > 0 ? "Notificações: erros novos em Sistema" : naoLidos + errosNaoLidos > 0 ? "Notificações (há itens não lidos)" : "Notificações"}
+        aria-label={naoLidos > 0 ? `Notificações: ${naoLidos} aviso(s) não lido(s)` : errosNovos > 0 ? "Notificações: erros novos em Sistema" : errosNaoLidos > 0 ? "Notificações (há itens não lidos)" : "Notificações"}
       >
         <Bell className="h-5 w-5" />
-        {novos > 0 ? (
-          <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-extrabold leading-none text-primary-foreground ring-2 ring-card">
-            {novos > 99 ? "99+" : novos}
+        {naoLidos > 0 ? (
+          <span className={cn(
+            "absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-extrabold leading-none ring-2 ring-card",
+            novos > 0 ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
+          )}>
+            {naoLidos > 99 ? "99+" : naoLidos}
           </span>
         ) : errosNovos > 0 ? (
           <span aria-hidden="true" title="Há erros novos em Sistema" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-muted-foreground ring-2 ring-card" />

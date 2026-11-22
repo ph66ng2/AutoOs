@@ -6,7 +6,7 @@ import type { ServicoNecessario } from "@/types";
  * No celular, cada serviço da verificação e do ajuste fica numa linha de 44px; tocar abre a
  * edição dele. Na tela larga os serviços aparecem sempre abertos.
  */
-export function LinhaServicoCelular({ servico, onAbrir }: { servico: ServicoNecessario; onAbrir: () => void }) {
+export function LinhaServicoCelular({ servico, onAbrir, mostrarGarantia = true }: { servico: ServicoNecessario; onAbrir: () => void; mostrarGarantia?: boolean }) {
   const pecas = servico.pecas?.length ?? 0;
   return (
     <button
@@ -19,7 +19,7 @@ export function LinhaServicoCelular({ servico, onAbrir }: { servico: ServicoNece
         <span className="block truncate font-semibold">{servico.descricao || "Serviço sem nome"}</span>
         {pecas > 0 && <span className="block text-xs text-muted-foreground">{pecas === 1 ? "1 peça" : `${pecas} peças`}</span>}
       </span>
-      <span className="shrink-0 font-semibold tabular-nums">{Number(servico.valor) === 0 ? "Garantia" : formatCurrency(Number(servico.valor))}</span>
+      <span className="shrink-0 font-semibold tabular-nums">{mostrarGarantia && Number(servico.valor) === 0 ? "Garantia" : formatCurrency(Number(servico.valor))}</span>
       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
     </button>
   );

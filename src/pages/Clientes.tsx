@@ -591,8 +591,8 @@ export default function Clientes() {
                         <th>Cliente</th>
                         <th>Contato principal</th>
                         <th>Cidade</th>
-                        <th className="text-right">OS abertas</th>
-                        <th>Último atendimento</th>
+                        <th className="whitespace-nowrap text-right">OS abertas</th>
+                        <th className="whitespace-nowrap">Último atendimento</th>
                         <th className="w-12"><span className="sr-only">Ações</span></th>
                       </tr>
                     </thead>

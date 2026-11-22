@@ -227,7 +227,7 @@ export default function VendaFormulario() {
             <Label htmlFor="oi-observacoes" className="text-sm font-medium">Observações</Label>
             <Textarea id="oi-observacoes" value={observacoes} disabled={ocupado} onChange={(e) => editar(setObservacoes)(e.target.value)} className="min-h-24" />
           </div>
-          <dl className="ml-auto mt-5 grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-sm tabular-nums" aria-label="Totais">
+          <dl className="mb-5 ml-auto mt-5 grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-sm tabular-nums" aria-label="Totais">
             <dt className="text-muted-foreground">Subtotal</dt>
             <dd className="text-right">{formatCurrency(totais.subtotal)}</dd>
             <dt className="text-muted-foreground">Desconto</dt>

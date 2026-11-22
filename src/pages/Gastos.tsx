@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -183,6 +185,7 @@ export default function Gastos() {
     const data = new Date(now.getFullYear(), now.getMonth() - indice, 1);
     return { mes: data.getMonth() + 1, ano: data.getFullYear() };
   });
+  const anosDisponiveis = [...new Set(opcoesMes.map((opcao) => opcao.ano))];
 
   async function baixarCsv() {
     if (!lancamentosProntos) {
@@ -207,10 +210,15 @@ export default function Gastos() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {opcoesMes.map((opcao) => (
-                <SelectItem key={`${opcao.ano}-${opcao.mes}`} value={`${opcao.ano}-${opcao.mes}`}>
-                  {NOMES_MES[opcao.mes - 1]}, {opcao.ano}
-                </SelectItem>
+              {anosDisponiveis.map((anoDisponivel) => (
+                <SelectGroup key={anoDisponivel}>
+                  <SelectLabel>{anoDisponivel}</SelectLabel>
+                  {opcoesMes.filter((opcao) => opcao.ano === anoDisponivel).map((opcao) => (
+                    <SelectItem key={opcao.mes} value={`${opcao.ano}-${opcao.mes}`}>
+                      {NOMES_MES[opcao.mes - 1]}, {opcao.ano}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
             </SelectContent>
           </Select>

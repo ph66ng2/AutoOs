@@ -298,7 +298,6 @@ export function VerificacaoTecnica({
   const custoPecas = pecasParaOrcamento(servicosComDescricao).reduce((soma, peca) => soma + peca.valorTotal, 0);
   const custoTotalAoVivo = custoServicos + custoPecas;
   const marcados = checklist.filter((item) => item.verificado).length;
-  const soGarantia = custoTotalAoVivo === 0 && osSomenteGarantia(servicosComDescricao);
 
   // ─── Render ─────────────────────────────────────────
   if (!open || !equipamento) return null;
@@ -420,7 +419,7 @@ export function VerificacaoTecnica({
             const recolhido = !telaLarga && servicoAberto !== s.id;
             return (
             <Fragment key={s.id}>
-            {recolhido && <LinhaServicoCelular servico={s} onAbrir={() => setServicoAberto(s.id)} />}
+            {recolhido && <LinhaServicoCelular servico={s} mostrarGarantia={false} onAbrir={() => setServicoAberto(s.id)} />}
             <div hidden={recolhido} className="rounded-xl border p-3">
             <div className="flex flex-wrap items-start gap-3 md:flex-nowrap">
               <div className="relative min-w-full flex-1 md:min-w-0">
@@ -481,9 +480,6 @@ export function VerificacaoTecnica({
                     className="min-w-0 flex-1 rounded-none border-0 text-right tabular-nums focus-visible:ring-0 focus-visible:ring-offset-0"
                   />
                 </div>
-                {s.descricao.trim() && Number(s.valor) === 0 && !valoresServicoInvalidos[s.id] && (
-                  <p className="mt-1 text-xs text-status-ok">Garantia</p>
-                )}
               </div>
               <Button
                 variant="ghost"
@@ -552,9 +548,9 @@ export function VerificacaoTecnica({
 
       <div className="sticky bottom-0 z-20 -mx-4 mt-auto flex flex-wrap items-center justify-between gap-3 border-t bg-card px-4 py-3 lg:-mx-8 lg:px-8">
         <p className="text-sm text-muted-foreground">
-          {soGarantia
-            ? "Ao finalizar: OS só de garantia vai direto para Aprovado"
-            : "Ao finalizar: Verificado → Aguardando aprovação, com envio automático"}
+          {custoTotalAoVivo > 0
+            ? "Ao finalizar: Verificado → Aguardando aprovação, com envio automático"
+            : "Revise os serviços antes de finalizar."}
         </p>
         <div className="flex w-full gap-2 md:w-auto">
           <Button variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={() => handleOpenChange(false)}>Cancelar<TeclaNoBotao tecla="Esc" /></Button>

@@ -1,3 +1,4 @@
+import { EVENT_LABELS, resumirStatusAuditado } from "@/lib/eventos-auditoria";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorAlert } from "@/components/ui/error-alert";
@@ -205,21 +206,32 @@ export function ConfiguracoesTabObservabilidade({
           <div className="space-y-3">
             {filteredAuditEvents.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhum evento de auditoria encontrado para os filtros atuais.</p>
-            ) : filteredAuditEvents.map((event) => (
-              <div key={event.id} className="rounded-lg border p-3 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-medium">{event.event_type}</div>
-                  <span className={event.success ? "text-status-ok" : "text-destructive"}>
-                    {event.success ? "sucesso" : "falha"}
-                  </span>
+            ) : filteredAuditEvents.map((event) => {
+              const resumo = resumirStatusAuditado(event.details);
+              return (
+                <div key={event.id} className="rounded-lg border p-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-medium">{EVENT_LABELS[event.event_type] ?? event.event_type}</div>
+                    <span className={event.success ? "text-status-ok" : "text-destructive"}>
+                      {event.success ? "sucesso" : "falha"}
+                    </span>
+                  </div>
+                  <div className="text-muted-foreground">Perfil: {event.profile_name || "sistema"}</div>
+                  {resumo ? (
+                    <div className="text-muted-foreground">
+                      <p>{resumo}</p>
+                      <details>
+                        <summary className="cursor-pointer">Detalhes completos</summary>
+                        <p className="whitespace-pre-wrap break-words">{event.details}</p>
+                      </details>
+                    </div>
+                  ) : event.details && <div className="text-muted-foreground">{event.details}</div>}
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {event.created_at ? new Date(event.created_at).toLocaleString("pt-BR") : "sem data"}
+                  </div>
                 </div>
-                <div className="text-muted-foreground">Perfil: {event.profile_name || "sistema"}</div>
-                {event.details && <div className="text-muted-foreground">{event.details}</div>}
-                <div className="text-xs text-muted-foreground mt-1">
-                  {event.created_at ? new Date(event.created_at).toLocaleString("pt-BR") : "sem data"}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>

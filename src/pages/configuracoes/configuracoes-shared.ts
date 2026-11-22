@@ -15,10 +15,10 @@ export interface WhatsappFormValues {
 }
 
 export const SMTP_DEFAULTS: Omit<SmtpFormValues, "password"> = {
-  host: "smtp.gmail.com",
+  host: "",
   port: 465,
-  username: "bmi.tag.ssa@gmail.com",
-  from_name: "BMI Tag",
-  from_email: "bmi.tag.ssa@gmail.com",
+  username: "",
+  from_name: "",
+  from_email: "",
   use_tls: true,
 };

@@ -104,6 +104,7 @@ export function ActionPriorityRow({
       <div className={cn("items-center justify-end gap-2 whitespace-nowrap", cheia ? "flex w-full" : "ml-auto inline-flex")}>
         {!semPrincipal && (
           <Button
+            key={primary.id}
             variant={destaque ? (contornoNoTopo ? "outline" : "default") : "ghost"}
             size="sm"
             className={cn(
@@ -166,6 +167,7 @@ export function ActionPriorityRow({
   return (
     <div className={`ml-auto items-center justify-end gap-1 whitespace-nowrap ${wrap ? "flex w-full flex-wrap" : "inline-flex"}`}>
       <Button
+        key={primary.id}
         variant={primary.variant || "default"}
         size={iconOnlyPrimary ? "icon" : "sm"}
         className={

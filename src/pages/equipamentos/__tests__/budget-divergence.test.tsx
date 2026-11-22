@@ -27,6 +27,8 @@ const mockAtualizarServicosVerificacao = vi.hoisted(() => vi.fn());
 const mockAnalisarAjusteOrcamento = vi.hoisted(() => vi.fn());
 const mockAprovarOrcamento = vi.hoisted(() => vi.fn());
 const mockAtualizarStatusEquipamento = vi.hoisted(() => vi.fn());
+const mockEnviarOrcamentoEmail = vi.hoisted(() => vi.fn());
+const mockBuscarEquipamento = vi.hoisted(() => vi.fn().mockResolvedValue({ atualizado_em: "2024-01-15T10:00:01Z" }));
 const mockBuscarVerificacao = vi.hoisted(() => vi.fn());
 const mockListarServicosCatalogoAtivos = vi.hoisted(() => vi.fn());
 const mockListarImagensEquipamento = vi.hoisted(() => vi.fn());
@@ -92,7 +94,8 @@ vi.mock("@/hooks/useNotification", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     listarProdutos: vi.fn().mockResolvedValue([]),
-    buscarEquipamento: vi.fn().mockResolvedValue({ atualizado_em: "2024-01-15T10:00:01Z" }),
+    buscarEquipamento: mockBuscarEquipamento,
+    obterDestinatarioOrcamento: vi.fn().mockResolvedValue({ contatoId: null, nome: "Cliente A", email: "a@ex.com" }),
     buscarVerificacao: (...args: unknown[]) => mockBuscarVerificacao(...args),
     listarServicosCatalogoAtivos: (...args: unknown[]) => mockListarServicosCatalogoAtivos(...args),
     atualizarServicosVerificacao: (...args: unknown[]) => mockAtualizarServicosVerificacao(...args),
@@ -151,6 +154,7 @@ vi.mock("@/components/equipamentos/PdfPreviewDialog", () => ({
 vi.mock("@/lib/email-service", () => ({
   EmailService: {
     enviarOrdemEntrada: vi.fn(),
+    enviarOrcamento: mockEnviarOrcamentoEmail,
   },
 }));
 
@@ -952,6 +956,45 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await waitFor(() => expect(pdfPreviewProps.current?.artifact).toBe(artifact));
     await pdfPreviewProps.current!.onBeforePrint!(artifact);
     expect(mockPublicarPdfOficial).toHaveBeenCalledWith(artifact, expect.objectContaining({ id: equipamentoVerificado.id }));
+  });
+
+  it("reenvia o orçamento por e-mail após confirmar sem alterar o status", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    const verif = makeVerificacao();
+    mockBuscarVerificacao.mockResolvedValueOnce(verif);
+    mockBuscarEquipamento
+      .mockResolvedValueOnce(equipamentoVerificado)
+      .mockResolvedValueOnce(equipamentoVerificado);
+    mockEnviarOrcamentoEmail.mockResolvedValueOnce({ sucesso: true });
+
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-reenviar_orcamento_email"));
+    const confirmar = await screen.findByRole("button", { name: "Reenviar e-mail" });
+    expect(screen.getByText(/Enviar o orçamento da OS #10 para Cliente A/)).toBeInTheDocument();
+    expect(mockEnviarOrcamentoEmail).not.toHaveBeenCalled();
+    fireEvent.click(confirmar);
+
+    await waitFor(() => expect(mockEnviarOrcamentoEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 10, cliente_email: "a@ex.com" }), verif,
+    ));
+    expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
+    expect(mockAprovarOrcamento).not.toHaveBeenCalled();
+  });
+
+  it("cancela o reenvio se a OS deixa de aguardar aprovação durante a confirmação", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarEquipamento
+      .mockResolvedValueOnce(equipamentoVerificado)
+      .mockResolvedValueOnce({ ...equipamentoVerificado, status: "APROVADO" });
+    mockBuscarVerificacao.mockResolvedValueOnce(makeVerificacao());
+
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-reenviar_orcamento_email"));
+    const confirmar = await screen.findByRole("button", { name: "Reenviar e-mail" });
+    await act(async () => fireEvent.click(confirmar));
+
+    expect(mockBuscarEquipamento).toHaveBeenCalledTimes(2);
+    expect(mockEnviarOrcamentoEmail).not.toHaveBeenCalled();
   });
 
   it("oferece Orçamento PDF e Alterar Orçamento no menu em todas as fases após a verificação", () => {

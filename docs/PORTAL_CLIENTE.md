@@ -57,6 +57,8 @@ Entre os contatos ativos da OS com celular válido, nesta ordem:
 
 Sem contato com celular, o sistema pergunta **"Quem recebe o orçamento?"** e grava o contato escolhido no cadastro do cliente antes do envio. Cliente PJ novo exige um contato com celular. Cliente PF ganha um contato criado a partir do próprio cadastro. Não há constraint no banco: a regra fica no aplicativo.
 
+No reenvio por e-mail do menu da OS, o sistema mostra o destinatário retornado pelo mesmo resolvedor e o consulta novamente após o PIN. Se o endereço estiver ausente ou se o destinatário mudar durante a confirmação, o e-mail não é enviado.
+
 ### Acesso ao portal antes do envio
 
 Antes de cada envio, `preparar_acesso_portal` garante que o destinatário consiga entrar no portal:

@@ -59,6 +59,7 @@ Erros novos: `LIMITE_SOLICITACOES`, `MENSAGEM_INVALIDA`, `TIPO_INVALIDO`.
 - `marcar_solicitacao_orcamento_tratada` marca dúvidas e pedidos do cliente como tratados.
 - A lista de equipamentos mostra **"Cliente respondeu: aprovou/recusou — aguardando conferência"** (coluna `resposta_cliente` em `EQUIPAMENTO_SELECT`, só enquanto a resposta não foi aplicada e a versão está aberta).
 - No fluxo de aprovação, se a decisão do operador diferir da do cliente aparece o campo **Motivo da divergência** (mínimo de 5 caracteres, também exigido pelo backend).
+- Em **Configurações › Suporte e logs › Auditoria recente**, os resumos de mudança de status têm a opção **Detalhes completos**, que mostra o registro original, com o motivo da correção ou da divergência quando registrado.
 - `DecisaoOrcamentoCard` (detalhe do equipamento): mostra "Cliente respondeu: aprovou — aguardando conferência", versão, valor, janela, histórico, gerar/encerrar link e as mensagens do cliente. Sem versão publicada, mostra só o botão “Publicar no Portal do Cliente”; o quadro fica âmbar apenas quando há resposta pendente ou mensagem não tratada. "Revisar e aplicar decisão" abre o fluxo atual de pagamento com PIN.
 
 ## Corrigir decisão do orçamento

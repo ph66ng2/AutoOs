@@ -134,6 +134,25 @@ describe("EmailService", () => {
     expect(mockGerarOrcamento).toHaveBeenCalledWith(equipamentoBase, verificacaoBase);
   });
 
+  it("usa o valor vigente da OS no corpo e no PDF do orçamento", async () => {
+    const equipamento = { ...equipamentoBase, valor_orcamento: 81 };
+    await EmailService.enviarOrcamento(equipamento, verificacaoBase);
+
+    expect(mockGerarOrcamento).toHaveBeenCalledWith(equipamento, expect.objectContaining({ custo_total: 81 }));
+    expect(mockInvoke.mock.calls[0][1].input.corpo).toContain("81,00");
+    expect(mockInvoke.mock.calls[0][1].input.corpo_html).toContain("81,00");
+  });
+
+  it("registra a falha sem enviar se o PDF do orçamento não puder ser anexado", async () => {
+    mockGerarOrcamento.mockResolvedValueOnce(null);
+
+    const resultado = await EmailService.enviarOrcamento(equipamentoBase, verificacaoBase);
+
+    expect(resultado.sucesso).toBe(false);
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockRegistrarComunicacao).toHaveBeenCalledWith(expect.objectContaining({ enviado: false }));
+  });
+
   it("enviarOrcamento adiciona Ivan em cópia quando ele é o técnico responsável (junto da gerência)", async () => {
     await EmailService.enviarOrcamento(equipamentoBase, {
       ...verificacaoBase,
@@ -302,6 +321,7 @@ describe("cópia da gerência e técnico por empresa", () => {
     await EmailService.enviarOrcamento(equipamentoBase, { ...verificacaoBase, tecnico_nome: "Ivan" });
     await EmailService.enviarOrdemEntrada({ ...equipamentoBase, observacoes: "Técnico inicial: Ivan (ivan@bmitag.com.br)" });
     expect(mockInvoke.mock.calls[0][1].input.cc).toEqual(["ivan@empresa-b.test"]);
+    expect(JSON.stringify(mockInvoke.mock.calls[0][1].input)).not.toContain("bmitag.com.br");
     expect(mockInvoke.mock.calls[1][1].input.cc).toEqual(["ivan@empresa-b.test"]);
   });
 

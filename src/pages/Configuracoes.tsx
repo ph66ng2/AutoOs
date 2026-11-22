@@ -60,6 +60,7 @@ export default function Configuracoes() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasPassword, setHasPassword] = useState(false);
+  const [smtpSalvo, setSmtpSalvo] = useState(SMTP_DEFAULTS);
   const [status, setStatus] = useState<string | null>(null);
   const [smtpEditUnlocked, setSmtpEditUnlocked] = useState(false);
   const [whatsappLoading, setWhatsappLoading] = useState(true);
@@ -150,7 +151,7 @@ export default function Configuracoes() {
     return matchesSearch && matchesOutcome && matchesProfile;
   });
 
-  const { register, handleSubmit, setValue, control, watch } = useForm<SmtpFormValues>({
+  const { register, handleSubmit, reset: resetSmtp, control } = useForm<SmtpFormValues>({
     defaultValues: {
       ...SMTP_DEFAULTS,
       password: "",
@@ -271,31 +272,14 @@ export default function Configuracoes() {
 
       try {
         const config = await SmtpConfigService.buscar();
-        if (config) {
-          setValue("host", config.host);
-          setValue("port", config.port);
-          setValue("username", config.username);
-          setValue("from_name", config.from_name);
-          setValue("from_email", config.from_email);
-          setValue("use_tls", config.use_tls);
-          setHasPassword(!!config.has_password);
-        } else {
-          setValue("host", SMTP_DEFAULTS.host);
-          setValue("port", SMTP_DEFAULTS.port);
-          setValue("username", SMTP_DEFAULTS.username);
-          setValue("from_name", SMTP_DEFAULTS.from_name);
-          setValue("from_email", SMTP_DEFAULTS.from_email);
-          setValue("use_tls", SMTP_DEFAULTS.use_tls);
-          setHasPassword(false);
-        }
+        const valores = config ?? SMTP_DEFAULTS;
+        setSmtpSalvo(valores);
+        resetSmtp({ ...valores, password: "" });
+        setHasPassword(!!config?.has_password);
       } catch (error) {
         console.error("Erro ao carregar config SMTP:", error);
-        setValue("host", SMTP_DEFAULTS.host);
-        setValue("port", SMTP_DEFAULTS.port);
-        setValue("username", SMTP_DEFAULTS.username);
-        setValue("from_name", SMTP_DEFAULTS.from_name);
-        setValue("from_email", SMTP_DEFAULTS.from_email);
-        setValue("use_tls", SMTP_DEFAULTS.use_tls);
+        setSmtpSalvo(SMTP_DEFAULTS);
+        resetSmtp({ ...SMTP_DEFAULTS, password: "" });
         setHasPassword(false);
       } finally {
         setLoading(false);
@@ -303,7 +287,7 @@ export default function Configuracoes() {
     }
 
     void loadConfig();
-  }, [canConfigureSmtp, setValue, accessStatus?.active_profile_id]);
+  }, [canConfigureSmtp, resetSmtp, accessStatus?.active_profile_id]);
 
   useEffect(() => {
     async function loadWhatsappConfig() {
@@ -438,19 +422,22 @@ export default function Configuracoes() {
     setSaving(true);
     setStatus(null);
     try {
-      const payload: SmtpConfigInput = {
+      const valores = {
         host: values.host.trim(),
         port: Number(values.port),
         username: values.username.trim(),
         from_name: values.from_name.trim(),
         from_email: values.from_email.trim(),
         use_tls: values.use_tls,
-        password: values.password.trim() || undefined,
       };
+      const payload: SmtpConfigInput = { ...valores, password: values.password.trim() || undefined };
 
       await SmtpConfigService.salvar(payload);
       setHasPassword(!!payload.password || hasPassword);
+      setSmtpSalvo(valores);
+      resetSmtp({ ...valores, password: "" });
       setStatus("Configuração SMTP salva com sucesso.");
+      return true;
     } catch (error: any) {
       const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar configuração SMTP.");
       setStatus(msg);
@@ -477,6 +464,7 @@ export default function Configuracoes() {
       return;
     }
 
+    resetSmtp({ ...smtpSalvo, password: "" });
     setSmtpEditUnlocked(true);
     setStatus("Edição SMTP liberada para esta sessão.");
   }
@@ -808,7 +796,7 @@ export default function Configuracoes() {
           photoTunnelHasToken={photoTunnelHasToken}
           photoTunnelEnvOverride={photoTunnelEnvOverride}
           photoTunnelPublicHost={photoTunnelPublicHost}
-          resumoSmtp={{ host: watch("host"), port: watch("port"), use_tls: watch("use_tls"), from_email: watch("from_email") }}
+          resumoSmtp={smtpSalvo}
           whatsappUrl={watchWhatsapp("api_url")}
         />
 

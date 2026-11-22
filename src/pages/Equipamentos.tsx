@@ -38,6 +38,7 @@ import {
   Trash2,
   RefreshCw,
   RotateCcw,
+  Mail,
   MessageSquare,
   ClipboardCheck,
   Play,
@@ -192,6 +193,8 @@ import {
   totalOrcamentoAprovacaoValido,
   whatsappNaoConfigurado,
   entradaTemAlgo,
+  destinoNovaEntrada,
+  emailValido,
 } from "@/pages/equipamentos/equipamentos-page-utils";
 import { DateIsoInput } from "@/components/ui/date-iso-input";
 import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
@@ -857,8 +860,8 @@ export default function Equipamentos() {
   // ─── Handlers ─────────────────────────────────────────
 
   /**
-   * Abre a página de Nova entrada (/equipamentos/nova). `origem` é para onde Cancelar e salvar
-   * voltam. `cliente` ou `base` (OS encerrada do mesmo aparelho) chegam já preenchidos; nesse
+   * Abre a página de Nova entrada (/equipamentos/nova). `origem` é para onde Cancelar
+   * volta. `cliente` ou `base` (OS encerrada do mesmo aparelho) chegam já preenchidos; nesse
    * caso o rascunho guardado não é carregado, mas pode ser recuperado pelo aviso.
    */
   function abrirNovo(opcoes: { origem?: string; cliente?: Cliente | null; base?: Equipamento } = {}) {
@@ -2048,17 +2051,23 @@ export default function Equipamentos() {
             onSkip: () => undefined,
           });
           setEmailDialogOpen(true);
-          // A origem pode ser outra tela (Início, Clientes): sair agora desmontaria o envio.
-          // Fica na lista de equipamentos e volta para a origem quando o e-mail for decidido.
-          const origem = origemEntradaRef.current;
-          if (!origem.startsWith("/equipamentos")) {
-            origemAposEmailRef.current = origem;
-            origemEntradaRef.current = "/equipamentos";
-          }
         }
-      }
 
-      fecharFormulario();
+        const destino = destinoNovaEntrada(equipamentoIdSalvo, origemEntradaRef.current);
+        if (liberadoEmail && !destino.startsWith("/equipamentos/")) {
+          // Sair deste módulo agora desmontaria o diálogo de e-mail.
+          origemAposEmailRef.current = destino;
+          avisoEdicao.liberarProximaSaida();
+          fecharFormulario(false);
+          navigate("/equipamentos");
+        } else {
+          fecharFormulario(false);
+          avisoEdicao.liberarProximaSaida();
+          navigate(destino);
+        }
+      } else {
+        fecharFormulario();
+      }
       setImagensFormulario([]);
       setErroImagens(null);
     } catch (err: any) {
@@ -2850,6 +2859,77 @@ export default function Equipamentos() {
     if (envio.avisos.length) warning("Equipamentos", envio.avisos.join("\n"));
   }
 
+  async function reenviarOrcamentoPorEmail(eq: Equipamento) {
+    if (eq.id == null) return;
+    const id = eq.id;
+    const acao = "Reenviar orçamento por e-mail";
+
+    try {
+      const [atual, destinatario] = await Promise.all([
+        db.buscarEquipamento(id),
+        db.obterDestinatarioOrcamento(id),
+      ]);
+      const { email, nome, contatoId } = destinatario;
+      if (atual.status !== "AGUARDANDO_APROVACAO" || !email || !emailValido(email)) {
+        warning("Equipamentos", "A OS deve estar aguardando aprovação e ter um e-mail válido para o reenvio.");
+        return;
+      }
+
+      setConfirmProps({
+        title: acao,
+        description: `Enviar o orçamento da OS #${id} para ${nome} (${email})?`,
+        confirmLabel: "Reenviar e-mail",
+        cancelLabel: "Cancelar",
+        onConfirm: () => void enviar(),
+      });
+      setConfirmOpen(true);
+
+      async function enviar() {
+        setSalvando(true);
+        try {
+          const liberado = await ensureSensitiveAccess({
+            title: acao,
+            description: "Confirme seu acesso para reenviar o orçamento.",
+            anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
+          });
+          if (!liberado) return;
+
+          const [recente, verificacao, contato] = await Promise.all([
+            db.buscarEquipamento(id),
+            db.buscarVerificacao(id),
+            db.obterDestinatarioOrcamento(id),
+          ]);
+          if (recente.status !== "AGUARDANDO_APROVACAO" || recente.atualizado_em !== atual.atualizado_em
+            || !contato.email || contato.email !== email || contato.nome !== nome || contato.contatoId !== contatoId) {
+            warning("Equipamentos", "A OS mudou. Revise o orçamento e o destinatário antes de reenviar.");
+            return;
+          }
+          if (!verificacao) {
+            warning("Equipamentos", "Verificação não encontrada. O orçamento não foi reenviado.");
+            return;
+          }
+          const resultado = await EmailService.enviarOrcamento({
+            ...recente,
+            cliente_nome: contato.nome,
+            cliente_email: contato.email,
+          }, verificacao);
+          if (!resultado.sucesso) throw new Error(resultado.erro || "Falha ao enviar o orçamento.");
+          success("Equipamentos", "Orçamento reenviado por e-mail.", acao);
+          if (selecionadoIdRef.current === id && detalhesAbertoRef.current) {
+            const lista = await db.listarComunicacoes(id).catch(() => null);
+            if (lista && selecionadoIdRef.current === id && detalhesAbertoRef.current) setComunicacoes(lista);
+          }
+        } catch (err) {
+          showError("Equipamentos", acao, err);
+        } finally {
+          setSalvando(false);
+        }
+      }
+    } catch (err) {
+      showError("Equipamentos", acao, err);
+    }
+  }
+
   async function prorrogarPrazoEEnviar(eq: Equipamento, preparo?: PreparoAcessoPortal | null) {
     const liberado = await ensureSensitiveAccess({
       title: "Prorrogar prazo e enviar",
@@ -3150,6 +3230,13 @@ export default function Equipamentos() {
         editarIndex >= 0 ? editarIndex : overflow.length,
         0,
         acaoOrcamentoPdf,
+        ...(eq.status === "AGUARDANDO_APROVACAO" && podeOrcamentoValores ? [{
+          id: "reenviar_orcamento_email",
+          label: "Reenviar orçamento por e-mail",
+          icon: <Mail className="h-3.5 w-3.5" />,
+          onClick: () => void reenviarOrcamentoPorEmail(eq),
+          disabled: salvando,
+        }] : []),
         ...(podeAlterarOrcamento ? [acaoAlterarOrcamento] : []),
       );
     }
@@ -3499,6 +3586,8 @@ export default function Equipamentos() {
               onChange={setStatusFiltro}
               multiplo
             />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
             {/* "Minhas": as OS em que este perfil é o técnico. Só aparece para quem já tem alguma. */}
             {meuNomeTecnico && (
               <PilulaFiltro
@@ -3508,9 +3597,7 @@ export default function Equipamentos() {
                 onClick={() => setTecnicoFiltro(tecnicoFiltro === meuNomeTecnico ? "TODOS" : meuNomeTecnico)}
               />
             )}
-          </div>
-          <div className="flex flex-col gap-3 lg:flex-row">
-            <div className="relative flex-1">
+            <div className="relative min-w-48 flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input aria-label="Pesquisar equipamentos" placeholder="Série, patrimônio, equipamento, cliente, contato ou CPF/CNPJ" value={busca} onChange={e => setBusca(e.target.value)} className="h-10 bg-muted pl-9 pr-10" />
               {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
@@ -3540,21 +3627,6 @@ export default function Equipamentos() {
             </div>
           </div>
 
-          {/* Fora do bloco de carregamento: recarregar a lista não desmonta a barra no meio de um lote. */}
-          {(selecaoLote.size > 0 || loteOcupado || relatorioLote) && (
-            <AcoesEmLote
-              selecionados={[...selecaoLote.values()]}
-              ocupado={loteOcupado}
-              onOcupadoChange={setLoteOcupado}
-              relatorio={relatorioLote}
-              onRelatorioChange={setRelatorioLote}
-              onLimpar={() => setSelecaoLote(new Map())}
-              onConcluido={async (idsComFalha, recarregarLista) => {
-                setSelecaoLote((atual) => new Map([...atual].filter(([id]) => idsComFalha.includes(id))));
-                if (recarregarLista) await recarregar();
-              }}
-            />
-          )}
           {loading ? (
             <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
           ) : equipamentos.length === 0 && erroListaEquipamentos ? (
@@ -3619,7 +3691,7 @@ export default function Equipamentos() {
                     <TableHead className="w-[12rem]">Equipamento</TableHead>
                     <TableHead className="w-[11rem]">Cliente</TableHead>
                     <TableHead className="w-[11rem]">Andamento</TableHead>
-                    <TableHead className="w-[5.5rem]">Técnico</TableHead>
+                    <TableHead className="w-[8.5rem]">Técnico</TableHead>
                     <TableHead className="w-[5rem]">Entrada</TableHead>
                     <TableHead className="w-[7.5rem] text-right">Orçamento</TableHead>
                     <TableHead className="sticky right-0 z-20 w-[15.5rem] min-w-[15.5rem] bg-muted text-right">Próxima ação</TableHead>
@@ -3684,7 +3756,7 @@ export default function Equipamentos() {
                         </div>
                       </TableCell>
                       <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <span className="block truncate" title={eq.tecnico_nome ?? undefined}>{eq.tecnico_nome || "—"}</span>
+                        <span className="block break-words" title={eq.tecnico_nome ?? undefined}>{eq.tecnico_nome || "—"}</span>
                       </TableCell>
                       <TableCell className={`overflow-hidden text-sm text-muted-foreground tabular-nums ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <span className="block truncate" title={`Entrada em ${formatDatePtBr(eq.data_entrada)} · última alteração: ${formatDatePtBr(eq.atualizado_em || eq.criado_em)}`}>{formatDatePtBr(eq.data_entrada).slice(0, 5)}</span>
@@ -3716,6 +3788,23 @@ export default function Equipamentos() {
                 className="pb-0"
               />
             </>
+          )}
+          {/* Fora do bloco de carregamento: a tabela mantém a posição ao selecionar as OS. */}
+          {(selecaoLote.size > 0 || loteOcupado || relatorioLote) && (
+            <div className="sticky bottom-0 z-30 rounded-xl bg-card pb-2 shadow-lg">
+              <AcoesEmLote
+                selecionados={[...selecaoLote.values()]}
+                ocupado={loteOcupado}
+                onOcupadoChange={setLoteOcupado}
+                relatorio={relatorioLote}
+                onRelatorioChange={setRelatorioLote}
+                onLimpar={() => setSelecaoLote(new Map())}
+                onConcluido={async (idsComFalha, recarregarLista) => {
+                  setSelecaoLote((atual) => new Map([...atual].filter(([id]) => idsComFalha.includes(id))));
+                  if (recarregarLista) await recarregar();
+                }}
+              />
+            </div>
           )}
         </CardContent>
       </Card>
@@ -3868,7 +3957,7 @@ export default function Equipamentos() {
                       field.onChange(value);
                     }}>
                       <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                      <SelectContent>{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                      <SelectContent side="bottom" collisionPadding={8} className="max-h-40">{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
                   )} />
                   <FormValidationError message={form.formState.errors.tipo?.message} />
@@ -4270,6 +4359,8 @@ export default function Equipamentos() {
                   }
                 />
 
+                <ResumoComunicacoes comunicacoes={comunicacoes} onVerTodas={() => setAbaDetalhe("comunicacoes")} />
+
                 <Card className="rounded-2xl">
                   <CardContent className="space-y-3 p-5">
                     <h2 className="text-base font-bold">Equipamento</h2>
@@ -4301,8 +4392,6 @@ export default function Equipamentos() {
                     )}
                   </CardContent>
                 </Card>
-
-                <ResumoComunicacoes comunicacoes={comunicacoes} onVerTodas={() => setAbaDetalhe("comunicacoes")} />
               </div>
             </div>
           </section>

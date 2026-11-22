@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogBody,
+  DialogFooter,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -462,7 +463,7 @@ export function TeamAccessManager({
           if (!value && !busy) close();
         }}
       >
-        <DialogContent tamanho="g" className="overflow-y-auto">
+        <DialogContent tamanho="g">
           <DialogHeader>
             <DialogTitle>{actionTitle}</DialogTitle>
             <DialogDescription>
@@ -472,7 +473,8 @@ export function TeamAccessManager({
                 : "Confira os dados antes de confirmar."}
             </DialogDescription>
           </DialogHeader>
-          <form noValidate onChange={() => setError(null)} onSubmit={(event) => void submit(event)} className="space-y-5">
+          <form noValidate onChange={() => setError(null)} onSubmit={(event) => void submit(event)} className="flex min-h-0 flex-1 flex-col">
+            <DialogBody className="space-y-5">
             {selection?.action === "edit" && (
               <>
                 <div className="space-y-2">
@@ -577,7 +579,8 @@ export function TeamAccessManager({
                 {error}
               </p>
             )}
-            <div className="flex justify-end gap-2">
+            </DialogBody>
+            <DialogFooter>
               {issuedCode ? (
                 <Button type="button" onClick={close}>Concluir</Button>
               ) : (
@@ -601,7 +604,7 @@ export function TeamAccessManager({
               </Button>
               </>
               )}
-            </div>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
