@@ -70,6 +70,7 @@ import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/re
 import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "@/lib/logo-monochrome-base64";
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
 import { useTecnicos } from "@/hooks/useTecnicos";
+import { tecnicoPadrao } from "@/lib/tecnicos";
 import { todayLocalIsoDate } from "@/lib/date-utils";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
 import {
@@ -516,7 +517,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
 }
 
 function QuickEntry({ onBack }: { onBack: () => void }) {
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess, status: sessaoDoBalcao } = useSensitiveAccess();
   const [step, setStep] = useState(1);
   const [client, setClient] = useState<Cliente | null>(null);
   const [responsavel, setResponsavel] = useState<ClienteContato | null>(null);
@@ -541,10 +542,12 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
   });
   const tecnicos = useTecnicos();
   const [tecnico, setTecnico] = useState<TecnicoDisponivel>("");
-  // Sem escolha ainda: o primeiro técnico da lista (perfis com "faz atendimento técnico").
+  // Sem escolha ainda: o próprio perfil, se faz atendimento técnico, ou o único técnico da
+  // empresa. Com vários e nenhum deles a sessão, a pessoa escolhe (nunca "o primeiro da lista").
+  const padraoDoTecnico = tecnicoPadrao(tecnicos, sessaoDoBalcao?.unlocked ? sessaoDoBalcao.active_profile_id : null);
   useEffect(() => {
-    if (!tecnico && tecnicos.length > 0) setTecnico(tecnicos[0].nome);
-  }, [tecnico, tecnicos]);
+    if (!tecnico && padraoDoTecnico) setTecnico(padraoDoTecnico);
+  }, [tecnico, padraoDoTecnico]);
   const emailDoTecnicoEscolhido = tecnicos.find((t) => t.nome === tecnico)?.email ?? "";
   const [emailPromptOpen, setEmailPromptOpen] = useState(false);
   const [emailRecipient, setEmailRecipient] = useState<ResolvedRecipient | null>(null);
@@ -1000,7 +1003,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
                 onValueChange={(value: TecnicoDisponivel) => setTecnico(value)}
               >
                 <SelectTrigger className={inputClass}>
-                  <SelectValue />
+                  <SelectValue placeholder="Escolha o técnico" />
                 </SelectTrigger>
                 <SelectContent>
                   {tecnicos.map((option) => (

@@ -234,7 +234,7 @@ import { quandoRascunho, useRascunho } from "@/hooks/useRascunho";
 import { BotaoCopiar } from "@/components/ui/botao-copiar";
 import { AcoesEmLote, type RelatorioLote } from "@/components/equipamentos/AcoesEmLote";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AVISO_ENTRADA_SEM_TECNICOS, emailDoTecnico, erroTecnicoDaEntrada, linhaTecnicoInicial } from "@/lib/tecnicos";
+import { AVISO_ENTRADA_SEM_TECNICOS, emailDoTecnico, erroTecnicoDaEntrada, linhaTecnicoInicial, tecnicoPadrao } from "@/lib/tecnicos";
 import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
 import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
 import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGrande";
@@ -373,6 +373,8 @@ export default function Equipamentos() {
   const primeiroTecnico = tecnicos[0]?.nome ?? "";
   const nomesFiltroTecnico = useNomesFiltroTecnico();
   const { status: sessaoAtual } = useSensitiveAccess();
+  // Técnico já escolhido na Nova entrada: o próprio perfil (se atende) ou o único técnico.
+  const tecnicoPadraoDaEntrada = tecnicoPadrao(tecnicos, sessaoAtual?.unlocked ? sessaoAtual.active_profile_id : null);
   // O técnico das OS é gravado com o nome do perfil: "Minhas" existe se esse nome já aparece.
   const nomePerfilSessao = sessaoAtual?.unlocked ? sessaoAtual.active_profile_name?.trim() ?? "" : "";
   const meuNomeTecnico = nomePerfilSessao && nomesFiltroTecnico.includes(nomePerfilSessao) ? nomePerfilSessao : null;
@@ -795,7 +797,7 @@ export default function Equipamentos() {
     setRascunhoRecuperadoEm(null);
     setClienteVinculado(null);
     setResponsavelVinculado(null);
-    setTecnicoNovoEquipamento(primeiroTecnico);
+    setTecnicoNovoEquipamento(tecnicoPadraoDaEntrada);
     form.reset({
       serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
@@ -823,7 +825,7 @@ export default function Equipamentos() {
     setErroImagens(null);
     setImagensFormulario([]);
     setCarregandoImagensFormulario(false);
-    setTecnicoNovoEquipamento(primeiroTecnico);
+    setTecnicoNovoEquipamento(tecnicoPadraoDaEntrada);
     setRegistrosAnteriores([]);
     setConfirmouNovoCiclo(false);
     setAnteriorEmAtendimento(null);
@@ -1045,7 +1047,7 @@ export default function Equipamentos() {
     setErroImagens(null);
     setImagensFormulario([]);
     setCarregandoImagensFormulario(true);
-    const tecnicoDaEdicao = extrairTecnicoInicialDeObservacoes(eq.observacoes) || primeiroTecnico;
+    const tecnicoDaEdicao = extrairTecnicoInicialDeObservacoes(eq.observacoes) || tecnicoPadraoDaEntrada;
     tecnicoBaseEdicaoRef.current = tecnicoDaEdicao;
     setTecnicoNovoEquipamento(tecnicoDaEdicao);
     if (eq.id) void carregarFotosDaEdicao(eq.id, sequencia);

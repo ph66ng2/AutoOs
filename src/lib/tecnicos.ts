@@ -64,6 +64,17 @@ export function emailDoTecnico(nome?: string | null): string {
 }
 
 /**
+ * Técnico já escolhido ao abrir uma entrada: o próprio perfil da sessão, se ele faz atendimento
+ * técnico; senão o único técnico da empresa; senão nenhum (a pessoa escolhe). Nunca "o primeiro
+ * da lista": a 0051 marcou todo perfil com papel TECNICO, inclusive quem só elabora orçamento.
+ */
+export function tecnicoPadrao(tecnicos: readonly Tecnico[], perfilDaSessaoId?: number | null): string {
+  const proprio = perfilDaSessaoId != null ? tecnicos.find((t) => t.id === perfilDaSessaoId) : undefined;
+  if (proprio) return proprio.nome;
+  return tecnicos.length === 1 ? tecnicos[0].nome : "";
+}
+
+/**
  * Aviso da Nova entrada quando a empresa não tem nenhum técnico marcado (ex.: a 0051 só marcou
  * quem tinha o papel exato TECNICO e quem atende usa perfil administrativo). A entrada não trava:
  * salva sem técnico, e nenhum e-mail é inventado.

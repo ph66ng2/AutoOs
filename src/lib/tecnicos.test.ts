@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { definirTecnicosDaEmpresa, emailDoTecnico, erroTecnicoDaEntrada, linhaTecnicoInicial, tecnicosAtivos } from "./tecnicos";
+import { definirTecnicosDaEmpresa, emailDoTecnico, erroTecnicoDaEntrada, linhaTecnicoInicial, tecnicoPadrao, tecnicosAtivos } from "./tecnicos";
 import type { SecurityProfile } from "@/types";
 
 const perfil = (id: number, nome: string, email: string) =>
@@ -55,5 +55,23 @@ describe("Nova entrada sem nenhum técnico marcado (upgrade da 0051 sem papel TE
     expect(erroTecnicoDaEntrada("", tecnicosAtivos())).toMatch(/Escolha o técnico/);
     expect(erroTecnicoDaEntrada("Ivan", tecnicosAtivos())).toBeNull();
     expect(linhaTecnicoInicial("Ivan", emailDoTecnico("Ivan"))).toBe("Técnico inicial: Ivan (ivan@empresa.test)");
+  });
+});
+
+describe("tecnicoPadrao (técnico já escolhido ao abrir a entrada)", () => {
+  it("Admin que não atende, com vários técnicos (inclusive quem só orça e veio marcado pela 0051): nenhum padrão", () => {
+    definirTecnicosDaEmpresa([perfil(14, "QA Orçamentista (PREPARE_QUOTES)", "orc@empresa.test"), perfil(2, "QA Técnico", "tec@empresa.test")]);
+    expect(tecnicoPadrao(tecnicosAtivos(), 1)).toBe("");
+    expect(tecnicoPadrao(tecnicosAtivos(), null)).toBe("");
+  });
+  it("o próprio perfil da sessão, quando ele atende", () => {
+    definirTecnicosDaEmpresa([perfil(14, "QA Orçamentista (PREPARE_QUOTES)", "orc@empresa.test"), perfil(2, "QA Técnico", "tec@empresa.test")]);
+    expect(tecnicoPadrao(tecnicosAtivos(), 2)).toBe("QA Técnico");
+  });
+  it("único técnico da empresa", () => {
+    definirTecnicosDaEmpresa([perfil(2, "QA Técnico", "tec@empresa.test")]);
+    expect(tecnicoPadrao(tecnicosAtivos(), 1)).toBe("QA Técnico");
+    definirTecnicosDaEmpresa([]);
+    expect(tecnicoPadrao(tecnicosAtivos(), 1)).toBe("");
   });
 });
