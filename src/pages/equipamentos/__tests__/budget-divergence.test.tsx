@@ -22,6 +22,7 @@ const mockNavigate = vi.hoisted(() => vi.fn());
 const mockFinalizarVerificacao = vi.hoisted(() => vi.fn());
 const mockMarcarPronto = vi.hoisted(() => vi.fn());
 const mockPermissions = vi.hoisted(() => ({ list: ["FINANCIAL_ACTIONS"] as string[] }));
+const mockRuntime = vi.hoisted(() => ({ saas: false }));
 const mockEnsureSensitiveAccess = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 const mockAtualizarServicosVerificacao = vi.hoisted(() => vi.fn());
 const mockAnalisarAjusteOrcamento = vi.hoisted(() => vi.fn());
@@ -72,6 +73,12 @@ vi.mock("@/hooks/useStatusEquipamento", () => ({
   }),
 }));
 
+vi.mock("@/lib/runtime-mode", () => ({
+  get IS_SAAS_BUILD() {
+    return mockRuntime.saas;
+  },
+}));
+
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({
     ensureSensitiveAccess: (...args: unknown[]) => mockEnsureSensitiveAccess(...args),
@@ -86,6 +93,15 @@ vi.mock("@/hooks/useNotification", () => ({
     error: vi.fn(),
     warning: vi.fn(),
     info: vi.fn(),
+  }),
+}));
+
+vi.mock("@/lib/data/equipamentos-operacoes-repository", () => ({
+  carregarRepositorioOperacoesEquipamento: async () => ({
+    getVerification: (...args: unknown[]) => mockBuscarVerificacao(...args),
+    analyzeQuoteAdjustment: (...args: unknown[]) => mockAnalisarAjusteOrcamento(...args),
+    changeStatus: (...args: unknown[]) => mockAtualizarStatusEquipamento(...args),
+    approveQuote: (...args: unknown[]) => mockAprovarOrcamento(...args),
   }),
 }));
 
@@ -330,6 +346,7 @@ import Equipamentos from "../../Equipamentos";
 describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRuntime.saas = false;
     mockAtualizarEquipamento.mockResolvedValue({
       sucesso: true,
       data: { ...equipamentoVerificado, atualizado_em: "2024-01-15T10:00:01Z" },
@@ -1301,6 +1318,37 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(screen.getByTestId("action-reprovar")).toBeInTheDocument();
   });
 
+  it("no SaaS, PREPARE_QUOTES sem financeiro mostra Aprovar, Reprovar, Reabrir e Renovar", async () => {
+    mockRuntime.saas = true;
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    const waiting = render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-aprovar")).toBeInTheDocument());
+    expect(screen.getByTestId("action-reprovar")).toBeInTheDocument();
+    waiting.unmount();
+
+    equipamentoVerificado.status = "REPROVADO";
+    const reprovado = render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-reabrir_orcamento")).toBeInTheDocument());
+    reprovado.unmount();
+
+    equipamentoVerificado.status = "ORCAMENTO_VENCIDO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-renovar_orcamento")).toBeInTheDocument());
+  });
+
+  it("no SaaS, PIN de Aprovar aceita PREPARE_QUOTES", async () => {
+    mockRuntime.saas = true;
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    render(<Equipamentos />);
+    fireEvent.click(await screen.findByTestId("action-aprovar"));
+    await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({
+      anyPermission: ["FINANCIAL_ACTIONS", "PREPARE_QUOTES"],
+    })));
+  });
+
   it("PREPARE_QUOTES não mostra Alterar Orçamento em APROVADO", async () => {
     mockPermissions.list = ["PREPARE_QUOTES"];
     equipamentoVerificado.status = "APROVADO";
@@ -1602,6 +1650,26 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ title: "Marcar equipamento como pronto" })));
     expect(mockEnsureSensitiveAccess.mock.calls[0][0]).not.toHaveProperty("permission");
     expect(mockEnsureSensitiveAccess.mock.calls[0][0]).not.toHaveProperty("anyPermission");
+  });
+
+  it("no SaaS, entrega comum pede só PIN e grava sem FINANCIAL_ACTIONS", async () => {
+    mockRuntime.saas = true;
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    mockEnsureSensitiveAccess.mockImplementation(async ({ permission, anyPermission }) => !permission && !anyPermission);
+    mockAtualizarStatusEquipamento.mockResolvedValue({
+      sucesso: true,
+      data: { ...equipamentoVerificado, status: "ENTREGUE", atualizado_em: "2024-01-15T10:00:01Z" },
+    });
+    equipamentoVerificado.status = "PRONTO";
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-registrar_entrega"));
+    await screen.findByRole("button", { name: /Confirmar/i });
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(mockAtualizarStatusEquipamento).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "ENTREGUE" }),
+    ));
+    expect((mockAtualizarStatusEquipamento.mock.calls.at(-1)?.[0] as { finalValue?: number }).finalValue).toBeUndefined();
+    expect(mockEnsureSensitiveAccess.mock.calls.every(([options]) => !options.permission && !options.anyPermission)).toBe(true);
   });
 
   it("entrega com exceção, inclusive valor final zero, exige financeiro e não grava se negado", async () => {

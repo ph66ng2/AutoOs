@@ -413,6 +413,10 @@ pub struct SupabaseStorageConfig {
     pub supabase_url: String,
     pub supabase_publishable_key: String,
     pub access_token: String,
+    /// Escritor do bucket privado `portal-documentos` (service_role no desktop interno).
+    /// Vazio no SaaS: o JWT de sessão não entra nesse bucket.
+    #[serde(default)]
+    pub supabase_service_key: String,
     #[serde(default)]
     pub empresa_id: Option<String>,
 }

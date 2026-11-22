@@ -648,15 +648,17 @@ function QuickEntry({ onBack, operationalProfile }: { onBack: () => void; operat
         });
         // salvarVerificacao altera atualizado_em; a ordem impressa e publicada precisa do token novo.
         try {
-          const recarregado = await buscarEquipamentoBalcao(equipment.id!);
-          if (recarregado) setCreated(recarregado);
+          if (typeof equipment.id === "number") {
+            const recarregado = await db.buscarEquipamento(equipment.id);
+            if (recarregado) setCreated(recarregado);
+          }
         } catch (cause) {
           console.warn("[Balcao] recarga pós-laudo indisponível", cause);
         }
-        void Promise.resolve(afterCounterRegistration(equipment as never)).catch(
-          (cause: unknown) => console.warn("[Balcao] extensão pós-cadastro indisponível", cause),
-        );
       }
+      void Promise.resolve(afterCounterRegistration(equipment as never)).catch(
+        (cause: unknown) => console.warn("[Balcao] extensão pós-cadastro indisponível", cause),
+      );
     } catch (cause) {
       setError(String(cause));
     } finally {

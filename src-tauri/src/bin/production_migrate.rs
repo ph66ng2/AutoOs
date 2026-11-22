@@ -8,16 +8,14 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 24] = [
-    27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
-];
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 24] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50];
 const EXPECTED_MIGRATION_COUNT: usize = 50;
-// Fonte única das versões reservadas, compartilhada com check-sqlx-migrations.mjs e verify-estoque-seed.sh.
+/// Piso já aplicado antes da promoção. O binário e o pós-apply exigem 0001–0050:
+/// `EXPECTED_MIGRATION_COUNT` e `verify_promoted_schema` recusam histórico incompleto.
+/// Subir este piso para 50 bloquearia a primeira aplicação de 0029–0050.
+/// Na `feature` a sequência SQLx é contínua (0045/0046 da linha SaaS + 0047–0050 da master);
+/// `sqlx-reserved-migrations.txt` fica vazio e o validador recusa buracos.
 const RESERVED_MIGRATION_VERSIONS_FILE: &str = include_str!("../../../scripts/sqlx-reserved-migrations.txt");
-/// Piso já aplicado antes da promoção (igual à master). O binário e o
-/// pós-apply exigem 0001–0050: `EXPECTED_MIGRATION_COUNT` e
-/// `verify_promoted_schema` recusam histórico incompleto. Subir este piso
-/// para 50 bloquearia a primeira aplicação de 0029–0050.
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
@@ -217,30 +215,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn promotes_from_0028_and_expects_the_full_0050_set() {
+    fn promotes_from_0028_with_the_expected_migration_set() {
         assert_eq!(LAST_REQUIRED_APPLIED_MIGRATION, 28);
         assert_eq!(EXPECTED_MIGRATION_COUNT, 50);
         assert_eq!(REQUIRED_PROMOTION_MIGRATIONS.last().copied(), Some(50));
-        assert_eq!(REQUIRED_PROMOTION_MIGRATIONS.len(), 24);
         assert!(validate_migration_set().is_ok());
         assert!(require_expected_migrations().is_ok());
     }
 
     #[test]
     fn reserved_versions_come_from_the_shared_list() {
-        assert_eq!(reserved_migration_versions().unwrap(), vec![45, 46, 47]);
+        assert_eq!(reserved_migration_versions().unwrap(), Vec::<i64>::new());
     }
 
     #[test]
-    fn accepts_only_reserved_gaps_and_counts_actual_files() {
-        let branch = (1..=44).chain([48]).collect::<Vec<_>>();
-        assert!(validate_migration_versions(branch.clone(), 45).is_ok());
-        assert!(validate_migration_versions(branch.clone(), 48).is_err());
-        let mut synced = branch.clone();
-        synced.extend([45, 46, 47]);
-        assert!(validate_migration_versions(synced, 48).is_ok());
-        let missing = branch.into_iter().filter(|version| *version != 44).collect();
-        assert!(validate_migration_versions(missing, 44).is_err());
+    fn rejects_gaps_and_counts_actual_files() {
+        let complete: Vec<i64> = (1..=50).collect();
+        assert!(validate_migration_versions(complete.clone(), 50).is_ok());
+        assert!(validate_migration_versions(complete.clone(), 48).is_err());
+        let missing_45: Vec<i64> = (1..=44).chain(46..=50).collect();
+        assert!(validate_migration_versions(missing_45, 49).is_err());
         let unexpected_gap = (1..=44).chain([48, 50]).collect();
         assert!(validate_migration_versions(unexpected_gap, 46).is_err());
     }

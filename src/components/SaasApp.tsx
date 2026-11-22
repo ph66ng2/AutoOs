@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CloudOff, LogOut, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BootSplashGate } from "@/components/BootSplashGate";
+import { useBootUi } from "@/components/BootUi";
 import { SaasLoginScreen } from "@/components/SaasLoginScreen";
 import { SaasProfilePinGate } from "@/components/SaasProfilePinGate";
 import { SaasOperationalShell } from "@/components/SaasOperationalShell";
@@ -10,8 +11,7 @@ import type { SaasAuthState } from "@/types/saas-auth";
 
 export function SaasApp() {
   const { state, retry, lock, unlock, signOut, removeThisDevice } = useSaasAuth();
-  // A abertura toca em toda inicialização (regra da master); o login aparece quando ela sai.
-  const [openingComplete, setOpeningComplete] = useState(false);
+  const { bootAnimationComplete, completeBootAnimation } = useBootUi();
   const [bootProgress, setBootProgress] = useState(8);
 
   useEffect(() => {
@@ -30,8 +30,8 @@ export function SaasApp() {
   }, [state.kind]);
 
   const onSplashFinished = useCallback(() => {
-    setOpeningComplete(true);
-  }, []);
+    completeBootAnimation();
+  }, [completeBootAnimation]);
 
   function confirmDeviceRemoval() {
     if (window.confirm("Remover esta máquina? O dispositivo será revogado no servidor e a sessão local será apagada. Esta ação exige novo login nesta instalação.")) {
@@ -39,8 +39,8 @@ export function SaasApp() {
     }
   }
 
-  // Abertura até o fim, depois login.
-  if (!openingComplete) {
+  // Abertura BMI TAG em toda inicialização, igual ao desktop; o login espera ela terminar.
+  if (!bootAnimationComplete) {
     return (
       <>
         <main className="fixed inset-0 bg-slate-950" aria-hidden="true" />

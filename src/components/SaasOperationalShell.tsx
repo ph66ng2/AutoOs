@@ -73,7 +73,7 @@ function SaasOperationalRoutes({ session, profile, onLock, onSignOut, onRemoveDe
         </nav>
         <main className="min-w-0 flex-1 rounded-xl bg-background p-6 text-foreground">
           <Routes>
-            <Route path="/clientes" element={<SaasClientesPage />} />
+            <Route path="/clientes" element={<SaasClientesPage operationalProfile={profile} />} />
             <Route path="/equipamentos" element={<Equipamentos operationalProfile={profile} />} />
             <Route path="/servicos" element={<Servicos operationalProfile={profile} />} />
             <Route path="/insumos" element={<Insumos operationalProfile={profile} />} />

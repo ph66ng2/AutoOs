@@ -24,9 +24,8 @@
 
 mod commands;
 mod db;
-#[cfg(not(feature = "saas"))]
-mod release_highlights;
 mod runtime_mode;
+mod release_highlights;
 
 use std::sync::OnceLock;
 use tracing::{info, Level};
@@ -110,6 +109,8 @@ fn main() {
 
     #[cfg(feature = "saas")]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        release_highlights::get_seen_release_highlights,
+        release_highlights::mark_release_highlights_seen,
         commands::saas_auth::salvar_sessao_saas,
         commands::saas_auth::carregar_sessao_saas,
         commands::saas_auth::remover_sessao_saas,
@@ -128,7 +129,6 @@ fn main() {
 
     #[cfg(not(feature = "saas"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
-            // Novidades da versão (só no build interno; o SaaS tem app próprio)
             release_highlights::get_seen_release_highlights,
             release_highlights::mark_release_highlights_seen,
             // Auth sensível

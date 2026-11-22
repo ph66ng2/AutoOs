@@ -195,6 +195,22 @@ function positiveInt(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DOCUMENTO_CAMINHO_RE =
+  /^[0-9a-f-]+\/[0-9a-f-]+\/(ORDEM_SERVICO|ORCAMENTO|ORCAMENTO_AJUSTADO)\/[0-9a-f-]+\/[a-f0-9]{64}\.pdf$/i;
+
+function parseEquipamentoId(value: unknown): number | string | null {
+  const asInt = positiveInt(value);
+  if (asInt) return asInt;
+  return typeof value === "string" && UUID_RE.test(value) ? value : null;
+}
+
+function parseDocumentoId(value: unknown): number | string | null {
+  const asInt = positiveInt(value);
+  if (asInt) return asInt;
+  return typeof value === "string" && UUID_RE.test(value) ? value : null;
+}
+
 type Context = { url: string; key: string; secret: string; origin: string | null; verifyFingerprint: string | null };
 
 async function passwordLogin(context: Context, body: Json) {
@@ -375,7 +391,7 @@ Deno.serve(async (request: Request) => {
     return result.ok ? json(publicList(result.data as Json), 200, origin) : errorResponse(result.code, origin);
   }
 
-  const equipamentoId = positiveInt(body.equipamentoId);
+  const equipamentoId = parseEquipamentoId(body.equipamentoId);
   if (!equipamentoId) return json({ erro: "Requisição inválida." }, 400, origin);
 
   if (acao === "detalhe") {
@@ -392,7 +408,7 @@ Deno.serve(async (request: Request) => {
   }
 
   if (acao === "documento") {
-    const documentoId = positiveInt(body.documentoId);
+    const documentoId = parseDocumentoId(body.documentoId);
     if (!documentoId) return json({ erro: "Requisição inválida." }, 400, origin);
     // Não aceita bucket/caminho do navegador: ambos vêm da referência autorizada no banco.
     const result = await callRpc(url, key, "portal_documentos_atendimento", {
@@ -401,7 +417,7 @@ Deno.serve(async (request: Request) => {
     if (!result.ok) return errorResponse(result.code, origin);
     const documento = (result.data as Json[]).find((doc) => doc.id === documentoId);
     if (!documento || typeof documento.caminho !== "string" ||
-        !/^\d+\/\d+\/(ORDEM_SERVICO|ORCAMENTO|ORCAMENTO_AJUSTADO)\/\d+\/[a-f0-9]{64}\.pdf$/.test(documento.caminho)) {
+        !DOCUMENTO_CAMINHO_RE.test(documento.caminho)) {
       return errorResponse("DOCUMENTO_INDISPONIVEL", origin);
     }
     try {

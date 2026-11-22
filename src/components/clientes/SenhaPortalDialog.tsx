@@ -8,6 +8,7 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 import { db } from "@/lib/db";
 import type { ClienteContato } from "@/types";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
 
 /** Sem 0/O, 1/l/I: a senha costuma ser ditada ou digitada a partir de um papel. */
 const ALFABETO = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz";
@@ -66,14 +67,15 @@ export function linkWhatsappAcesso(telefone: string, texto: string): string | nu
 type FormProps = {
   contato: ClienteContato;
   documentoCliente: string;
+  operationalProfile?: SaasOperationalProfile;
   onCancelar: () => void;
   onSalvo: () => void;
   onConcluir: () => void;
 };
 
 /** Criação da senha + entrega dos dados. Usado na janela de contatos e no acesso pelo equipamento. */
-export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo, onConcluir }: FormProps) {
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+export function SenhaPortalForm({ contato, documentoCliente, operationalProfile, onCancelar, onSalvo, onConcluir }: FormProps) {
+  const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
   const [senha, setSenha] = useState(() => gerarSenhaPortal());
   const [salva, setSalva] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -214,11 +216,12 @@ export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo
 type Props = {
   contato: ClienteContato | null;
   documentoCliente: string;
+  operationalProfile?: SaasOperationalProfile;
   onClose: () => void;
   onSalvo: () => void;
 };
 
-export function SenhaPortalDialog({ contato, documentoCliente, onClose, onSalvo }: Props) {
+export function SenhaPortalDialog({ contato, documentoCliente, operationalProfile, onClose, onSalvo }: Props) {
   return (
     <Dialog open={Boolean(contato)} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="sm:max-w-md">
@@ -230,7 +233,7 @@ export function SenhaPortalDialog({ contato, documentoCliente, onClose, onSalvo 
           </DialogDescription>
         </DialogHeader>
         {contato && (
-          <SenhaPortalForm contato={contato} documentoCliente={documentoCliente} onCancelar={onClose} onSalvo={onSalvo} onConcluir={onClose} />
+          <SenhaPortalForm contato={contato} documentoCliente={documentoCliente} operationalProfile={operationalProfile} onCancelar={onClose} onSalvo={onSalvo} onConcluir={onClose} />
         )}
       </DialogContent>
     </Dialog>

@@ -8,7 +8,7 @@
     "dev:saas": "vite --mode saas",
     "prebuild": "npm run generate:release-highlights",
     "build": "tsc && vite build",
-    "build:saas": "tsc && vite build --mode saas",
+    "build:saas": "npm run generate:release-highlights && tsc && vite build --mode saas",
     "generate:release-highlights": "node scripts/generate-release-highlights.mjs",
     "test:release-highlights": "node --test scripts/__tests__/generate-release-highlights.test.mjs",
     "perf:bundle": "node scripts/measure-bundle.mjs",

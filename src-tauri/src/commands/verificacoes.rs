@@ -10,9 +10,9 @@ use crate::commands::types::{
     VERIFICACAO_SELECT,
 };
 use crate::commands::auth::{
-    profile_has_permission, record_security_event, require_any_permission, require_active_session_company_id, require_permission,
-    SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
-    PERMISSION_PREPARE_QUOTES, PERMISSION_STOCK_CONTROL,
+    profile_has_permission, record_security_event, require_any_permission, require_permission,
+    require_active_session_company_id, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS,
+    PERMISSION_MANAGE_STATUS_LINKS, PERMISSION_PREPARE_QUOTES, PERMISSION_STOCK_CONTROL,
 };
 use crate::db::get_pool;
 use crate::commands::orcamento_correcao::{

@@ -102,12 +102,20 @@ describe("SaasApp", () => {
     expect(screen.getByText(/cadastro de empresas é feito somente pelo suporte/i)).toBeInTheDocument();
   });
 
-  it("repete a abertura em toda inicialização enquanto a sessão é restaurada", async () => {
+  it("mostra a abertura BMI TAG em toda inicialização, mesmo com chave antiga do dia", async () => {
+    window.localStorage.setItem("autoos:daily-boot-opening", "2026-11-13");
+    renderApp(service());
+    expect(screen.getByText("Restaurando sessão segura...")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "AutoOS SaaS" })).toBeInTheDocument();
+  });
+
+  it("enquanto a sessão restaura, a abertura permanece na tela", async () => {
     renderApp(service({
       restoreSession: vi.fn().mockImplementation(() => new Promise(() => {})),
     }));
     expect(screen.getByText("Restaurando sessão segura...")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "AutoOS SaaS" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Preparando sessão…")).not.toBeInTheDocument();
   });
 
   it("usa o perfil server-side sem seletor e mantém o PIN opcional/local", async () => {

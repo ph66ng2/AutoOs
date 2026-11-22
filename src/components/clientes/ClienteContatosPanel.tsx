@@ -31,6 +31,7 @@ import {
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { SenhaPortalDialog } from "@/components/clientes/SenhaPortalDialog";
 import type { AcessoPortalContato, Cliente, ClienteContato, ClienteContatoInput, ClienteId } from "@/types";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
 
 const ACESSO_PORTAL: Record<AcessoPortalContato, string> = {
   NENHUM: "Sem acesso ao portal",
@@ -41,6 +42,7 @@ const ACESSO_PORTAL: Record<AcessoPortalContato, string> = {
 interface ClienteContatosPanelProps {
   cliente: Cliente;
   empresaId?: ClienteId;
+  operationalProfile?: SaasOperationalProfile;
 }
 
 function formatarDocumentoCliente(valor: string) {
@@ -50,12 +52,8 @@ function formatarDocumentoCliente(valor: string) {
   return valor;
 }
 
-/** No SaaS não há SensitiveAccessProvider e o acesso ao portal ainda não foi portado (fica oculto). */
-const SEM_ACESSO_SENSIVEL_SAAS = { ensureSensitiveAccess: async () => false } as const;
-
-export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPanelProps) {
-  // IS_SAAS_BUILD é constante de build: a ordem dos hooks não muda entre renderizações.
-  const { ensureSensitiveAccess } = IS_SAAS_BUILD ? SEM_ACESSO_SENSIVEL_SAAS : useSensitiveAccess();
+export function ClienteContatosPanel({ cliente, empresaId, operationalProfile }: ClienteContatosPanelProps) {
+  const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -307,6 +305,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
       <SenhaPortalDialog
         contato={senhaDe}
         documentoCliente={formatarDocumentoCliente(cliente.documento || cliente.cpf_cnpj || "")}
+        operationalProfile={operationalProfile}
         onClose={() => setSenhaDe(null)}
         onSalvo={() => void carregarContatos()}
       />

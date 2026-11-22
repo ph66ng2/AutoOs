@@ -25,10 +25,10 @@
 import type { jsPDF } from "jspdf";
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
-import { publicarPdfOficial, referenciaPdfPortal, type ReferenciaPdfPortal } from "@/lib/portal-documentos";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
 import { carregarRepositorioHistoricoEquipamento } from "@/lib/data/equipamentos-historico-repository";
+import { publicarPdfOficial, referenciaPdfPortal, type ReferenciaPdfPortal } from "@/lib/portal-documentos";
 import { formatDateTimeSalvador, parseTimestampPostgres } from "@/lib/date-utils";
 import { STATUS_LABELS } from "@/types";
 import type {
@@ -1413,7 +1413,7 @@ export const PdfService = {
   },
 
   async gerarOrcamentoAjustado(
-    equipamento: Equipamento,
+    equipamento: EquipamentoPdf,
     verificacao: Verificacao,
     nomeArquivo?: string
   ): Promise<string | null> {

@@ -1967,9 +1967,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             equipmentId: String(selecionado.id),
             expectedUpdatedAt: selecionado.atualizado_em || "",
             status: novoStatus,
-            budget: totalAtual || undefined,
-            approvalDeadline: prazoAprovacao || undefined,
-            finalValue: novoStatus === "ENTREGUE" ? valorFinal : valorFinal || undefined,
+            budget: valorOrcamentoStatus,
+            approvalDeadline: prazoStatus,
+            finalValue: valorFinalStatus,
             correctionReason: correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
           });
           void result;
