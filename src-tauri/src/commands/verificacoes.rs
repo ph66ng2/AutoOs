@@ -137,7 +137,6 @@ async fn enviar_para_aprovacao_na_transacao(
     if !matches!(status_atual, "RECEBIDO" | "EM_VERIFICACAO" | "VERIFICADO") {
         return Err("Esta OS não está em verificação; o orçamento não foi enviado para aprovação.".to_string());
     }
-    let prazo = prazo_de_aprovacao_valido(prazo)?;
     let valor = custo_total.filter(|valor| valor_monetario_positivo(*valor))
         .ok_or("O orçamento precisa de um total maior que zero para ir à aprovação.")?;
     let actor = require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?;
@@ -159,13 +158,6 @@ async fn enviar_para_aprovacao_na_transacao(
         return Err("Equipamento não encontrado na empresa ativa.".to_string());
     }
     Ok(actor)
-}
-
-fn prazo_de_aprovacao_valido(prazo: &str) -> Result<String, String> {
-    let prazo = prazo.trim();
-    chrono::NaiveDate::parse_from_str(prazo, "%Y-%m-%d")
-        .map(|_| prazo.to_string())
-        .map_err(|_| "Prazo de aprovação inválido.".to_string())
 }
 
 async fn auditar_envio_para_aprovacao(actor: Option<SecurityProfileSummary>, equipamento_id: i32, status_anterior: &str) {
@@ -299,6 +291,9 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     if input.enviar_para_aprovacao_prazo.is_some() && !concluida {
         return Err("Conclua a verificação antes de enviar o orçamento para aprovação.".to_string());
     }
+    input.enviar_para_aprovacao_prazo = input.enviar_para_aprovacao_prazo.as_deref()
+        .map(super::equipamentos::prazo_de_aprovacao_valido)
+        .transpose()?;
     if concluida {
         if input.custo_total.is_none() {
             input.custo_total = Some(resolver_custo_total(None, &servicos));
