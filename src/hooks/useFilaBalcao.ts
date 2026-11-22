@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import { todayLocalIsoDate } from "@/lib/date-utils";
 import { juntarFilaRetirada, type ItemRetirada } from "@/lib/retirada-balcao";
@@ -19,18 +20,25 @@ export function useFilaBalcao() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const carregar = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const pedido = useRef(0);
+
+  const carregar = useCallback(async ({ silencioso = false } = {}) => {
+    const meu = ++pedido.current;
+    if (!silencioso) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const [paginaProntos, recentes, vendasAprovadas] = await Promise.all([
-        db.listarEquipamentosPaginados(undefined, "PRONTO", 0),
-        db.listarEquipamentosPaginados(undefined, undefined, 0, "CADASTRO_RECENTE"),
+        db.listarEquipamentosPaginados(undefined, "PRONTO", 0, "ATUALIZACAO_RECENTE", undefined, silencioso),
+        db.listarEquipamentosPaginados(undefined, undefined, 0, "CADASTRO_RECENTE", undefined, silencioso),
         // Sem vendas (falha ou perfil sem acesso), a fila continua com os equipamentos.
         Promise.resolve()
-          .then(() => db.listarOrcamentosInsumos({ status: "APROVADO", page: 0 }))
+          .then(() => db.listarOrcamentosInsumos({ status: "APROVADO", page: 0 }, silencioso))
           .catch(() => null),
       ]);
+      if (meu !== pedido.current) return;
+      setError(null);
       const hoje = todayLocalIsoDate();
       const itensRecentes = recentes?.items ?? [];
       const deHoje = itensRecentes.filter((eq) => eq.data_entrada === hoje);
@@ -39,15 +47,20 @@ export function useFilaBalcao() {
       setChegaramHoje(deHoje);
       setChegaramHojeMais(itensRecentes.length > 0 && deHoje.length === itensRecentes.length && (recentes?.total ?? 0) > itensRecentes.length);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (meu === pedido.current && !silencioso) setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (meu === pedido.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void carregar();
+    return () => { pedido.current += 1; };
   }, [carregar]);
+
+  useAtualizacaoAoVivo(["equipamentos", "orcamentos_insumos", "clientes"], () => {
+    void carregar({ silencioso: true });
+  });
 
   return { prontos, totalProntos, chegaramHoje, chegaramHojeMais, loading, error, recarregar: carregar };
 }
