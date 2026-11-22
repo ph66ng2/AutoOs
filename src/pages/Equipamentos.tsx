@@ -3951,7 +3951,7 @@ export default function Equipamentos() {
                       field.onChange(value);
                     }}>
                       <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                      <SelectContent side="bottom" avoidCollisions={false}>{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                      <SelectContent side="bottom" collisionPadding={8} className="max-h-40">{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
                   )} />
                   <FormValidationError message={form.formState.errors.tipo?.message} />
