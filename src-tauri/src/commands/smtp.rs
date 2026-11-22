@@ -266,8 +266,10 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
         input.assunto.trim(),
     );
 
-    let evento_envio = if let Some(id) = input.orcamento_equipamento_id {
+    if let Some(id) = input.orcamento_equipamento_id.or(input.equipamento_id) {
         audit_details.push_str(&format!("; equipamento_id={id}"));
+    }
+    let evento_envio = if input.orcamento_equipamento_id.is_some() {
         "BUDGET_EMAIL_SENT"
     } else {
         "EMAIL_SENT"
