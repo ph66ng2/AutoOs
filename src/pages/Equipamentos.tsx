@@ -1355,13 +1355,12 @@ export default function Equipamentos() {
    * Conecta-se a: db.buscarVerificacao, db.listarComunicacoes
    */
   const detalhesSeq = useRef(0);
-  const abrirDetalhes = useCallback(async (eq: Equipamento) => {
+  const abrirDetalhes = useCallback(async (eq: Equipamento, rota = `/equipamentos/${eq.id}`) => {
     // Trocar de atendimento com a janela aberta: só a última abertura grava os dados.
     const seq = ++detalhesSeq.current;
     setSelecionado(eq);
     setIdDetalhesAberto(eq.id ?? null);
-    const destino = `/equipamentos/${eq.id}`;
-    if (pathnameAtualRef.current !== destino) navigate(destino);
+    if (pathnameAtualRef.current !== rota) navigate(rota);
     setCarregandoDetalhes(true);
     setVerificacaoDetalhes(null);
     setComunicacoes([]);
@@ -1393,15 +1392,21 @@ export default function Equipamentos() {
   }, [carregarImagensComPreview, navigate]);
 
   // Rota aberta direto (voltar/avançar do navegador, link): carrega a OS do endereço.
+  const buscaDetalhesSeq = useRef(0);
   useEffect(() => {
     if (idDetalhesRota == null || selecionadoIdRef.current === idDetalhesRota) return;
+    const seq = ++buscaDetalhesSeq.current;
+    const pathname = location.pathname;
+    const vigente = () => seq === buscaDetalhesSeq.current && pathnameAtualRef.current === pathname;
     db.buscarEquipamento(idDetalhesRota)
-      .then((eq) => abrirDetalhes(eq))
+      .then((eq) => { if (vigente()) return abrirDetalhes(eq, pathname); })
       .catch((err) => {
+        if (!vigente()) return;
         showError("Equipamentos", "Abrir atendimento", err, { manterAoTrocarDeTela: true });
         navigate("/equipamentos", { replace: true });
       });
-  }, [idDetalhesRota, abrirDetalhes, navigate]);
+    return () => { buscaDetalhesSeq.current += 1; };
+  }, [idDetalhesRota, location.pathname, abrirDetalhes, navigate]);
 
   // Verificação pela metade: menu, Ctrl+K ou voltar perguntam antes. Só Cancelar e
   // Finalizar (fecharPaginaVerificacao) passam direto.
