@@ -3613,21 +3613,6 @@ export default function Equipamentos() {
             </div>
           </div>
 
-          {/* Fora do bloco de carregamento: recarregar a lista não desmonta a barra no meio de um lote. */}
-          {(selecaoLote.size > 0 || loteOcupado || relatorioLote) && (
-            <AcoesEmLote
-              selecionados={[...selecaoLote.values()]}
-              ocupado={loteOcupado}
-              onOcupadoChange={setLoteOcupado}
-              relatorio={relatorioLote}
-              onRelatorioChange={setRelatorioLote}
-              onLimpar={() => setSelecaoLote(new Map())}
-              onConcluido={async (idsComFalha, recarregarLista) => {
-                setSelecaoLote((atual) => new Map([...atual].filter(([id]) => idsComFalha.includes(id))));
-                if (recarregarLista) await recarregar();
-              }}
-            />
-          )}
           {loading ? (
             <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
           ) : equipamentos.length === 0 && erroListaEquipamentos ? (
@@ -3789,6 +3774,23 @@ export default function Equipamentos() {
                 className="pb-0"
               />
             </>
+          )}
+          {/* Fora do bloco de carregamento: a tabela mantém a posição ao selecionar as OS. */}
+          {(selecaoLote.size > 0 || loteOcupado || relatorioLote) && (
+            <div className="sticky bottom-0 z-30 rounded-xl bg-card pb-2 shadow-lg">
+              <AcoesEmLote
+              selecionados={[...selecaoLote.values()]}
+              ocupado={loteOcupado}
+              onOcupadoChange={setLoteOcupado}
+              relatorio={relatorioLote}
+              onRelatorioChange={setRelatorioLote}
+              onLimpar={() => setSelecaoLote(new Map())}
+              onConcluido={async (idsComFalha, recarregarLista) => {
+                setSelecaoLote((atual) => new Map([...atual].filter(([id]) => idsComFalha.includes(id))));
+                if (recarregarLista) await recarregar();
+              }}
+              />
+            </div>
           )}
         </CardContent>
       </Card>
