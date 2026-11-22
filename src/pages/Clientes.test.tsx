@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import Clientes from "@/pages/Clientes";
 
 const mocks = vi.hoisted(() => ({
+  status: { unlocked: true, active_profile_id: 1, permissions: [] as string[] },
   criar: vi.fn(),
   atualizar: vi.fn(),
   clientes: [] as unknown[],
@@ -18,11 +19,16 @@ vi.mock("@/hooks/useClientes", () => ({
     criar: mocks.criar, atualizar: mocks.atualizar, deletar: vi.fn(), recarregar: mocks.recarregar,
   }),
 }));
-vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: vi.fn() }) }));
+vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({
+  ensureSensitiveAccess: vi.fn(),
+  status: mocks.status,
+  hasPermission: (permissao: string) => mocks.status.unlocked && mocks.status.permissions.includes(permissao),
+}) }));
 vi.mock("@/hooks/useNotification", () => ({
   useNotification: () => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn() }),
 }));
 const dbMocks = vi.hoisted(() => ({
+  resumoCliente: vi.fn(),
   listarEquipamentosCliente: vi.fn().mockResolvedValue([]),
   listarClienteContatos: vi.fn().mockResolvedValue([]),
   abrirUrl: vi.fn().mockResolvedValue(undefined),
@@ -65,6 +71,8 @@ function renderPagina() {
 describe("Clientes: ordem de compra e preferências", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.status = { unlocked: true, active_profile_id: 1, permissions: [] };
+    dbMocks.resumoCliente.mockReset().mockResolvedValue({ osAbertas: 1, noAno: 2, faturado: null });
     mocks.clientes = [];
     mocks.erro = null;
     mocks.criar.mockResolvedValue({ sucesso: true });
@@ -115,6 +123,46 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(mocks.criar.mock.calls[0]![0]).toMatchObject({
       exige_ordem_compra: true, receber_email: true, receber_whatsapp: true,
     });
+  });
+
+  it("protege o faturado ao mudar de perfil, permissão ou bloqueio", async () => {
+    mocks.clientes = [clienteSalvo()];
+    mocks.status.permissions = ["VIEW_EXPENSES"];
+    const resumo = { osAbertas: 1, noAno: 2, faturado: 1500 };
+    dbMocks.resumoCliente.mockResolvedValue(resumo);
+    const { rerender } = renderPagina();
+    const atualizarSessao = () => rerender(<MemoryRouter><Clientes /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    expect(await screen.findByText("Faturado")).toBeVisible();
+
+    let responderAntiga!: (dados: typeof resumo) => void;
+    dbMocks.resumoCliente.mockImplementationOnce(() => new Promise((resolve) => {
+      responderAntiga = resolve;
+    }));
+    mocks.status = { ...mocks.status, active_profile_id: 2 };
+    atualizarSessao();
+    expect(screen.queryByText("Faturado")).not.toBeInTheDocument();
+
+    mocks.status = { ...mocks.status, permissions: [] };
+    atualizarSessao();
+    expect(dbMocks.resumoCliente).toHaveBeenCalledTimes(3);
+    await act(async () => responderAntiga({ ...resumo, osAbertas: 99 }));
+    expect(screen.queryByText("Faturado")).not.toBeInTheDocument();
+    expect(screen.queryByText("99")).not.toBeInTheDocument();
+
+    mocks.status = { ...mocks.status, permissions: ["VIEW_EXPENSES"] };
+    atualizarSessao();
+    expect(await screen.findByText("Faturado")).toBeVisible();
+
+    mocks.status = { ...mocks.status, unlocked: false };
+    atualizarSessao();
+    expect(screen.queryByText("Faturado")).not.toBeInTheDocument();
+    expect(dbMocks.resumoCliente).toHaveBeenCalledTimes(4);
+
+    mocks.status = { ...mocks.status, unlocked: true };
+    atualizarSessao();
+    expect(await screen.findByText("Faturado")).toBeVisible();
+    expect(dbMocks.resumoCliente).toHaveBeenCalledTimes(5);
   });
 
   it("painel do cliente: WhatsApp abre o wa.me do telefone e o telefone tem copiar", async () => {

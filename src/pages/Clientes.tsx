@@ -136,7 +136,8 @@ export default function Clientes() {
   // medir a tela, não abre sozinho; se a pessoa fechar o painel, ele não reabre.
   const painelAoLado = useLarguraMinima(1280, false);
   const painelFechadoPeloUsuario = useRef(false);
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
+  const faturado = hasPermission(SENSITIVE_PERMISSIONS.VIEW_EXPENSES) ? resumo?.faturado : null;
   const { error: showError, success } = useNotification();
   const totalAbas = totalAbasClientes(totalClientes);
   const abaExibida = Math.min(abaAtual, totalAbas);
@@ -718,7 +719,7 @@ export default function Clientes() {
                   </ul>
                 )}
 
-                <div className={`grid gap-2 ${resumo?.faturado != null ? "grid-cols-3" : "grid-cols-2"}`}>
+                <div className={`grid gap-2 ${faturado != null ? "grid-cols-3" : "grid-cols-2"}`}>
                   <div className="flex flex-col justify-between gap-1 rounded-xl bg-muted p-3">
                     <p className="text-xs text-muted-foreground">OS abertas</p>
                     <p className="text-lg font-extrabold tabular-nums">{resumo?.osAbertas ?? clienteAberto.os_abertas ?? "—"}</p>
@@ -727,10 +728,10 @@ export default function Clientes() {
                     <p className="text-xs text-muted-foreground" title="OS que entraram neste ano, abertas ou já fechadas">No ano</p>
                     <p className="text-lg font-extrabold tabular-nums">{resumo?.noAno ?? "—"}</p>
                   </div>
-                  {resumo?.faturado != null && (
+                  {faturado != null && (
                     <div className="flex flex-col justify-between gap-1 rounded-xl bg-muted p-3" title="Entregues no ano: valor final ou orçado. Só para quem vê Finanças.">
                       <p className="text-xs text-muted-foreground">Faturado</p>
-                      <p className="whitespace-nowrap text-lg font-extrabold tabular-nums">{moedaCompacta.format(resumo.faturado)}</p>
+                      <p className="whitespace-nowrap text-lg font-extrabold tabular-nums">{moedaCompacta.format(faturado)}</p>
                     </div>
                   )}
                 </div>
