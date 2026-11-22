@@ -28,6 +28,16 @@ describe("movimentoDaBancada", () => {
   });
 });
 
+describe("movimentoDaBancada com NOW() gravado em coluna TEXT", () => {
+  it("conta a entrega e a reprovação de hoje (deslocamento \"+00\" do PostgreSQL)", () => {
+    const meses = movimentoDaBancada([
+      eq({ data_entrada: "2026-11-22", status: "ENTREGUE", data_saida: "2026-11-22 11:36:00.123456+00" }),
+      eq({ data_entrada: "2026-11-20", status: "REPROVADO", data_reprovacao: "2026-11-21 14:00:00.5+00" }),
+    ], 2026);
+    expect(meses[10]).toMatchObject({ rotulo: "Nov", entraram: 2, entregues: 1, reprovados: 1 });
+  });
+});
+
 describe("variacaoPercentual e saudacao", () => {
   it("compara com o mês anterior e cumprimenta pela hora", () => {
     expect(variacaoPercentual(108, 100)).toBe(8);
