@@ -2194,7 +2194,7 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
-    async function executarComEmail(email: string | undefined, nomeDestinatario?: string, emailSalvo = false): Promise<boolean> {
+    async function executarComEmail(email: string | null, nomeDestinatario?: string, emailSalvo = false): Promise<boolean> {
       setSalvando(true);
       try {
         const resultado = await marcarComoPronto(eq, email, nomeDestinatario);
@@ -2233,7 +2233,7 @@ export default function Equipamentos() {
         }
         await executarComEmail(email, recipient.nome, salvar);
       },
-      onSkip: async () => { await executarComEmail(""); },
+      onSkip: async () => { await executarComEmail(null); },
     });
     setEmailDialogOpen(true);
   }
