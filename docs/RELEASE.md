@@ -48,6 +48,7 @@ Na CI, o binário `ci_migrate` aplica migrations somente ao PostgreSQL descartá
 ### Conexão do release Windows
 
 - Cadastre `AUTOOS_DATABASE_URL` nos GitHub Actions secrets com a URL **Supavisor Session**, porta `5432`, copiada do painel Supabase.
+- Opcional: cadastre `AUTOOS_SLACK_BOT_TOKEN` (Bot User OAuth Token `xoxb-…` do app "Suporte AutoOS") para o instalador já sair com o Suporte funcionando. Sem ele, cada computador configura o token em Configurações › Integrações. O token fica dentro do executável (como a URL do banco): se vazar, revogue no Slack e gere outra versão. Um token guardado no cofre do computador tem prioridade sobre o da instalação.
 - Não use o endpoint direto `db.<project-ref>.supabase.co` no release distribuído: ele depende de IPv6 e não é uniforme nas redes Windows atendidas.
 - Mantenha `sslmode=require` na URL do release.
 - O workflow interrompe o build antes de publicar quando o secret está ausente, não aponta para um Session pooler ou o histórico real de migrations diverge do build.

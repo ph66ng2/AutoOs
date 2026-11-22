@@ -64,7 +64,8 @@ const ORCAMENTO_FECHADO = new Set(["AGUARDANDO_APROVACAO", "ORCAMENTO_VENCIDO", 
  * gravado na OS; `null` quando bate ou quando o orçamento ainda está em elaboração.
  */
 export function divergenciaDoOrcamento(linhas: LinhaOrcamento[], total: number | null | undefined, status: string): number | null {
-  if (!ORCAMENTO_FECHADO.has(status) || linhas.length === 0) return null;
+  // Tudo reprovado (o cliente recusou e o equipamento volta sem reparo): não há orçamento a conferir.
+  if (!ORCAMENTO_FECHADO.has(status) || linhas.every((linha) => linha.reprovado)) return null;
   const soma = Math.round(linhas.filter((linha) => !linha.reprovado).reduce((acc, linha) => acc + linha.valor, 0) * 100) / 100;
   return Math.abs(soma - (total ?? 0)) >= 0.005 ? soma : null;
 }

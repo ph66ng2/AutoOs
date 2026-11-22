@@ -91,6 +91,8 @@ describe("OrcamentoDaOs", () => {
     // Em verificação ainda é rascunho: sem aviso.
     expect(divergenciaDoOrcamento(linhas, 0, "EM_VERIFICACAO")).toBeNull();
     expect(divergenciaDoOrcamento([], 0, "APROVADO")).toBeNull();
+    // Cliente reprovou tudo e o equipamento voltou: o total antigo fica, sem aviso.
+    expect(divergenciaDoOrcamento(linhas.map((l) => ({ ...l, reprovado: true })), 4170, "ENTREGUE")).toBeNull();
   });
 
   it("mostra o aviso de divergência e aponta Alterar Orçamento quando existe", () => {
