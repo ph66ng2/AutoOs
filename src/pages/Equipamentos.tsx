@@ -2863,12 +2863,6 @@ export default function Equipamentos() {
     if (eq.id == null) return;
     const id = eq.id;
     const acao = "Reenviar orçamento por e-mail";
-    const liberado = await ensureSensitiveAccess({
-      title: acao,
-      description: "Confirme seu acesso para reenviar o orçamento.",
-      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
-    });
-    if (!liberado) return;
 
     try {
       const atual = await db.buscarEquipamento(id);
@@ -2878,38 +2872,52 @@ export default function Equipamentos() {
         return;
       }
 
-      const confirmado = await confirmarComOperador(
-        acao,
-        `Enviar o orçamento da OS #${id} para ${recipient.nome} (${recipient.endereco})?`,
-        "Reenviar e-mail",
-      );
-      if (!confirmado) return;
-      setSalvando(true);
-      try {
-        const [recente, verificacao] = await Promise.all([db.buscarEquipamento(id), db.buscarVerificacao(id)]);
-        const contato = resolveRecipient(recente, "email");
-        if (recente.status !== "AGUARDANDO_APROVACAO" || recente.atualizado_em !== atual.atualizado_em
-          || contato.endereco !== recipient.endereco || contato.nome !== recipient.nome) {
-          warning("Equipamentos", "A OS mudou. Revise o orçamento e o destinatário antes de reenviar.");
-          return;
+      setConfirmProps({
+        title: acao,
+        description: `Enviar o orçamento da OS #${id} para ${recipient.nome} (${recipient.endereco})?`,
+        confirmLabel: "Reenviar e-mail",
+        cancelLabel: "Cancelar",
+        onConfirm: () => void enviar(),
+      });
+      setConfirmOpen(true);
+
+      async function enviar() {
+        setSalvando(true);
+        try {
+          const liberado = await ensureSensitiveAccess({
+            title: acao,
+            description: "Confirme seu acesso para reenviar o orçamento.",
+            anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
+          });
+          if (!liberado) return;
+
+          const [recente, verificacao] = await Promise.all([db.buscarEquipamento(id), db.buscarVerificacao(id)]);
+          const contato = resolveRecipient(recente, "email");
+          if (recente.status !== "AGUARDANDO_APROVACAO" || recente.atualizado_em !== atual.atualizado_em
+            || contato.endereco !== recipient.endereco || contato.nome !== recipient.nome) {
+            warning("Equipamentos", "A OS mudou. Revise o orçamento e o destinatário antes de reenviar.");
+            return;
+          }
+          if (!verificacao) {
+            warning("Equipamentos", "Verificação não encontrada. O orçamento não foi reenviado.");
+            return;
+          }
+          const resultado = await EmailService.enviarOrcamento({
+            ...recente,
+            cliente_nome: recipient.nome,
+            cliente_email: recipient.endereco,
+          }, verificacao);
+          if (!resultado.sucesso) throw new Error(resultado.erro || "Falha ao enviar o orçamento.");
+          success("Equipamentos", "Orçamento reenviado por e-mail.", acao);
+          if (selecionadoIdRef.current === id && detalhesAbertoRef.current) {
+            const lista = await db.listarComunicacoes(id).catch(() => null);
+            if (lista && selecionadoIdRef.current === id && detalhesAbertoRef.current) setComunicacoes(lista);
+          }
+        } catch (err) {
+          showError("Equipamentos", acao, err);
+        } finally {
+          setSalvando(false);
         }
-        if (!verificacao) {
-          warning("Equipamentos", "Verificação não encontrada. O orçamento não foi reenviado.");
-          return;
-        }
-        const resultado = await EmailService.enviarOrcamento({
-          ...recente,
-          cliente_nome: recipient.nome,
-          cliente_email: recipient.endereco,
-        }, verificacao);
-        if (!resultado.sucesso) throw new Error(resultado.erro || "Falha ao enviar o orçamento.");
-        success("Equipamentos", "Orçamento reenviado por e-mail.", acao);
-        if (selecionadoIdRef.current === id && detalhesAbertoRef.current) {
-          const lista = await db.listarComunicacoes(id).catch(() => null);
-          if (lista && selecionadoIdRef.current === id && detalhesAbertoRef.current) setComunicacoes(lista);
-        }
-      } finally {
-        setSalvando(false);
       }
     } catch (err) {
       showError("Equipamentos", acao, err);
