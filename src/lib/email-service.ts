@@ -19,6 +19,7 @@
  */
 
 import { emailDoTecnico, extrairTecnicoInicial } from "@/lib/tecnicos";
+import { copiaGerenciaPermitida } from "@/lib/copia-gerencia";
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
 import { PdfService } from "@/lib/pdf-service";
@@ -34,8 +35,9 @@ import type {
 import { resolveRecipient } from "@/lib/recipient-resolver";
 
 /**
- * Email da gerência que deve sempre receber cópia (CC) de toda comunicação
- * automática enviada ao cliente, independentemente do técnico responsável.
+ * Email da gerência da BMITAG em cópia (CC) das comunicações automáticas ao cliente.
+ * Só para a BMITAG: {@link montarCcs} só o inclui quando o backend confirma a empresa
+ * da sessão (lib/copia-gerencia).
  */
 export const CC_GERENCIA = "medeiros@bmitag.com.br";
 
@@ -54,12 +56,13 @@ const extrairTecnicoInicialDeObservacoes = extrairTecnicoInicial;
 
 /**
  * Monta a lista de cópias (CC) de um email automático.
- * - Sempre inclui {@link CC_GERENCIA}.
- * - Inclui o email do técnico responsável quando conhecido.
+ * - Inclui {@link CC_GERENCIA} só se a empresa da sessão leva a cópia da gerência
+ *   (empresa única na instalação ou empresa vinculada ao suporte); desconhecido = não inclui.
+ * - Inclui o email do técnico responsável quando conhecido (técnicos da empresa da sessão).
  * - Remove vazios e duplicados (case-insensitive).
  */
-export function montarCcs(emailTecnico?: string): string[] {
-  const candidatos = [CC_GERENCIA, emailTecnico].filter(
+export function montarCcs(emailTecnico?: string, comCopiaGerencia = copiaGerenciaPermitida()): string[] {
+  const candidatos = [comCopiaGerencia ? CC_GERENCIA : undefined, emailTecnico].filter(
     (email): email is string => !!email && email.trim().length > 0,
   );
   const vistos = new Set<string>();

@@ -205,6 +205,11 @@ export const db = {
     return invoke<TecnicoDaEmpresa[]>("listar_tecnicos_da_empresa");
   },
 
+  /** Se os e-mails da empresa da sessão levam a cópia da gerência (lib/copia-gerencia); não renova a sessão. */
+  async copiaGerenciaDaEmpresa(): Promise<boolean> {
+    return invoke<boolean>("copia_gerencia_da_empresa");
+  },
+
   /** Todas as OS aprovadas da empresa entre os anos (inclusive), sem paginação: faturado de Finanças. */
   async listarReceitaAprovada(anoInicio: number, anoFim: number): Promise<Pick<Equipamento, "data_aprovacao" | "valor_orcamento" | "valor_final">[]> {
     return invoke("listar_receita_aprovada", { anoInicio, anoFim });

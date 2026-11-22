@@ -36,6 +36,8 @@ import {
   SENHA_MASCARADA,
 } from "@/lib/email-orcamento-portal";
 import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+import { definirCopiaGerencia } from "@/lib/copia-gerencia";
+import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
 
 beforeEach(() => semearTecnicosPadrao());
 
@@ -130,6 +132,25 @@ describe("email-orcamento-portal", () => {
     expect(reg.mensagem).toContain(SENHA_MASCARADA);
     expect(reg.contato).toBe("maria@empresa.com");
     expect(reg.enviado).toBe(true);
+  });
+
+  it("outra empresa (multiempresa): cópia só para o técnico dela, sem a gerência da BMITAG", async () => {
+    definirCopiaGerencia(false);
+    definirTecnicosDaEmpresa([{ id: 50, nome: "Ivan", email_profissional: "ivan@empresa-b.test" }]);
+    const r = await enviarEmailOrcamentoPortal(equip, verificacao, preparoBase());
+    expect(r.copia).toEqual({ enviado: true });
+    const copia = mockEnviarEmail.mock.calls[1][0];
+    expect(copia.email).toBe("ivan@empresa-b.test");
+    expect(copia.cc).toEqual([]);
+    expect(JSON.stringify(mockEnviarEmail.mock.calls)).not.toContain("bmitag.com.br");
+  });
+
+  it("sem técnico da empresa e sem cópia da gerência, não envia cópia interna", async () => {
+    definirCopiaGerencia(false);
+    definirTecnicosDaEmpresa([]);
+    const r = await enviarEmailOrcamentoPortal(equip, verificacao, preparoBase());
+    expect(r).toEqual({ cliente: { enviado: true }, copia: { enviado: false } });
+    expect(mockEnviarEmail).toHaveBeenCalledTimes(1);
   });
 
   it("falha da cópia não invalida o envio ao cliente", async () => {
