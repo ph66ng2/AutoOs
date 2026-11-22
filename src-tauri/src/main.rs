@@ -120,6 +120,7 @@ fn main() {
             commands::auth::verificar_credenciais_banco,
             commands::auth::redefinir_pin_via_db,
             commands::auth::list_security_profiles,
+            commands::auth::listar_tecnicos_da_empresa,
             commands::auth::deactivate_security_profile,
             commands::auth::reactivate_security_profile,
             commands::auth::deletar_perfil,

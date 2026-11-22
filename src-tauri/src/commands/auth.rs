@@ -1112,6 +1112,35 @@ async fn mark_profile_pin_required(profile_id: i32) -> Result<(), String> {
     Ok(())
 }
 
+/// Técnicos da OS: perfis ativos com "faz atendimento técnico" da empresa da sessão. O e-mail
+/// profissional deles vai em cópia nos e-mails automáticos com PDF do cliente, então nunca entra
+/// perfil de outra empresa nem perfil desativado ou que não atende.
+pub(crate) const TECNICOS_DA_EMPRESA_SQL: &str = "SELECT id, nome, email_profissional
+     FROM security_profiles
+     WHERE empresa_id = $1 AND ativo = true AND atende_tecnico = true
+     ORDER BY nome ASC, id ASC";
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct TecnicoDaEmpresa {
+    pub id: i32,
+    pub nome: String,
+    pub email_profissional: Option<String>,
+}
+
+/// Lista os técnicos da empresa da sessão. Chamado sozinho quando a sessão muda: exige a sessão
+/// desbloqueada, mas não a renova.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn listar_tecnicos_da_empresa() -> Result<Vec<TecnicoDaEmpresa>, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id_without_touch(&pool).await?;
+    sqlx::query_as::<_, TecnicoDaEmpresa>(TECNICOS_DA_EMPRESA_SQL)
+        .bind(empresa_id)
+        .fetch_all(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
 async fn fetch_profile_records_with_scope(include_inactive: bool) -> Result<Vec<SecurityProfileRecord>, String> {
     ensure_default_profile_exists().await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
@@ -2916,6 +2945,15 @@ pub async fn listar_minhas_acoes(limit: Option<i32>) -> Result<Vec<SecurityAudit
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tecnicos_da_empresa_so_da_empresa_ativos_e_que_atendem() {
+        let sql = TECNICOS_DA_EMPRESA_SQL;
+        assert!(sql.contains("empresa_id = $1"));
+        assert!(sql.contains("ativo = true"));
+        assert!(sql.contains("atende_tecnico = true"));
+        assert!(sql.contains("ORDER BY nome ASC, id ASC"));
+    }
 
     /// Os testes de sessão mexem em estáticos do processo (sessão e flag de inatividade).
     static SESSION_TEST_LOCK: Mutex<()> = Mutex::new(());

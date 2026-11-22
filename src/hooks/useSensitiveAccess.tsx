@@ -16,7 +16,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useBootUi } from "@/components/BootUi";
 import { erroPinNovo } from "@/lib/pin-rules";
 import { ProfileSessionDialog, type FirstAccessOrigin } from "@/components/ProfileSessionDialog";
-import { definirPerfisConhecidos } from "@/lib/tecnicos";
+import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
+import { db } from "@/lib/db";
 import { FirstAccessBridge } from "@/components/perfil/FirstAccessBridge";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { PrimeiroAcessoWizard } from "@/components/perfil/PrimeiroAcessoWizard";
@@ -139,8 +140,25 @@ const KEYRING_BLOCKED_MESSAGE = "O cofre de senhas do sistema está bloqueado ou
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const { bootAnimationComplete } = useBootUi();
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
-  // Técnicos e e-mails profissionais vêm dos perfis (lib/tecnicos): e-mail e PDF consultam por nome.
-  useEffect(() => { definirPerfisConhecidos(status?.profiles ?? []); }, [status?.profiles]);
+  // Técnicos e e-mails profissionais (lib/tecnicos), que e-mail e PDF consultam por nome: só da
+  // empresa da sessão, pelo backend, nunca da lista geral de perfis (outras empresas, desativados).
+  // Recarrega ao desbloquear, trocar de perfil ou mudar a equipe; bloqueada, fica a última lista.
+  const versaoDaEquipe = (status?.profiles ?? [])
+    .map((p) => [p.id, p.nome, p.ativo, p.atende_tecnico, p.email_profissional].join("|"))
+    .join(";");
+  useEffect(() => {
+    if (!status?.active_profile_id) {
+      definirTecnicosDaEmpresa([]);
+      return;
+    }
+    if (!status.unlocked) return;
+    let vivo = true;
+    Promise.resolve()
+      .then(() => db.listarTecnicosDaEmpresa())
+      .then((lista) => { if (vivo) definirTecnicosDaEmpresa(lista); })
+      .catch(() => { if (vivo) definirTecnicosDaEmpresa([]); });
+    return () => { vivo = false; };
+  }, [status?.active_profile_id, status?.unlocked, versaoDaEquipe]);
   const [loading, setLoading] = useState(true);
   const [connectionUnavailable, setConnectionUnavailable] = useState(false);
   const refreshFailuresRef = useRef(0);

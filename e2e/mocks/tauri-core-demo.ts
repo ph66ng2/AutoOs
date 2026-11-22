@@ -154,6 +154,8 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     }
     case "buscar_cliente":
       return cliente as T;
+    case "listar_tecnicos_da_empresa":
+      return status.profiles.filter((p) => p.ativo && p.atende_tecnico) as T;
     case "listar_equipamentos_cliente":
     case "listar_receita_aprovada":
       return [equipamento] as T;
