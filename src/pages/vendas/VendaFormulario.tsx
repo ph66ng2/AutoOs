@@ -208,7 +208,7 @@ function FormularioDaVenda({ orcamentoId }: { orcamentoId: number | null }) {
           <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="oi-validade" className="text-sm font-medium">Validade *</Label>
-              <DateIsoInput id="oi-validade" value={validade} disabled={ocupado} onValueChange={editar(setValidade)} className="h-10" />
+              <DateIsoInput atalhos="prazo" id="oi-validade" value={validade} disabled={ocupado} onValueChange={editar(setValidade)} className="h-10" />
               <p className="text-xs text-muted-foreground">Vence se passar desta data em Rascunho ou Enviado.</p>
             </div>
             <div className="space-y-2">
