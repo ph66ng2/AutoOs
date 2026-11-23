@@ -81,8 +81,16 @@ export function Calendario({
   hoje?: Date;
 }) {
   const escolhida = deIso(valor);
-  const [foco, setFoco] = useState<Date>(() => escolhida ?? hoje);
-  const [mes, setMes] = useState<Date>(() => startOfMonth(escolhida ?? hoje));
+  // O dia ativo fica sempre dentro do intervalo permitido: uma data vencida (ex.: prazo a prorrogar)
+  // não pode deixar o foco num dia desabilitado, senão o teclado não alcança nenhum dia válido.
+  const limitar = (data: Date) => {
+    const iso = paraIso(data);
+    if (min && iso < min.slice(0, 10)) return parseISO(min.slice(0, 10));
+    if (max && iso > max.slice(0, 10)) return parseISO(max.slice(0, 10));
+    return data;
+  };
+  const [foco, setFoco] = useState<Date>(() => limitar(escolhida ?? hoje));
+  const [mes, setMes] = useState<Date>(() => startOfMonth(limitar(escolhida ?? hoje)));
   const grade = useRef<HTMLDivElement>(null);
   const moverFocoDoTeclado = useRef(false);
 
@@ -98,7 +106,8 @@ export function Calendario({
     grade.current?.querySelector<HTMLButtonElement>(`[data-dia="${paraIso(foco)}"]`)?.focus();
   }, [foco, mes]);
 
-  const irPara = (data: Date) => {
+  const irPara = (alvo: Date) => {
+    const data = limitar(alvo);
     moverFocoDoTeclado.current = true;
     setFoco(data);
     if (!isSameMonth(data, mes)) setMes(startOfMonth(data));
@@ -106,7 +115,7 @@ export function Calendario({
 
   // Trocar de mês pelos botões leva junto o dia ativo, para a grade continuar alcançável pelo Tab.
   const trocarMes = (passo: number) => {
-    const proximo = addMonths(foco, passo);
+    const proximo = limitar(addMonths(foco, passo));
     setFoco(proximo);
     setMes(startOfMonth(proximo));
   };

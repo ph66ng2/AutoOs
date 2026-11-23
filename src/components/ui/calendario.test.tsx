@@ -82,4 +82,15 @@ describe("Calendario", () => {
     await user.click(screen.getByRole("button", { name: "Próximo mês" }));
     expect(screen.getByRole("button", { name: /25 de dezembro/ })).toHaveAttribute("tabindex", "0");
   });
+
+  it("data vencida antes do mínimo: o dia ativo vai para o primeiro dia permitido, e as setas não saem do intervalo", async () => {
+    const user = userEvent.setup();
+    render(<Calendario valor="2026-10-15" onEscolher={vi.fn()} min="2026-11-23" hoje={hoje} />);
+    const primeiro = screen.getByRole("button", { name: /23 de novembro/ });
+    expect(primeiro).toHaveAttribute("tabindex", "0");
+    expect(primeiro).not.toBeDisabled();
+    primeiro.focus();
+    await user.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("button", { name: /23 de novembro/ })).toHaveFocus();
+  });
 });
