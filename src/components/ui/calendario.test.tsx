@@ -23,6 +23,17 @@ describe("DateIsoInput com calendário", () => {
     expect(screen.queryByText("novembro de 2026")).not.toBeInTheDocument();
   });
 
+  it("clicar em outro campo com o calendário aberto deixa o foco lá; Esc devolve ao campo", async () => {
+    const user = userEvent.setup();
+    render(<><Campo inicial="2026-11-10" /><input aria-label="Outro campo" /></>);
+    await user.click(screen.getByRole("button", { name: "Abrir calendário" }));
+    await user.click(screen.getByLabelText("Outro campo"));
+    expect(screen.getByLabelText("Outro campo")).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Abrir calendário" }));
+    await user.keyboard("{Escape}");
+    expect(screen.getByLabelText("Data")).toHaveFocus();
+  });
+
   it("Alt+↓ no campo abre o calendário", async () => {
     const user = userEvent.setup();
     render(<Campo inicial="2026-11-10" />);
@@ -63,5 +74,12 @@ describe("Calendario", () => {
     await user.click(screen.getByRole("button", { name: "Em 3 dias úteis" }));
     expect(onEscolher).toHaveBeenCalledWith("2026-11-26");
     expect(somarDiasUteis(new Date(2026, 10, 27), 1).getDate()).toBe(30);
+  });
+
+  it("trocar de mês pelo botão leva o dia ativo junto (a grade segue alcançável pelo Tab)", async () => {
+    const user = userEvent.setup();
+    render(<Calendario valor="2026-11-25" onEscolher={vi.fn()} hoje={hoje} />);
+    await user.click(screen.getByRole("button", { name: "Próximo mês" }));
+    expect(screen.getByRole("button", { name: /25 de dezembro/ })).toHaveAttribute("tabindex", "0");
   });
 });

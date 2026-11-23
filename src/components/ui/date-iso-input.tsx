@@ -25,6 +25,8 @@ export function DateIsoInput({ value, onValueChange, min, max, onBlur, onKeyDown
   const [aberto, setAberto] = useState(false);
   const campo = useRef<HTMLInputElement>(null);
   const grade = useRef<HTMLDivElement>(null);
+  /** Fechou escolhendo um dia ou com Esc: o foco volta ao campo. Clique fora mantém o foco onde a pessoa clicou. */
+  const devolverFoco = useRef(false);
 
   useEffect(() => {
     setTexto(isoDateToBr(iso));
@@ -37,6 +39,7 @@ export function DateIsoInput({ value, onValueChange, min, max, onBlur, onKeyDown
   const escolher = (escolhido: string) => {
     setTexto(isoDateToBr(escolhido));
     onValueChange(escolhido);
+    devolverFoco.current = true;
     setAberto(false);
   };
 
@@ -113,9 +116,13 @@ export function DateIsoInput({ value, onValueChange, min, max, onBlur, onKeyDown
           evento.preventDefault();
           requestAnimationFrame(() => grade.current?.querySelector<HTMLButtonElement>('[role="grid"] button[tabindex="0"]')?.focus());
         }}
+        onEscapeKeyDown={() => {
+          devolverFoco.current = true;
+        }}
         onCloseAutoFocus={(evento) => {
           evento.preventDefault();
-          campo.current?.focus();
+          if (devolverFoco.current) campo.current?.focus();
+          devolverFoco.current = false;
         }}
       >
         <div ref={grade}>

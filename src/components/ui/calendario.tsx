@@ -104,6 +104,13 @@ export function Calendario({
     if (!isSameMonth(data, mes)) setMes(startOfMonth(data));
   };
 
+  // Trocar de mês pelos botões leva junto o dia ativo, para a grade continuar alcançável pelo Tab.
+  const trocarMes = (passo: number) => {
+    const proximo = addMonths(foco, passo);
+    setFoco(proximo);
+    setMes(startOfMonth(proximo));
+  };
+
   const aoTeclar = (evento: KeyboardEvent<HTMLDivElement>) => {
     const passos: Record<string, () => Date> = {
       ArrowLeft: () => addDays(foco, -1),
@@ -133,7 +140,7 @@ export function Calendario({
         <button
           type="button"
           aria-label="Mês anterior"
-          onClick={() => setMes((m) => addMonths(m, -1))}
+          onClick={() => trocarMes(-1)}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-rapida hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -142,7 +149,7 @@ export function Calendario({
         <button
           type="button"
           aria-label="Próximo mês"
-          onClick={() => setMes((m) => addMonths(m, 1))}
+          onClick={() => trocarMes(1)}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-rapida hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronRight className="h-4 w-4" />
