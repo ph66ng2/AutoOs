@@ -321,23 +321,24 @@ pub async fn ver_senha_portal_contato(contato_id: i32) -> Result<Option<String>,
     require_sensitive_access()?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
+    // Ler segredo em texto: tudo numa transação. O contato fica travado da conferência de permissão
+    // até a leitura (outro operador não promove a DECIDIR nem troca a senha no meio), e a auditoria
+    // é gravada antes de devolver: sem o registro, a senha não sai.
+    let map = super::operator_errors::mapear_erro_sql;
+    let mut tx = pool.begin().await.map_err(map)?;
     let acesso: Option<String> = sqlx::query_scalar(
-        "SELECT portal_acesso FROM cliente_contatos WHERE id = $1 AND empresa_id = $2",
+        "SELECT portal_acesso FROM cliente_contatos WHERE id = $1 AND empresa_id = $2 FOR UPDATE",
     )
     .bind(contato_id)
     .bind(empresa_id)
-    .fetch_optional(&pool)
+    .fetch_optional(&mut *tx)
     .await
-    .map_err(super::operator_errors::mapear_erro_sql)?;
+    .map_err(map)?;
     if acesso.is_none() {
         return Err("Contato não encontrado na empresa ativa.".to_string());
     }
     let actor = require_any_permission(permissoes_senha_portal(acesso.as_deref()))?;
 
-    // Ler segredo em texto: a auditoria é gravada na mesma transação, antes de devolver a senha.
-    // Sem o registro, a senha não sai (diferente do `record_security_event`, que só avisa no log).
-    let map = super::operator_errors::mapear_erro_sql;
-    let mut tx = pool.begin().await.map_err(map)?;
     let senha: Option<String> = sqlx::query_scalar("SELECT public.portal_ler_senha_visivel($1, $2)")
         .bind(empresa_id)
         .bind(contato_id)
