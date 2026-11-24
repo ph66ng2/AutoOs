@@ -1632,7 +1632,10 @@ export default function Equipamentos() {
     idVerificacaoRotaAnterior.current = idVerificacaoRota;
     // A resposta só vale enquanto a pessoa continua nesta rota.
     let ativo = true;
-    if (idVerificacaoRota != null && !paginaVerificacaoAbertaRef.current) {
+    if (idVerificacaoRota != null && (!paginaVerificacaoAbertaRef.current || selecionado?.id !== idVerificacaoRota)) {
+      setVerificacaoDialogOpen(false);
+      setVerificacaoSuja(false);
+      if (anterior != null) setQuemRecebe(null);
       const origem = `/equipamentos/${idVerificacaoRota}`;
       db.buscarEquipamento(idVerificacaoRota)
         .then((eq) => {
@@ -1669,8 +1672,9 @@ export default function Equipamentos() {
     setAcordoExcecaoEntrega(false);
   }
 
-  async function prepararAjusteOrcamentoPadrao(eq: Equipamento) {
+  async function prepararAjusteOrcamentoPadrao(eq: Equipamento, aindaValido = () => true) {
     const verificacao = await db.buscarVerificacao(eq.id!, eq.empresa_id);
+    if (!aindaValido()) return;
     const valorOriginal = verificacao?.custo_total ?? null;
     const valorAnterior = eq.valor_orcamento ?? null;
     const valorBase = eq.valor_orcamento ?? verificacao?.custo_total ?? 0;
@@ -1705,11 +1709,11 @@ export default function Equipamentos() {
     setCarregandoCatalogoAjuste(true);
     try {
       const catalogo = await db.listarServicosCatalogoAtivos();
-      setCatalogoServicosAjuste(catalogo);
+      if (aindaValido()) setCatalogoServicosAjuste(catalogo);
     } catch (err) {
       console.error("Erro ao carregar catálogo de serviços:", err);
     } finally {
-      setCarregandoCatalogoAjuste(false);
+      if (aindaValido()) setCarregandoCatalogoAjuste(false);
     }
   }
 
@@ -1804,7 +1808,11 @@ export default function Equipamentos() {
   }
 
   /** `aindaValido`: num link direto, para de abrir se a pessoa saiu da rota enquanto o PIN ou a carga esperavam. */
-  async function abrirAlterarOrcamento(eq: Equipamento, origem?: string, aindaValido: () => boolean = () => true): Promise<boolean> {
+  async function abrirAlterarOrcamento(
+    eq: Equipamento,
+    origem?: string,
+    aindaValido = () => pathnameAtualRef.current === location.pathname,
+  ): Promise<boolean> {
     const liberado = await ensureSensitiveAccess({
       title: "Alterar orçamento",
       description: "Informe o PIN para editar serviços e valor sem alterar o status do equipamento.",
@@ -1814,20 +1822,16 @@ export default function Equipamentos() {
     });
     if (!liberado || !aindaValido()) return false;
 
+    await prepararAjusteOrcamentoPadrao(eq, aindaValido);
+    if (!aindaValido()) return false;
     setSelecionado(eq);
     setNovoStatus("");
     setAjusteOrcamentoSemMudancaStatus(true);
     setCorrecaoStatus(false);
     setMotivoCorrecaoStatus("");
-    setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorFinal(0);
     setValorFinalSugerido(null);
     setAcordoExcecaoEntrega(false);
-    await prepararAjusteOrcamentoPadrao(eq);
-    if (!aindaValido()) {
-      setAjusteOrcamentoSemMudancaStatus(false);
-      return false;
-    }
     setStatusDialogOpen(true);
     origemAjusteRef.current = origem ?? pathnameAtualRef.current;
     const destino = `/equipamentos/${eq.id}/orcamento`;
@@ -1862,7 +1866,13 @@ export default function Equipamentos() {
     idAjusteRotaAnterior.current = idAjusteRota;
     // A resposta (e o PIN pedido no meio) só vale enquanto a pessoa continua nesta rota.
     let ativo = true;
-    if (idAjusteRota != null && !paginaAjusteAbertaRef.current) {
+    if (idAjusteRota != null && (!paginaAjusteAbertaRef.current || selecionado?.id !== idAjusteRota)) {
+      setStatusDialogOpen(false);
+      setAjusteOrcamentoSemMudancaStatus(false);
+      setCarregandoCatalogoAjuste(false);
+      setConfirmOpen(false);
+      responderEscolhaAjuste(null);
+      garantiaConfirmadaRef.current = false;
       const origem = `/equipamentos/${idAjusteRota}`;
       db.buscarEquipamento(idAjusteRota)
         .then(async (eq) => {
@@ -1879,6 +1889,7 @@ export default function Equipamentos() {
       // Saiu da página pelo navegador: o ajuste não salvo é descartado.
       setStatusDialogOpen(false);
       setAjusteOrcamentoSemMudancaStatus(false);
+      setCarregandoCatalogoAjuste(false);
     }
     return () => {
       ativo = false;
@@ -2141,7 +2152,8 @@ export default function Equipamentos() {
    * Conecta-se a: useStatusEquipamento.finalizarVerificacao
    */
   async function handleConcluirVerificacao(dados: DadosVerificacao): Promise<boolean> {
-    if (!selecionado) return false;
+    if (!selecionado || selecionado.id !== idVerificacaoRota) return false;
+    const rotaVigente = () => pathnameAtualRef.current === location.pathname;
     // Total 0 só chega aqui em OS só de garantia, que sai aprovada: só quem aprova orçamento finaliza.
     const garantiaAprovada = dados.custo_total === 0;
     const liberado = await ensureSensitiveAccess({
@@ -2151,16 +2163,17 @@ export default function Equipamentos() {
         : "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
       anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
     });
-    if (!liberado) return false;
+    if (!liberado || !rotaVigente()) return false;
 
     async function finalizar(eq: Equipamento): Promise<boolean> {
+      if (!rotaVigente() || eq.id !== idVerificacaoRota) return false;
       setSalvando(true);
       try {
         const resultado = await finalizarVerificacao(eq, dados);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
-        fecharPaginaVerificacao(resultado.salvo);
+        if (rotaVigente()) fecharPaginaVerificacao(resultado.salvo);
         await recarregar();
         const resumoCanais = mensagemResultadoCanais(resultado);
         if (resumoCanais) {
@@ -2188,6 +2201,7 @@ export default function Equipamentos() {
       return false;
     }
 
+    if (!rotaVigente()) return false;
     if (precisaPerguntarQuemRecebeOrcamento(precisaContato, garantiaAprovada)) {
       setQuemRecebe({
         eq: selecionado,
@@ -2477,6 +2491,10 @@ export default function Equipamentos() {
 
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
+    const ajusteNaRota = () => !ajusteOrcamentoSemMudancaStatus || (
+      selecionado.id === idAjusteRota && pathnameAtualRef.current === location.pathname
+    );
+    if (!ajusteNaRota()) return;
     if (servicosAjuste.some((s) => !validarPecas(s.pecas ?? []))) {
       warning("Equipamentos", "Informe quantidade inteira positiva e preço válido para as peças.");
       return;
@@ -2557,7 +2575,7 @@ export default function Equipamentos() {
           : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS })
         : {}),
     });
-    if (!liberado) {
+    if (!liberado || !ajusteNaRota()) {
       garantiaConfirmadaRef.current = false;
       return;
     }
@@ -2567,6 +2585,7 @@ export default function Equipamentos() {
     if (ajusteOrcamentoSemMudancaStatus && verificacaoAjusteOrcamento && selecionado.id) {
       try {
         const analise = await db.analisarAjusteOrcamento(selecionado.id);
+        if (!ajusteNaRota()) return;
         const aprovado = orcamentoJaAprovado(selecionado.status);
         const variante = aprovado ? "aprovado" : analise.respostaPendente ? "pendente" : null;
         if (variante && orcamentoMudou(verificacaoAjusteOrcamento, servicosAjuste, totalAtual)) {
@@ -2596,6 +2615,7 @@ export default function Equipamentos() {
       }
     }
 
+    if (!ajusteNaRota()) return;
     setSalvando(true);
     try {
       if (novoStatus === "ENTREGUE") {
@@ -2699,7 +2719,7 @@ export default function Equipamentos() {
           }
         }
         await recarregar();
-        fecharPaginaAjuste();
+        if (ajusteNaRota()) fecharPaginaAjuste();
         success(
           "Equipamentos",
           ["Orçamento atualizado.", portalAjuste?.mensagem, portalProrrogacao?.mensagem].filter(Boolean).join(" "),
@@ -4190,7 +4210,7 @@ export default function Equipamentos() {
       )}
 
       {/* ═══ Detalhes da OS (rota /equipamentos/:id) ═══ */}
-      {idVerificacaoRota != null && !verificacaoDialogOpen && (
+      {idVerificacaoRota != null && (!verificacaoDialogOpen || selecionado?.id !== idVerificacaoRota) && (
         <CarregandoSkeleton rotulo="Carregando verificação">
           <SkeletonPagina><div className="space-y-4 rounded-xl border p-5"><SkeletonTexto linhas={2} /><SkeletonTabela linhas={4} colunas={4} /></div></SkeletonPagina>
         </CarregandoSkeleton>
@@ -4199,8 +4219,10 @@ export default function Equipamentos() {
       <VerificacaoTecnica
         key={selecionado?.id ?? "verificacao"}
         equipamento={selecionado}
-        open={verificacaoDialogOpen}
-        onOpenChange={(aberta) => { if (!aberta) fecharPaginaVerificacao(); }}
+        open={verificacaoDialogOpen && selecionado?.id === idVerificacaoRota}
+        onOpenChange={(aberta) => {
+          if (!aberta && pathnameAtualRef.current === location.pathname) fecharPaginaVerificacao();
+        }}
         onConcluir={handleConcluirVerificacao}
         salvando={salvando || loadingAutomacao}
         tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || primeiroTecnico}
@@ -4210,12 +4232,12 @@ export default function Equipamentos() {
       {avisoVerificacao.dialogo}
 
       {/* ═══ Ajuste de orçamento (rota /equipamentos/:id/orcamento, decisão 24) ═══ */}
-      {idAjusteRota != null && !paginaAjusteAberta && (
+      {idAjusteRota != null && (!paginaAjusteAberta || selecionado?.id !== idAjusteRota) && (
         <CarregandoSkeleton rotulo="Carregando ajuste de orçamento">
           <SkeletonPagina><SkeletonTabela linhas={4} colunas={4} /></SkeletonPagina>
         </CarregandoSkeleton>
       )}
-      {paginaAjusteAberta && selecionado && renderPaginaAjuste(selecionado)}
+      {paginaAjusteAberta && selecionado && selecionado.id === idAjusteRota && renderPaginaAjuste(selecionado)}
 
       {detalhesDialogOpen && !paginaAjusteAberta && !verificacaoDialogOpen && selecionado?.id !== idDetalhesAberto && (
         <CarregandoSkeleton rotulo="Carregando atendimento">
