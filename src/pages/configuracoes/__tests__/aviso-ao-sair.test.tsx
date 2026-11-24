@@ -8,6 +8,7 @@ const m = vi.hoisted(() => ({
   whatsappBuscar: vi.fn(),
   fotosBuscar: vi.fn(),
   obterConfigSuporte: vi.fn(),
+  salvarConfigSuporte: vi.fn(),
 }));
 
 vi.mock("@/hooks/useSensitiveAccess", () => ({
@@ -25,7 +26,7 @@ vi.mock("@/lib/photo-tunnel-config", () => ({ PhotoTunnelConfigService: { buscar
 vi.mock("@/lib/sensitive-access", () => ({ SensitiveAccessService: { listAuditEvents: vi.fn(async () => []), listProfiles: vi.fn(async () => []) } }));
 vi.mock("@/lib/db", () => ({
   db: new Proxy({}, {
-    get: (_alvo, nome) => (nome === "obterConfigSuporte" ? m.obterConfigSuporte : vi.fn(async () => null)),
+    get: (_alvo, nome) => (nome === "obterConfigSuporte" ? m.obterConfigSuporte : nome === "salvarConfigSuporte" ? m.salvarConfigSuporte : vi.fn(async () => null)),
   }),
 }));
 vi.mock("@/pages/configuracoes/ConfiguracoesTabGeral", async () => {
@@ -104,6 +105,40 @@ describe("Configurações: sair com texto não salvo", () => {
     // A aba descartou o cartão: sair pelo menu agora não pergunta.
     await user.click(screen.getByText("Menu: outra tela"));
     expect(router.state.location.pathname).toBe("/outra");
+  });
+
+  it("sem alteração, Esc não pergunta nem troca de aba", async () => {
+    const user = userEvent.setup();
+    const router = montar();
+    const canal = await abrirIntegracoes(user);
+    await waitFor(() => expect(canal).toHaveValue("C123"));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Integrações" })).toHaveAttribute("aria-selected", "true");
+    expect(router.state.location.pathname).toBe("/configuracoes");
+  });
+
+  it("cartão do Slack alterado: Esc pergunta; continuar mantém o texto, sair descarta sem salvar", async () => {
+    const user = userEvent.setup();
+    const router = montar();
+    const canal = await abrirIntegracoes(user);
+    await waitFor(() => expect(canal).toHaveValue("C123"));
+    await user.type(canal, "9");
+
+    await user.keyboard("{Escape}");
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("ID do canal")).toHaveValue("C1239");
+    expect(screen.getByRole("tab", { name: "Integrações" })).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{Escape}");
+    await user.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    expect(await screen.findByText("Preferências deste computador")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/configuracoes");
+    expect(m.salvarConfigSuporte).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("tab", { name: "Integrações" }));
+    await waitFor(() => expect(screen.getByLabelText("ID do canal")).toHaveValue("C123"));
   });
 
   it("endereço do WhatsApp alterado: trocar de aba pergunta e, confirmado, volta ao salvo", async () => {
