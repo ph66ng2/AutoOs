@@ -51,7 +51,7 @@ function SkeletonTexto({ linhas = 3, className }: { linhas?: number; className?:
 /** Lista de itens (avatar/ícone + duas linhas), para listas, painéis e menus. */
 function SkeletonLista({ itens = 4, className, compacta = false }: { itens?: number; className?: string; compacta?: boolean }) {
   return (
-    <ul className={cn(compacta ? "space-y-2" : "space-y-3", className)}>
+    <ul aria-hidden="true" className={cn(compacta ? "space-y-2" : "space-y-3", className)}>
       {Array.from({ length: itens }, (_, i) => (
         <li key={i} className="flex items-center gap-3">
           {!compacta && <Skeleton className="h-9 w-9 shrink-0 rounded-full" />}

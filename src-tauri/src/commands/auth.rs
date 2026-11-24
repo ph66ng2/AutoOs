@@ -995,13 +995,23 @@ pub fn require_permission_para_leitura(
     permission: &str,
     segundo_plano: Option<bool>,
 ) -> Result<SecurityProfileSummary, String> {
-    let sessao = if segundo_plano == Some(true) {
+    let segundo_plano = segundo_plano == Some(true);
+    let sessao = if segundo_plano {
         require_sensitive_access_without_touch()?
     } else {
         require_sensitive_access()?
     };
     let profile = evaluate_permission_gate(Some(sessao), permission)
     .map_err(|failure| match failure {
+        // Leitura em segundo plano (ao vivo, foco) nega sem auditar: cada aviso de outro
+        // computador geraria um registro de negação.
+        PermissionGateFailure::SessionLocked if segundo_plano => {
+            "Acesso sensível bloqueado. Informe o PIN para continuar.".to_string()
+        }
+        PermissionGateFailure::MissingPermission(profile) if segundo_plano => format!(
+            "Perfil {} não possui permissão necessária para esta ação.",
+            profile.nome
+        ),
         PermissionGateFailure::SessionLocked => {
             spawn_security_event(
                 "SENSITIVE_ACCESS_DENIED",
@@ -1026,7 +1036,7 @@ pub fn require_permission_para_leitura(
         }
     })?;
 
-    if segundo_plano != Some(true) {
+    if !segundo_plano {
         touch_sensitive_access()?;
     }
     Ok(profile)
