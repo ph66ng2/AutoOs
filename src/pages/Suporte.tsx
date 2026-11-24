@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
 import { TeclaNoBotao } from "@/components/ui/tecla-no-botao";
-import { useMensagensChamado, useSuporte } from "@/hooks/useSuporte";
+import { useChamadoForaDaLista, useMensagensChamado, useSuporte } from "@/hooks/useSuporte";
 import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
@@ -175,7 +175,11 @@ function SuporteDoPerfil({
 
   const configurado = Boolean(config?.token_neste_computador && config.canal);
   const abertos = chamados.filter((c) => c.situacao === "aberto").length;
-  const chamadoAberto = typeof selecionado === "number" ? chamados.find((c) => c.id === selecionado) ?? null : null;
+  const chamadoNaLista = typeof selecionado === "number" ? chamados.find((c) => c.id === selecionado) ?? null : null;
+  // A lista traz os abertos e os 50 mais recentes: um encerrado mais antigo ("Ver" de um aviso,
+  // por exemplo) é lido pelo id em vez de cair no "Novo chamado".
+  const chamadoForaDaLista = useChamadoForaDaLista(typeof selecionado === "number" && !loading && !chamadoNaLista ? selecionado : null);
+  const chamadoAberto = chamadoNaLista ?? chamadoForaDaLista;
   const mostrarLista = telaLarga || !conversaNoCelular;
   const mostrarConversa = telaLarga || conversaNoCelular;
 
@@ -418,7 +422,7 @@ function Conversa({
   onResponder: (texto: string, prints: Print[]) => void;
   onRetorno: (resolvido: boolean) => void;
 }) {
-  const mensagens = useMensagensChamado(chamado.id, true, `${chamado.atualizado_em}-${chamado.respostas}`);
+  const { mensagens, falhou, tentarDeNovo } = useMensagensChamado(chamado.id, true, `${chamado.atualizado_em}-${chamado.respostas}`);
   const fimRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     fimRef.current?.scrollIntoView?.({ block: "end" });
@@ -430,7 +434,16 @@ function Conversa({
   return (
     <>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
-        {mensagens === null && (
+        {mensagens === null && falhou && (
+          <div role="alert" className="flex flex-wrap items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+            <TriangleAlert className="h-4 w-4 text-status-wait" aria-hidden="true" />
+            Não foi possível carregar a conversa.
+            <Button type="button" size="sm" variant="outline" className="h-8" onClick={tentarDeNovo}>
+              Tentar de novo
+            </Button>
+          </div>
+        )}
+        {mensagens === null && !falhou && (
           <CarregandoSkeleton rotulo="Carregando mensagens" className="space-y-4">
             <Skeleton className="h-16 w-2/3 rounded-2xl" />
             <Skeleton className="ml-auto h-12 w-1/2 rounded-2xl" />

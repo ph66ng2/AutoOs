@@ -7,6 +7,7 @@ const mockCriar = vi.hoisted(() => vi.fn());
 const mockAtualizar = vi.hoisted(() => vi.fn());
 const mockDeletar = vi.hoisted(() => vi.fn());
 const mockAtualizarStatus = vi.hoisted(() => vi.fn());
+const mockContarPorStatus = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -15,6 +16,7 @@ vi.mock("@/lib/db", () => ({
     atualizarEquipamento: (...args: unknown[]) => mockAtualizar(...args),
     deletarEquipamento: (...args: unknown[]) => mockDeletar(...args),
     atualizarStatusEquipamento: (...args: unknown[]) => mockAtualizarStatus(...args),
+    contarEquipamentosPorStatus: (...args: unknown[]) => mockContarPorStatus(...args),
   },
 }));
 
@@ -319,6 +321,36 @@ describe("useEquipamentos — registro", () => {
     // Recarga ao vivo é leitura de segundo plano: não renova a sessão (estação abandonada ainda bloqueia).
     expect(mockListarPaginados.mock.calls.at(-1)?.[5]).toBe(true);
     expect(mockListarPaginados.mock.calls[0]).toHaveLength(5);
+  });
+
+  it("contato alterado em outro computador recarrega em silêncio a busca (lista e pílulas), sem busca não", async () => {
+    mockListarPaginados.mockResolvedValue({ items: [], total: 0 });
+    const { result, rerender } = renderHook(({ busca }) => useEquipamentos({ busca }), { initialProps: { busca: "" } });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mockListarPaginados).toHaveBeenCalledTimes(1);
+
+    // Sem busca, mudança só de contato não muda nada na lista: não relê.
+    await act(async () => {
+      distribuirMudancas([{ tabela: "cliente_contatos", id: 9, referencia: 3, operacao: "U" }]);
+    });
+    expect(mockListarPaginados).toHaveBeenCalledTimes(1);
+
+    rerender({ busca: "Maria Financeiro" });
+    await waitFor(() => expect(mockListarPaginados).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    mockContarPorStatus.mockClear();
+
+    mockListarPaginados.mockResolvedValueOnce({ items: [equipamentoBase], total: 1 });
+    await act(async () => {
+      distribuirMudancas([{ tabela: "cliente_contatos", id: 9, referencia: 3, operacao: "I" }]);
+    });
+    await waitFor(() => expect(result.current.equipamentos).toEqual([equipamentoBase]));
+    expect(result.current.loading).toBe(false);
+    const ultima = mockListarPaginados.mock.calls.at(-1);
+    expect(ultima?.[0]).toBe("Maria Financeiro");
+    expect(ultima?.[5]).toBe(true);
+    // Os números das pílulas também relidos em segundo plano, com a mesma busca.
+    expect(mockContarPorStatus).toHaveBeenCalledWith("Maria Financeiro", undefined, true);
   });
 
   it("falha da recarga silenciosa depois da primeira carga mantém a lista sem erro", async () => {

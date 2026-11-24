@@ -258,6 +258,106 @@ async fn main() -> Result<()> {
     if sem_financeiro.faturado.is_some() || com_financeiro.faturado.is_none() || sem_financeiro.os_abertas != 1 || sem_financeiro.no_ano != 1 {
         return Err(anyhow!("resumo do cliente errado: {:?} / {:?}", sem_financeiro, com_financeiro));
     }
+    // OS antigas sem cliente_id entram pelo nome (como no painel e no histórico), só da mesma empresa.
+    let outra_empresa_id: i32 = sqlx::query_scalar(
+        "INSERT INTO empresas (nome, email, status) VALUES ($1, $2, 'ativo') RETURNING id",
+    )
+    .bind(format!("{} Outra Empresa", prefix))
+    .bind(format!("{}-outra@example.test", prefix.to_lowercase()))
+    .fetch_one(&pool)
+    .await
+    .context("create second synthetic company failed")?;
+    let mut legadas_por_nome: Vec<i32> = Vec::new();
+    for (empresa_da_os, nome_gravado) in [
+        (empresa_id, format!("  {}  ", busca_cliente.to_uppercase())),
+        (outra_empresa_id, busca_cliente.clone()),
+    ] {
+        let id: i32 = sqlx::query_scalar(
+            "INSERT INTO equipamentos (serial_number, marca, modelo, tipo, status, defeito_relatado,
+              data_entrada, cliente_id, cliente_nome, empresa_id)
+             VALUES ($1, 'TESTE', 'LEGADO', 'IMPRESSORA', 'RECEBIDO', 'legado por nome', $2, NULL, $3, $4)
+             RETURNING id",
+        )
+        .bind(format!("{}-LEGADO-NOME-{}", prefix, empresa_da_os))
+        .bind(Utc::now().date_naive().to_string())
+        .bind(&nome_gravado)
+        .bind(empresa_da_os)
+        .fetch_one(&pool)
+        .await
+        .context("insert legacy equipment by name failed")?;
+        legadas_por_nome.push(id);
+    }
+    let resumo_legado = clientes::resumo_cliente_on_pool(&pool, empresa_id, cliente.id, true)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let lista_legado = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("COM_OS_ABERTA".to_string()), None)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let linha_legado = lista_legado.items.iter().find(|row| row.id == cliente.id).map(|row| row.os_abertas);
+    sqlx::query("DELETE FROM equipamentos WHERE id = ANY($1)")
+        .bind(&legadas_por_nome)
+        .execute(&pool)
+        .await
+        .context("cleanup legacy equipment by name failed")?;
+    sqlx::query("DELETE FROM empresas WHERE id = $1")
+        .bind(outra_empresa_id)
+        .execute(&pool)
+        .await
+        .context("cleanup second company failed")?;
+    if resumo_legado.os_abertas != 2 || resumo_legado.no_ano != 2 || linha_legado != Some(Some(2)) {
+        return Err(anyhow!("OS legada por nome fora dos totais do cliente (ou de outra empresa contada): {:?} / {:?}", resumo_legado, linha_legado));
+    }
+    // Cliente que só tem OS antiga (sem cliente_id) aberta aparece em "Com OS aberta".
+    let cliente_legado = clientes::criar_cliente(ClienteInput {
+        empresa_id: Some(empresa_id),
+        nome: Some(format!("{} Cliente Legado", prefix)),
+        tipo_pessoa: Some("PF".to_string()),
+        documento: Some(format!(
+            "{:011}",
+            (Utc::now().timestamp_millis() + 7).rem_euclid(100_000_000_000)
+        )),
+        telefone: "11999999998".to_string(),
+        ..ClienteInput::default()
+    })
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let nome_legado = cliente_legado.nome.clone().unwrap_or_default();
+    let so_legada: i32 = sqlx::query_scalar(
+        "INSERT INTO equipamentos (serial_number, marca, modelo, tipo, status, defeito_relatado,
+          data_entrada, cliente_id, cliente_nome, empresa_id)
+         VALUES ($1, 'TESTE', 'LEGADO', 'IMPRESSORA', 'RECEBIDO', 'legado por nome', $2, NULL, $3, $4)
+         RETURNING id",
+    )
+    .bind(format!("{}-LEGADO-NOME-SO", prefix))
+    .bind(Utc::now().date_naive().to_string())
+    .bind(nome_legado.to_lowercase())
+    .bind(empresa_id)
+    .fetch_one(&pool)
+    .await
+    .context("insert lone legacy equipment failed")?;
+    let filtro_legado = clientes::listar_clientes_paginados(Some(0), Some(nome_legado.clone()), Some("COM_OS_ABERTA".to_string()), None).await;
+    let contagem_legado = clientes::contar_clientes_por_filtro_on_pool(&pool, empresa_id, Some(&nome_legado)).await;
+    sqlx::query("DELETE FROM equipamentos WHERE id = $1")
+        .bind(so_legada)
+        .execute(&pool)
+        .await
+        .context("cleanup lone legacy equipment failed")?;
+    sqlx::query("DELETE FROM cliente_contatos WHERE cliente_id = $1")
+        .bind(cliente_legado.id)
+        .execute(&pool)
+        .await
+        .context("cleanup legacy client contacts failed")?;
+    sqlx::query("DELETE FROM clientes WHERE id = $1")
+        .bind(cliente_legado.id)
+        .execute(&pool)
+        .await
+        .context("cleanup legacy client failed")?;
+    let filtro_legado = filtro_legado.map_err(|error| anyhow!(error))?;
+    if filtro_legado.items.iter().find(|row| row.id == cliente_legado.id).map(|row| row.os_abertas) != Some(Some(1))
+        || contagem_legado.map_err(|error| anyhow!(error))?.com_os_aberta != 1
+    {
+        return Err(anyhow!("cliente com só OS legada aberta sumiu do filtro Com OS aberta"));
+    }
     let estoque_sem_valor = produtos::resumo_estoque_on_pool(&pool, empresa_id, false)
         .await
         .map_err(|error| anyhow!(error))?;

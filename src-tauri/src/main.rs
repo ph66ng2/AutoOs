@@ -203,6 +203,7 @@ fn main() {
             commands::suporte::salvar_config_suporte,
             commands::suporte::abrir_chamado_suporte,
             commands::suporte::listar_chamados_suporte,
+            commands::suporte::buscar_chamado_suporte,
             commands::suporte::listar_mensagens_chamado,
             commands::suporte::sincronizar_suporte,
             commands::suporte::responder_chamado_suporte,
