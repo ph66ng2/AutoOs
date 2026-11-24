@@ -1591,10 +1591,13 @@ export default function Equipamentos() {
     }
     fecharFormulario();
   });
-  useEscSai(verificacaoDialogOpen, () => {
+  // Esc e a seta de voltar do cabeçalho: com algo preenchido, a saída passa pelo aviso e a
+  // página só é fechada (e limpa) depois de "Sair sem salvar"; limpa, fecha direto.
+  function voltarDaVerificacao() {
     if (verificacaoSuja) navigate(origemVerificacaoRef.current);
     else fecharPaginaVerificacao();
-  });
+  }
+  useEscSai(verificacaoDialogOpen, voltarDaVerificacao);
 
   const paginaVerificacaoAbertaRef = useRef(false);
   paginaVerificacaoAbertaRef.current = verificacaoDialogOpen;
@@ -4263,6 +4266,7 @@ export default function Equipamentos() {
         tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || primeiroTecnico}
         podeFinalizar={hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS) || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES)}
         onSujoChange={setVerificacaoSuja}
+        onVoltar={voltarDaVerificacao}
       />
       {avisoVerificacao.dialogo}
 

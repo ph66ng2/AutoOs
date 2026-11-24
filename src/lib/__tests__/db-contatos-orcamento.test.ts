@@ -26,6 +26,18 @@ describe("db — contatos e contratos de orçamento", () => {
     });
   });
 
+  it("releitura ao vivo de contatos vai em segundo plano", async () => {
+    mockInvoke.mockResolvedValue([]);
+
+    await db.listarClienteContatos(11, 7, true);
+
+    expect(mockInvoke).toHaveBeenCalledWith("listar_cliente_contatos", {
+      clienteId: 11,
+      empresaId: 7,
+      segundoPlano: true,
+    });
+  });
+
   it("mantém o payload de criação de contato explícito e sem inferência", async () => {
     const input: ClienteContatoInput = {
       empresa_id: 7,
