@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { PortalClienteBotao } from "@/components/equipamentos/PortalClienteBotao";
 import { PortalClienteProvider } from "@/components/equipamentos/portal-cliente-context";
+import { distribuirMudancas } from "@/lib/ao-vivo";
 import type { Cliente, DecisaoOrcamentoInfo, Equipamento } from "@/types";
 
 const mocks = vi.hoisted(() => ({
@@ -259,6 +260,23 @@ describe("PortalClientePanel", () => {
     fireEvent.click(within(lista).getByRole("button", { name: "Ver senha" }));
     expect(await within(lista).findByText("abc-123-xyz")).toBeInTheDocument();
     act(() => mocks.sessao.trocar({ unlocked: false, active_profile_id: 1 }));
+    expect(within(lista).queryByText("abc-123-xyz")).not.toBeInTheDocument();
+  });
+
+  it("esconde a senha mostrada quando outro computador altera o contato", async () => {
+    mocks.obter.mockResolvedValue(info());
+    mocks.ensure.mockResolvedValue(true);
+    mocks.verSenha.mockResolvedValue("abc-123-xyz");
+    mocks.contatos.mockResolvedValue([
+      { id: 5, empresa_id: 1, cliente_id: 2, nome: "Ana Souza", ativo: true, portal_acesso: "DECIDIR", portal_senha_definida_em: "2026-10-16T10:00:00Z" },
+    ]);
+    const painel = await abrirPainel();
+    const lista = await within(painel).findByRole("list", { name: "Contatos com acesso" });
+    fireEvent.click(within(lista).getByRole("button", { name: "Ver senha" }));
+    expect(await within(lista).findByText("abc-123-xyz")).toBeInTheDocument();
+    act(() => distribuirMudancas([{ tabela: "cliente_contatos", id: 99, referencia: 2, operacao: "U" }]));
+    expect(within(lista).getByText("abc-123-xyz")).toBeInTheDocument();
+    act(() => distribuirMudancas([{ tabela: "cliente_contatos", id: 5, referencia: 2, operacao: "U" }]));
     expect(within(lista).queryByText("abc-123-xyz")).not.toBeInTheDocument();
   });
 

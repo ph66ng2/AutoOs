@@ -5,8 +5,10 @@
 -- consultá-la e repassar ao cliente sem trocar a senha. Risco aceito: quem lê esta tabela (ou um
 -- backup do banco) lê as senhas. Por isso:
 --   * só entram senhas definidas pelo app (equipe); nada aqui é preenchido pelo portal;
---   * a leitura só devolve a senha se o hash guardado junto ainda é o hash atual do contato,
---     então senha trocada, removida ou zerada por outro caminho deixa de aparecer sozinha;
+--   * a leitura só devolve a senha se o hash guardado junto ainda é o hash atual do contato;
+--   * um gatilho em `cliente_contatos` APAGA a cópia assim que o hash deixa de ser o guardado
+--     (senha trocada ou removida, acesso retirado, contato desativado, troca de cliente/empresa,
+--     promoção a DECIDIR pelo gatilho da 0038): senha que não vale mais não fica no banco;
 --   * RLS ligado sem política e funções revogadas de anon/authenticated/service_role: a edge
 --     function do portal e a API do Supabase não leem nada daqui.
 
@@ -27,14 +29,45 @@ CREATE TABLE IF NOT EXISTS public.portal_senhas_visiveis (
     -- Hash de `cliente_contatos.portal_senha_hash` no momento em que a senha foi guardada.
     senha_hash TEXT NOT NULL,
     definida_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    definida_por_profile_id INTEGER REFERENCES public.security_profiles(id) ON DELETE SET NULL,
+    definida_por_profile_id INTEGER,
     CONSTRAINT fk_portal_senhas_visiveis_contato
-        FOREIGN KEY (contato_id, empresa_id) REFERENCES public.cliente_contatos(id, empresa_id) ON DELETE CASCADE
+        FOREIGN KEY (contato_id, empresa_id) REFERENCES public.cliente_contatos(id, empresa_id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    -- Perfil da mesma empresa (`uq_security_profiles_id_empresa`, 0052); sai sem apagar a senha.
+    CONSTRAINT fk_portal_senhas_visiveis_perfil
+        FOREIGN KEY (definida_por_profile_id, empresa_id) REFERENCES public.security_profiles(id, empresa_id)
+        ON DELETE SET NULL (definida_por_profile_id) ON UPDATE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_portal_senhas_visiveis_empresa ON public.portal_senhas_visiveis (empresa_id);
 
 ALTER TABLE public.portal_senhas_visiveis ENABLE ROW LEVEL SECURITY;
+
+-- Apaga a cópia legível quando o hash do contato deixa de ser o guardado ou o contato é desativado.
+-- AFTER: enxerga o hash final, inclusive o que o gatilho BEFORE da 0038 zerou.
+CREATE OR REPLACE FUNCTION public.portal_limpar_senha_visivel()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+    DELETE FROM public.portal_senhas_visiveis
+    WHERE contato_id = NEW.id
+      AND (NOT NEW.ativo OR NEW.portal_senha_hash IS NULL OR senha_hash IS DISTINCT FROM NEW.portal_senha_hash);
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_portal_limpar_senha_visivel ON public.cliente_contatos;
+CREATE TRIGGER trg_portal_limpar_senha_visivel
+    AFTER UPDATE ON public.cliente_contatos
+    FOR EACH ROW
+    WHEN (OLD.portal_senha_hash IS DISTINCT FROM NEW.portal_senha_hash
+          OR OLD.ativo IS DISTINCT FROM NEW.ativo
+          OR OLD.empresa_id IS DISTINCT FROM NEW.empresa_id
+          OR OLD.cliente_id IS DISTINCT FROM NEW.cliente_id)
+    EXECUTE FUNCTION public.portal_limpar_senha_visivel();
 
 -- Guarda (ou apaga, com p_senha NULL) a senha que acabou de ser definida por
 -- `portal_definir_senha_contato`, na mesma transação. Só guarda se a senha confere com o hash atual.
@@ -99,7 +132,8 @@ DECLARE
 BEGIN
     FOREACH v_funcao IN ARRAY ARRAY[
         'public.portal_guardar_senha_visivel(INTEGER, INTEGER, TEXT, INTEGER)',
-        'public.portal_ler_senha_visivel(INTEGER, INTEGER)'
+        'public.portal_ler_senha_visivel(INTEGER, INTEGER)',
+        'public.portal_limpar_senha_visivel()'
     ] LOOP
         EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', v_funcao);
         FOREACH v_role IN ARRAY ARRAY['anon', 'authenticated', 'service_role'] LOOP

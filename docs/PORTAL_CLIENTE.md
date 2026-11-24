@@ -335,8 +335,10 @@ Testes adicionais: `supabase/tests/portal_documentos_contract.sql` (incluído no
 O responsável do produto decidiu que a equipe pode consultar a senha do portal de um contato para repassá-la sem trocá-la, aceitando o risco: quem lê `portal_senhas_visiveis` ou um backup do banco lê as senhas.
 
 - **O que é guardado:** só senhas definidas pelo app (criar ou trocar em `definir_senha_portal_contato`, ou geradas no envio em `preparar_acesso_portal`), por `portal_guardar_senha_visivel`, na mesma transação do hash. A função confere a senha com o hash atual antes de gravar.
-- **Quando aparece:** `portal_ler_senha_visivel` só devolve a senha se o hash guardado junto ainda é o hash atual e o contato está ativo. Senha trocada, removida ou zerada por outro caminho deixa de aparecer sozinha. Senhas criadas antes da 0064 não têm cópia: a tela pede para criar uma nova.
-- **Quem vê:** `ver_senha_portal_contato` pede as mesmas permissões de criar a senha (`permissoes_senha_portal`) e registra `PORTAL_PASSWORD_VIEWED` (sem a senha).
+- **Quando aparece:** `portal_ler_senha_visivel` só devolve a senha se o hash guardado junto ainda é o hash atual e o contato está ativo. Senhas criadas antes da 0064 não têm cópia: a tela pede para criar uma nova.
+- **Quando é apagada:** o gatilho `trg_portal_limpar_senha_visivel` (AFTER UPDATE em `cliente_contatos`) apaga a cópia assim que o hash deixa de ser o guardado ou o contato é desativado: senha trocada ou removida, acesso retirado (`NENHUM`), contato ou cliente desativado, troca de cliente ou empresa e promoção a `DECIDIR` (o gatilho da 0038 zera o hash nesses casos). Senha que não vale mais não fica no banco nem nos backups seguintes. Excluir o contato apaga a cópia pela FK.
+- **Quem vê:** `ver_senha_portal_contato` pede as mesmas permissões de criar a senha (`permissoes_senha_portal`) e grava `PORTAL_PASSWORD_VIEWED` (sem a senha) na mesma transação da leitura: se a auditoria falhar, a senha não é devolvida.
+- **Na tela:** a senha mostrada fica ligada ao perfil que a consultou e some ao trocar de perfil, bloquear a sessão, editar os contatos ou quando outro computador altera aquele contato (ao vivo, `cliente_contatos`).
 - **Fora do portal:** RLS ligado sem política e acesso revogado de `anon`, `authenticated` e `service_role`. A edge function e a API do Supabase não leem a tabela.
 - **Se o cliente passar a criar a própria senha pelo portal** (ideia de primeiro acesso pelo link), essa senha não deve entrar aqui: o cliente costuma repetir senha de outros serviços.
 

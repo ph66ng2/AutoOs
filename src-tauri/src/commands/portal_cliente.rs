@@ -334,20 +334,28 @@ pub async fn ver_senha_portal_contato(contato_id: i32) -> Result<Option<String>,
     }
     let actor = require_any_permission(permissoes_senha_portal(acesso.as_deref()))?;
 
+    // Ler segredo em texto: a auditoria é gravada na mesma transação, antes de devolver a senha.
+    // Sem o registro, a senha não sai (diferente do `record_security_event`, que só avisa no log).
+    let map = super::operator_errors::mapear_erro_sql;
+    let mut tx = pool.begin().await.map_err(map)?;
     let senha: Option<String> = sqlx::query_scalar("SELECT public.portal_ler_senha_visivel($1, $2)")
         .bind(empresa_id)
         .bind(contato_id)
-        .fetch_one(&pool)
+        .fetch_one(&mut *tx)
         .await
-        .map_err(super::operator_errors::mapear_erro_sql)?;
-
-    record_security_event(
-        "PORTAL_PASSWORD_VIEWED",
-        Some(&actor),
-        format!("empresa_id={empresa_id}; contato_id={contato_id}; disponivel={}", senha.is_some()),
-        true,
+        .map_err(map)?;
+    sqlx::query(
+        "INSERT INTO security_audit_log (event_type, profile_id, profile_name, details, success, empresa_id)
+         VALUES ('PORTAL_PASSWORD_VIEWED', $1, $2, $3, TRUE, $4)",
     )
-    .await;
+    .bind(actor.id)
+    .bind(&actor.nome)
+    .bind(format!("empresa_id={empresa_id}; contato_id={contato_id}; disponivel={}", senha.is_some()))
+    .bind(empresa_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| "Não foi possível registrar a consulta na auditoria; a senha não foi mostrada.".to_string())?;
+    tx.commit().await.map_err(map)?;
     Ok(senha)
 }
 

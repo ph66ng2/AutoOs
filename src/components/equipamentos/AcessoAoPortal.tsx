@@ -5,6 +5,7 @@ import { formatarDocumento } from "@/components/equipamentos/AcessoPortalDialog"
 import { usePortalCliente } from "@/components/equipamentos/portal-cliente-context";
 import { mensagemAcessoPortal } from "@/components/clientes/SenhaPortalDialog";
 import { useAcessoPortalCliente } from "@/hooks/useAcessoPortalCliente";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS, type ClienteContato } from "@/types";
 import { CarregandoSkeleton, SkeletonTexto } from "@/components/ui/skeleton";
@@ -45,6 +46,18 @@ export function AcessoAoPortal() {
     setSenhas({});
     setBuscando(null);
   }, [contatosVersao, equipamento.cliente_id]);
+  // Contato alterado em outro computador (senha trocada ou removida, acesso retirado): a senha
+  // mostrada daquele contato pode não valer mais. Some na hora; "Ver senha" busca a atual.
+  useAtualizacaoAoVivo(["cliente_contatos"], (mudancas) => {
+    const ids = new Set(mudancas.map((mudanca) => mudanca.id));
+    geracao.current += 1;
+    setBuscando(null);
+    setSenhas((atual) => {
+      const proximo: SenhaVista = {};
+      for (const [id, item] of Object.entries(atual)) if (!ids.has(Number(id)) && !ids.has(null)) proximo[Number(id)] = item;
+      return proximo;
+    });
+  });
   // Troca de perfil ou bloqueio: some o que outro perfil consultou, e uma leitura a caminho é descartada.
   useEffect(() => {
     geracao.current += 1;
