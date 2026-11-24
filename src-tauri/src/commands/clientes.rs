@@ -499,9 +499,12 @@ pub async fn listar_clientes_paginados(
 /// Contagem de cada filtro da lista de clientes, com a busca aplicada.
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn contar_clientes_por_filtro(busca: Option<String>) -> Result<ContagemClientes, String> {
+pub async fn contar_clientes_por_filtro(
+    busca: Option<String>,
+    segundo_plano: Option<bool>,
+) -> Result<ContagemClientes, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     contar_clientes_por_filtro_on_pool(&pool, empresa_id, busca.as_deref()).await
 }
 

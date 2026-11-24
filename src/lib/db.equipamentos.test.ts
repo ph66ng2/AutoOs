@@ -14,6 +14,15 @@ describe("db — equipamentos", () => {
     vi.clearAllMocks();
   });
 
+  it("listarNomesTecnicosVerificacoes envia segundoPlano só quando solicitado", async () => {
+    mockInvoke.mockResolvedValue([]);
+    await db.listarNomesTecnicosVerificacoes(true);
+    expect(mockInvoke).toHaveBeenLastCalledWith("listar_nomes_tecnicos_verificacoes", { segundoPlano: true });
+
+    await db.listarNomesTecnicosVerificacoes();
+    expect(mockInvoke).toHaveBeenLastCalledWith("listar_nomes_tecnicos_verificacoes", {});
+  });
+
   it("criarEquipamento envia payload em `input` (contrato Rust)", async () => {
     const payload: Omit<Equipamento, "id"> = {
       serial_number: "SN-UNIT-001",

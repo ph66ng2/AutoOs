@@ -21,9 +21,10 @@ export function useNomesFiltroTecnico(): string[] {
   const [sessao, setSessao] = useState(0);
   useEffect(() => aoMudarPerfis(() => setSessao((n) => n + 1)), []);
   useEffect(() => {
+    // Tanto a montagem quanto as notificações de perfis são leituras automáticas.
     let ativo = true;
     Promise.resolve()
-      .then(() => db.listarNomesTecnicosVerificacoes())
+      .then(() => db.listarNomesTecnicosVerificacoes(true))
       .then((nomes) => { if (ativo) setHistoricos(Array.isArray(nomes) ? nomes : []); })
       .catch(() => undefined);
     return () => { ativo = false; };

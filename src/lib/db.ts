@@ -195,8 +195,8 @@ export const db = {
   },
 
   /** Nomes de técnico já gravados nas verificações (filtro de técnico) → Rust: listar_nomes_tecnicos_verificacoes */
-  async listarNomesTecnicosVerificacoes(): Promise<string[]> {
-    return invoke<string[]>("listar_nomes_tecnicos_verificacoes");
+  async listarNomesTecnicosVerificacoes(segundoPlano = false): Promise<string[]> {
+    return invoke<string[]>("listar_nomes_tecnicos_verificacoes", seSegundoPlano(segundoPlano));
   },
 
   /** Busca equipamento por ID → Rust: buscar_equipamento */
@@ -285,8 +285,8 @@ export const db = {
   },
 
   /** Contagem de cada filtro da lista de clientes → Rust: contar_clientes_por_filtro */
-  async contarClientesPorFiltro(busca?: string): Promise<ContagemClientes> {
-    return invoke<ContagemClientes>("contar_clientes_por_filtro", { busca: busca ?? null });
+  async contarClientesPorFiltro(busca?: string, segundoPlano = false): Promise<ContagemClientes> {
+    return invoke<ContagemClientes>("contar_clientes_por_filtro", { busca: busca ?? null, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Números do painel do cliente → Rust: resumo_cliente (faturado só com permissão de Finanças) */
@@ -1167,8 +1167,8 @@ export const db = {
   },
 
   /** Peças com baixa pendente (só quais são; sem permissão de estoque) → Rust: listar_pecas_baixa_pendente */
-  async listarPecasBaixaPendente(equipamentoId: number): Promise<Array<{ servico_id: string; produto_id: number }>> {
-    return invoke<Array<{ servico_id: string; produto_id: number }>>("listar_pecas_baixa_pendente", { equipamentoId });
+  async listarPecasBaixaPendente(equipamentoId: number, segundoPlano = false): Promise<Array<{ servico_id: string; produto_id: number }>> {
+    return invoke<Array<{ servico_id: string; produto_id: number }>>("listar_pecas_baixa_pendente", { equipamentoId, ...seSegundoPlano(segundoPlano) });
   },
 
   async listarConsumosOrcamento(equipamentoId: number): Promise<ConsumoOrcamento[]> {

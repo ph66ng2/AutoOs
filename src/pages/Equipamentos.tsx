@@ -317,8 +317,7 @@ export default function Equipamentos() {
   const [abaDetalhe, setAbaDetalhe] = useState("orcamento");
   useEffect(() => { setAbaDetalhe("orcamento"); }, [selecionado?.id]);
   /** Recarrega o selo "baixa pendente" ao fechar Peças da OS (a baixa pode ter sido confirmada lá). */
-  const [recargaPendentes, setRecargaPendentes] = useState(0);
-  const pecasPendentes = usePecasBaixaPendente(selecionado?.id, recargaPendentes);
+  const { pendentes: pecasPendentes, recarregar: recarregarPecasPendentes } = usePecasBaixaPendente(selecionado?.id);
   const selecionadoIdRef = useRef<number | undefined>();
   selecionadoIdRef.current = selecionado?.id;
   const [salvando, setSalvando] = useState(false);
@@ -604,18 +603,20 @@ export default function Equipamentos() {
       db.listarHistoricoEquipamento(id, true),
     ]);
     if (eq.status !== "fulfilled" || selecionadoIdRef.current !== id || !detalhesAbertoRef.current) return;
-    if (!mesmoSemMudar && eq.value.atualizado_em === selecionadoAtualizadoEmRef.current) return;
     // A edição pode ter aberto enquanto a recarga estava a caminho: não troca a OS por baixo
     // dela (o token de concorrência da edição tem de continuar o de quando ela abriu).
     if (edicaoEmAndamentoRef.current) {
       recargaPendenteRef.current = id;
       return;
     }
+    // A baixa de uma peça pode mudar sem alterar o atualizado_em da OS.
+    void recarregarPecasPendentes(true);
+    if (!mesmoSemMudar && eq.value.atualizado_em === selecionadoAtualizadoEmRef.current) return;
     setSelecionado(eq.value);
     if (verif.status === "fulfilled") setVerificacaoDetalhes(verif.value);
     if (historico.status === "fulfilled") setHistoricoDetalhes(historico.value);
     setSinalPortal((valor) => valor + 1);
-  }, []);
+  }, [recarregarPecasPendentes]);
   useAtualizacaoAoVivo(["equipamentos", "verificacoes"], (mudancas) => {
     const abertoId = selecionadoIdRef.current;
     if (!detalhesAbertoRef.current || !abertoId) return;
@@ -4677,7 +4678,7 @@ export default function Equipamentos() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={consumosDialogOpen} onOpenChange={(aberto) => { setConsumosDialogOpen(aberto); if (!aberto) setRecargaPendentes((n) => n + 1); }}>
+      <Dialog open={consumosDialogOpen} onOpenChange={(aberto) => { setConsumosDialogOpen(aberto); if (!aberto) void recarregarPecasPendentes(); }}>
         <DialogContent tamanho="m">
           <DialogHeader><DialogTitle>Peças da OS</DialogTitle><DialogDescription>Reposições ficam disponíveis no estoque. Confirme aqui o consumo das peças pendentes.</DialogDescription></DialogHeader>
           <div className="max-h-72 space-y-2 overflow-y-auto">
@@ -4692,7 +4693,7 @@ export default function Equipamentos() {
             ))}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => { setConsumosDialogOpen(false); setRecargaPendentes((n) => n + 1); }}>Fechar</Button>
+            <Button type="button" variant="outline" onClick={() => { setConsumosDialogOpen(false); void recarregarPecasPendentes(); }}>Fechar</Button>
             <Button type="button" disabled={baixandoPendentes || !consumosDetalhes.some((c) => c.quantidade_baixada < c.quantidade_aprovada)}
               onClick={() => void confirmarBaixaPendente()}>Confirmar baixa pendente</Button>
           </DialogFooter>

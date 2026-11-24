@@ -831,9 +831,11 @@ pub async fn contar_equipamentos_por_status(
 /// Nomes de técnico já gravados nas verificações (o filtro inclui quem não é mais perfil técnico).
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn listar_nomes_tecnicos_verificacoes() -> Result<Vec<String>, String> {
+pub async fn listar_nomes_tecnicos_verificacoes(
+    segundo_plano: Option<bool>,
+) -> Result<Vec<String>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     sqlx::query_scalar::<_, String>(
         "SELECT DISTINCT TRIM(v.tecnico_nome) FROM verificacoes v
          JOIN equipamentos e ON e.id = v.equipamento_id
