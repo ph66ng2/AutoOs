@@ -24,7 +24,7 @@
  * ║  USADO POR: App.tsx (rota /equipamentos)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -597,32 +597,60 @@ export default function Equipamentos() {
   const selecionadoAtualizadoEmRef = useRef<string | undefined>();
   selecionadoAtualizadoEmRef.current = selecionado?.atualizado_em;
   const recargaPendenteRef = useRef<number | null>(null);
-  /** Geração da recarga ao vivo da OS aberta: só a mais recente aplica (abrir/fechar também invalida). */
-  const geracaoRecargaOsRef = useRef(0);
-  useEffect(() => { geracaoRecargaOsRef.current += 1; }, [detalhesDialogOpen, selecionado?.id]);
+  /**
+   * Recarga ao vivo da OS aberta, uma de cada vez: eventos que chegam com uma leitura em voo
+   * viram UMA nova leitura depois dela (guardando se precisa forçar), então uma resposta antiga
+   * nunca chega depois da nova e nenhuma mudança fica sem leitura posterior.
+   */
+  const recargaOsEmVooRef = useRef(false);
+  const recargaOsDeNovoRef = useRef<{ id: number; forcar: boolean } | null>(null);
+  const recarregarOsAbertaRef = useRef<(id: number, mesmoSemMudar: boolean) => Promise<void>>(async () => undefined);
+  // Abrir, fechar ou trocar a OS invalida a leitura em voo. Layout effect: roda no mesmo commit
+  // em que selecionadoIdRef muda, antes de qualquer aviso ao vivo poder começar outra leitura.
+  const aberturaOsRef = useRef(0);
+  useLayoutEffect(() => {
+    aberturaOsRef.current += 1;
+    recargaOsDeNovoRef.current = null;
+  }, [detalhesDialogOpen, selecionado?.id]);
   const recarregarOsAberta = useCallback(async (id: number, mesmoSemMudar: boolean) => {
-    const geracao = ++geracaoRecargaOsRef.current;
-    const [eq, verif, historico] = await Promise.allSettled([
-      db.buscarEquipamento(id, true),
-      db.buscarVerificacao(id),
-      db.listarHistoricoEquipamento(id, true),
-    ]);
-    if (geracao !== geracaoRecargaOsRef.current) return;
-    if (eq.status !== "fulfilled" || selecionadoIdRef.current !== id || !detalhesAbertoRef.current) return;
-    // A edição pode ter aberto enquanto a recarga estava a caminho: não troca a OS por baixo
-    // dela (o token de concorrência da edição tem de continuar o de quando ela abriu).
-    if (edicaoEmAndamentoRef.current) {
-      recargaPendenteRef.current = id;
+    if (recargaOsEmVooRef.current) {
+      const anterior = recargaOsDeNovoRef.current;
+      recargaOsDeNovoRef.current = { id, forcar: mesmoSemMudar || (anterior?.id === id && anterior.forcar) };
       return;
     }
-    // A baixa de uma peça pode mudar sem alterar o atualizado_em da OS.
-    void recarregarPecasPendentes(true);
-    if (!mesmoSemMudar && eq.value.atualizado_em === selecionadoAtualizadoEmRef.current) return;
-    setSelecionado(eq.value);
-    if (verif.status === "fulfilled") setVerificacaoDetalhes(verif.value);
-    if (historico.status === "fulfilled") setHistoricoDetalhes(historico.value);
-    setSinalPortal((valor) => valor + 1);
+    recargaOsEmVooRef.current = true;
+    const abertura = aberturaOsRef.current;
+    try {
+      const [eq, verif, historico] = await Promise.allSettled([
+        db.buscarEquipamento(id, true),
+        db.buscarVerificacao(id),
+        db.listarHistoricoEquipamento(id, true),
+      ]);
+      if (abertura !== aberturaOsRef.current) return;
+      if (eq.status !== "fulfilled" || selecionadoIdRef.current !== id || !detalhesAbertoRef.current) return;
+      // A edição pode ter aberto enquanto a recarga estava a caminho: não troca a OS por baixo
+      // dela (o token de concorrência da edição tem de continuar o de quando ela abriu).
+      if (edicaoEmAndamentoRef.current) {
+        recargaPendenteRef.current = id;
+        return;
+      }
+      // A baixa de uma peça pode mudar sem alterar o atualizado_em da OS.
+      void recarregarPecasPendentes(true);
+      if (!mesmoSemMudar && eq.value.atualizado_em === selecionadoAtualizadoEmRef.current) return;
+      setSelecionado(eq.value);
+      if (verif.status === "fulfilled") setVerificacaoDetalhes(verif.value);
+      if (historico.status === "fulfilled") setHistoricoDetalhes(historico.value);
+      setSinalPortal((valor) => valor + 1);
+    } finally {
+      recargaOsEmVooRef.current = false;
+      const proxima = recargaOsDeNovoRef.current;
+      recargaOsDeNovoRef.current = null;
+      if (proxima && selecionadoIdRef.current === proxima.id && detalhesAbertoRef.current) {
+        void recarregarOsAbertaRef.current(proxima.id, proxima.forcar);
+      }
+    }
   }, [recarregarPecasPendentes]);
+  recarregarOsAbertaRef.current = recarregarOsAberta;
   useAtualizacaoAoVivo(["equipamentos", "verificacoes"], (mudancas) => {
     const abertoId = selecionadoIdRef.current;
     if (!detalhesAbertoRef.current || !abertoId) return;

@@ -8,7 +8,7 @@
  * - Indicador "Histórico de Ajustes" quando adjusted_at está presente
  * - Verificação dos parâmetros do audit (old_total, new_total, services counts)
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from "vitest";
 import { render, screen, act, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { distribuirMudancas } from "@/lib/ao-vivo";
@@ -384,6 +384,34 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
     act(() => distribuirMudancas([{ tabela: "equipamentos", id: 10, referencia: null, operacao: "U" }]));
     await waitFor(() => expect(mockListarPecasBaixaPendente).toHaveBeenLastCalledWith(10, true));
+  });
+
+  it("recarga ao vivo da OS aberta é uma de cada vez: evento durante a leitura vira uma nova leitura depois", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    mockBuscarEquipamento.mockResolvedValue(equipamentoVerificado);
+    onTestFinished(() => { mockBuscarEquipamento.mockResolvedValue({ atualizado_em: "2024-01-15T10:00:01Z" }); });
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" }));
+    await waitFor(() => expect(mockListarPecasBaixaPendente).toHaveBeenCalledWith(10, false));
+    await new Promise((r) => setTimeout(r, 50));
+
+    let liberar!: (valor: unknown) => void;
+    const chamadasAntes = mockBuscarEquipamento.mock.calls.length;
+    mockBuscarEquipamento.mockImplementationOnce(() => new Promise((resolve) => { liberar = resolve; }));
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 10, referencia: null, operacao: "U" }]));
+    await waitFor(() => expect(mockBuscarEquipamento.mock.calls.length).toBe(chamadasAntes + 1));
+
+    // Dois avisos com a leitura ainda em voo: nenhuma leitura paralela.
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 10, referencia: null, operacao: "U" }]));
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 10, referencia: null, operacao: "U" }]));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(mockBuscarEquipamento.mock.calls.length).toBe(chamadasAntes + 1);
+
+    // A leitura antiga termina; depois dela vem exatamente uma nova.
+    await act(async () => { liberar({ ...equipamentoVerificado, atualizado_em: "2026-11-24T04:00:00Z" }); });
+    await waitFor(() => expect(mockBuscarEquipamento.mock.calls.length).toBe(chamadasAntes + 2));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(mockBuscarEquipamento.mock.calls.length).toBe(chamadasAntes + 2);
   });
 
   // ─── Helpers ─────────────────────────────────────────
