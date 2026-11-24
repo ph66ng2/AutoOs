@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { argSegundoPlano } from "@/lib/ao-vivo";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import { agruparHistoricoEquipamentos } from "@/lib/historico-equipamentos";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
@@ -17,7 +19,7 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
   const clienteAtual = useRef(clienteId);
   clienteAtual.current = clienteId;
 
-  const carregar = useCallback(async () => {
+  const carregar = useCallback(async ({ silencioso = false } = {}) => {
     const meu = ++pedido.current;
     const vale = () => meu === pedido.current && clienteAtual.current === clienteId;
     if (clienteId == null) {
@@ -25,19 +27,22 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
       setError("Cliente não encontrado.");
       return;
     }
-    setLoading(true);
-    setError(null);
+    if (!silencioso) {
+      setLoading(true);
+      setError(null);
+    }
     try {
-      const encontrado = await db.buscarCliente(clienteId);
+      const encontrado = await db.buscarCliente(clienteId, ...argSegundoPlano(silencioso));
       if (!vale()) return;
       // OS antigas sem cliente_id são achadas pelo nome, como no painel de Clientes.
       const nomes = [nomeExibicaoCliente(encontrado), encontrado.nome ?? ""];
-      const lista = await db.listarEquipamentosCliente(clienteId, nomes);
+      const lista = await db.listarEquipamentosCliente(clienteId, nomes, ...argSegundoPlano(silencioso));
       if (!vale()) return;
       setCliente(encontrado);
       setEquipamentos(lista);
+      setError(null);
     } catch (e) {
-      if (vale()) setError(e instanceof Error ? e.message : String(e));
+      if (vale() && !silencioso) setError(e instanceof Error ? e.message : String(e));
     } finally {
       if (vale()) setLoading(false);
     }
@@ -48,7 +53,12 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
     setCliente(null);
     setEquipamentos([]);
     void carregar();
+    return () => { ++pedido.current; };
   }, [carregar]);
+
+  useAtualizacaoAoVivo(["equipamentos", "clientes"], () => {
+    if (clienteId != null) void carregar({ silencioso: true });
+  });
 
   const aparelhos = useMemo(() => agruparHistoricoEquipamentos(equipamentos), [equipamentos]);
 

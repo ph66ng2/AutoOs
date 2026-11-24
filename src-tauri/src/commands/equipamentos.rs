@@ -747,9 +747,10 @@ pub async fn listar_movimento_bancada(
 pub async fn listar_equipamentos_cliente(
     cliente_id: i32,
     nomes: Option<Vec<String>>,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
     listar_equipamentos_cliente_on_connection(&mut connection, empresa_id, cliente_id, nomes.unwrap_or_default()).await
 }

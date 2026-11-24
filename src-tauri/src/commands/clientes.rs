@@ -580,10 +580,10 @@ pub(crate) async fn resumo_cliente_on_pool(
 /// Buscar cliente por ID.
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
-pub async fn buscar_cliente(id: i32) -> Result<ClienteRow, String> {
+pub async fn buscar_cliente(id: i32, segundo_plano: Option<bool>) -> Result<ClienteRow, String> {
     debug!("Buscando cliente {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
 
     let query = format!("{} WHERE id = $1 AND empresa_id = $2", CLIENTE_SELECT);
     let row = sqlx::query_as::<_, ClienteRow>(sqlx::AssertSqlSafe(&*query))
@@ -722,7 +722,7 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     tx.commit().await.map_err(|e| e.to_string())?;
 
     info!("Cliente criado: id={}", id);
-    buscar_cliente(id).await
+    buscar_cliente(id, None).await
 }
 
 /// Atualizar cliente por ID.
@@ -874,7 +874,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     tx.commit().await.map_err(|e| e.to_string())?;
 
     info!("Cliente {} atualizado", id);
-    buscar_cliente(id).await
+    buscar_cliente(id, None).await
 }
 
 /// Deletar cliente por ID (soft delete - marca como inativo).

@@ -1235,7 +1235,7 @@ async fn assert_lista_tolera_telefone_nulo(
             return Err(anyhow!("paginated search did not return the client with NULL telefone"));
         }
 
-        let buscado = clientes::buscar_cliente(id)
+        let buscado = clientes::buscar_cliente(id, None)
             .await
             .map_err(|error| anyhow!("buscar_cliente failed with NULL telefone: {error}"))?;
         if buscado.id != id || buscado.telefone.is_some() || buscado.email.is_some() {

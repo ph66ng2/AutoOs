@@ -175,8 +175,8 @@ export const db = {
   },
 
   /** Equipamentos de um cliente por cliente_id (nomes só para legados sem cliente_id) → Rust: listar_equipamentos_cliente */
-  async listarEquipamentosCliente(clienteId: number, nomes: string[] = []): Promise<Equipamento[]> {
-    return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes });
+  async listarEquipamentosCliente(clienteId: number, nomes: string[] = [], segundoPlano = false): Promise<Equipamento[]> {
+    return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes, ...seSegundoPlano(segundoPlano) });
   },
 
   async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE", tecnico?: string, segundoPlano = false): Promise<PaginatedResult<Equipamento>> {
@@ -295,8 +295,8 @@ export const db = {
   },
 
   /** Busca cliente por ID → Rust: buscar_cliente */
-  async buscarCliente(id: number): Promise<Cliente> {
-    return invoke<Cliente>("buscar_cliente", { id });
+  async buscarCliente(id: number, segundoPlano = false): Promise<Cliente> {
+    return invoke<Cliente>("buscar_cliente", { id, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Cria novo cliente (PF ou PJ) → Rust: criar_cliente. Retorna o registro persistido */
