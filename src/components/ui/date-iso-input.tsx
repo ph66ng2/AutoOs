@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 import { CalendarDays } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
@@ -27,6 +27,24 @@ export function DateIsoInput({ value, onValueChange, min, max, onBlur, onKeyDown
   const grade = useRef<HTMLDivElement>(null);
   /** Fechou escolhendo um dia ou com Esc: o foco volta ao campo. Clique fora mantém o foco onde a pessoa clicou. */
   const devolverFoco = useRef(false);
+  /** Quantos dígitos ficam antes do cursor depois da máscara (a "/" inserida não pode empurrar o cursor para trás). */
+  const digitosAntesDoCursor = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const alvo = digitosAntesDoCursor.current;
+    const el = campo.current;
+    digitosAntesDoCursor.current = null;
+    if (alvo == null || !el || document.activeElement !== el) return;
+    let pos = 0;
+    let vistos = 0;
+    while (pos < texto.length && vistos < alvo) {
+      if (/\d/.test(texto[pos])) vistos += 1;
+      pos += 1;
+    }
+    // Logo depois de completar dia ou mês, o cursor passa a barra.
+    if (texto[pos] === "/" && vistos === alvo && alvo > 0) pos += 1;
+    el.setSelectionRange(pos, pos);
+  }, [texto]);
 
   useEffect(() => {
     setTexto(isoDateToBr(iso));
@@ -74,6 +92,8 @@ export function DateIsoInput({ value, onValueChange, min, max, onBlur, onKeyDown
                 return;
               }
               const next = maskDateBr(raw);
+              const cursor = event.target.selectionStart ?? raw.length;
+              digitosAntesDoCursor.current = Math.min(raw.slice(0, cursor).replace(/\D/g, "").length, 8);
               setTexto(next);
               if (!next) {
                 onValueChange("");
