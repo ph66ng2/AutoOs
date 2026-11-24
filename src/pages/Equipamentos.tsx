@@ -3755,7 +3755,7 @@ export default function Equipamentos() {
                 <SelectItem value="CADASTRO_RECENTE">Cadastros recentes</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="h-10 w-10 shrink-0" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="h-10 w-10 shrink-0" onClick={() => void recarregar()}><RefreshCw className="h-4 w-4" /></Button>
             </div>
           </div>
 

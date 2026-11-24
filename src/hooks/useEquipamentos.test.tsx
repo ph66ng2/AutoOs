@@ -45,6 +45,28 @@ function deferred<T>() {
 
 const equipamentoBase: Equipamento = { ...novoEquipamento, id: 1 };
 
+describe("useEquipamentos — botão Atualizar", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListarPaginados.mockResolvedValue({ items: [], total: 0 });
+  });
+
+  it("recarregar logo após uma carga busca de novo, em primeiro plano", async () => {
+    mockListarPaginados.mockResolvedValueOnce({ items: [equipamentoBase], total: 1 });
+    const { result } = renderHook(() => useEquipamentos({ status: "RECEBIDO" }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mockListarPaginados).toHaveBeenCalledTimes(1);
+
+    mockListarPaginados.mockResolvedValueOnce({ items: [{ ...equipamentoBase, status: "EM_VERIFICACAO" }], total: 1 });
+    await act(async () => { await result.current.recarregar(); });
+
+    expect(mockListarPaginados).toHaveBeenCalledTimes(2);
+    // Primeiro plano: sem o sinal de segundo plano (pode pedir o PIN se a sessão expirou).
+    expect(mockListarPaginados.mock.calls[1]).toHaveLength(5);
+    expect(result.current.equipamentos[0]?.status).toBe("EM_VERIFICACAO");
+  });
+});
+
 describe("useEquipamentos — registro", () => {
   beforeEach(() => {
     vi.clearAllMocks();
