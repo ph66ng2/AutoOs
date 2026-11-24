@@ -298,4 +298,33 @@ describe("useEquipamentos — registro", () => {
     expect(mockListarPaginados.mock.calls.at(-1)?.[5]).toBe(true);
     expect(mockListarPaginados.mock.calls[0]).toHaveLength(5);
   });
+
+  it("falha da recarga silenciosa depois da primeira carga mantém a lista sem erro", async () => {
+    mockListarPaginados
+      .mockResolvedValueOnce({ items: [equipamentoBase], total: 1 })
+      .mockRejectedValueOnce("Acesso sensível bloqueado.");
+    const { result } = renderHook(() => useEquipamentos());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      distribuirMudancas([{ tabela: "equipamentos", id: 1, referencia: null, operacao: "U" }]);
+    });
+    await waitFor(() => expect(mockListarPaginados).toHaveBeenCalledTimes(2));
+    expect(result.current.error).toBeNull();
+    expect(result.current.equipamentos).toEqual([equipamentoBase]);
+  });
+
+  it("primeira carga com falha mostra o erro e a próxima carga bem-sucedida o limpa", async () => {
+    mockListarPaginados
+      .mockRejectedValueOnce(new Error("sem conexão"))
+      .mockResolvedValueOnce({ items: [equipamentoBase], total: 1 });
+    const { result } = renderHook(() => useEquipamentos());
+    await waitFor(() => expect(result.current.error).toBe("sem conexão"));
+
+    await act(async () => {
+      distribuirMudancas([{ tabela: "equipamentos", id: 1, referencia: null, operacao: "U" }]);
+    });
+    await waitFor(() => expect(result.current.error).toBeNull());
+    expect(result.current.equipamentos).toEqual([equipamentoBase]);
+  });
 });

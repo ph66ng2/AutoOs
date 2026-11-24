@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { db } from "@/lib/db";
+import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
 
 const payload: Omit<Produto, "id"> = {
   codigo: "RIB-CERA-110X450",
@@ -31,6 +32,24 @@ describe("db — produtos", () => {
     expect(mockInvoke).toHaveBeenLastCalledWith("obter_orcamento_insumos", { id: 3, segundoPlano: true });
     await db.obterOrcamentoInsumos(3);
     expect(mockInvoke).toHaveBeenLastCalledWith("obter_orcamento_insumos", { id: 3 });
+  });
+
+  it("leitura de segundo plano com sessão bloqueada não abre o PIN nem repete", async () => {
+    const prompt = vi.fn().mockResolvedValue(true);
+    const desregistrar = registerSensitiveAccessPrompt(prompt);
+    try {
+      mockInvoke.mockRejectedValue("Acesso sensível bloqueado. Informe o PIN para continuar.");
+      await expect(db.obterOrcamentoInsumos(3, true)).rejects.toContain("bloqueado");
+      expect(prompt).not.toHaveBeenCalled();
+      expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+      // A leitura visível continua pedindo o PIN e repetindo uma vez.
+      mockInvoke.mockRejectedValueOnce("Acesso sensível bloqueado.").mockResolvedValueOnce({ id: 3 });
+      await expect(db.obterOrcamentoInsumos(3)).resolves.toEqual({ id: 3 });
+      expect(prompt).toHaveBeenCalledTimes(1);
+    } finally {
+      desregistrar();
+    }
   });
 
   it("criarProduto envia payload em `input` (contrato Rust)", async () => {
