@@ -9,7 +9,8 @@ import type { ResumoEstoque } from "@/types";
  * Números do topo de Insumos e peças. Falha silenciosa: os números somem, a lista continua.
  * O valor em estoque depende das permissões do perfil: ao trocar de perfil, bloquear ou mudar
  * permissões, o resumo anterior é descartado na hora e lido de novo. Mudanças de outro
- * computador (itens e OS esperando peça) releem em segundo plano, sem renovar a sessão.
+ * computador (itens, OS esperando peça e orçamentos de venda) releem em segundo plano,
+ * sem renovar a sessão.
  */
 export function useResumoEstoque() {
   const { status } = useSensitiveAccess();
@@ -36,7 +37,7 @@ export function useResumoEstoque() {
     void carregar();
   }, [carregar]);
 
-  useAtualizacaoAoVivo(["produtos", "equipamentos"], () => {
+  useAtualizacaoAoVivo(["produtos", "equipamentos", "orcamentos_insumos"], () => {
     void carregar({ silencioso: true });
   });
 

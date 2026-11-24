@@ -65,7 +65,7 @@ describe("useResumoEstoque", () => {
     expect(result.current.resumo?.valorEstoque).toBeNull();
   });
 
-  it("segue as mudanças ao vivo de itens e OS, relendo em segundo plano (sem renovar a sessão)", async () => {
+  it("segue as mudanças ao vivo de itens, OS e orçamentos, relendo em segundo plano", async () => {
     sessao.status = { unlocked: true, active_profile_id: 1, permissions: [] };
     resumoEstoque.mockResolvedValue({ ...base, valorEstoque: null });
     const { result, unmount } = renderHook(() => useResumoEstoque());
@@ -80,6 +80,11 @@ describe("useResumoEstoque", () => {
     resumoEstoque.mockResolvedValue({ ...base, aguardandoPeca: 2, valorEstoque: null });
     act(() => distribuirMudancas([{ tabela: "equipamentos", id: 9, referencia: null, operacao: "U" }]));
     await waitFor(() => expect(result.current.resumo?.aguardandoPeca).toBe(2));
+    expect(resumoEstoque).toHaveBeenLastCalledWith(true);
+
+    resumoEstoque.mockResolvedValue({ ...base, orcamentosAbertos: 1, valorEstoque: null });
+    act(() => distribuirMudancas([{ tabela: "orcamentos_insumos", id: 12, referencia: null, operacao: "I" }]));
+    await waitFor(() => expect(result.current.resumo?.orcamentosAbertos).toBe(1));
     expect(resumoEstoque).toHaveBeenLastCalledWith(true);
     unmount();
   });
