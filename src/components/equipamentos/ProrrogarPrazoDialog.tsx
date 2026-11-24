@@ -132,6 +132,7 @@ export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConc
           <div className="space-y-2">
             <Label htmlFor="novo-prazo-aprovacao">Novo prazo de aprovação</Label>
             <DateIsoInput
+              atalhos="prazo"
               id="novo-prazo-aprovacao"
               min={dataIsoEmDias(0)}
               value={data}

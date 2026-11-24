@@ -3389,7 +3389,7 @@ export default function Equipamentos() {
         )}
       </div>
       {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
-        <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
+        <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput atalhos="prazo" min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
       )}
       <div className="space-y-2">
         <Label htmlFor="observacoes-ajuste">Observações</Label>
