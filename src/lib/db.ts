@@ -693,8 +693,8 @@ export const db = {
     return Object.fromEntries(linhas.map((linha) => [linha.status, Number(linha.total)]));
   },
 
-  async obterOrcamentoInsumos(id: number): Promise<OrcamentoInsumosDetalhe> {
-    return invoke<OrcamentoInsumosDetalhe>("obter_orcamento_insumos", { id });
+  async obterOrcamentoInsumos(id: number, segundoPlano = false): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("obter_orcamento_insumos", { id, ...seSegundoPlano(segundoPlano) });
   },
 
   async criarOrcamentoInsumos(input: OrcamentoInsumosInput): Promise<OrcamentoInsumosDetalhe> {

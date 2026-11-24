@@ -734,9 +734,10 @@ pub async fn contar_orcamentos_insumos_por_status(
 
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
-pub async fn obter_orcamento_insumos(id: i32) -> Result<OrcamentoInsumosDetalhe, String> {
+pub async fn obter_orcamento_insumos(id: i32, segundo_plano: Option<bool>) -> Result<OrcamentoInsumosDetalhe, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    // A recarga ao vivo da página do orçamento é leitura de fundo: exige sessão, sem renová-la.
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     carregar_detalhe(&pool, empresa_id, id).await
 }
 
