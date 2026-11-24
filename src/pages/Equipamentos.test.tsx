@@ -80,6 +80,8 @@ function RotaDeTeste() {
       <button onClick={() => navigate("/equipamentos/2")}>Abrir B</button>
       <button onClick={() => navigate("/equipamentos/1/orcamento")}>Editar orçamento A</button>
       <button onClick={() => navigate("/equipamentos/2/orcamento")}>Editar orçamento B</button>
+      <button onClick={() => navigate("/equipamentos/1/verificacao")}>Verificar A</button>
+      <button onClick={() => navigate("/equipamentos/2/verificacao")}>Verificar B</button>
       <button onClick={() => navigate("/equipamentos/nova")}>Ir para entrada</button>
       <Equipamentos />
     </>
@@ -463,5 +465,33 @@ describe("prorrogação de prazo ao trocar de OS", () => {
     expect(await screen.findByRole("button", { name: "Confirmar", exact: true })).toBeEnabled();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(dbMocks.prorrogarPrazoOrcamento).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("finalização da verificação ao trocar de OS", () => {
+  it("descarta a finalização de A se o destinatário chegar depois de navegar de A para B e voltar a A", async () => {
+    dbMocks.buscarEquipamento.mockImplementation(async (id: number) => ({ ...os(id), status: "EM_VERIFICACAO" }));
+    let resolverDestinatario!: (dest: { precisaContato: boolean }) => void;
+    dbMocks.obterDestinatarioOrcamento.mockImplementationOnce(() => new Promise((resolve) => {
+      resolverDestinatario = resolve;
+    }));
+
+    abrir("/equipamentos/1/verificacao");
+    fireEvent.click(await screen.findByRole("button", { name: "Finalizar verificação" }));
+    await waitFor(() => expect(dbMocks.obterDestinatarioOrcamento).toHaveBeenCalledWith(1));
+
+    fireEvent.click(screen.getByText("Verificar B"));
+    await waitFor(() => expect(dbMocks.buscarEquipamento).toHaveBeenCalledWith(2));
+    expect(await screen.findByRole("button", { name: "Finalizar verificação" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Verificar A"));
+    await waitFor(() => expect(dbMocks.buscarEquipamento).toHaveBeenCalledTimes(3));
+    expect(await screen.findByRole("button", { name: "Finalizar verificação" })).toBeInTheDocument();
+
+    await act(async () => { resolverDestinatario({ precisaContato: false }); });
+
+    expect(dbMocks.salvarVerificacao).not.toHaveBeenCalled();
+    expect(enviarOrcamento).not.toHaveBeenCalled();
+    expect(screen.getByText("/equipamentos/1/verificacao")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Finalizar verificação" })).toBeInTheDocument();
   });
 });

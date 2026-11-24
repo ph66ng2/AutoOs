@@ -751,6 +751,14 @@ fn recusar_link_exportacao(metadata: &fs::Metadata) -> Result<(), String> {
 }
 
 fn gravar_exportacao_csv(documents: &Path, filename: &str, bytes: &[u8]) -> Result<PathBuf, String> {
+    gravar_exportacao_csv_com(documents, filename, |file| file.write_all(bytes))
+}
+
+fn gravar_exportacao_csv_com(
+    documents: &Path,
+    filename: &str,
+    escrever: impl FnOnce(&mut fs::File) -> std::io::Result<()>,
+) -> Result<PathBuf, String> {
     let filename = sanitize_temp_filename(filename)?;
     let Some(stem) = filename.strip_suffix(".csv") else {
         return Err("A exportação deve ter a extensão .csv.".to_string());
@@ -773,14 +781,47 @@ fn gravar_exportacao_csv(documents: &Path, filename: &str, bytes: &[u8]) -> Resu
         }
     }
 
-    let mut path = directory.join(&filename);
+    // Grava primeiro num arquivo temporário da mesma pasta: um CSV incompleto (disco cheio,
+    // falha de escrita) nunca aparece com o nome definitivo.
+    let temp = directory.join(format!(".{stem}.{}.csv.tmp", uuid::Uuid::new_v4()));
+    let gravado = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp)
+        .and_then(|mut file| {
+            escrever(&mut file)?;
+            file.flush()?;
+            file.sync_all()
+        });
+    if let Err(e) = gravado {
+        let _ = fs::remove_file(&temp);
+        return Err(erro_arquivo(e));
+    }
+    let publicado = publicar_exportacao(&temp, &directory, &filename, stem);
+    let _ = fs::remove_file(&temp);
+    publicado
+}
+
+/// Dá ao temporário completo o primeiro nome livre (`lista.csv`, `lista (2).csv`…) sem
+/// substituir nenhum arquivo existente.
+fn publicar_exportacao(temp: &Path, directory: &Path, filename: &str, stem: &str) -> Result<PathBuf, String> {
+    let erro_arquivo = |e| format!("Erro ao salvar exportação: {e}");
+    let mut path = directory.join(filename);
     let mut numero = 2u64;
     loop {
-        match OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(mut file) => {
-                file.write_all(bytes).map_err(erro_arquivo)?;
-                return Ok(path);
+        // O link físico falha se o nome existe, então nada é sobrescrito.
+        let resultado = fs::hard_link(temp, &path).or_else(|e| {
+            if e.kind() == ErrorKind::AlreadyExists {
+                return Err(e);
             }
+            // Sistema de arquivos sem links físicos: reserva o nome e troca pelo conteúdo.
+            OpenOptions::new().write(true).create_new(true).open(&path)?;
+            fs::rename(temp, &path).inspect_err(|_| {
+                let _ = fs::remove_file(&path);
+            })
+        });
+        match resultado {
+            Ok(()) => return Ok(path),
             Err(e) if e.kind() == ErrorKind::AlreadyExists => {
                 match fs::symlink_metadata(&path) {
                     Ok(metadata) => recusar_link_exportacao(&metadata)?,
@@ -830,6 +871,25 @@ mod testes_exportacao_csv {
         assert_eq!(fs::read(exportacoes.join("lista.csv")).unwrap(), b"primeira");
         assert_eq!(fs::read(exportacoes.join("lista (2).csv")).unwrap(), b"segunda");
         assert_eq!(fs::read(exportacoes.join("lista (3).csv")).unwrap(), b"terceira");
+        assert_eq!(fs::read_dir(&exportacoes).unwrap().count(), 3);
+    }
+
+    #[test]
+    fn falha_de_escrita_nao_deixa_csv_incompleto() {
+        let documents = PastaTeste::nova();
+        let erro = gravar_exportacao_csv_com(&documents.0, "lista.csv", |file| {
+            file.write_all(b"metade")?;
+            Err(std::io::Error::other("disco cheio"))
+        })
+        .unwrap_err();
+        assert!(erro.contains("disco cheio"));
+        let exportacoes = documents.0.join("AutoOS/Exportacoes");
+        assert_eq!(fs::read_dir(&exportacoes).unwrap().count(), 0);
+
+        let path = gravar_exportacao_csv(&documents.0, "lista.csv", b"completa").unwrap();
+        assert_eq!(path.file_name().unwrap(), "lista.csv");
+        assert_eq!(fs::read(&path).unwrap(), b"completa");
+        assert_eq!(fs::read_dir(&exportacoes).unwrap().count(), 1);
     }
 
     #[cfg(unix)]

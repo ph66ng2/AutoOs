@@ -522,7 +522,7 @@ export default function Equipamentos() {
   })();
   const idEquipamentoRota = idAjusteRota ?? idDetalhesRota ?? idVerificacaoRota ?? idEdicaoRota;
   // Invalida na troca da rota, antes que uma resposta assíncrona retome o ajuste anterior.
-  useLayoutEffect(() => invalidarAjuste, [idEquipamentoRota, idAjusteRota, invalidarAjuste]);
+  useLayoutEffect(() => invalidarAjuste, [idEquipamentoRota, idAjusteRota, idVerificacaoRota, invalidarAjuste]);
   /** De onde a pessoa abriu a Nova entrada ou a edição: Cancelar e salvar voltam para lá. */
   const origemEntradaRef = useRef<string>("/equipamentos");
   /** Origem fora de Equipamentos guardada até o diálogo da ordem de entrada fechar. */
@@ -2164,7 +2164,10 @@ export default function Equipamentos() {
    */
   async function handleConcluirVerificacao(dados: DadosVerificacao): Promise<boolean> {
     if (!selecionado || selecionado.id !== idVerificacaoRota) return false;
-    const rotaVigente = () => pathnameAtualRef.current === location.pathname;
+    // A geração muda a cada troca de OS ou de editor na rota: A → B → A abre outro editor de A,
+    // e esta tentativa não pode gravar, enviar nem fechar esse editor novo.
+    const geracao = geracaoAjusteRef.current;
+    const rotaVigente = () => geracaoAjusteRef.current === geracao;
     // Total 0 só chega aqui em OS só de garantia, que sai aprovada: só quem aprova orçamento finaliza.
     const garantiaAprovada = dados.custo_total === 0;
     const liberado = await ensureSensitiveAccess({
@@ -2184,6 +2187,7 @@ export default function Equipamentos() {
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
+        // Já gravado: o resultado é informado mesmo se a rota mudou, mas só fecha o próprio editor.
         if (rotaVigente()) fecharPaginaVerificacao(resultado.salvo);
         await recarregar();
         const resumoCanais = mensagemResultadoCanais(resultado);
@@ -2221,7 +2225,7 @@ export default function Equipamentos() {
           telefone: selecionado.cliente_telefone || "",
           email: selecionado.cliente_email || "",
         },
-        continuar: async (eqAtualizado) => { await finalizar(eqAtualizado); },
+        continuar: async (eqAtualizado) => { if (rotaVigente()) await finalizar(eqAtualizado); },
       });
       return false;
     }
