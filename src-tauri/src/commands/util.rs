@@ -17,7 +17,8 @@ use serde_json::json;
 use sqlx::FromRow;
 use std::collections::BTreeMap;
 use std::env;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::{ErrorKind, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
@@ -728,17 +729,135 @@ pub async fn salvar_arquivo_temp(filename: String, bytes: Vec<u8>) -> Result<Str
 /// Salva um CSV em Documents/AutoOS/Exportacoes e o mostra no gerenciador de arquivos.
 #[tauri::command]
 pub async fn salvar_exportacao_csv(filename: String, bytes: Vec<u8>) -> Result<String, String> {
-    let filename = sanitize_temp_filename(&filename)?;
-    if !filename.ends_with(".csv") {
-        return Err("A exportação deve ter a extensão .csv.".to_string());
-    }
-    let directory = default_documents_directory()?.join("AutoOS").join("Exportacoes");
-    fs::create_dir_all(&directory).map_err(|e| format!("Erro ao preparar pasta de exportações: {e}"))?;
-    let path = directory.join(filename);
-    fs::write(&path, bytes).map_err(|e| format!("Erro ao salvar exportação: {e}"))?;
+    let path = gravar_exportacao_csv(&default_documents_directory()?, &filename, &bytes)?;
     reveal_file_in_manager(&path)
         .map_err(|e| format!("CSV salvo em {}, mas não foi possível mostrar o arquivo: {e}", path.display()))?;
     Ok(path.to_string_lossy().into_owned())
+}
+
+fn recusar_link_exportacao(metadata: &fs::Metadata) -> Result<(), String> {
+    #[cfg(windows)]
+    use std::os::windows::fs::MetadataExt;
+
+    let link = metadata.file_type().is_symlink();
+    // Junções e outros pontos de reanálise também podem redirecionar o caminho.
+    #[cfg(windows)]
+    let link = link || metadata.file_attributes() & 0x400 != 0;
+    if link {
+        return Err("O caminho de exportação contém um link simbólico.".to_string());
+    }
+    Ok(())
+}
+
+fn gravar_exportacao_csv(documents: &Path, filename: &str, bytes: &[u8]) -> Result<PathBuf, String> {
+    let filename = sanitize_temp_filename(filename)?;
+    let Some(stem) = filename.strip_suffix(".csv") else {
+        return Err("A exportação deve ter a extensão .csv.".to_string());
+    };
+    let erro_pasta = |e| format!("Erro ao preparar pasta de exportações: {e}");
+    let erro_arquivo = |e| format!("Erro ao salvar exportação: {e}");
+    recusar_link_exportacao(&fs::symlink_metadata(documents).map_err(erro_pasta)?)?;
+    let mut directory = documents.to_path_buf();
+    for component in [AUTOOS_LOCAL_DATA_DIR, "Exportacoes"] {
+        directory.push(component);
+        if let Err(e) = fs::create_dir(&directory) {
+            if e.kind() != ErrorKind::AlreadyExists {
+                return Err(erro_pasta(e));
+            }
+        }
+        let metadata = fs::symlink_metadata(&directory).map_err(erro_pasta)?;
+        recusar_link_exportacao(&metadata)?;
+        if !metadata.is_dir() {
+            return Err(format!("O caminho {} não é uma pasta.", directory.display()));
+        }
+    }
+
+    let mut path = directory.join(&filename);
+    let mut numero = 2u64;
+    loop {
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut file) => {
+                file.write_all(bytes).map_err(erro_arquivo)?;
+                return Ok(path);
+            }
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+                match fs::symlink_metadata(&path) {
+                    Ok(metadata) => recusar_link_exportacao(&metadata)?,
+                    Err(e) if e.kind() == ErrorKind::NotFound => {}
+                    Err(e) => return Err(erro_arquivo(e)),
+                }
+                path.set_file_name(format!("{stem} ({numero}).csv"));
+                numero += 1;
+            }
+            Err(e) => return Err(erro_arquivo(e)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod testes_exportacao_csv {
+    use super::*;
+
+    struct PastaTeste(PathBuf);
+
+    impl PastaTeste {
+        fn nova() -> Self {
+            let path = env::temp_dir().join(format!("autoos-export-{}", uuid::Uuid::new_v4()));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for PastaTeste {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn exportacoes_repetidas_preservam_os_arquivos_anteriores() {
+        let documents = PastaTeste::nova();
+        for (nome, bytes) in [
+            ("lista.csv", b"primeira".as_slice()),
+            ("lista (2).csv", b"segunda".as_slice()),
+            ("lista (3).csv", b"terceira".as_slice()),
+        ] {
+            let path = gravar_exportacao_csv(&documents.0, "lista.csv", bytes).unwrap();
+            assert_eq!(path.file_name().unwrap(), nome);
+        }
+        let exportacoes = documents.0.join("AutoOS/Exportacoes");
+        assert_eq!(fs::read(exportacoes.join("lista.csv")).unwrap(), b"primeira");
+        assert_eq!(fs::read(exportacoes.join("lista (2).csv")).unwrap(), b"segunda");
+        assert_eq!(fs::read(exportacoes.join("lista (3).csv")).unwrap(), b"terceira");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exportacao_recusa_links_nos_diretorios_e_no_arquivo() {
+        use std::os::unix::fs::symlink;
+
+        let documents = PastaTeste::nova();
+        let externo = PastaTeste::nova();
+        let autoos = documents.0.join("AutoOS");
+        let exportacoes = autoos.join("Exportacoes");
+        let fora = externo.0.join("lista.csv");
+        fs::write(&fora, b"original").unwrap();
+
+        symlink(&externo.0, &autoos).unwrap();
+        assert!(gravar_exportacao_csv(&documents.0, "lista.csv", b"nova").is_err());
+        assert!(!externo.0.join("Exportacoes").exists());
+        fs::remove_file(&autoos).unwrap();
+        fs::create_dir(&autoos).unwrap();
+
+        symlink(&externo.0, &exportacoes).unwrap();
+        assert!(gravar_exportacao_csv(&documents.0, "lista.csv", b"nova").is_err());
+        fs::remove_file(&exportacoes).unwrap();
+        fs::create_dir(&exportacoes).unwrap();
+
+        symlink(&fora, exportacoes.join("lista.csv")).unwrap();
+        assert!(gravar_exportacao_csv(&documents.0, "lista.csv", b"nova").is_err());
+        assert_eq!(fs::read(&fora).unwrap(), b"original");
+    }
 }
 
 /// Copia um arquivo já gerado pelo app (ex.: PDF do orçamento salvo em

@@ -26,6 +26,7 @@ const mockMarcarPronto = vi.hoisted(() => vi.fn());
 const mockPermissions = vi.hoisted(() => ({ list: ["FINANCIAL_ACTIONS"] as string[] }));
 const mockEnsureSensitiveAccess = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 const mockAtualizarServicosVerificacao = vi.hoisted(() => vi.fn());
+const mockProrrogarPrazoOrcamento = vi.hoisted(() => vi.fn());
 const mockAnalisarAjusteOrcamento = vi.hoisted(() => vi.fn());
 const mockAprovarOrcamento = vi.hoisted(() => vi.fn());
 const mockAtualizarStatusEquipamento = vi.hoisted(() => vi.fn());
@@ -96,6 +97,7 @@ vi.mock("@/hooks/useNotification", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
+    prorrogarPrazoOrcamento: mockProrrogarPrazoOrcamento,
     listarProdutos: vi.fn().mockResolvedValue([]),
     buscarEquipamento: mockBuscarEquipamento,
     listarPecasBaixaPendente: mockListarPecasBaixaPendente,
@@ -800,6 +802,34 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       equipamento_id: 11,
       servicos: [expect.objectContaining({ descricao: "Reparo da placa" })],
     });
+  });
+
+  it("não prorroga o prazo da OS anterior se a rota mudar durante a busca da versão", async () => {
+    rota.pathname = "/equipamentos/10/orcamento";
+    const os = {
+      ...equipamentoVerificado,
+      status: "AGUARDANDO_APROVACAO",
+      prazo_aprovacao: "2099-01-20",
+    };
+    let resolverVersao!: (value: typeof os) => void;
+    const versaoPendente = new Promise<typeof os>((resolve) => { resolverVersao = resolve; });
+    mockBuscarEquipamento
+      .mockResolvedValueOnce(os)
+      .mockReturnValueOnce(versaoPendente)
+      .mockResolvedValueOnce({ ...os, id: 11 });
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    const view = render(<Equipamentos />);
+    fireEvent.change(await screen.findByDisplayValue("20/01/2099"), { target: { value: "2099-01-21" } });
+    await clicarConfirmarStatus();
+    fireEvent.click(await screen.findByTestId("confirm-action"));
+    await waitFor(() => expect(mockBuscarEquipamento).toHaveBeenNthCalledWith(2, 10));
+
+    rota.pathname = "/equipamentos/11/orcamento";
+    view.rerender(<Equipamentos />);
+    await act(async () => resolverVersao(os));
+
+    expect(mockAtualizarServicosVerificacao).toHaveBeenCalledTimes(1);
+    expect(mockProrrogarPrazoOrcamento).not.toHaveBeenCalled();
   });
 
   it("troca de OS na rota de verificação abre a verificação da nova OS", async () => {
