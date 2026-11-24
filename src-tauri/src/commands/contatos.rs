@@ -149,10 +149,18 @@ async fn fetch_contact(pool: &PgPool, id: i32, empresa_id: i32) -> Result<Client
 pub async fn listar_cliente_contatos(
     cliente_id: i32,
     empresa_id: i32,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<ClienteContato>, String> {
     let cliente_id = required_positive_id(cliente_id, "Cliente")?;
     let empresa_id = required_positive_id(empresa_id, "Empresa")?;
     let pool = get_pool().await.map_err(|error| error.to_string())?;
+    // Releitura ao vivo: exige sessão desbloqueada da mesma empresa, sem renová-la.
+    if segundo_plano == Some(true) {
+        let empresa_sessao = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+        if empresa_sessao != empresa_id {
+            return Err("Cliente de outra empresa.".to_string());
+        }
+    }
 
     let query = format!(
         "{} WHERE cliente_id = $1 AND empresa_id = $2 AND ativo = true ORDER BY nome ASC, id ASC",

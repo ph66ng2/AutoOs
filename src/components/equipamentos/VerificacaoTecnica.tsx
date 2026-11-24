@@ -77,6 +77,12 @@ interface VerificacaoTecnicaProps {
   podeFinalizar?: boolean;
   /** Avisa quando há algo preenchido (para perguntar antes de sair da página). */
   onSujoChange?: (sujo: boolean) => void;
+  /**
+   * Seta de voltar do cabeçalho. A página não limpa nada aqui: quem a abriu leva a saída pelo
+   * aviso "Sair sem salvar?" (como Esc e o menu) e o formulário só é limpo quando ela fecha.
+   * Sem esta prop, a seta fecha como o Cancelar.
+   */
+  onVoltar?: () => void;
 }
 
 export function VerificacaoTecnica({
@@ -88,6 +94,7 @@ export function VerificacaoTecnica({
   tecnicoInicial = "",
   podeFinalizar = true,
   onSujoChange,
+  onVoltar,
 }: VerificacaoTecnicaProps) {
   // ─── State ──────────────────────────────────────────
   const [diagnostico, setDiagnostico] = useState("");
@@ -307,7 +314,7 @@ export function VerificacaoTecnica({
       <div>
         <button
           type="button"
-          onClick={() => handleOpenChange(false)}
+          onClick={() => (onVoltar ? onVoltar() : handleOpenChange(false))}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-rapida hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" aria-hidden="true" />

@@ -53,6 +53,7 @@ import {
   digitosTelefoneBr,
 } from "@/lib/validations";
 import { useClientes } from "@/hooks/useClientes";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { useNotification } from "@/hooks/useNotification";
 import { db } from "@/lib/db";
 import { mensagemCadastroDuplicado } from "@/lib/operator-errors";
@@ -125,6 +126,12 @@ export default function Clientes() {
   const [contatosExpandido, setContatosExpandido] = useState<number | null>(null);
   const contatosExpandidoRef = useRef<number | null>(null);
   const contatosRequisicaoRef = useRef(0);
+  // Ordem de cada leitura (normal ou silenciosa) e a última aplicada: uma resposta mais antiga
+  // nunca sobrescreve uma mais nova.
+  const contatosOrdemRef = useRef(0);
+  const contatosAplicadoRef = useRef(0);
+  const equipOrdemRef = useRef(0);
+  const equipAplicadoRef = useRef(0);
   const [contatosLista, setContatosLista] = useState<ClienteContato[]>([]);
   const [carregandoContatos, setCarregandoContatos] = useState(false);
   const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
@@ -133,6 +140,8 @@ export default function Clientes() {
 
   const { clientes, total: totalClientes, loading, error, criar, atualizar, deletar, recarregar, destaques: destaquesAoVivo } =
     useClientes({ busca: busca || undefined, page: abaAtual, filtro });
+  const clientesRef = useRef(clientes);
+  clientesRef.current = clientes;
   const { data: contagem, recarregar: recarregarContagem } = useContagemClientes(busca || undefined);
   const { data: resumo, recarregar: recarregarResumo } = useResumoCliente(contatosExpandido);
   // Em tela larga o painel cabe ao lado: abre o primeiro cliente, como no desenho. Sem como
@@ -227,14 +236,16 @@ export default function Clientes() {
       return;
     }
     const clienteId = cliente.id!;
+    const ordem = ++contatosOrdemRef.current;
     const vigente = () => token === contatosRequisicaoRef.current && contatosExpandidoRef.current === clienteId;
+    const aplicavel = () => vigente() && ordem > contatosAplicadoRef.current;
     setCarregandoContatos(true);
     try {
       const lista = await db.listarClienteContatos(clienteId, cliente.empresa_id);
-      if (vigente()) setContatosLista(lista);
+      if (aplicavel()) { contatosAplicadoRef.current = ordem; setContatosLista(lista); }
     } catch (err) {
       console.error("Erro ao buscar contatos:", err);
-      if (vigente()) setContatosLista([]);
+      if (aplicavel()) { contatosAplicadoRef.current = ordem; setContatosLista([]); }
     } finally {
       if (vigente()) setCarregandoContatos(false);
     }
@@ -282,20 +293,59 @@ export default function Clientes() {
     setExpandido(clienteId);
     setEquipamentosCliente([]);
     setCarregandoEquip(true);
+    const ordem = ++equipOrdemRef.current;
     const vigente = () => token === equipRequisicaoRef.current;
+    const aplicavel = () => vigente() && ordem > equipAplicadoRef.current;
     try {
       const cliente = clientes.find(c => c.id === clienteId);
       if (cliente) {
         const doCliente = await db.listarEquipamentosCliente(clienteId, [nomeExibicaoCliente(cliente), cliente.nome ?? ""]);
-        if (vigente()) setEquipamentosCliente(doCliente);
+        if (aplicavel()) { equipAplicadoRef.current = ordem; setEquipamentosCliente(doCliente); }
       }
     } catch (err) {
       console.error("Erro ao buscar equipamentos:", err);
-      if (vigente()) setEquipamentosCliente([]);
+      if (aplicavel()) { equipAplicadoRef.current = ordem; setEquipamentosCliente([]); }
     } finally {
       if (vigente()) setCarregandoEquip(false);
     }
   }
+
+  /**
+   * Relê em silêncio os contatos e equipamentos do cliente aberto no painel (mudança ao vivo ou
+   * botão Atualizar). Leitura de segundo plano: não renova a sessão, não mostra o esqueleto e,
+   * se falhar, mantém o que já está na tela. Resposta de outro cliente (ou mais antiga que a
+   * última aplicada) é descartada.
+   */
+  function relerPainelEmSilencio() {
+    const clienteId = contatosExpandidoRef.current;
+    if (clienteId == null) return;
+    const cliente = clientesRef.current.find(c => c.id === clienteId);
+    if (!cliente) return;
+
+    const tokenContatos = contatosRequisicaoRef.current;
+    const ordemContatos = ++contatosOrdemRef.current;
+    if (cliente.empresa_id) {
+      db.listarClienteContatos(clienteId, cliente.empresa_id, true).then((lista) => {
+        if (tokenContatos !== contatosRequisicaoRef.current || contatosExpandidoRef.current !== clienteId) return;
+        if (ordemContatos <= contatosAplicadoRef.current) return;
+        contatosAplicadoRef.current = ordemContatos;
+        setContatosLista(lista);
+      }).catch(() => { /* leitura silenciosa: mantém os contatos que já estão na tela */ });
+    }
+
+    if (expandidoRef.current !== clienteId) return;
+    const tokenEquip = equipRequisicaoRef.current;
+    const ordemEquip = ++equipOrdemRef.current;
+    db.listarEquipamentosCliente(clienteId, [nomeExibicaoCliente(cliente), cliente.nome ?? ""], true).then((lista) => {
+      if (tokenEquip !== equipRequisicaoRef.current || expandidoRef.current !== clienteId) return;
+      if (ordemEquip <= equipAplicadoRef.current) return;
+      equipAplicadoRef.current = ordemEquip;
+      setEquipamentosCliente(lista);
+    }).catch(() => { /* leitura silenciosa: mantém os equipamentos que já estão na tela */ });
+  }
+
+  // Outro computador mudou contatos (portal), OS ou o próprio cliente: o painel aberto acompanha.
+  useAtualizacaoAoVivo(["clientes", "cliente_contatos", "equipamentos"], () => relerPainelEmSilencio());
 
   /** Abre (ou fecha, se já aberto) o cliente no painel: contatos e equipamentos juntos. */
   async function selecionarCliente(cliente: Cliente) {
@@ -573,7 +623,7 @@ export default function Clientes() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Nome, CPF/CNPJ, contato ou telefone" aria-label="Buscar clientes" value={busca} onChange={e => setBusca(e.target.value)} className="h-10 bg-muted pl-9" />
               </div>
-              <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" aria-label="Atualizar clientes" onClick={() => { void recarregar(); void recarregarContagem(); void recarregarResumo(); }}><RefreshCw className="h-4 w-4" /></Button>
+              <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" aria-label="Atualizar clientes" onClick={() => { void recarregar(); void recarregarContagem(); void recarregarResumo(); relerPainelEmSilencio(); }}><RefreshCw className="h-4 w-4" /></Button>
             </div>
             {error && (
               <ErrorAlert variant="error" context="Clientes" message={error} action="Carregar" />
