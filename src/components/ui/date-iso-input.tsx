@@ -94,6 +94,13 @@ export function DateIsoInput({ value, onValueChange, min, max, onBlur, onKeyDown
               const next = maskDateBr(raw);
               const cursor = event.target.selectionStart ?? raw.length;
               digitosAntesDoCursor.current = Math.min(raw.slice(0, cursor).replace(/\D/g, "").length, 8);
+              if (next === texto) {
+                // Mesmo texto (letra, 9º dígito, Backspace na "/"): não há novo render; devolve o cursor aqui.
+                const el = event.target;
+                const pos = Math.min(cursor, next.length);
+                digitosAntesDoCursor.current = null;
+                requestAnimationFrame(() => { if (document.activeElement === el) el.setSelectionRange(pos, pos); });
+              }
               setTexto(next);
               if (!next) {
                 onValueChange("");
