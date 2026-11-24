@@ -7,7 +7,7 @@ const contarClientesPorFiltro = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/db", () => ({ db: { contarClientesPorFiltro } }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => undefined) }));
 
-it("atualiza a contagem após recarga manual e eventos de clientes e OS", async () => {
+it("atualiza a contagem após recarga manual e eventos de clientes, OS e contatos", async () => {
   contarClientesPorFiltro.mockResolvedValue({ todos: 1 });
   const { result } = renderHook(() => useContagemClientes("Ana"));
   await waitFor(() => expect(result.current.data).toEqual({ todos: 1 }));
@@ -17,7 +17,7 @@ it("atualiza a contagem após recarga manual e eventos de clientes e OS", async 
   expect(contarClientesPorFiltro).toHaveBeenLastCalledWith("Ana", false);
   expect(result.current.data).toEqual({ todos: 2 });
 
-  for (const [tabela, todos] of [["clientes", 3], ["equipamentos", 4]] as const) {
+  for (const [tabela, todos] of [["clientes", 3], ["equipamentos", 4], ["cliente_contatos", 5]] as const) {
     contarClientesPorFiltro.mockResolvedValue({ todos });
     act(() => distribuirMudancas([{ tabela, id: 1, referencia: null, operacao: "U" }]));
     await waitFor(() => expect(result.current.data).toEqual({ todos }));
