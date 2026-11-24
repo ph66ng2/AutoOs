@@ -30,6 +30,7 @@ O projeto não está mais em fase de scaffold. O estado atual é um app Tauri + 
 - Backup manual PostgreSQL pelo app
 - Restore manual PostgreSQL pelo app com confirmação explícita
 - Diagnóstico local de suporte com logs e pacote JSON exportável
+- As exportações CSV de Equipamentos (lista ou seleção) e Finanças são salvas em `Documents/AutoOS/Exportacoes` no desktop e exibidas no gerenciador de arquivos. No navegador, o CSV é baixado.
 
 ## Pré-requisitos locais
 

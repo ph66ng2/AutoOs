@@ -725,6 +725,22 @@ pub async fn salvar_arquivo_temp(filename: String, bytes: Vec<u8>) -> Result<Str
     Ok(path_str)
 }
 
+/// Salva um CSV em Documents/AutoOS/Exportacoes e o mostra no gerenciador de arquivos.
+#[tauri::command]
+pub async fn salvar_exportacao_csv(filename: String, bytes: Vec<u8>) -> Result<String, String> {
+    let filename = sanitize_temp_filename(&filename)?;
+    if !filename.ends_with(".csv") {
+        return Err("A exportação deve ter a extensão .csv.".to_string());
+    }
+    let directory = default_documents_directory()?.join("AutoOS").join("Exportacoes");
+    fs::create_dir_all(&directory).map_err(|e| format!("Erro ao preparar pasta de exportações: {e}"))?;
+    let path = directory.join(filename);
+    fs::write(&path, bytes).map_err(|e| format!("Erro ao salvar exportação: {e}"))?;
+    reveal_file_in_manager(&path)
+        .map_err(|e| format!("CSV salvo em {}, mas não foi possível mostrar o arquivo: {e}", path.display()))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// Copia um arquivo já gerado pelo app (ex.: PDF do orçamento salvo em
 /// `Documents/Orcamentos`) para o diretório temporário do AutoOS, devolvendo
 /// o caminho temporário. Esse caminho é o único aceito como anexo pelo

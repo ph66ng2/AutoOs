@@ -141,6 +141,7 @@ fn main() {
             commands::auth::listar_minhas_acoes,
             // Util
             commands::util::salvar_arquivo_temp,
+            commands::util::salvar_exportacao_csv,
             commands::util::copiar_anexo_email_para_temp,
             commands::util::remover_anexo_email_temp,
             commands::util::salvar_ordem_servico_pdf,

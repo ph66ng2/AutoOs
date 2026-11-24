@@ -445,7 +445,7 @@ export default function Equipamentos() {
     setExportando(true);
     try {
       const nome = await exportarEquipamentos({ busca: busca || undefined, status: statusFiltro, tecnico: tecnicoFiltro === "TODOS" ? undefined : tecnicoFiltro, ordenacao });
-      success("Equipamentos", `Lista salva em ${nome}, na pasta temporária do app.`);
+      success("Equipamentos", `Lista salva em ${nome}.`);
     } catch (err) {
       showError("Equipamentos", "Exportar lista", err);
     } finally {

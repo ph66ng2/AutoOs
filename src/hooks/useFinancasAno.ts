@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { argSegundoPlano } from "@/lib/ao-vivo";
 import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
+import { baixarCsv } from "@/lib/exportacao-csv";
 import { receitaPorMes } from "@/hooks/useReceitaPorMes";
 import type { GastoFixo, GastoVariavel } from "@/types";
 
@@ -127,7 +128,7 @@ function campoCsv(valor: unknown) {
   return `"${texto.replace(/"/g, '""')}"`;
 }
 
-/** Baixa os lançamentos do mês em CSV, na pasta temporária do app (como a auditoria). Devolve o nome. */
+/** Baixa os lançamentos do mês em CSV. */
 export function useExportarLancamentos() {
   return useCallback(async (mes: number, ano: number, fixos: GastoFixo[], variaveis: GastoVariavel[]) => {
     const linhas = [
@@ -138,7 +139,6 @@ export function useExportarLancamentos() {
       ...variaveis.map((g) => ["variável", g.descricao, g.categoria, g.data, g.valor.toFixed(2)].map(campoCsv).join(",")),
     ];
     const nome = `financas-${ano}-${String(mes).padStart(2, "0")}.csv`;
-    await db.salvarArquivoTemp(Array.from(new TextEncoder().encode(`﻿${linhas.join("\n")}`)), nome);
-    return nome;
+    return baixarCsv(linhas, nome);
   }, []);
 }
