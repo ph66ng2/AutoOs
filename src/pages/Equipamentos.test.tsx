@@ -118,6 +118,16 @@ beforeEach(() => {
   dbMocks.listarHistoricoEquipamento.mockResolvedValue([]);
 });
 
+describe("botão Atualizar da lista", () => {
+  it("busca a lista de novo a cada clique, mesmo logo após outra carga", async () => {
+    abrir("/equipamentos");
+    const botao = await screen.findByRole("button", { name: "Atualizar equipamentos" });
+    fireEvent.click(botao);
+    fireEvent.click(botao);
+    expect(recarregar).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("abertura dos detalhes pela rota", () => {
   it("mantém a OS B quando a resposta da OS A chega depois", async () => {
     const a = buscaPendente();

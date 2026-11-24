@@ -21,7 +21,8 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
+import { EscopoAvisoAoSair, useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { db } from "@/lib/db";
@@ -164,6 +165,7 @@ export default function Configuracoes() {
     handleSubmit: handleSubmitWhatsapp,
     setValue: setWhatsappValue,
     watch: watchWhatsapp,
+    reset: resetWhatsapp,
   } = useForm<WhatsappFormValues>({
     defaultValues: {
       provider: "EVOLUTION",
@@ -171,6 +173,37 @@ export default function Configuracoes() {
       token: "",
     },
   });
+  const [whatsappSalvo, setWhatsappSalvo] = useState({ provider: "EVOLUTION", api_url: "" });
+
+  // O que foi digitado nos cartões de Integrações e ainda não foi salvo. SMTP só conta com a
+  // edição liberada (Editar recarrega o salvo); WhatsApp e túnel ficam guardados até salvar.
+  const smtpAtual = useWatch({ control });
+  const smtpSujo = smtpEditUnlocked && (
+    (["host", "username", "from_name", "from_email"] as const).some((campo) => (smtpAtual[campo] ?? "").trim() !== smtpSalvo[campo].trim())
+    || Number(smtpAtual.port) !== Number(smtpSalvo.port)
+    || Boolean(smtpAtual.use_tls) !== smtpSalvo.use_tls
+    || (smtpAtual.password ?? "").trim() !== ""
+  );
+  const whatsappSujo = (watchWhatsapp("api_url") ?? "").trim() !== whatsappSalvo.api_url.trim()
+    || (watchWhatsapp("token") ?? "").trim() !== "";
+  const fotosSujo = photoTunnelToken.trim() !== "";
+  // Um só aviso para a página: os cartões com "Salvar" próprio (mensagens prontas, Slack, contato
+  // do portal, garantia) informam o seu pelo escopo. Menu, Ctrl+K, voltar e trocar de aba perguntam.
+  const avisoAoSair = useAvisoAoSair(smtpSujo || whatsappSujo || fotosSujo);
+  // Sair da aba descarta o que não foi salvo nas Integrações (os cartões de dentro desmontam e
+  // perdem o seu; a aba recomeça com as edições fechadas): ao voltar, tudo mostra o que está salvo.
+  const [integracoesDescartadas, setIntegracoesDescartadas] = useState(0);
+  function trocarDeAba(proxima: string) {
+    avisoAoSair.sairComAviso(() => {
+      setIntegracoesDescartadas((vezes) => vezes + 1);
+      resetSmtp({ ...smtpSalvo, password: "" });
+      setSmtpEditUnlocked(false);
+      resetWhatsapp({ ...whatsappSalvo, token: "" });
+      setPhotoTunnelToken("");
+      setTab(proxima);
+      setSecurityMessage(null);
+    });
+  }
 
   async function loadAuditEvents() {
     if (!canManageProfiles) {
@@ -304,6 +337,7 @@ export default function Configuracoes() {
         if (config) {
           setWhatsappValue("provider", config.provider);
           setWhatsappValue("api_url", config.api_url);
+          setWhatsappSalvo({ provider: config.provider, api_url: config.api_url });
           setWhatsappHasToken(!!config.has_token);
         }
       } catch (error) {
@@ -493,6 +527,8 @@ export default function Configuracoes() {
 
       await WhatsappConfigService.salvar(payload);
       setWhatsappHasToken(!!payload.token || whatsappHasToken);
+      setWhatsappSalvo({ provider: payload.provider, api_url: payload.api_url });
+      resetWhatsapp({ provider: payload.provider, api_url: payload.api_url, token: "" });
       setWhatsappStatus("Configuração do WhatsApp salva com sucesso.");
     } catch (error: any) {
       const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar configuração do WhatsApp.");
@@ -722,12 +758,14 @@ export default function Configuracoes() {
   }
 
   return (
+    <EscopoAvisoAoSair aviso={avisoAoSair}>
     <div className="space-y-6">
       <PageHeader titulo="Configurações" />
+      {avisoAoSair.dialogo}
 
       <Tabs
         value={tab}
-        onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }}
+        onValueChange={trocarDeAba}
         orientation="vertical"
         className="grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-2xl border bg-card lg:grid-cols-[260px_minmax(0,1fr)]"
       >
@@ -771,6 +809,7 @@ export default function Configuracoes() {
         <ConfiguracoesTabGeral conectado={!connectionUnavailable} />
 
         <ConfiguracoesTabIntegracoes
+          key={integracoesDescartadas}
           canConfigureSmtp={canConfigureSmtp}
           canConfigureWhatsapp={canConfigureWhatsapp}
           register={register}
@@ -875,6 +914,7 @@ export default function Configuracoes() {
 
       </Tabs>
     </div>
+    </EscopoAvisoAoSair>
   );
 }
 

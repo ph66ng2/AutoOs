@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -18,13 +19,28 @@ const EXEMPLO = { cliente: "Mercado Bom Preço", contato: "Lúcia", equipamento:
 
 type Rascunho = { id: number | null; titulo: string; texto: string; atualizado_em: string | null };
 
+/** Mensagem nova com algo escrito, ou existente com título/texto diferente do que abriu. */
+function rascunhoAlterado(editando: Rascunho | null, original: Rascunho | null): boolean {
+  if (!editando) return false;
+  if (!original) return editando.titulo.trim() !== "" || editando.texto.trim() !== "";
+  return editando.titulo !== original.titulo || editando.texto !== original.texto;
+}
+
 /**
  * Configurações › Integrações (permissão de comunicação): as mensagens prontas que o botão
  * "WhatsApp ▾" oferece no cliente e na OS. Valem para a empresa toda.
  */
 export function MensagensProntasCard() {
   const { modelos, loading, error, salvar, excluir } = useModelosMensagem();
-  const [editando, setEditando] = useState<Rascunho | null>(null);
+  const [editando, setEditandoAtual] = useState<Rascunho | null>(null);
+  // Como a mensagem estava ao abrir a edição (nula para mensagem nova).
+  const [original, setOriginal] = useState<Rascunho | null>(null);
+  const setEditando = (proximo: Rascunho | null) => {
+    if (!proximo || !editando) setOriginal(proximo && proximo.id != null ? proximo : null);
+    setEditandoAtual(proximo);
+  };
+  // Mensagem pela metade: sair da tela ou da aba pergunta antes.
+  useAvisoAoSair(rascunhoAlterado(editando, original));
   const [salvando, setSalvando] = useState(false);
   const [apagar, setApagar] = useState<ModeloMensagem | null>(null);
   const textoRef = useRef<HTMLTextAreaElement>(null);

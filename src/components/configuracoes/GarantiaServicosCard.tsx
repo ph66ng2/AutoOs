@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useGarantiaServicos } from "@/hooks/useGarantiaServicos";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 
 /**
@@ -14,9 +15,15 @@ export function GarantiaServicosCard() {
   const { dias, salvar } = useGarantiaServicos();
   const [valor, setValor] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState("");
   useEffect(() => {
-    if (dias != null) setValor(String(dias));
+    if (dias != null) {
+      setValor(String(dias));
+      setSalvo(String(dias));
+    }
   }, [dias]);
+  // Prazo mudado e não salvo: sair da tela ou da aba pergunta antes.
+  useAvisoAoSair(valor.trim() !== salvo);
   const numero = Number(valor);
   const valido = valor.trim() !== "" && Number.isInteger(numero) && numero >= 0 && numero <= 3650;
 
@@ -25,6 +32,8 @@ export function GarantiaServicosCard() {
     setSalvando(true);
     try {
       await salvar(numero);
+      setSalvo(String(numero));
+      setValor(String(numero));
       toast.success("Prazo de garantia salvo.");
     } catch (causa) {
       toast.error(mensagemVisivelAoOperador(causa) ?? "Não foi possível salvar o prazo de garantia.");

@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { isTemporaryDatabaseAccessMessage, sensitiveAccessErrorMessage } from "@/lib/sensitive-access-error";
 import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
+import { useRecarregarAoDesbloquear } from "@/hooks/useRecarregarAoDesbloquear";
 import { requestTour } from "@/lib/tour-request";
 import { movimentoReduzido } from "@/lib/preferencias-computador";
 import { CarregandoSkeleton, SkeletonPagina } from "@/components/ui/skeleton";
@@ -143,6 +144,8 @@ const KEYRING_BLOCKED_MESSAGE = "O cofre de senhas do sistema está bloqueado ou
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const { bootAnimationComplete } = useBootUi();
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
+  // Avisos ao vivo de quando a sessão estava bloqueada se perderam: desbloqueou, todas recarregam.
+  useRecarregarAoDesbloquear(status);
   // Técnicos e e-mails profissionais (lib/tecnicos), que e-mail e PDF consultam por nome, e a
   // cópia da gerência (lib/copia-gerencia): só da empresa da sessão, pelo backend, nunca da lista
   // geral de perfis (outras empresas, desativados). Ao trocar de perfil (e de empresa), bloquear

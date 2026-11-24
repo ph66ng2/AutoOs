@@ -823,6 +823,17 @@ export default function Equipamentos() {
     || tecnicoNovoEquipamento !== tecnicoBaseEdicaoRef.current
     || (baselineFotosRef.current != null && !imagensPersistidasIguais(imagensFormulario, baselineFotosRef.current.fotos))
   );
+  // Ajuste de orçamento: o que a pessoa pode mudar na página, comparado com o que abriu.
+  const baseAjusteRef = useRef<string | null>(null);
+  const instantaneoAjuste = (valores: {
+    valor: number; prazo: string; observacoes: string; forma: string; detalhe: string;
+    servicos: ServicoNecessario[]; pecasLegadas: PecaNecessaria[];
+  }) => JSON.stringify(valores);
+  const ajusteSujo = statusDialogOpen && ajusteOrcamentoSemMudancaStatus && baseAjusteRef.current != null
+    && baseAjusteRef.current !== instantaneoAjuste({
+      valor: valorOrcamento, prazo: prazoAprovacao, observacoes: observacoesAjuste, forma: formaPagamentoAjuste,
+      detalhe: detalhePagamentoAjuste, servicos: servicosAjuste, pecasLegadas: pecasLegadasAjuste,
+    });
   useEffect(() => {
     if (!novaEntradaAberta || chaveFormularioEntrada !== chaveRascunho || chaveRascunho === null) return;
     const dono = donoRascunhoEntrada.current;
@@ -1072,7 +1083,11 @@ export default function Equipamentos() {
     }
   }
 
-  /** Fecha a página de cadastro/edição sem salvar e volta para onde a pessoa estava. */
+  /**
+   * Fecha a página de cadastro/edição sem salvar e volta para onde a pessoa estava. Só depois de
+   * salvar, de "Sair sem salvar" ou com nada a perder: a navegação de volta não pergunta de novo.
+   * Os botões de saída da edição passam antes por `sairDoFormulario`.
+   */
   function fecharFormulario(navegar = true) {
     if (!formularioAbertoRef.current) return;
     formularioAbertoRef.current = false;
@@ -1577,20 +1592,19 @@ export default function Equipamentos() {
   // Finalizar (fecharPaginaVerificacao) passam direto.
   const [verificacaoSuja, setVerificacaoSuja] = useState(false);
   // Um bloqueio só para a tela inteira: verificação pela metade ou edição de equipamento suja.
-  const avisoVerificacao = useAvisoAoSair((verificacaoDialogOpen && verificacaoSuja) || edicaoSuja);
+  // O ajuste de orçamento pela metade entra no mesmo bloqueio.
+  const avisoVerificacao = useAvisoAoSair((verificacaoDialogOpen && verificacaoSuja) || edicaoSuja || ajusteSujo);
   const avisoEdicao = avisoVerificacao;
 
   // Esc sai das páginas de formulário (como o botão marcado "(Esc)"). Com algo pela metade que
   // não tem rascunho, a saída passa pelo aviso "Sair sem salvar?" em vez de descartar direto.
-  // Nova entrada: Esc volta guardando o rascunho (só o Cancelar descarta). Edição: Esc é o
-  // Cancelar, e com alteração passa pelo aviso "Sair sem salvar?".
-  useEscSai(dialogOpen, () => {
-    if (editando && edicaoSuja) {
-      navigate(origemEntradaRef.current);
-      return;
-    }
-    fecharFormulario();
-  });
+  // Nova entrada: Esc e a seta voltam guardando o rascunho (só o Cancelar descarta). Edição:
+  // Esc, a seta e o Cancelar passam pelo aviso "Sair sem salvar?" e só fecham depois dele.
+  function sairDoFormulario() {
+    if (editando) avisoEdicao.sairComAviso(() => fecharFormulario());
+    else fecharFormulario();
+  }
+  useEscSai(dialogOpen, sairDoFormulario);
   // Esc e a seta de voltar do cabeçalho: com algo preenchido, a saída passa pelo aviso e a
   // página só é fechada (e limpa) depois de "Sair sem salvar"; limpa, fecha direto.
   function voltarDaVerificacao() {
@@ -1711,12 +1725,22 @@ export default function Equipamentos() {
     } catch {
       servicosIniciais = [];
     }
-    setServicosAjuste(normalizarServicosOrcamento(servicosIniciais));
+    const servicosNormalizados = normalizarServicosOrcamento(servicosIniciais);
+    setServicosAjuste(servicosNormalizados);
+    let pecasLegadas: PecaNecessaria[] = [];
     try {
       const todas = JSON.parse(verificacao?.pecas_necessarias || "[]") as PecaNecessaria[];
-      const vinculadas = new Set(pecasParaOrcamento(normalizarServicosOrcamento(servicosIniciais)).map((p) => p.id));
-      setPecasLegadasAjuste(todas.filter((p) => !vinculadas.has(p.id)));
-    } catch { setPecasLegadasAjuste([]); }
+      const vinculadas = new Set(pecasParaOrcamento(servicosNormalizados).map((p) => p.id));
+      pecasLegadas = todas.filter((p) => !vinculadas.has(p.id));
+    } catch { pecasLegadas = []; }
+    setPecasLegadasAjuste(pecasLegadas);
+    const pagamentoAprovado = orcamentoJaAprovado(eq.status) && verificacao?.forma_pagamento_codigo;
+    baseAjusteRef.current = instantaneoAjuste({
+      valor: valorBase, prazo: eq.prazo_aprovacao || "", observacoes: verificacao?.observacoes || "",
+      forma: pagamentoAprovado ? verificacao.forma_pagamento_codigo ?? "" : "",
+      detalhe: pagamentoAprovado ? verificacao.forma_pagamento_detalhe || "" : "",
+      servicos: servicosNormalizados, pecasLegadas,
+    });
 
     setCarregandoCatalogoAjuste(true);
     try {
@@ -1858,6 +1882,7 @@ export default function Equipamentos() {
    */
   function fecharPaginaAjuste() {
     invalidarAjuste();
+    baseAjusteRef.current = null;
     const alvo = selecionado;
     setStatusDialogOpen(false);
     setAjusteOrcamentoSemMudancaStatus(false);
@@ -1866,6 +1891,8 @@ export default function Equipamentos() {
       db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
       return;
     }
+    // Só é chamada depois de salvar ou de "Sair sem salvar": a navegação não pergunta de novo.
+    avisoVerificacao.liberarProximaSaida();
     if (pathnameAtualRef.current !== origem) navigate(origem);
   }
 
@@ -1873,7 +1900,11 @@ export default function Equipamentos() {
   const paginaAjusteAberta = statusDialogOpen && ajusteOrcamentoSemMudancaStatus;
   const paginaAjusteAbertaRef = useRef(false);
   paginaAjusteAbertaRef.current = paginaAjusteAberta;
-  useEscSai(paginaAjusteAberta, () => fecharPaginaAjuste());
+  /** Seta, Esc e Cancelar do ajuste: com algo alterado, passam pelo aviso "Sair sem salvar?". */
+  function sairDoAjuste() {
+    avisoVerificacao.sairComAviso(() => fecharPaginaAjuste());
+  }
+  useEscSai(paginaAjusteAberta, sairDoAjuste);
   const idAjusteRotaAnterior = useRef<number | null>(null);
   useEffect(() => {
     const anterior = idAjusteRotaAnterior.current;
@@ -3586,7 +3617,7 @@ export default function Equipamentos() {
         <div>
           <button
             type="button"
-            onClick={() => fecharPaginaAjuste()}
+            onClick={sairDoAjuste}
             className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-rapida hover:text-foreground"
           >
             <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -3633,7 +3664,7 @@ export default function Equipamentos() {
         <div className="sticky bottom-0 z-20 -mx-4 mt-auto flex flex-wrap items-center justify-between gap-3 border-t bg-card px-4 py-3 lg:-mx-8 lg:px-8">
           <p className="text-sm text-muted-foreground">O status atual do equipamento será mantido.</p>
           <div className="flex w-full gap-2 md:w-auto">
-            <Button type="button" variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={() => fecharPaginaAjuste()}>Cancelar<TeclaNoBotao tecla="Esc" /></Button>
+            <Button type="button" variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={sairDoAjuste}>Cancelar<TeclaNoBotao tecla="Esc" /></Button>
             <Button type="button" className="h-12 flex-1 md:h-10 md:flex-none" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
               {salvando ? "Salvando..." : "Confirmar"}
             </Button>
@@ -3724,7 +3755,7 @@ export default function Equipamentos() {
                 <SelectItem value="CADASTRO_RECENTE">Cadastros recentes</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="h-10 w-10 shrink-0" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="h-10 w-10 shrink-0" onClick={() => void recarregar()}><RefreshCw className="h-4 w-4" /></Button>
             </div>
           </div>
 
@@ -3924,7 +3955,7 @@ export default function Equipamentos() {
           <div>
             <button
               type="button"
-              onClick={() => fecharFormulario()}
+              onClick={sairDoFormulario}
               aria-label="Voltar"
               className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-rapida hover:text-foreground"
             >
@@ -4232,7 +4263,11 @@ export default function Equipamentos() {
                 variant="outline"
                 type="button"
                 onClick={() => {
-                  if (!editando) descartarEntrada();
+                  if (editando) {
+                    sairDoFormulario();
+                    return;
+                  }
+                  descartarEntrada();
                   fecharFormulario();
                 }}
               >
