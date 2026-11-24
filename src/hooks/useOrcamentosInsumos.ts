@@ -12,7 +12,32 @@ import { useCallback, useEffect, useState, useLayoutEffect, useRef } from "react
 import { argSegundoPlano } from "@/lib/ao-vivo";
 import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
+import type { MudancaAoVivo } from "@/lib/ao-vivo";
 import type { OrcamentoInsumos, StatusOrcamentoInsumos } from "@/types";
+
+/**
+ * Mudança só de cliente/contato relê a lista quando pode alterá-la: há busca (que procura por
+ * nome, razão social e CPF/CNPJ do cliente) ou o cliente/contato aparece numa linha exibida.
+ * Sem busca, um cliente que não está na página não muda nem a lista nem as pílulas (as contagens
+ * sem busca não dependem do cliente). Lista vazia de mudanças (reconexão, foco) sempre relê.
+ */
+export function precisaRecarregar(
+  mudancas: readonly MudancaAoVivo[],
+  busca: string | undefined,
+  exibidos: readonly OrcamentoInsumos[],
+): boolean {
+  if (mudancas.length === 0) return true;
+  if (mudancas.some((m) => m.tabela === "orcamentos_insumos")) return true;
+  if (busca?.trim()) return true;
+  return mudancas.some((m) => {
+    if (m.tabela === "clientes") return m.id == null || exibidos.some((o) => o.cliente_id === m.id);
+    if (m.tabela === "cliente_contatos") {
+      return (m.id == null && m.referencia == null)
+        || exibidos.some((o) => (m.id != null && o.contato_id === m.id) || (m.referencia != null && o.cliente_id === m.referencia));
+    }
+    return true;
+  });
+}
 
 interface UseOrcamentosInsumosParams {
   busca?: string;
@@ -117,22 +142,19 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
   }, [carregar, params.busca, params.status, params.page, params.criadoPor, params.perfilId]);
 
   // Outro computador mudou algo desta lista: recarrega em silêncio e destaca o que mudou.
-
+  // A lista e as pílulas também leem `clientes` (nome, razão social, documento: exibidos e usados
+  // pela busca) e `cliente_contatos` (nome do contato exibido). Itens só mudam junto com um
+  // UPDATE em `orcamentos_insumos`, que já avisa.
   const { destaques, lembrar } = useDestaquesAoVivo(orcamentos, (item) => item.id, (item) => JSON.stringify(item));
 
-  useAtualizacaoAoVivo(["orcamentos_insumos"], () => {
-
+  useAtualizacaoAoVivo(["orcamentos_insumos", "clientes", "cliente_contatos"], (mudancas) => {
+    if (!precisaRecarregar(mudancas, paramsRef.current.busca, orcamentos)) return;
     if (cargaVisivelPendente.current) {
-
       recargaPendente.current = true;
-
       return;
-
     }
     lembrar();
-
     void carregar({ silencioso: true });
-
   });
 
   return { orcamentos, total, contagens, minhasTotal, loading, error, recarregar: carregar, destaques };
