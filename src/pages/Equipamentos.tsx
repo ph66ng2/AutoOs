@@ -597,12 +597,17 @@ export default function Equipamentos() {
   const selecionadoAtualizadoEmRef = useRef<string | undefined>();
   selecionadoAtualizadoEmRef.current = selecionado?.atualizado_em;
   const recargaPendenteRef = useRef<number | null>(null);
+  /** Geração da recarga ao vivo da OS aberta: só a mais recente aplica (abrir/fechar também invalida). */
+  const geracaoRecargaOsRef = useRef(0);
+  useEffect(() => { geracaoRecargaOsRef.current += 1; }, [detalhesDialogOpen, selecionado?.id]);
   const recarregarOsAberta = useCallback(async (id: number, mesmoSemMudar: boolean) => {
+    const geracao = ++geracaoRecargaOsRef.current;
     const [eq, verif, historico] = await Promise.allSettled([
       db.buscarEquipamento(id, true),
       db.buscarVerificacao(id),
       db.listarHistoricoEquipamento(id, true),
     ]);
+    if (geracao !== geracaoRecargaOsRef.current) return;
     if (eq.status !== "fulfilled" || selecionadoIdRef.current !== id || !detalhesAbertoRef.current) return;
     // A edição pode ter aberto enquanto a recarga estava a caminho: não troca a OS por baixo
     // dela (o token de concorrência da edição tem de continuar o de quando ela abriu).
