@@ -18,7 +18,7 @@
  * ║  USADO POR: App.tsx (rota /)                                ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useCallback, useState, useEffect, useMemo } from "react";
+import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { useNavigate } from "react-router-dom";
 import {
@@ -85,7 +85,18 @@ export default function Dashboard() {
   const [mesSel, setMesSel] = useState({ ano: agora.getFullYear(), mes: agora.getMonth() + 1 });
 
   // Carrega o painel; a atualização ao vivo chama de novo em silêncio (os números só trocam).
-  const carregarPainel = useCallback(async (segundoPlano = false) => {
+  // Só o pedido mais novo publica: uma recarga ao vivo antiga que termina por último não volta
+  // os números. Mudança durante a primeira carga visível vira uma recarga silenciosa no fim dela.
+  const pedido = useRef(0);
+  const cargaVisivelPendente = useRef(false);
+  const recargaPendente = useRef(false);
+  const carregarPainel = useCallback(async (segundoPlano = false): Promise<void> => {
+      if (segundoPlano && cargaVisivelPendente.current) {
+        recargaPendente.current = true;
+        return;
+      }
+      const meu = ++pedido.current;
+      if (!segundoPlano) cargaVisivelPendente.current = true;
       try {
         // A lista simples traz só as 50 OS mais novas: serve para os itens de "Ações pendentes",
         // nunca para contar. Contagens vêm por status; o movimento, das datas de todas as OS.
@@ -98,6 +109,7 @@ export default function Dashboard() {
           // da virada do ano que ainda é 31/12 em Salvador.
           db.listarMovimentoBancada(anoAtual - 2, anoAtual + 1, segundoPlano),
         ]);
+        if (meu !== pedido.current) return;
         const total = (status: string) => contagens[status] ?? 0;
         const estoqueBaixo = produtos.filter(p => p.quantidade_estoque < p.quantidade_minima);
 
@@ -121,12 +133,27 @@ export default function Dashboard() {
         setProdutosEstoqueBaixo(estoqueBaixo.slice(0, 5));
         setAcoesPendentes(pendentes);
       } catch (err) {
-        console.error("Erro ao carregar dashboard:", err);
+        // Recarga silenciosa que falha mantém os números já na tela.
+        if (meu === pedido.current) console.error("Erro ao carregar dashboard:", err);
       } finally {
-        setLoading(false);
+        if (meu === pedido.current) {
+          cargaVisivelPendente.current = false;
+          setLoading(false);
+          if (!segundoPlano && recargaPendente.current) {
+            recargaPendente.current = false;
+            void carregarPainel(true);
+          }
+        }
       }
   }, []);
-  useEffect(() => { void carregarPainel(); }, [carregarPainel]);
+  useEffect(() => {
+    void carregarPainel();
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
+    };
+  }, [carregarPainel]);
   useAtualizacaoAoVivo(["equipamentos", "verificacoes", "produtos"], () => void carregarPainel(true));
 
   function getAcaoPendente(eq: Equipamento): { label: string; cor: string } {
