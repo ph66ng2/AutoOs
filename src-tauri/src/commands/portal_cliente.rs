@@ -273,6 +273,7 @@ pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>
             Some("SENHA_REPETIDA") => "Outro contato deste CPF/CNPJ já usa essa senha. Escolha outra: é a senha que identifica quem entrou.".to_string(),
             _ => super::operator_errors::mapear_erro_sql(error),
         })?;
+    guardar_senha_visivel(&mut tx, empresa_id, contato_id, senha.as_deref(), actor.id).await?;
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     record_security_event(
@@ -290,6 +291,64 @@ pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>
         .fetch_one(&pool)
         .await
         .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+/// Guarda a senha que a equipe acabou de definir (ou apaga, com `None`) para ser consultada depois
+/// em `ver_senha_portal_contato` (0063). Roda na mesma transação de `portal_definir_senha_contato`.
+async fn guardar_senha_visivel(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    empresa_id: i32,
+    contato_id: i32,
+    senha: Option<&str>,
+    profile_id: i32,
+) -> Result<(), String> {
+    sqlx::query("SELECT public.portal_guardar_senha_visivel($1, $2, $3, $4)")
+        .bind(empresa_id)
+        .bind(contato_id)
+        .bind(senha)
+        .bind(profile_id)
+        .execute(&mut **tx)
+        .await
+        .map(|_| ())
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+/// Senha atual do portal de um contato, para a equipe repassar ao cliente (decisão de 24/11/2026).
+/// `None` quando a senha foi criada antes da 0063 ou trocada por outro caminho: aí só gerando outra.
+/// Exige as mesmas permissões de criar a senha e fica na auditoria.
+#[tauri::command]
+pub async fn ver_senha_portal_contato(contato_id: i32) -> Result<Option<String>, String> {
+    require_sensitive_access()?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let acesso: Option<String> = sqlx::query_scalar(
+        "SELECT portal_acesso FROM cliente_contatos WHERE id = $1 AND empresa_id = $2",
+    )
+    .bind(contato_id)
+    .bind(empresa_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    if acesso.is_none() {
+        return Err("Contato não encontrado na empresa ativa.".to_string());
+    }
+    let actor = require_any_permission(permissoes_senha_portal(acesso.as_deref()))?;
+
+    let senha: Option<String> = sqlx::query_scalar("SELECT public.portal_ler_senha_visivel($1, $2)")
+        .bind(empresa_id)
+        .bind(contato_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    record_security_event(
+        "PORTAL_PASSWORD_VIEWED",
+        Some(&actor),
+        format!("empresa_id={empresa_id}; contato_id={contato_id}; disponivel={}", senha.is_some()),
+        true,
+    )
+    .await;
+    Ok(senha)
 }
 
 /// Permissões que autorizam criar, trocar ou remover a senha do portal de um contato. A senha de
@@ -626,6 +685,7 @@ pub async fn preparar_acesso_portal(
                 .await;
             match resultado {
                 Ok(_) => {
+                    guardar_senha_visivel(&mut savepoint, empresa_id, contato_id, Some(&senha), actor.id).await?;
                     savepoint.commit().await.map_err(map)?;
                     credenciais = Some(CredenciaisPortal {
                         usuario: atual.cliente_documento.clone(),

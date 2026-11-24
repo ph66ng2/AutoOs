@@ -208,6 +208,7 @@ fn main() {
             commands::suporte::retorno_chamado_suporte,
             commands::portal_cliente::definir_acesso_portal_contato,
             commands::portal_cliente::definir_senha_portal_contato,
+            commands::portal_cliente::ver_senha_portal_contato,
             commands::portal_cliente::publicar_orcamento_portal,
             commands::portal_documentos::publicar_documento_portal,
             commands::portal_cliente::listar_orcamentos_pendentes_portal,

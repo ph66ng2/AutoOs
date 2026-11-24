@@ -454,6 +454,11 @@ export const db = {
     return invoke<ClienteContato>("definir_senha_portal_contato", { contatoId, senha });
   },
 
+  /** Senha atual do portal do contato (definida pela equipe a partir da 0063), ou null → Rust: ver_senha_portal_contato */
+  async verSenhaPortalContato(contatoId: number): Promise<string | null> {
+    return invoke<string | null>("ver_senha_portal_contato", { contatoId });
+  },
+
   async obterVersaoDocumentoPortal(equipamentoId: number): Promise<DecisaoOrcamentoInfo | null> {
     return tauriInvoke<DecisaoOrcamentoInfo | null>("obter_decisao_orcamento", { equipamentoId });
   },

@@ -214,11 +214,9 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
       <AlertDialog open={confirmarFechar} onOpenChange={setConfirmarFechar}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>A senha não aparece de novo.</AlertDialogTitle>
+            <AlertDialogTitle>Fechar sem enviar a senha?</AlertDialogTitle>
             <AlertDialogDescription>
-              {podeGerar
-                ? "Copie ou envie antes de fechar, ou gere uma nova senha."
-                : "Copie ou envie antes de fechar."}
+              Copie ou envie antes de fechar. Depois, a senha fica em Ver senha, no acesso ao portal do equipamento.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2">

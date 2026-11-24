@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   tratar: vi.fn(),
   linkInfo: vi.fn(),
   cliente: vi.fn(),
+  verSenha: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -21,6 +22,7 @@ vi.mock("@/lib/db", () => ({
     listarClienteContatos: mocks.contatos,
     marcarSolicitacaoOrcamentoTratada: mocks.tratar,
     buscarCliente: mocks.cliente,
+    verSenhaPortalContato: mocks.verSenha,
     abrirUrl: vi.fn(),
   },
 }));
@@ -176,6 +178,55 @@ describe("PortalClientePanel", () => {
     expect(within(lista).getByText("Senha criada")).toBeInTheDocument();
     expect(within(lista).getByText("Só acompanhar")).toBeInTheDocument();
     expect(within(lista).getByText("Sem senha")).toBeInTheDocument();
+  });
+
+  it("mostra a senha do contato com PIN e copia login e senha", async () => {
+    mocks.obter.mockResolvedValue(info());
+    mocks.ensure.mockResolvedValue(true);
+    mocks.verSenha.mockResolvedValue("abc-123-xyz");
+    mocks.contatos.mockResolvedValue([
+      { id: 5, empresa_id: 1, cliente_id: 2, nome: "Ana Souza", ativo: true, portal_acesso: "DECIDIR", portal_senha_definida_em: "2026-10-16T10:00:00Z" },
+    ]);
+    const escrever = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: escrever } });
+    const painel = await abrirPainel();
+    const lista = await within(painel).findByRole("list", { name: "Contatos com acesso" });
+    expect(within(lista).queryByText("abc-123-xyz")).not.toBeInTheDocument();
+    fireEvent.click(within(lista).getByRole("button", { name: "Ver senha" }));
+    expect(await within(lista).findByText("abc-123-xyz")).toBeInTheDocument();
+    expect(mocks.ensure).toHaveBeenCalledWith(expect.objectContaining({ anyPermission: ["FINANCIAL_ACTIONS", "PREPARE_QUOTES"] }));
+    expect(mocks.verSenha).toHaveBeenCalledWith(5);
+    fireEvent.click(within(lista).getByRole("button", { name: "Copiar login e senha" }));
+    await waitFor(() => expect(escrever).toHaveBeenCalledWith(expect.stringContaining("abc-123-xyz")));
+    expect(escrever.mock.calls[0][0]).toContain("11222333000181");
+    fireEvent.click(within(lista).getByRole("button", { name: "Esconder senha" }));
+    expect(within(lista).queryByText("abc-123-xyz")).not.toBeInTheDocument();
+  });
+
+  it("não busca a senha quando o PIN é negado", async () => {
+    mocks.obter.mockResolvedValue(info());
+    mocks.ensure.mockResolvedValue(false);
+    mocks.contatos.mockResolvedValue([
+      { id: 6, empresa_id: 1, cliente_id: 2, nome: "Bruno Lima", ativo: true, portal_acesso: "ACOMPANHAR", portal_senha_definida_em: "2026-10-16T10:00:00Z" },
+    ]);
+    const painel = await abrirPainel();
+    const lista = await within(painel).findByRole("list", { name: "Contatos com acesso" });
+    fireEvent.click(within(lista).getByRole("button", { name: "Ver senha" }));
+    await waitFor(() => expect(mocks.ensure).toHaveBeenCalledWith(expect.objectContaining({ permission: "MANAGE_STATUS_LINKS" })));
+    expect(mocks.verSenha).not.toHaveBeenCalled();
+  });
+
+  it("avisa quando a senha foi criada antes de o AutoOS guardar senhas", async () => {
+    mocks.obter.mockResolvedValue(info());
+    mocks.ensure.mockResolvedValue(true);
+    mocks.verSenha.mockResolvedValue(null);
+    mocks.contatos.mockResolvedValue([
+      { id: 5, empresa_id: 1, cliente_id: 2, nome: "Ana Souza", ativo: true, portal_acesso: "DECIDIR", portal_senha_definida_em: "2026-10-16T10:00:00Z" },
+    ]);
+    const painel = await abrirPainel();
+    const lista = await within(painel).findByRole("list", { name: "Contatos com acesso" });
+    fireEvent.click(within(lista).getByRole("button", { name: "Ver senha" }));
+    expect(await within(lista).findByText(/criada antes de o AutoOS guardar senhas/)).toBeInTheDocument();
   });
 
   it("Gerenciar em Contatos abre o diálogo de acesso direto na tela de contatos", async () => {
