@@ -58,6 +58,7 @@ export function useInsumos(params?: UseInsumosParams) {
   const [error, setError] = useState<string | null>(null);
 
   const requestIdRef = useRef(0);
+  const carregouUmaVez = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -103,11 +104,13 @@ export function useInsumos(params?: UseInsumosParams) {
         ...argSegundoPlano(silencioso),
       );
       if (!atual()) return;
+      carregouUmaVez.current = true;
+      setError(null);
       setProdutos(data.items);
       setTotal(data.total);
       setInsumosAbaixoMinimo(data.belowMinimum ?? 0);
     } catch (err: any) {
-      if (!atual() || silencioso) return;
+      if (!atual() || (silencioso && carregouUmaVez.current)) return;
       setError(err?.toString() || "Erro ao carregar produtos");
       console.error("Erro ao carregar produtos:", err);
     } finally {

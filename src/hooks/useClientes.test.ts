@@ -64,4 +64,42 @@ describe("useClientes", () => {
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
   });
+
+  it("limpa a falha inicial quando a recarga ao vivo traz a lista", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      mocks.listarClientesPaginados.mockRejectedValueOnce(new Error("Falha inicial"));
+      const { result } = renderHook(() => useClientes());
+      await waitFor(() => expect(result.current.error).toContain("Falha inicial"));
+
+      mocks.listarClientesPaginados.mockResolvedValueOnce({ items: [{ id: 1 }], total: 1 });
+      await act(async () => mocks.aoVivo?.());
+
+      expect(result.current.clientes).toEqual([{ id: 1 }]);
+      expect(result.current.error).toBeNull();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("mostra a falha de uma recarga silenciosa que substitui a primeira leitura", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      let rejeitar!: (erro: Error) => void;
+      const inicial = new Promise<never>((_, reject) => { rejeitar = reject; });
+      mocks.listarClientesPaginados.mockReturnValueOnce(inicial)
+        .mockRejectedValueOnce(new Error("Falha em segundo plano"));
+      const { result } = renderHook(() => useClientes());
+      expect(result.current.loading).toBe(true);
+
+      await act(async () => mocks.aoVivo?.());
+      expect(result.current.error).toContain("Falha em segundo plano");
+      expect(result.current.loading).toBe(false);
+
+      await act(async () => rejeitar(new Error("Falha antiga")));
+      expect(result.current.error).toContain("Falha em segundo plano");
+    } finally {
+      log.mockRestore();
+    }
+  });
 });

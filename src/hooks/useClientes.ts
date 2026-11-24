@@ -53,6 +53,7 @@ export function useClientes(params?: UseClientesParams) {
   const [error, setError] = useState<string | null>(null);
 
   const requestIdRef = useRef(0);
+  const carregouUmaVez = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -94,10 +95,12 @@ export function useClientes(params?: UseClientesParams) {
         ...argSegundoPlano(silencioso),
       );
       if (!atual()) return;
+      carregouUmaVez.current = true;
+      setError(null);
       setClientes(data.items);
       setTotal(data.total);
     } catch (err: any) {
-      if (!atual() || silencioso) return;
+      if (!atual() || (silencioso && carregouUmaVez.current)) return;
       setError(err?.toString() || "Erro ao carregar clientes");
       console.error("Erro ao carregar clientes:", err);
     } finally {

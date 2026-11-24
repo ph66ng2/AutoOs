@@ -20,6 +20,7 @@ export function useServicos(params?: UseServicosParams) {
   const [contagem, setContagem] = useState<{ ativos: number; inativos: number } | null>(null);
 
   const requestIdRef = useRef(0);
+  const carregouUmaVez = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -56,11 +57,13 @@ export function useServicos(params?: UseServicosParams) {
       );
       const contagemAtual = await numeros;
       if (!atual()) return;
+      carregouUmaVez.current = true;
+      setError(null);
       setContagem(contagemAtual);
       setServicos(data.items);
       setTotal(data.total);
     } catch (err: any) {
-      if (!atual() || silencioso) return;
+      if (!atual() || (silencioso && carregouUmaVez.current)) return;
       setError(err?.toString() || "Erro ao carregar serviços");
       console.error("Erro ao carregar serviços:", err);
     } finally {

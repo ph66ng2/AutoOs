@@ -27,6 +27,7 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pedido = useRef(0);
+  const carregouUmaVez = useRef(false);
   const [tick, setTick] = useState(0);
   const recarregar = useCallback(() => setTick((n) => n + 1), []);
   const anoAtual = hoje.getFullYear();
@@ -58,9 +59,10 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
         ),
       ]);
       if (meu !== pedido.current) return;
-      if (silencioso && receita == null) return;
+      const preservarDados = silencioso && carregouUmaVez.current;
+      if (preservarDados && receita == null) return;
       if (resumos.some((item) => !item.ok)) {
-        if (silencioso) return;
+        if (preservarDados) return;
         setAnterior([]);
         setMeses([]);
         setError("Não foi possível carregar os gastos de alguns meses.");
@@ -77,6 +79,7 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
           variavel: ehFuturo ? 0 : resumos[indice].total_variavel,
         };
       });
+      if (receita != null) carregouUmaVez.current = true;
       setAnterior(todos.slice(0, 12));
       setMeses(todos.slice(12));
       setError(receita == null ? "Não foi possível carregar o faturado." : null);

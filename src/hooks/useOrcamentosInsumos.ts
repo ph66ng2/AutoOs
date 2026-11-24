@@ -36,6 +36,7 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
   const [minhasTotal, setMinhasTotal] = useState<number | null>(null);
 
   const requestIdRef = useRef(0);
+  const carregouUmaVez = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -76,12 +77,14 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
       }, ...argSegundoPlano(silencioso));
       const [numeros, totalDoPerfil] = await Promise.all([contagem, minhas]);
       if (!atual()) return;
+      carregouUmaVez.current = true;
+      setError(null);
       setContagens(numeros);
       setMinhasTotal(totalDoPerfil);
       setOrcamentos(resultado.items);
       setTotal(resultado.total);
     } catch (err: unknown) {
-      if (!atual() || silencioso) return;
+      if (!atual() || (silencioso && carregouUmaVez.current)) return;
       setError(String(err) || "Erro ao carregar orçamentos de insumos");
       console.error("Erro ao carregar orçamentos de insumos:", err);
     } finally {
