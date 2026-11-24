@@ -24,4 +24,4 @@ Data: 2026-11-04. Análise apenas; **nada foi migrado**. `production_migrate` co
 2. Runtime em 6543 com `statement_cache_capacity(0)`.
 3. Substituir `SET TIME ZONE` do `after_connect` por configuração no role ou `SET LOCAL`.
 4. Rodar `runtime_smoke`, `p1_concurrency_integration` e `test_auth_integration` contra um projeto de teste em 6543.
-5. Manter `DATABASE_MAX_CONNECTIONS` baixo e o single-flight de `db.rs`.
+5. Manter `DATABASE_MAX_CONNECTIONS` baixo (hoje 4 por computador: 7 PCs × 4 + 2 = 30, abaixo do Pool Size 35 do Supavisor Session) e o single-flight de `db.rs`.
