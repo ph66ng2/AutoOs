@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { formatarDocumento } from "@/components/equipamentos/AcessoPortalDialog";
@@ -30,6 +30,14 @@ export function AcessoAoPortal() {
   const { data, loading, error, verSenha } = useAcessoPortalCliente(equipamento.cliente_id, equipamento.empresa_id, contatosVersao);
   const [senhas, setSenhas] = useState<SenhaVista>({});
   const [buscando, setBuscando] = useState<number | null>(null);
+  // Contatos editados (senha trocada, criada ou removida): a senha mostrada pode não valer mais.
+  // A geração descarta também uma leitura que ainda estava a caminho.
+  const geracao = useRef(0);
+  useEffect(() => {
+    geracao.current += 1;
+    setSenhas({});
+    setBuscando(null);
+  }, [contatosVersao, equipamento.cliente_id]);
 
   if (!equipamento.cliente_id) {
     return <p className="text-xs text-muted-foreground">Atendimento sem cliente cadastrado.</p>;
@@ -48,14 +56,17 @@ export function AcessoAoPortal() {
         : { permission: SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS }),
     });
     if (!liberado) return;
+    const minhaGeracao = geracao.current;
     setBuscando(contato.id);
     try {
       const senha = await verSenha(contato.id);
+      if (minhaGeracao !== geracao.current) return;
       setSenhas((atual) => ({ ...atual, [contato.id!]: senha }));
     } catch (cause) {
+      if (minhaGeracao !== geracao.current) return;
       toast.error(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setBuscando(null);
+      if (minhaGeracao === geracao.current) setBuscando(null);
     }
   }
 

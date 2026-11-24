@@ -10,6 +10,16 @@
 --   * RLS ligado sem política e funções revogadas de anon/authenticated/service_role: a edge
 --     function do portal e a API do Supabase não leem nada daqui.
 
+-- Chave única composta para a FK (contato, empresa): garante que a senha guardada é de um contato
+-- da mesma empresa. `id` já é a PK, então a restrição nunca falha em dados existentes.
+DO $$
+BEGIN
+    ALTER TABLE public.cliente_contatos
+        ADD CONSTRAINT uq_cliente_contatos_id_empresa UNIQUE (id, empresa_id);
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
+END;
+$$;
+
 CREATE TABLE IF NOT EXISTS public.portal_senhas_visiveis (
     contato_id INTEGER PRIMARY KEY,
     empresa_id INTEGER NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
@@ -19,7 +29,7 @@ CREATE TABLE IF NOT EXISTS public.portal_senhas_visiveis (
     definida_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     definida_por_profile_id INTEGER REFERENCES public.security_profiles(id) ON DELETE SET NULL,
     CONSTRAINT fk_portal_senhas_visiveis_contato
-        FOREIGN KEY (contato_id) REFERENCES public.cliente_contatos(id) ON DELETE CASCADE
+        FOREIGN KEY (contato_id, empresa_id) REFERENCES public.cliente_contatos(id, empresa_id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_portal_senhas_visiveis_empresa ON public.portal_senhas_visiveis (empresa_id);

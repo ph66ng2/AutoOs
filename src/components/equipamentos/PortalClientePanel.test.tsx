@@ -203,6 +203,24 @@ describe("PortalClientePanel", () => {
     expect(within(lista).queryByText("abc-123-xyz")).not.toBeInTheDocument();
   });
 
+  it("esconde a senha mostrada quando os contatos são editados", async () => {
+    mocks.obter.mockResolvedValue(info());
+    mocks.ensure.mockResolvedValue(true);
+    mocks.verSenha.mockResolvedValue("abc-123-xyz");
+    mocks.contatos.mockResolvedValue([
+      { id: 5, empresa_id: 1, cliente_id: 2, nome: "Ana Souza", ativo: true, portal_acesso: "DECIDIR", portal_senha_definida_em: "2026-10-16T10:00:00Z" },
+    ]);
+    const painel = await abrirPainel();
+    const secao = within(painel).getByRole("region", { name: "Acesso ao portal" });
+    const lista = await within(secao).findByRole("list", { name: "Contatos com acesso" });
+    fireEvent.click(within(lista).getByRole("button", { name: "Ver senha" }));
+    expect(await within(lista).findByText("abc-123-xyz")).toBeInTheDocument();
+    fireEvent.click(within(secao).getByRole("button", { name: "Gerenciar em Contatos" }));
+    await screen.findByText("Painel de contatos de Gráfica Exemplo");
+    fireEvent.keyDown(screen.getByText("Painel de contatos de Gráfica Exemplo"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByText("abc-123-xyz")).not.toBeInTheDocument());
+  });
+
   it("não busca a senha quando o PIN é negado", async () => {
     mocks.obter.mockResolvedValue(info());
     mocks.ensure.mockResolvedValue(false);
