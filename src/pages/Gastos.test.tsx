@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mocks = vi.hoisted(() => ({
@@ -21,6 +21,7 @@ vi.mock("recharts", async (original) => {
 });
 
 import Gastos from "./Gastos";
+import { distribuirMudancas } from "@/lib/ao-vivo";
 
 const fixos = [
   { id: 1, nome: "Folha", valor: 4800, vencimento_dia: 5, categoria: "Folha", ativo: true },
@@ -66,6 +67,26 @@ describe("Finanças (fase 8)", () => {
     expect(maior).toHaveTextContent("Folha");
     expect(maior).toHaveTextContent("48% dos gastos");
     expect(screen.getByRole("heading", { name: "Peso no faturamento" }).closest("section")).toHaveTextContent("83% em gastos");
+  });
+
+  it("atualiza gastos e saldo ao vivo com leituras em segundo plano", async () => {
+    render(<Gastos />);
+    const saldo = screen.getByRole("region", { name: "Saldo do mês" });
+    await waitFor(() => expect(saldo).toHaveTextContent(/\+R\$\s*2\.000,00/));
+
+    mocks.db.listarReceitaAprovada.mockClear();
+    mocks.db.listarGastosFixos.mockResolvedValueOnce([{ ...fixos[0], valor: 8500 }]);
+    await act(async () => distribuirMudancas([{ tabela: "gastos_fixos", id: null, referencia: null, operacao: "U" }]));
+    expect(mocks.db.listarGastosFixos).toHaveBeenLastCalledWith(true);
+    expect(mocks.db.resumoMensal).toHaveBeenLastCalledWith(11, 2026, true);
+    expect(mocks.db.listarReceitaAprovada).not.toHaveBeenCalled();
+    expect(saldo).toHaveTextContent(/\+R\$\s*1\.500,00/);
+
+    mocks.db.listarGastosVariaveis.mockResolvedValueOnce([{ ...variaveis[0], valor: 3000 }]);
+    await act(async () => distribuirMudancas([{ tabela: "gastos_variaveis", id: null, referencia: null, operacao: "I" }]));
+    expect(mocks.db.listarGastosVariaveis).toHaveBeenLastCalledWith(11, 2026, true);
+    expect(mocks.db.listarReceitaAprovada).toHaveBeenLastCalledWith(2024, 2027, true);
+    expect(saldo).toHaveTextContent(/\+R\$\s*500,00/);
   });
 
   it("identifica o mês de corte do faturamento acumulado", async () => {

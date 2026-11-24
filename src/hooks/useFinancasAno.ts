@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { argSegundoPlano } from "@/lib/ao-vivo";
 import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
@@ -22,8 +22,8 @@ export interface MesFinancas {
  * guarda histórico dos fixos, então todo mês passado usa o total de hoje, como o gráfico antigo.
  */
 export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()) {
-  const [meses, setMeses] = useState<MesFinancas[]>([]);
-  const [anterior, setAnterior] = useState<MesFinancas[]>([]);
+  const [mesesLidos, setMeses] = useState<Omit<MesFinancas, "fixo">[]>([]);
+  const [anteriorLido, setAnterior] = useState<Omit<MesFinancas, "fixo">[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pedido = useRef(0);
@@ -78,7 +78,6 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
           ...m,
           futuro: ehFuturo,
           faturado: ehFuturo ? 0 : porChave.get(`${m.ano}-${String(m.mes).padStart(2, "0")}`) ?? 0,
-          fixo: ehFuturo ? 0 : totalFixo,
           variavel: ehFuturo ? 0 : resumos[indice].total_variavel,
         };
       });
@@ -92,7 +91,7 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
         setLoading(false);
       }
     }
-  }, [ano, totalFixo, anoAtual, mesAtual]);
+  }, [ano, anoAtual, mesAtual]);
 
   useEffect(() => {
     void carregar();
@@ -106,6 +105,10 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
     void carregar({ silencioso: true });
   });
 
+  // O total atual dos fixos vem da lista de gastos. Uma mudança nele recalcula os saldos
+  // sem disparar outra leitura do ano ou renovar a sessão.
+  const meses = useMemo(() => mesesLidos.map((m) => ({ ...m, fixo: m.futuro ? 0 : totalFixo })), [mesesLidos, totalFixo]);
+  const anterior = useMemo(() => anteriorLido.map((m) => ({ ...m, fixo: m.futuro ? 0 : totalFixo })), [anteriorLido, totalFixo]);
   return { meses, anterior, loading, error, recarregar };
 }
 

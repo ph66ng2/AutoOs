@@ -817,8 +817,8 @@ export const db = {
   // ─── Gastos Fixos e Variáveis ───────────────────────────
 
   /** Lista todos os gastos fixos ativos → Rust: listar_gastos_fixos */
-  async listarGastosFixos(): Promise<GastoFixo[]> {
-    return invoke<GastoFixo[]>("listar_gastos_fixos");
+  async listarGastosFixos(segundoPlano = false): Promise<GastoFixo[]> {
+    return invoke<GastoFixo[]>("listar_gastos_fixos", segundoPlano ? seSegundoPlano(true) : undefined);
   },
 
   /** Cria novo gasto fixo → Rust: criar_gasto_fixo. Retorna o registro persistido */
@@ -832,8 +832,8 @@ export const db = {
   },
 
   /** Lista gastos variáveis de um mês/ano → Rust: listar_gastos_variaveis */
-  async listarGastosVariaveis(mes: number, ano: number): Promise<GastoVariavel[]> {
-    return invoke<GastoVariavel[]>("listar_gastos_variaveis", { mes, ano });
+  async listarGastosVariaveis(mes: number, ano: number, segundoPlano = false): Promise<GastoVariavel[]> {
+    return invoke<GastoVariavel[]>("listar_gastos_variaveis", { mes, ano, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Cria novo gasto variável → Rust: criar_gasto_variavel. Retorna o registro persistido */
