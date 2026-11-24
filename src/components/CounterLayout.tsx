@@ -4,6 +4,7 @@ import { useNavigate, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { setAppMode, type AppMode } from "@/lib/app-mode";
+import { CarregandoSkeleton, SkeletonPagina } from "@/components/ui/skeleton";
 
 interface CounterSessionValue { reset: () => void; resetKey: number; }
 const CounterSessionContext = createContext<CounterSessionValue | null>(null);
@@ -64,7 +65,7 @@ export function CounterLayout({ onChangeMode }: { onChangeMode: (mode: AppMode) 
           </div>
         </header>
         <main className="mx-auto max-w-[1600px] p-4 lg:p-8">
-          <Suspense fallback={<div role="status" aria-live="polite">Carregando página</div>}>
+          <Suspense fallback={<CarregandoSkeleton rotulo="Carregando página"><SkeletonPagina /></CarregandoSkeleton>}>
             <Outlet />
           </Suspense>
         </main>

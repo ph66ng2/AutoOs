@@ -5,13 +5,24 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
 import { TeamAccessManager } from "@/components/TeamAccessManager";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { CarregandoSkeleton, Skeleton, SkeletonLista, SkeletonPagina } from "@/components/ui/skeleton";
 
 /** "Equipe e acessos" como página própria (canvas Administração); o perfil pessoal segue em /perfil. */
 export default function Equipe() {
   const { status, refreshStatus, openProfileSelector } = useSensitiveAccess();
 
   if (!status) {
-    return <p className="py-16 text-center text-sm text-muted-foreground">Carregando equipe...</p>;
+    return (
+      <CarregandoSkeleton rotulo="Carregando equipe...">
+        <SkeletonPagina>
+          <div className="grid gap-4 md:grid-cols-2">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="space-y-3 rounded-2xl border p-5"><SkeletonLista itens={1} /><Skeleton className="h-3 w-2/3" /></div>
+            ))}
+          </div>
+        </SkeletonPagina>
+      </CarregandoSkeleton>
+    );
   }
 
   return (

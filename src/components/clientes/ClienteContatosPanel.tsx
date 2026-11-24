@@ -29,6 +29,7 @@ import {
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { SenhaPortalDialog } from "@/components/clientes/SenhaPortalDialog";
 import type { AcessoPortalContato, Cliente, ClienteContato, ClienteContatoInput } from "@/types";
+import { CarregandoSkeleton, SkeletonLista } from "@/components/ui/skeleton";
 
 const ACESSO_PORTAL: Record<AcessoPortalContato, string> = {
   NENHUM: "Sem acesso ao portal",
@@ -199,7 +200,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
 
       {erro && <ErrorAlert variant="error" context="Clientes" message={erro} action={empresaId ? "Carregar contatos" : "Use “Regularizar antigos” na tela de clientes"} />}
       {carregando ? (
-        <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">Carregando contatos...</div>
+        <CarregandoSkeleton rotulo="Carregando contatos..."><SkeletonLista itens={3} /></CarregandoSkeleton>
       ) : contatos.length === 0 ? (
         <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
           Nenhum contato ativo cadastrado para esta empresa/cliente.

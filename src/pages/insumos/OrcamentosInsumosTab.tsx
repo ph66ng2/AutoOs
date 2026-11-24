@@ -34,6 +34,7 @@ import { totalPages } from "@/lib/pagination";
 import { formatCurrency } from "@/lib/utils";
 import { AcaoVendaDialog } from "@/components/vendas/AcaoVendaDialog";
 import type { AcaoInicialOrcamentoInsumos } from "@/lib/orcamento-insumos";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   SENSITIVE_PERMISSIONS,
   type StatusOrcamentoInsumos,
@@ -268,7 +269,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                             <TableRow key={`carregando-${linha}`} className="h-14 hover:bg-transparent">
                               {Array.from({ length: COLUNAS }, (__, coluna) => (
                                 <TableCell key={coluna}>
-                                  <span aria-hidden="true" className={`block h-2.5 rounded-full bg-muted ${coluna === COLUNAS - 1 ? "ml-auto w-36" : coluna === 0 ? "w-10" : "w-24"}`} />
+                                  <Skeleton className={`h-3 rounded-full ${coluna === COLUNAS - 1 ? "ml-auto w-36" : coluna === 0 ? "w-10" : "w-24"}`} />
                                 </TableCell>
                               ))}
                             </TableRow>

@@ -41,6 +41,7 @@ import {
 import { totalPages } from "@/lib/pagination";
 import { MODELOS_SERVICO } from "@/pages/servicos/servicos-modelos";
 import { PageHeader } from "@/components/PageHeader";
+import { CarregandoSkeleton, Skeleton } from "@/components/ui/skeleton";
 
 export default function Servicos() {
   const [busca, setBusca] = useEstadoLembrado("servicos:busca", "");
@@ -255,15 +256,17 @@ export default function Servicos() {
           </div>
 
           {loading ? (
-            <ul aria-busy="true" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }, (_, indice) => (
-                <li key={indice} aria-hidden="true" className="space-y-3 rounded-2xl border p-4">
-                  <span className="block h-2.5 w-40 rounded-full bg-muted" />
-                  <span className="block h-2.5 w-24 rounded-full bg-muted" />
-                  <span className="block h-6 w-28 rounded-full bg-muted" />
-                </li>
-              ))}
-            </ul>
+            <CarregandoSkeleton rotulo="Carregando serviços">
+              <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }, (_, indice) => (
+                  <li key={indice} className="space-y-3 rounded-2xl border p-4">
+                    <Skeleton className="h-3 w-40 rounded-full" />
+                    <Skeleton className="h-3 w-24 rounded-full" />
+                    <Skeleton className="h-6 w-28 rounded-full" />
+                  </li>
+                ))}
+              </ul>
+            </CarregandoSkeleton>
           ) : servicos.length === 0 ? (
             <div className="py-12 text-center">
               <span aria-hidden="true" className="mx-auto mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-acc-soft text-acc-soft-foreground">

@@ -294,7 +294,7 @@ pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>
 }
 
 /// Guarda a senha que a equipe acabou de definir (ou apaga, com `None`) para ser consultada depois
-/// em `ver_senha_portal_contato` (0063). Roda na mesma transação de `portal_definir_senha_contato`.
+/// em `ver_senha_portal_contato` (0064). Roda na mesma transação de `portal_definir_senha_contato`.
 async fn guardar_senha_visivel(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     empresa_id: i32,
@@ -314,7 +314,7 @@ async fn guardar_senha_visivel(
 }
 
 /// Senha atual do portal de um contato, para a equipe repassar ao cliente (decisão de 24/11/2026).
-/// `None` quando a senha foi criada antes da 0063 ou trocada por outro caminho: aí só gerando outra.
+/// `None` quando a senha foi criada antes da 0064 ou trocada por outro caminho: aí só gerando outra.
 /// Exige as mesmas permissões de criar a senha e fica na auditoria.
 #[tauri::command]
 pub async fn ver_senha_portal_contato(contato_id: i32) -> Result<Option<String>, String> {

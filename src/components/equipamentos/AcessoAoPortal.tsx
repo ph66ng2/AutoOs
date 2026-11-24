@@ -7,6 +7,7 @@ import { mensagemAcessoPortal } from "@/components/clientes/SenhaPortalDialog";
 import { useAcessoPortalCliente } from "@/hooks/useAcessoPortalCliente";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS, type ClienteContato } from "@/types";
+import { CarregandoSkeleton, SkeletonTexto } from "@/components/ui/skeleton";
 
 /** Senha consultada por contato: o texto, ou `null` quando não há senha guardada para mostrar. */
 type SenhaVista = { [contatoId: number]: string | null };
@@ -81,7 +82,7 @@ export function AcessoAoPortal() {
   return (
     <div className="space-y-3 text-sm">
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {loading && !data && <p className="text-xs text-muted-foreground">Carregando acesso…</p>}
+      {loading && !data && <CarregandoSkeleton rotulo="Carregando acesso…"><SkeletonTexto linhas={2} /></CarregandoSkeleton>}
 
       {data && (
         documento ? (

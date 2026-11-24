@@ -45,6 +45,7 @@ import { contarNovos } from "@/lib/sino-visto";
 import { useVistoDoSino } from "@/hooks/useVistoDoSino";
 import type { AvisoInterno } from "@/types";
 import type { AlertaPortal } from "@/types";
+import { CarregandoSkeleton, SkeletonLista } from "@/components/ui/skeleton";
 
 const POLL_MS = 30_000;
 
@@ -592,7 +593,7 @@ export const PortalAlertasPainel = forwardRef<HTMLDivElement, PainelProps>(funct
       </div>
       <div className="flex-1 overflow-y-auto">
         {erro && aba === "avisos" && <p className="px-4 py-2 text-sm text-destructive" role="alert">{erro}</p>}
-        {loading && itens.length === 0 && <p className="px-4 py-2 text-sm text-muted-foreground">Carregando…</p>}
+        {loading && itens.length === 0 && <CarregandoSkeleton rotulo="Carregando avisos" className="px-4 py-3"><SkeletonLista itens={3} /></CarregandoSkeleton>}
         {!loading && itens.length === 0 && (
           <p className="border-t px-4 py-10 text-center text-sm text-muted-foreground">
             {historico ? "Nada registrado." : aba === "sistema" ? "Nenhum erro novo." : "Nenhum aviso novo."}

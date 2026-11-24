@@ -14,7 +14,7 @@
  * quantidade de produtos cujo estoque atual está abaixo do estoque mínimo
  * configurado, utilizada para alertas de estoque baixo no Dashboard.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
 import { argSegundoPlano } from "@/lib/ao-vivo";
 import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
@@ -57,6 +57,27 @@ export function useInsumos(params?: UseInsumosParams) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const requestIdRef = useRef(0);
+  const carregouUmaVez = useRef(false);
+  const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
+  const mountedRef = useRef(false);
+  const paramsRef = useRef(params);
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestIdRef.current += 1;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    paramsRef.current = params;
+    requestIdRef.current += 1;
+  }, [params?.busca, params?.categoria, params?.apenasEstoqueBaixo, params?.page]);
+
   /**
    * Carrega a lista de produtos do banco de dados aplicando os filtros atuais.
    *
@@ -68,31 +89,58 @@ export function useInsumos(params?: UseInsumosParams) {
    * os parâmetros de filtro mudam.
    */
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
-    // Atualização ao vivo recarrega sem "carregando": a lista fica e só o que mudou troca.
-    if (opcoes?.silencioso !== true) setLoading(true);
-    setError(null);
+    if (!mountedRef.current) return;
+    const silencioso = opcoes?.silencioso === true;
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
+    const requestId = ++requestIdRef.current;
+    const atual = () => mountedRef.current && requestIdRef.current === requestId;
+    if (!silencioso) {
+      cargaVisivelPendente.current = true;
+      setLoading(true);
+      setError(null);
+    }
     try {
+      const params = paramsRef.current;
       const data = await db.listarProdutosPaginados(
         params?.busca,
         params?.categoria === "TODOS" ? undefined : params?.categoria,
         params?.apenasEstoqueBaixo ?? false,
         Math.max((params?.page ?? 1) - 1, 0),
-        ...argSegundoPlano(opcoes?.silencioso === true),
+        ...argSegundoPlano(silencioso),
       );
+      if (!atual()) return;
+      carregouUmaVez.current = true;
+      setError(null);
       setProdutos(data.items);
       setTotal(data.total);
       setInsumosAbaixoMinimo(data.belowMinimum ?? 0);
     } catch (err: any) {
+      if (!atual() || (silencioso && carregouUmaVez.current)) return;
       setError(err?.toString() || "Erro ao carregar produtos");
       console.error("Erro ao carregar produtos:", err);
     } finally {
-      setLoading(false);
+      if (atual()) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar({ silencioso: true });
+        }
+      }
     }
-  }, [params?.busca, params?.categoria, params?.apenasEstoqueBaixo, params?.page]);
+  }, []);
 
   useEffect(() => {
-    carregar();
-  }, [carregar]);
+    void carregar();
+    return () => {
+      requestIdRef.current += 1;
+      cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
+    };
+  }, [carregar, params?.busca, params?.categoria, params?.apenasEstoqueBaixo, params?.page]);
 
   // Outro computador mudou algo desta lista: recarrega em silêncio e destaca o que mudou.
 
@@ -100,6 +148,13 @@ export function useInsumos(params?: UseInsumosParams) {
 
   useAtualizacaoAoVivo(["produtos"], () => {
 
+    if (cargaVisivelPendente.current) {
+
+      recargaPendente.current = true;
+
+      return;
+
+    }
     lembrar();
 
     void carregar({ silencioso: true });

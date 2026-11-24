@@ -70,6 +70,7 @@ import {
 } from "@/pages/insumos/InsumosDialogs";
 import { useResumoEstoque } from "@/hooks/useResumoEstoque";
 import { textoUltimaMovimentacao } from "@/lib/estoque-movimentacao";
+import { CarregandoSkeleton, SkeletonTabela } from "@/components/ui/skeleton";
 
 function NumeroEstoque({ titulo, valor, detalhe, alerta = false }: { titulo: string; valor: string | number; detalhe?: string; alerta?: boolean }) {
   return (
@@ -455,9 +456,7 @@ export default function Insumos() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </div>
+            <CarregandoSkeleton rotulo="Carregando insumos"><SkeletonTabela colunas={6} /></CarregandoSkeleton>
           ) : produtos.length === 0 && error ? (
             <ListaIndisponivel oque="insumos e peças" onTentarDeNovo={() => { void recarregar(); void recarregarResumo(); }} />
           ) : produtos.length === 0 ? (

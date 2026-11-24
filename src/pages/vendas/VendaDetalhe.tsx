@@ -24,6 +24,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { AcaoVendaDialog } from "@/components/vendas/AcaoVendaDialog";
 import type { AcaoInicialOrcamentoInsumos } from "@/lib/orcamento-insumos";
 import { SENSITIVE_PERMISSIONS, type OrcamentoInsumosDetalhe, type StatusOrcamentoInsumos } from "@/types";
+import { CarregandoSkeleton, SkeletonPagina, SkeletonTabela } from "@/components/ui/skeleton";
 
 const FUSO = { timeZone: "America/Bahia" } as const;
 
@@ -212,7 +213,9 @@ export default function VendaDetalhe() {
     return (
       <div className="space-y-4">
         {voltar}
-        <p className="text-muted-foreground">Carregando orçamento...</p>
+        <CarregandoSkeleton rotulo="Carregando orçamento...">
+          <SkeletonPagina><SkeletonTabela linhas={3} colunas={4} /></SkeletonPagina>
+        </CarregandoSkeleton>
       </div>
     );
   }

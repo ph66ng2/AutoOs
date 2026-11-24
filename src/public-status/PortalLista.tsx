@@ -84,9 +84,11 @@ export default function PortalLista({ session, onExpirou }: Props) {
       </div>
 
       {loading && !data && (
-        <div className="loading-state" role="status">
-          <span className="spinner" aria-hidden="true" />
-          <p>Carregando seus atendimentos…</p>
+        <div className="loading-state is-skeleton" role="status" aria-label="Carregando seus atendimentos…" aria-busy="true">
+          <p className="visually-hidden">Carregando seus atendimentos…</p>
+          <span className="skeleton is-card" aria-hidden="true" />
+          <span className="skeleton is-card" aria-hidden="true" />
+          <span className="skeleton is-card" aria-hidden="true" />
         </div>
       )}
 

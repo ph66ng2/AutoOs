@@ -11,6 +11,7 @@ import { useModelosMensagem } from "@/hooks/useModelosMensagem";
 import { CAMPOS_MENSAGEM, preencherMensagem, ROTULO_CAMPO_MENSAGEM } from "@/lib/mensagens-prontas";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import type { ModeloMensagem } from "@/types";
+import { CarregandoSkeleton, SkeletonLista } from "@/components/ui/skeleton";
 
 /** Exemplo do que cada campo vira, para a prévia enquanto se edita. */
 const EXEMPLO = { cliente: "Mercado Bom Preço", contato: "Lúcia", equipamento: "Zebra ZD220", os: "128", status: "Pronto" };
@@ -70,7 +71,7 @@ export function MensagensProntasCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        {loading && modelos.length === 0 && <p className="text-sm text-muted-foreground">Carregando…</p>}
+        {loading && modelos.length === 0 && <CarregandoSkeleton rotulo="Carregando mensagens prontas"><SkeletonLista itens={3} compacta /></CarregandoSkeleton>}
         {!loading && modelos.length === 0 && !editando && (
           <p className="text-sm text-muted-foreground">Nenhuma mensagem ainda.</p>
         )}

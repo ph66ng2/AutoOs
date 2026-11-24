@@ -1,6 +1,6 @@
 //! Atualização ao vivo entre computadores (2/3). Uma conexão fica escutando o canal
-//! `autoos_mudancas` (gatilhos da migration 0055); os avisos da empresa da sessão viram o
-//! evento `autoos:mudancas` para as telas recarregarem em silêncio.
+//! `autoos_mudancas` (gatilhos iniciados na migration 0055). Os avisos da empresa da sessão
+//! e dos gastos legados compartilhados viram o evento `autoos:mudancas`.
 //!
 //! - Avisos em sequência são juntados (JANELA_MS) para a tela não recarregar 10 vezes.
 //! - Sem sessão (antes do PIN) os avisos são descartados: a tela recarrega ao abrir.
@@ -26,7 +26,7 @@ const ESPERA_MAXIMA: Duration = Duration::from_secs(30);
 /// Aviso como sai do gatilho (`{"e","t","id","ref","op"}`).
 #[derive(Debug, Deserialize)]
 struct AvisoBruto {
-    e: i32,
+    e: Option<i32>,
     t: String,
     id: Option<i64>,
     #[serde(rename = "ref")]
@@ -43,13 +43,17 @@ pub struct Mudanca {
     pub operacao: String,
 }
 
-/// Lê os avisos, fica só com os da empresa e tira repetidos (mesma linha e operação).
+/// Filtra pela empresa, inclui os avisos sem ID dos gastos legados e tira repetidos.
 /// Aviso mal formado é ignorado: quem manda no canal é só o gatilho.
 pub fn mudancas_da_empresa(payloads: &[String], empresa_id: i32) -> Vec<Mudanca> {
     let mut saida: Vec<Mudanca> = Vec::new();
     for payload in payloads {
         let Ok(aviso) = serde_json::from_str::<AvisoBruto>(payload) else { continue };
-        if aviso.e != empresa_id {
+        let gasto_compartilhado = aviso.e.is_none()
+            && matches!(aviso.t.as_str(), "gastos_fixos" | "gastos_variaveis")
+            && aviso.id.is_none()
+            && aviso.referencia.is_none();
+        if aviso.e != Some(empresa_id) && !gasto_compartilhado {
             continue;
         }
         let mudanca = Mudanca { tabela: aviso.t, id: aviso.id, referencia: aviso.referencia, operacao: aviso.op };
@@ -151,6 +155,22 @@ mod tests {
         assert_eq!(mudancas[0], Mudanca { tabela: "equipamentos".into(), id: Some(7), referencia: None, operacao: "I".into() });
         assert_eq!(mudancas[1].referencia, Some(7));
         assert!(mudancas_da_empresa(&lote, 3).is_empty());
+    }
+
+    #[test]
+    fn recebe_gastos_legados_sem_identificador_e_filtra_os_demais_pela_empresa() {
+        let lote = [
+            r#"{"e":null,"t":"gastos_fixos","id":null,"ref":null,"op":"I"}"#.to_string(),
+            r#"{"e":null,"t":"gastos_variaveis","id":null,"ref":null,"op":"D"}"#.to_string(),
+            r#"{"e":null,"t":"clientes","id":null,"ref":null,"op":"I"}"#.to_string(),
+            r#"{"e":null,"t":"gastos_fixos","id":8,"ref":null,"op":"U"}"#.to_string(),
+            r#"{"e":2,"t":"gastos_variaveis","id":9,"ref":null,"op":"U"}"#.to_string(),
+        ];
+
+        let tabelas = |empresa| mudancas_da_empresa(&lote, empresa)
+            .into_iter().map(|mudanca| mudanca.tabela).collect::<Vec<_>>();
+        assert_eq!(tabelas(1), ["gastos_fixos", "gastos_variaveis"]);
+        assert_eq!(tabelas(2), ["gastos_fixos", "gastos_variaveis", "gastos_variaveis"]);
     }
 
     /// Escuta real contra o PostgreSQL de teste (precisa de DATABASE_URL e da migration 0055).

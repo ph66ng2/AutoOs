@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { linkDeDownload, segmentosDoSuporte } from "@/lib/suporte-links";
 import { abrirLinkDoSuporte } from "@/lib/suporte-ponte";
 import { SENSITIVE_PERMISSIONS, type ChamadoSuporte } from "@/types";
+import { CarregandoSkeleton, Skeleton } from "@/components/ui/skeleton";
 
 const MAX_PRINTS = 3;
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -429,7 +430,13 @@ function Conversa({
   return (
     <>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
-        {mensagens === null && <p className="text-sm text-muted-foreground">Carregando...</p>}
+        {mensagens === null && (
+          <CarregandoSkeleton rotulo="Carregando mensagens" className="space-y-4">
+            <Skeleton className="h-16 w-2/3 rounded-2xl" />
+            <Skeleton className="ml-auto h-12 w-1/2 rounded-2xl" />
+            <Skeleton className="h-20 w-3/5 rounded-2xl" />
+          </CarregandoSkeleton>
+        )}
         {mensagens?.map((mensagem) => {
           const minha = mensagem.autor === "pessoa";
           return (

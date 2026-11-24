@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { argSegundoPlano } from "@/lib/ao-vivo";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import { agruparHistoricoEquipamentos } from "@/lib/historico-equipamentos";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import type { Cliente, Equipamento } from "@/types";
 
-/** Cliente e todas as OS dele, agrupadas por aparelho. */
+/** Cliente e todas as OS dele (sem o limite da lista resumida), agrupadas por aparelho. */
 export function useHistoricoEquipamentosCliente(clienteId: number | null) {
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
@@ -14,32 +16,54 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
   // Só o pedido mais recente do cliente atual mexe no estado: resposta atrasada de outro
   // cliente (ou de uma leitura anterior) é descartada.
   const pedido = useRef(0);
+  const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
   const clienteAtual = useRef(clienteId);
   clienteAtual.current = clienteId;
 
-  const carregar = useCallback(async () => {
-    const meu = ++pedido.current;
-    const vale = () => meu === pedido.current && clienteAtual.current === clienteId;
+  const carregar = useCallback(async ({ silencioso = false } = {}) => {
+    if (clienteId !== clienteAtual.current) return;
     if (clienteId == null) {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
       setLoading(false);
       setError("Cliente não encontrado.");
       return;
     }
-    setLoading(true);
-    setError(null);
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
+    const meu = ++pedido.current;
+    const vale = () => meu === pedido.current && clienteAtual.current === clienteId;
+    if (!silencioso) {
+      cargaVisivelPendente.current = true;
+      setLoading(true);
+      setError(null);
+    }
     try {
-      const encontrado = await db.buscarCliente(clienteId);
+      const encontrado = await db.buscarCliente(clienteId, ...argSegundoPlano(silencioso));
       if (!vale()) return;
       // OS antigas sem cliente_id são achadas pelo nome, como no painel de Clientes.
       const nomes = [nomeExibicaoCliente(encontrado), encontrado.nome ?? ""];
-      const lista = await db.listarEquipamentosCliente(clienteId, nomes);
+      const lista = await db.listarHistoricoEquipamentosCliente(clienteId, nomes, ...argSegundoPlano(silencioso));
       if (!vale()) return;
       setCliente(encontrado);
       setEquipamentos(lista);
+      setError(null);
     } catch (e) {
-      if (vale()) setError(e instanceof Error ? e.message : String(e));
+      if (vale() && !silencioso) setError(e instanceof Error ? e.message : String(e));
     } finally {
-      if (vale()) setLoading(false);
+      if (vale()) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar({ silencioso: true });
+        }
+      }
     }
   }, [clienteId]);
 
@@ -48,7 +72,16 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
     setCliente(null);
     setEquipamentos([]);
     void carregar();
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
+    };
   }, [carregar]);
+
+  useAtualizacaoAoVivo(["equipamentos", "clientes"], () => {
+    if (clienteId != null) void carregar({ silencioso: true });
+  });
 
   const aparelhos = useMemo(() => agruparHistoricoEquipamentos(equipamentos), [equipamentos]);
 

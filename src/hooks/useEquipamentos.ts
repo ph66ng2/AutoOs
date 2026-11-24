@@ -55,6 +55,9 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   /** Total por status (pílulas do filtro); null enquanto não chega ou se a contagem falhar. */
   const [contagens, setContagens] = useState<Record<string, number> | null>(null);
   const requestIdRef = useRef(0);
+  const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -81,12 +84,19 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean; aposGravacao?: boolean }): Promise<ResultadoCarregamento> => {
     if (!mountedRef.current) return { status: "obsoleto" };
 
-    const requestId = ++requestIdRef.current;
-    const atual = () => mountedRef.current && requestIdRef.current === requestId;
     // Silencioso: atualização em segundo plano (ex.: cliente respondeu no portal) sem trocar a
     // lista pelo indicador de carregamento.
     const silencioso = opcoes?.silencioso === true;
-    if (!silencioso) setLoading(true);
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return { status: "obsoleto" };
+    }
+    const requestId = ++requestIdRef.current;
+    const atual = () => mountedRef.current && requestIdRef.current === requestId;
+    if (!silencioso) {
+      cargaVisivelPendente.current = true;
+      setLoading(true);
+    }
     setError(null);
     setAvisoAtualizacao(null);
     try {
@@ -117,7 +127,14 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
       console.error("Erro ao carregar equipamentos:", err);
       return { status: "falhou", erro };
     } finally {
-      if (atual()) setLoading(false);
+      if (atual()) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar({ silencioso: true });
+        }
+      }
     }
   }, []);
 
@@ -125,6 +142,8 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     void carregar();
     return () => {
       requestIdRef.current += 1;
+      cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
     };
   }, [carregar, params?.busca, params?.status, params?.page, params?.ordenacao, params?.tecnico]);
 
@@ -134,6 +153,10 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   // Outro computador mudou uma OS (ou a verificação dela): recarrega em silêncio e destaca o que mudou.
   const { destaques, lembrar } = useDestaquesAoVivo(equipamentos, (eq) => eq.id, (eq) => eq.atualizado_em);
   useAtualizacaoAoVivo(["equipamentos", "verificacoes"], () => {
+    if (cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     lembrar();
     void carregar({ silencioso: true });
   });

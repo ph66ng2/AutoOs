@@ -88,10 +88,13 @@ import { PageHeader } from "@/components/PageHeader";
 import { useContagemClientes, useResumoCliente } from "@/hooks/usePainelClientes";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { agruparHistoricoEquipamentos } from "@/lib/historico-equipamentos";
+import { CarregandoSkeleton, SkeletonLista, SkeletonTabela } from "@/components/ui/skeleton";
 
 export default function Clientes() {
   const navigate = useNavigate();
   const LIMITE_EQUIPAMENTOS_EXPANDIDOS = 3;
+  /** O painel lê só as 200 OS mais recentes (listar_equipamentos_cliente sem `completo`). */
+  const LIMITE_OS_PAINEL = 200;
   const FILTROS_CLIENTES: Array<{ valor: FiltroClientes; rotulo: string }> = [
     { valor: "TODOS", rotulo: "Todos" },
     { valor: "EMPRESAS", rotulo: "Empresas" },
@@ -576,7 +579,7 @@ export default function Clientes() {
               <ErrorAlert variant="error" context="Clientes" message={error} action="Carregar" />
             )}
             {loading ? (
-              <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
+              <CarregandoSkeleton rotulo="Carregando clientes"><SkeletonTabela colunas={5} /></CarregandoSkeleton>
             ) : clientes.length === 0 && error ? (
               <ListaIndisponivel oque="clientes" onTentarDeNovo={() => { void recarregar(); void recarregarContagem(); }} />
             ) : clientes.length === 0 ? (
@@ -750,7 +753,7 @@ export default function Clientes() {
                   {!clienteAberto.empresa_id ? (
                     <p className="text-sm italic text-status-wait">Cliente sem empresa vinculada — contatos indisponíveis</p>
                   ) : carregandoContatos ? (
-                    <p className="text-sm text-muted-foreground">Carregando contatos...</p>
+                    <CarregandoSkeleton rotulo="Carregando contatos..."><SkeletonLista itens={2} /></CarregandoSkeleton>
                   ) : contatosLista.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nenhum contato cadastrado</p>
                   ) : (
@@ -790,7 +793,9 @@ export default function Clientes() {
                     <span className="flex items-center gap-3">
                       {aparelhosCliente.length > 0 && (
                         <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => navigate(`/clientes/${clienteAberto.id}/equipamentos`)}>
-                          {aparelhosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS ? `Ver todos (${aparelhosCliente.length})` : "Histórico"}
+                          {aparelhosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS
+                            ? `Ver todos (${aparelhosCliente.length}${equipamentosCliente.length >= LIMITE_OS_PAINEL ? "+" : ""})`
+                            : "Histórico"}
                         </button>
                       )}
                       {/* Nova entrada já com este cliente; Cancelar e salvar voltam para Clientes. */}
@@ -806,7 +811,7 @@ export default function Clientes() {
                     </span>
                   </div>
                   {carregandoEquip ? (
-                    <p className="py-2 text-sm text-muted-foreground">Carregando equipamentos...</p>
+                    <CarregandoSkeleton rotulo="Carregando equipamentos..." className="py-2"><SkeletonLista itens={3} compacta /></CarregandoSkeleton>
                   ) : equipamentosCliente.length === 0 ? (
                     <p className="py-2 text-sm text-muted-foreground">Nenhum equipamento vinculado</p>
                   ) : (

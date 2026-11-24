@@ -19,6 +19,7 @@ import { acoesOrcamentoInsumos, emailDestinatario, nomeDestinatario, telefoneDes
 import { cn, formatCurrency } from "@/lib/utils";
 import { formatarTelefone } from "@/lib/validations";
 import type { FormaPagamentoCodigo, OrcamentoInsumosDetalhe } from "@/types";
+import { SkeletonTexto } from "@/components/ui/skeleton";
 
 type Fase =
   | { tipo: "fechado" }
@@ -305,7 +306,7 @@ export function AcaoVendaDialog({ acao, vendaId, venda, voltarPara, onFechar, on
             <DialogTitle>Carregando orçamento...</DialogTitle>
             <DialogDescription className="sr-only">Buscando o orçamento para a ação escolhida.</DialogDescription>
           </DialogHeader>
-          {erroLocal && <Erro>{erroLocal}</Erro>}
+          {erroLocal ? <Erro>{erroLocal}</Erro> : <SkeletonTexto linhas={3} />}
         </DialogContent>
       </Dialog>
 

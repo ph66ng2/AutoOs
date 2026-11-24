@@ -229,6 +229,25 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(JSON.parse(screen.getByTestId("estado").textContent ?? "{}")).toEqual({ origem: "/clientes", clienteId: 7 });
   });
 
+  it("Ver todos marca + quando o painel chegou ao limite de 200 OS", async () => {
+    mocks.clientes = [clienteSalvo()];
+    const os = (n: number) => Array.from({ length: n }, (_, i) => ({ id: i + 1, cliente_id: 7, marca: "Fluke", modelo: "87V", data_entrada: "2026-01-01", status: "ENTREGUE" }));
+    dbMocks.listarEquipamentosCliente.mockResolvedValue(os(200));
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    expect(await screen.findByRole("button", { name: "Ver todos (200+)" })).toBeInTheDocument();
+  });
+
+  it("Ver todos mostra o número exato abaixo do limite", async () => {
+    mocks.clientes = [clienteSalvo()];
+    dbMocks.listarEquipamentosCliente.mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => ({ id: i + 1, cliente_id: 7, marca: "Fluke", modelo: "87V", data_entrada: "2026-01-01", status: "ENTREGUE" })),
+    );
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    expect(await screen.findByRole("button", { name: "Ver todos (5)" })).toBeInTheDocument();
+  });
+
   it("abrir o cliente pelo nome mostra os contatos no painel e clicar de novo fecha", async () => {
     mocks.clientes = [clienteSalvo({ empresa_id: 3, contato_encontrado: "Carlos Mendes" })];
     dbMocks.listarClienteContatos.mockResolvedValue([

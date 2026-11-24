@@ -8,12 +8,20 @@ import type { ContagemClientes, ResumoCliente } from "@/types";
 export function useContagemClientes(busca?: string) {
   const [data, setData] = useState<ContagemClientes | null>(null);
   const pedido = useRef(0);
+  const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
   const buscaAtual = useRef(busca);
   buscaAtual.current = busca;
 
   const carregar = useCallback(async (segundoPlano = false) => {
     const minhaBusca = buscaAtual.current;
+    if (segundoPlano && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const meu = ++pedido.current;
+    if (!segundoPlano) cargaVisivelPendente.current = true;
     try {
       const contagem = await db.contarClientesPorFiltro(minhaBusca, segundoPlano);
       if (meu === pedido.current && minhaBusca === buscaAtual.current) setData(contagem);
@@ -21,14 +29,27 @@ export function useContagemClientes(busca?: string) {
       if (meu !== pedido.current || minhaBusca !== buscaAtual.current) return;
       console.error("Erro ao contar clientes:", err);
       setData(null);
+    } finally {
+      if (meu === pedido.current && minhaBusca === buscaAtual.current) {
+        cargaVisivelPendente.current = false;
+        if (!segundoPlano && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar(true);
+        }
+      }
     }
   }, []);
 
   useEffect(() => {
     void carregar();
-    return () => { pedido.current += 1; };
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
+    };
   }, [busca, carregar]);
-  useAtualizacaoAoVivo(["clientes", "equipamentos"], () => { void carregar(true); });
+  // "Portal ativo" depende de cliente_contatos (acesso, senha, ativo).
+  useAtualizacaoAoVivo(["clientes", "equipamentos", "cliente_contatos"], () => { void carregar(true); });
   return { data, recarregar: carregar };
 }
 
@@ -41,22 +62,42 @@ export function useResumoCliente(clienteId: number | null) {
   const chave = JSON.stringify([clienteId, sessao]);
   const [cache, setCache] = useState<{ chave: string; resumo: ResumoCliente } | null>(null);
   const pedido = useRef(0);
+  const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
 
   const carregar = useCallback(async (segundoPlano = false) => {
     if (clienteId == null || sessao == null) return;
+    if (segundoPlano && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const meu = ++pedido.current;
+    if (!segundoPlano) cargaVisivelPendente.current = true;
     try {
       const resumo = await db.resumoCliente(clienteId, segundoPlano);
       if (meu === pedido.current) setCache({ chave, resumo });
     } catch (err) {
       if (meu === pedido.current) console.error("Erro ao carregar resumo do cliente:", err);
+    } finally {
+      if (meu === pedido.current) {
+        cargaVisivelPendente.current = false;
+        if (!segundoPlano && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar(true);
+        }
+      }
     }
   }, [clienteId, sessao, chave]);
 
   useEffect(() => {
     setCache(null);
     void carregar();
-    return () => { pedido.current += 1; };
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
+    };
   }, [carregar]);
 
   useAtualizacaoAoVivo(["equipamentos", "clientes"], () => { void carregar(true); });

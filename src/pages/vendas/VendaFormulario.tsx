@@ -18,6 +18,7 @@ import { SENSITIVE_PERMISSIONS } from "@/types";
 import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { useEscSai } from "@/hooks/useEscSai";
 import { TeclaNoBotao } from "@/components/ui/tecla-no-botao";
+import { CarregandoSkeleton, SkeletonFormulario, SkeletonPagina, SkeletonTabela } from "@/components/ui/skeleton";
 
 function Secao({ titulo, nota, children }: { titulo: string; nota?: string; children: React.ReactNode }) {
   return (
@@ -100,7 +101,9 @@ function FormularioDaVenda({ orcamentoId }: { orcamentoId: number | null }) {
     return (
       <div className="space-y-4">
         {voltar}
-        <p className="text-muted-foreground">Carregando orçamento...</p>
+        <CarregandoSkeleton rotulo="Carregando orçamento...">
+          <SkeletonPagina><div className="space-y-4 rounded-xl border p-5"><SkeletonFormulario campos={4} /><SkeletonTabela linhas={3} colunas={4} /></div></SkeletonPagina>
+        </CarregandoSkeleton>
       </div>
     );
   }

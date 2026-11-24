@@ -86,9 +86,12 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
       <section className={`status-card is-detalhe${data?.status === "ENTREGUE" ? " is-concluido" : ""}`} aria-live="polite">
 
         {loading && !data && (
-          <div className="loading-state" role="status">
-            <span className="spinner" aria-hidden="true" />
-            <p>Consultando o atendimento…</p>
+          <div className="loading-state is-skeleton" role="status" aria-label="Consultando o atendimento…" aria-busy="true">
+            <p className="visually-hidden">Consultando o atendimento…</p>
+            <span className="skeleton is-title" aria-hidden="true" />
+            <span className="skeleton" style={{ width: "40%" }} aria-hidden="true" />
+            <span className="skeleton is-card" aria-hidden="true" />
+            <span className="skeleton" style={{ width: "75%" }} aria-hidden="true" />
           </div>
         )}
 
