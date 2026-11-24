@@ -2694,7 +2694,8 @@ export default function Equipamentos() {
           },
           profileId,
         );
-        if (!ajusteNaRota()) return;
+        // Gravado: daqui em diante o resultado é sempre informado, mesmo que a rota mude.
+        // A troca de rota só impede prorrogar o prazo e fechar o editor.
         if (!ajusteOrcamentoSemMudancaStatus) versaoAtual = (await db.buscarEquipamento(selecionado.id!)).atualizado_em;
         portalAjuste = resultado?.portal;
       }
@@ -2705,11 +2706,13 @@ export default function Equipamentos() {
           && !!prazoAprovacao
           && prazoAprovacao !== (selecionado.prazo_aprovacao || "").slice(0, 10);
         if (prazoMudou) {
+          const avisarPrazoNaoProrrogado = () =>
+            warning("Equipamentos", "Orçamento salvo, mas o prazo não foi prorrogado.");
           try {
             const equipamentoId = selecionado.id!;
             const prorrogar = async (confirmarRespostaPendente?: boolean) => {
               const versao = (await db.buscarEquipamento(equipamentoId)).atualizado_em;
-              if (!ajusteNaRota()) return;
+              if (!ajusteNaRota()) return undefined;
               if (!versao) throw new Error("Versão do equipamento não encontrada.");
               return db.prorrogarPrazoOrcamento({
                 equipamentoId,
@@ -2718,32 +2721,33 @@ export default function Equipamentos() {
                 ...(confirmarRespostaPendente ? { confirmarRespostaPendente: true } : {}),
               });
             };
-            let resultadoProrrogacao = await prorrogar();
-            if (!ajusteNaRota() || !resultadoProrrogacao) return;
-            if (!resultadoProrrogacao.prorrogado) {
-              const confirmado = await confirmarComOperador(
+            // Sem resultado = a rota mudou antes de prorrogar: o prazo ficou como estava.
+            let resultadoProrrogacao = ajusteNaRota() ? await prorrogar() : undefined;
+            let operadorRecusou = false;
+            if (resultadoProrrogacao && !resultadoProrrogacao.prorrogado) {
+              const confirmado = ajusteNaRota() && await confirmarComOperador(
                 "O cliente já respondeu",
                 "Prorrogar anula a resposta pendente. Continuar?",
                 "Prorrogar",
               );
-              if (!ajusteNaRota()) return;
-              if (confirmado) {
+              if (confirmado && ajusteNaRota()) {
                 resultadoProrrogacao = await prorrogar(true);
-                if (!ajusteNaRota() || !resultadoProrrogacao) return;
-              } else {
+              } else if (!confirmado && ajusteNaRota()) {
+                operadorRecusou = true;
                 warning("Equipamentos", "Orçamento salvo. O prazo não foi prorrogado.");
+              } else {
+                resultadoProrrogacao = undefined;
               }
             }
-            if (resultadoProrrogacao.prorrogado) portalProrrogacao = resultadoProrrogacao.portal;
+            if (resultadoProrrogacao?.prorrogado) portalProrrogacao = resultadoProrrogacao.portal;
+            else if (!operadorRecusou) avisarPrazoNaoProrrogado();
           } catch (err) {
-            if (!ajusteNaRota()) return;
             const detalhe = err instanceof Error ? err.message : String(err);
             warning("Equipamentos", `Orçamento salvo, mas o prazo não foi prorrogado: ${detalhe}`);
           }
         }
         await recarregar();
-        if (!ajusteNaRota()) return;
-        fecharPaginaAjuste();
+        if (ajusteNaRota()) fecharPaginaAjuste();
         success(
           "Equipamentos",
           ["Orçamento atualizado.", portalAjuste?.mensagem, portalProrrogacao?.mensagem].filter(Boolean).join(" "),

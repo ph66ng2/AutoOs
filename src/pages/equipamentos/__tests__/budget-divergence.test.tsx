@@ -86,13 +86,15 @@ vi.mock("@/hooks/useSensitiveAccess", () => ({
   }),
 }));
 
+const mockNotificacao = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+}));
+
 vi.mock("@/hooks/useNotification", () => ({
-  useNotification: () => ({
-    success: vi.fn(),
-    error: vi.fn(),
-    warning: vi.fn(),
-    info: vi.fn(),
-  }),
+  useNotification: () => mockNotificacao,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -829,6 +831,43 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await act(async () => resolverVersao(os));
 
     expect(mockAtualizarServicosVerificacao).toHaveBeenCalledTimes(1);
+    expect(mockProrrogarPrazoOrcamento).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockNotificacao.warning).toHaveBeenCalledWith(
+      "Equipamentos", "Orçamento salvo, mas o prazo não foi prorrogado.",
+    ));
+    expect(mockNotificacao.success).toHaveBeenCalledWith("Equipamentos", "Orçamento atualizado.", "Alterar orçamento");
+  });
+
+  it("avisa o orçamento salvo e o prazo não prorrogado se a rota mudar logo após gravar", async () => {
+    rota.pathname = "/equipamentos/10/orcamento";
+    const os = {
+      ...equipamentoVerificado,
+      status: "AGUARDANDO_APROVACAO",
+      prazo_aprovacao: "2099-01-20",
+    };
+    mockBuscarEquipamento.mockResolvedValue(os);
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    let resolverGravacao!: (value: unknown) => void;
+    mockAtualizarServicosVerificacao.mockReturnValueOnce(new Promise((resolve) => { resolverGravacao = resolve; }));
+    const view = render(<Equipamentos />);
+    fireEvent.change(await screen.findByDisplayValue("20/01/2099"), { target: { value: "2099-01-21" } });
+    await clicarConfirmarStatus();
+    fireEvent.click(await screen.findByTestId("confirm-action"));
+    await waitFor(() => expect(mockAtualizarServicosVerificacao).toHaveBeenCalledTimes(1));
+
+    rota.pathname = "/equipamentos/11/orcamento";
+    view.rerender(<Equipamentos />);
+    await act(async () => resolverGravacao({
+      portal: { mensagem: "Portal atualizado.", aviso: "Avise o cliente da mudança." },
+    }));
+
+    await waitFor(() => expect(mockNotificacao.success).toHaveBeenCalledWith(
+      "Equipamentos",
+      expect.stringContaining("Orçamento atualizado. Portal atualizado."),
+      "Alterar orçamento",
+    ));
+    expect(mockNotificacao.warning).toHaveBeenCalledWith("Equipamentos", "Orçamento salvo, mas o prazo não foi prorrogado.");
+    expect(mockNotificacao.warning).toHaveBeenCalledWith("Equipamentos", "Avise o cliente da mudança.");
     expect(mockProrrogarPrazoOrcamento).not.toHaveBeenCalled();
   });
 
