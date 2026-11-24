@@ -8,7 +8,7 @@ import { CounterLayout } from "@/components/CounterLayout";
 const db = vi.hoisted(() => ({
   buscarEquipamentosPorSerial: vi.fn(), criarEquipamento: vi.fn(), listarEquipamentos: vi.fn(),
   listarClientes: vi.fn(), listarProdutos: vi.fn(), atualizarStatusEquipamento: vi.fn(), buscarEquipamento: vi.fn(), salvarVerificacao: vi.fn(), abrirPainelImpressorasWindows: vi.fn(), listarImpressorasWindows: vi.fn(), imprimirTesteBmitag: vi.fn(),
-  listarClienteContatos: vi.fn(), criarClienteContato: vi.fn(), buscarCliente: vi.fn(), atualizarCliente: vi.fn(), publicarDocumentoPortal: vi.fn(),
+  listarClienteContatos: vi.fn(), criarClienteContato: vi.fn(), registrarMovimentacao: vi.fn(), buscarCliente: vi.fn(), atualizarCliente: vi.fn(), publicarDocumentoPortal: vi.fn(),
 }));
 const emailService = vi.hoisted(() => ({ enviarOrdemEntrada: vi.fn() }));
 const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
@@ -170,13 +170,38 @@ describe("Modo Balcão", () => {
     expect(screen.getByRole("status")).not.toHaveTextContent("salvo no cadastro");
   }, 20000);
 
-  it("consulta o estoque e mostra o preço de venda sem permitir alteração", async () => {
+  it("consulta o estoque e mostra o preço de venda, sem editar saldo nem preço", async () => {
     const user = userEvent.setup(); renderCounter();
     await user.click(screen.getByRole("button", { name: /preço e estoque/i }));
     expect(await screen.findByRole("heading", { name: "Ribbon Preto" })).toBeInTheDocument();
     expect(screen.getByText(/R\$\s*45,00/)).toBeInTheDocument();
     expect(db.listarProdutos).toHaveBeenCalledWith(undefined);
+    expect(screen.queryByRole("textbox", { name: /preço/i })).not.toBeInTheDocument();
+  });
+
+  it("registra a chegada de um insumo com PIN de controle de estoque", async () => {
+    ensureSensitiveAccess.mockResolvedValue(true);
+    db.registrarMovimentacao.mockResolvedValue(undefined);
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /preço e estoque/i }));
+    await user.click(await screen.findByRole("button", { name: "Chegou: Ribbon Preto" }));
+    expect(ensureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ permission: "STOCK_CONTROL" }));
+    const quantidade = await screen.findByRole("spinbutton");
+    await user.clear(quantidade); await user.type(quantidade, "5");
+    await user.type(screen.getByPlaceholderText(/compra, uso em manutenção/i), "Compra fornecedor");
+    await user.click(screen.getByRole("button", { name: /registrar movimentação/i }));
+    await waitFor(() => expect(db.registrarMovimentacao).toHaveBeenCalledWith(12, "ENTRADA", 5, "Compra fornecedor", undefined));
+    expect(await screen.findByRole("status")).toHaveTextContent("Chegada de 5 un. registrada em Ribbon Preto.");
+    expect(db.listarProdutos).toHaveBeenCalledTimes(2);
+  });
+
+  it("não abre a baixa quando o PIN é negado", async () => {
+    ensureSensitiveAccess.mockResolvedValue(false);
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /preço e estoque/i }));
+    await user.click(await screen.findByRole("button", { name: "Baixa: Ribbon Preto" }));
     expect(screen.queryByRole("button", { name: /registrar movimentação/i })).not.toBeInTheDocument();
+    expect(db.registrarMovimentacao).not.toHaveBeenCalled();
   });
 
   it("exige confirmação para serial com ciclo anterior", async () => {
