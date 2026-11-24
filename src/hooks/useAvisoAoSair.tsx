@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type Context, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type Context, type ReactNode } from "react";
 import * as Roteador from "react-router-dom";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
@@ -13,6 +13,29 @@ export interface AvisoAoSair {
    * navegação liberada) depois de "Sair sem salvar". "Continuar editando" não muda nada.
    */
   sairComAviso: (sair: () => void) => void;
+  /** Há algo não salvo agora (nesta tela ou num formulário dentro do seu escopo). */
+  algoNaoSalvo: boolean;
+  /** Para `<EscopoAvisoAoSair>`: os formulários de dentro passam a usar este aviso. */
+  escopo: EscopoAviso;
+}
+
+/** O que um formulário de dentro precisa do aviso da tela. */
+export interface EscopoAviso {
+  informar: (chave: string, sujo: boolean) => void;
+  liberarProximaSaida: () => void;
+  sairComAviso: (sair: () => void) => void;
+}
+
+const EscopoContext = createContext<EscopoAviso | null>(null);
+
+/**
+ * Tela com vários formulários (cartões com "Salvar" próprio, abas): cada `useAvisoAoSair` de
+ * dentro deixa de ter bloqueio e diálogo próprios e só informa se está sujo a este aviso. Assim
+ * há um único bloqueio de navegação (o roteador aceita um por vez) e as saídas da tela que não
+ * são navegação (trocar de aba, trocar de operador) passam por `aviso.sairComAviso`.
+ */
+export function EscopoAvisoAoSair({ aviso, children }: { aviso: AvisoAoSair; children: ReactNode }) {
+  return <EscopoContext.Provider value={aviso.escopo}>{children}</EscopoContext.Provider>;
 }
 
 /** Contexto do roteador com dados; ausente em testes que simulam o react-router só em parte. */
@@ -34,18 +57,40 @@ type Bloqueio = ReturnType<typeof Roteador.useBlocker>;
  * Fechar a janela do app não passa por aqui: para isso há o rascunho automático.
  * Fora do roteador com dados (testes com MemoryRouter) só a navegação fica sem aviso;
  * `sairComAviso` continua perguntando.
+ * Dentro de `<EscopoAvisoAoSair>` o hook só informa `sujo` ao aviso de fora e devolve as funções
+ * dele (`dialogo` vazio, `saidaLivre` ignorado).
  */
 export function useAvisoAoSair(sujo: boolean, saidaLivre?: (pathname: string) => boolean): AvisoAoSair {
   const comDados = useContext((contextoDoRoteador() ?? SEM_ROTEADOR) as Context<unknown>) != null;
-  const sujoRef = useRef(sujo);
-  sujoRef.current = sujo;
+  const pai = useContext(EscopoContext);
+  const chave = useId();
+  // Dentro de um escopo: só informa. Ao desmontar (ex.: a aba trocou), deixa de contar.
+  useEffect(() => { pai?.informar(chave, sujo); }, [pai, chave, sujo]);
+  useEffect(() => () => pai?.informar(chave, false), [pai, chave]);
+
+  // Formulários de dentro que estão sujos agora.
+  const [filhosSujos, setFilhosSujos] = useState<ReadonlySet<string>>(() => new Set());
+  const informar = useCallback((filho: string, filhoSujo: boolean) => {
+    setFilhosSujos((atual) => {
+      if (atual.has(filho) === filhoSujo) return atual;
+      const proximo = new Set(atual);
+      if (filhoSujo) proximo.add(filho);
+      else proximo.delete(filho);
+      return proximo;
+    });
+  }, []);
+  const sujoDaTela = pai == null && (sujo || filhosSujos.size > 0);
+
+  const sujoRef = useRef(sujoDaTela);
+  sujoRef.current = sujoDaTela;
   const livreRef = useRef(saidaLivre);
   livreRef.current = saidaLivre;
   const liberado = useRef(false);
 
-  // O roteador com dados existe ou não pela vida inteira da tela: a chamada condicional é estável.
+  // O roteador com dados e o escopo existem ou não pela vida inteira da tela: a chamada
+  // condicional é estável.
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const blocker: Bloqueio | null = comDados ? Roteador.useBlocker(({ currentLocation, nextLocation }) => {
+  const blocker: Bloqueio | null = comDados && pai == null ? Roteador.useBlocker(({ currentLocation, nextLocation }) => {
     if (liberado.current) {
       liberado.current = false;
       return false;
@@ -60,12 +105,12 @@ export function useAvisoAoSair(sujo: boolean, saidaLivre?: (pathname: string) =>
 
   // Ficou limpo com o aviso aberto (ex.: salvou por outro caminho): deixa seguir.
   useEffect(() => {
-    if (bloqueado && !sujo) blocker?.proceed?.();
-  }, [blocker, bloqueado, sujo]);
+    if (bloqueado && !sujoDaTela) blocker?.proceed?.();
+  }, [blocker, bloqueado, sujoDaTela]);
   // Com a saída por botão, ficar limpo só fecha o aviso: sair agora seria uma ação não pedida.
   useEffect(() => {
-    if (saidaPendente && !sujo) setSaidaPendente(null);
-  }, [saidaPendente, sujo]);
+    if (saidaPendente && !sujoDaTela) setSaidaPendente(null);
+  }, [saidaPendente, sujoDaTela]);
 
   // Vale só para a navegação disparada logo em seguida (o bloqueio é conferido na hora do
   // navigate); se nenhuma acontecer, a liberação expira e não vaza para um clique posterior.
@@ -115,5 +160,12 @@ export function useAvisoAoSair(sujo: boolean, saidaLivre?: (pathname: string) =>
       onCancel={() => decidir(false)}
     />
   );
-  return { dialogo, liberarProximaSaida, sairComAviso };
+  const escopo = useMemo<EscopoAviso>(
+    () => pai ?? { informar, liberarProximaSaida, sairComAviso },
+    [pai, informar, liberarProximaSaida, sairComAviso],
+  );
+  if (pai) {
+    return { dialogo: null, liberarProximaSaida: pai.liberarProximaSaida, sairComAviso: pai.sairComAviso, algoNaoSalvo: sujo, escopo };
+  }
+  return { dialogo, liberarProximaSaida, sairComAviso, algoNaoSalvo: sujoDaTela, escopo };
 }

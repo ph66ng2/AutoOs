@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConfigSuporte } from "@/hooks/useSuporte";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { EVENTO_CONFIG_SUPORTE } from "@/lib/suporte-ponte";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 
@@ -17,14 +18,21 @@ export function SuporteSlackCard() {
   const [canal, setCanal] = useState("");
   const [token, setToken] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [canalSalvo, setCanalSalvo] = useState("");
   useEffect(() => {
-    if (config?.canal) setCanal(config.canal);
+    if (config?.canal) {
+      setCanal(config.canal);
+      setCanalSalvo(config.canal);
+    }
   }, [config?.canal]);
+  // Canal mudado ou token digitado e não salvos: sair da tela ou da aba pergunta antes.
+  useAvisoAoSair(canal.trim() !== canalSalvo.trim() || token.trim() !== "");
 
   async function gravar() {
     setSalvando(true);
     try {
       await salvar(canal.trim(), token.trim() || null);
+      setCanalSalvo(canal.trim());
       setToken("");
       window.dispatchEvent(new Event(EVENTO_CONFIG_SUPORTE));
       toast.success("Suporte configurado neste computador.");

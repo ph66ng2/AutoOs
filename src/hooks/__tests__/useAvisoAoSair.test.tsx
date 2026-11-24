@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { createMemoryRouter, Link, MemoryRouter, RouterProvider, useNavigate } from "react-router-dom";
 import { describe, expect, it } from "vitest";
-import { useAvisoAoSair } from "../useAvisoAoSair";
+import { EscopoAvisoAoSair, useAvisoAoSair } from "../useAvisoAoSair";
 
 function Formulario() {
   const [texto, setTexto] = useState("");
@@ -127,5 +127,73 @@ describe("useAvisoAoSair", () => {
     expect(saiu).toBe(false);
     await user.click(screen.getByRole("button", { name: "Sair sem salvar" }));
     expect(saiu).toBe(true);
+  });
+});
+
+/** Cartão com "Salvar" próprio dentro de uma tela com abas. */
+function Cartao() {
+  const [texto, setTexto] = useState("");
+  const aviso = useAvisoAoSair(texto !== "");
+  return (
+    <div>
+      <input aria-label="cartão" value={texto} onChange={(event) => setTexto(event.target.value)} />
+      {aviso.dialogo}
+    </div>
+  );
+}
+
+function TelaComAbas() {
+  const [aba, setAba] = useState<"a" | "b">("a");
+  const aviso = useAvisoAoSair(false);
+  return (
+    <EscopoAvisoAoSair aviso={aviso}>
+      <Link to="/outra">Menu</Link>
+      <button type="button" onClick={() => aviso.sairComAviso(() => setAba(aba === "a" ? "b" : "a"))}>Trocar aba</button>
+      {aba === "a" ? <Cartao /> : <p>Aba B</p>}
+      {aviso.dialogo}
+    </EscopoAvisoAoSair>
+  );
+}
+
+describe("useAvisoAoSair com escopo (vários formulários numa tela)", () => {
+  function montarAbas() {
+    const router = createMemoryRouter(
+      [
+        { path: "/tela", element: <TelaComAbas /> },
+        { path: "/outra", element: <p>Outra tela</p> },
+      ],
+      { initialEntries: ["/tela"] },
+    );
+    render(<RouterProvider router={router} />);
+    return router;
+  }
+
+  it("cartão limpo: trocar de aba e o menu não perguntam", async () => {
+    const user = userEvent.setup();
+    const router = montarAbas();
+    await user.click(screen.getByRole("button", { name: "Trocar aba" }));
+    expect(screen.getByText("Aba B")).toBeInTheDocument();
+    await user.click(screen.getByText("Menu"));
+    expect(router.state.location.pathname).toBe("/outra");
+  });
+
+  it("cartão sujo: menu e troca de aba usam um único aviso; sair descarta e libera", async () => {
+    const user = userEvent.setup();
+    const router = montarAbas();
+    await user.type(screen.getByLabelText("cartão"), "x");
+
+    await user.click(screen.getByText("Menu"));
+    expect(await screen.findAllByRole("alertdialog")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(router.state.location.pathname).toBe("/tela");
+
+    await user.click(screen.getByRole("button", { name: "Trocar aba" }));
+    expect(await screen.findAllByRole("alertdialog")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Sair sem salvar" }));
+    expect(await screen.findByText("Aba B")).toBeInTheDocument();
+
+    // O cartão desmontou: nada mais a perder.
+    await user.click(screen.getByText("Menu"));
+    expect(router.state.location.pathname).toBe("/outra");
   });
 });

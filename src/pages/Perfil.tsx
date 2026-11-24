@@ -11,7 +11,7 @@ import { EVENT_LABELS, resumirStatusAuditado } from "@/lib/eventos-auditoria";
 import { AppearancePicker } from "@/components/perfil/AppearancePicker";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
-import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+import { EscopoAvisoAoSair, useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import { profileAppearance, type ProfileTheme } from "@/lib/profile-appearance";
@@ -43,6 +43,12 @@ export default function Perfil() {
   const { status, openProfileSelector, refreshStatus } = useSensitiveAccess();
   const profile = status?.profiles.find((item) => item.id === status.active_profile_id) ?? null;
   const unlocked = Boolean(status?.unlocked);
+  // Aba aberta, por perfil: trocar de perfil volta à Visão geral (a aba pode não existir no próximo).
+  const [abaAberta, setAbaAberta] = useState<{ perfil: number | null; aba: string }>({ perfil: null, aba: "visao" });
+  const aba = abaAberta.perfil === (profile?.id ?? null) ? abaAberta.aba : "visao";
+  // Um só aviso para a página: Personalizar informa o que não foi salvo; trocar de aba ou de
+  // perfil, menu, Ctrl+K e voltar perguntam antes de perder.
+  const avisoAoSair = useAvisoAoSair(false);
 
   if (!profile) {
     return (
@@ -56,9 +62,15 @@ export default function Perfil() {
   }
 
   const look = profileAppearance(profile);
+  const trocarDePerfil = () => avisoAoSair.sairComAviso(() => void openProfileSelector({
+    title: "Quem está usando?",
+    description: "Escolha o perfil e informe o PIN para entrar.",
+  }));
 
   return (
+    <EscopoAvisoAoSair aviso={avisoAoSair}>
     <div className="space-y-6">
+      {avisoAoSair.dialogo}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <ProfileAvatar icon={look.icon} color={look.color} size="lg" />
         <div className="min-w-0 flex-1">
@@ -70,10 +82,7 @@ export default function Perfil() {
         <Button
           type="button"
           variant="outline"
-          onClick={() => void openProfileSelector({
-            title: "Quem está usando?",
-            description: "Escolha o perfil e informe o PIN para entrar.",
-          })}
+          onClick={trocarDePerfil}
         >
           <ArrowRightLeft className="mr-2 h-4 w-4" /> Trocar de perfil
         </Button>
@@ -93,7 +102,12 @@ export default function Perfil() {
         </Card>
       ) : (
         // Reinicia abas e formulários ao trocar de perfil: a aba Equipe pode não existir no próximo.
-        <Tabs key={profile.id} defaultValue="visao" className="space-y-6">
+        <Tabs
+          key={profile.id}
+          value={aba}
+          onValueChange={(proxima) => avisoAoSair.sairComAviso(() => setAbaAberta({ perfil: profile.id, aba: proxima }))}
+          className="space-y-6"
+        >
           <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent p-0">
             {[
               ["visao", "Visão geral"],
@@ -124,6 +138,7 @@ export default function Perfil() {
         </Tabs>
       )}
     </div>
+    </EscopoAvisoAoSair>
   );
 }
 
@@ -238,7 +253,8 @@ export function Personalizar({ profile, onSaved }: { profile: SecurityProfile; o
   const [salvo, setSalvo] = useState(() => ({ nome: profile.nome.trim(), email: (profile.email_profissional ?? "").trim(), color: look.color, icon: look.icon, theme: look.theme }));
   const alterado = nome.trim() !== salvo.nome || email.trim() !== salvo.email
     || color !== salvo.color || icon !== salvo.icon || theme !== salvo.theme;
-  // Menu, Ctrl+K ou voltar com o perfil alterado e não salvo: pergunta antes.
+  // Menu, Ctrl+K, voltar ou (dentro da página Perfil) trocar de aba ou de perfil com o perfil
+  // alterado e não salvo: pergunta antes.
   const avisoAoSair = useAvisoAoSair(alterado);
 
   async function save(event: React.FormEvent) {
