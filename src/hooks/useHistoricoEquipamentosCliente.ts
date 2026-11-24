@@ -17,6 +17,8 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
   // cliente (ou de uma leitura anterior) é descartada.
   const pedido = useRef(0);
   const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
   const clienteAtual = useRef(clienteId);
   clienteAtual.current = clienteId;
 
@@ -25,11 +27,15 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
     if (clienteId == null) {
       ++pedido.current;
       cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
       setLoading(false);
       setError("Cliente não encontrado.");
       return;
     }
-    if (silencioso && cargaVisivelPendente.current) return;
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const meu = ++pedido.current;
     const vale = () => meu === pedido.current && clienteAtual.current === clienteId;
     if (!silencioso) {
@@ -53,6 +59,10 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
       if (vale()) {
         cargaVisivelPendente.current = false;
         setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar({ silencioso: true });
+        }
       }
     }
   }, [clienteId]);
@@ -65,6 +75,7 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
     return () => {
       ++pedido.current;
       cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
     };
   }, [carregar]);
 

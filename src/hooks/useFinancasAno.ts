@@ -29,13 +29,18 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
   const pedido = useRef(0);
   const carregouUmaVez = useRef(false);
   const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
   const [tick, setTick] = useState(0);
   const recarregar = useCallback(() => setTick((n) => n + 1), []);
   const anoAtual = hoje.getFullYear();
   const mesAtual = hoje.getMonth() + 1;
 
   const carregar = useCallback(async ({ silencioso = false } = {}) => {
-    if (silencioso && cargaVisivelPendente.current) return;
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const meu = ++pedido.current;
     if (!silencioso) {
       cargaVisivelPendente.current = true;
@@ -89,6 +94,10 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
       if (meu === pedido.current) {
         cargaVisivelPendente.current = false;
         setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar({ silencioso: true });
+        }
       }
     }
   }, [ano, anoAtual, mesAtual]);
@@ -98,6 +107,7 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
     return () => {
       ++pedido.current;
       cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
     };
   }, [carregar, tick]);
 

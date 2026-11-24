@@ -8,12 +8,17 @@ export function usePecasBaixaPendente(equipamentoId?: number) {
   const [cache, setCache] = useState<{ id: number; pendentes: Set<string> } | null>(null);
   const pedido = useRef(0);
   const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
   const idAtual = useRef(equipamentoId);
   idAtual.current = equipamentoId;
 
   const recarregar = useCallback(async (segundoPlano = false) => {
     if (!equipamentoId || equipamentoId !== idAtual.current) return;
-    if (segundoPlano && cargaVisivelPendente.current) return;
+    if (segundoPlano && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const meu = ++pedido.current;
     if (!segundoPlano) cargaVisivelPendente.current = true;
     try {
@@ -24,7 +29,13 @@ export function usePecasBaixaPendente(equipamentoId?: number) {
     } catch {
       if (meu === pedido.current && equipamentoId === idAtual.current) setCache(null);
     } finally {
-      if (meu === pedido.current && equipamentoId === idAtual.current) cargaVisivelPendente.current = false;
+      if (meu === pedido.current && equipamentoId === idAtual.current) {
+        cargaVisivelPendente.current = false;
+        if (!segundoPlano && recargaPendente.current) {
+          recargaPendente.current = false;
+          void recarregar(true);
+        }
+      }
     }
   }, [equipamentoId]);
 
@@ -34,6 +45,7 @@ export function usePecasBaixaPendente(equipamentoId?: number) {
     return () => {
       ++pedido.current;
       cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
     };
   }, [recarregar]);
 

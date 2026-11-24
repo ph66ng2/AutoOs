@@ -20,10 +20,15 @@ export function useResumoEstoque() {
   const [resumo, setResumo] = useState<ResumoEstoque | null>(null);
   const pedido = useRef(0);
   const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
 
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
     const silencioso = opcoes?.silencioso === true;
-    if (silencioso && cargaVisivelPendente.current) return;
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const meu = ++pedido.current;
     if (!silencioso) cargaVisivelPendente.current = true;
     try {
@@ -32,7 +37,13 @@ export function useResumoEstoque() {
     } catch {
       if (meu === pedido.current) setResumo(null);
     } finally {
-      if (meu === pedido.current) cargaVisivelPendente.current = false;
+      if (meu === pedido.current) {
+        cargaVisivelPendente.current = false;
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar({ silencioso: true });
+        }
+      }
     }
     // `sessao` refaz a leitura quando o perfil ou as permissões mudam.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -44,6 +55,7 @@ export function useResumoEstoque() {
     return () => {
       ++pedido.current;
       cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
     };
   }, [carregar]);
 

@@ -15,6 +15,8 @@ function useLeituraGastos<T>(
   const [error, setError] = useState<string | null>(null);
   const carregouUmaVez = useRef(false);
   const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
   const pedido = useRef(0);
   const buscarAtual = useRef<typeof buscar | null>(null);
 
@@ -23,13 +25,18 @@ function useLeituraGastos<T>(
     return () => {
       buscarAtual.current = null;
       cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
       ++pedido.current;
     };
   }, [buscar]);
 
   const carregar = useCallback(async (silencioso = false) => {
     const leitura = buscarAtual.current;
-    if (!leitura || (silencioso && cargaVisivelPendente.current)) return;
+    if (!leitura) return;
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const meu = ++pedido.current;
     if (!silencioso) {
       cargaVisivelPendente.current = true;
@@ -50,6 +57,10 @@ function useLeituraGastos<T>(
       if (meu === pedido.current) {
         cargaVisivelPendente.current = false;
         setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar(true);
+        }
       }
     }
   }, [mensagemErro]);

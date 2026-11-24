@@ -61,5 +61,8 @@ it("preserva a contagem da nova busca quando um evento chega durante a carga", a
   expect(contarClientesPorFiltro).toHaveBeenCalledTimes(2);
 
   await act(async () => responder({ todos: 2 }));
-  expect(result.current.data).toEqual({ todos: 2 });
+  // A carga visível pode ter lido antes do COMMIT remoto: uma única recarga silenciosa vem depois.
+  await waitFor(() => expect(result.current.data).toEqual({ todos: 99 }));
+  expect(contarClientesPorFiltro).toHaveBeenCalledTimes(3);
+  expect(contarClientesPorFiltro).toHaveBeenLastCalledWith("Bia", true);
 });

@@ -22,9 +22,14 @@ export function useFilaBalcao() {
 
   const pedido = useRef(0);
   const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
 
   const carregar = useCallback(async ({ silencioso = false } = {}) => {
-    if (silencioso && cargaVisivelPendente.current) return;
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const meu = ++pedido.current;
     if (!silencioso) {
       cargaVisivelPendente.current = true;
@@ -55,6 +60,10 @@ export function useFilaBalcao() {
       if (meu === pedido.current) {
         cargaVisivelPendente.current = false;
         setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar({ silencioso: true });
+        }
       }
     }
   }, []);
@@ -64,6 +73,7 @@ export function useFilaBalcao() {
     return () => {
       ++pedido.current;
       cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
     };
   }, [carregar]);
 

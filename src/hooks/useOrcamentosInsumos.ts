@@ -38,6 +38,8 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
   const requestIdRef = useRef(0);
   const carregouUmaVez = useRef(false);
   const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -57,7 +59,10 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
     if (!mountedRef.current) return;
     const silencioso = opcoes?.silencioso === true;
-    if (silencioso && cargaVisivelPendente.current) return;
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const requestId = ++requestIdRef.current;
     const atual = () => mountedRef.current && requestIdRef.current === requestId;
     if (!silencioso) {
@@ -94,6 +99,10 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
       if (atual()) {
         cargaVisivelPendente.current = false;
         setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar({ silencioso: true });
+        }
       }
     }
   }, []);
@@ -103,6 +112,7 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
     return () => {
       requestIdRef.current += 1;
       cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
     };
   }, [carregar, params.busca, params.status, params.page, params.criadoPor, params.perfilId]);
 
@@ -112,7 +122,13 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
 
   useAtualizacaoAoVivo(["orcamentos_insumos"], () => {
 
-    if (cargaVisivelPendente.current) return;
+    if (cargaVisivelPendente.current) {
+
+      recargaPendente.current = true;
+
+      return;
+
+    }
     lembrar();
 
     void carregar({ silencioso: true });

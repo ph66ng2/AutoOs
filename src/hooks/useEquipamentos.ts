@@ -56,6 +56,8 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const [contagens, setContagens] = useState<Record<string, number> | null>(null);
   const requestIdRef = useRef(0);
   const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -85,7 +87,10 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     // Silencioso: atualização em segundo plano (ex.: cliente respondeu no portal) sem trocar a
     // lista pelo indicador de carregamento.
     const silencioso = opcoes?.silencioso === true;
-    if (silencioso && cargaVisivelPendente.current) return { status: "obsoleto" };
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return { status: "obsoleto" };
+    }
     const requestId = ++requestIdRef.current;
     const atual = () => mountedRef.current && requestIdRef.current === requestId;
     if (!silencioso) {
@@ -125,6 +130,10 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
       if (atual()) {
         cargaVisivelPendente.current = false;
         setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar({ silencioso: true });
+        }
       }
     }
   }, []);
@@ -134,6 +143,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     return () => {
       requestIdRef.current += 1;
       cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
     };
   }, [carregar, params?.busca, params?.status, params?.page, params?.ordenacao, params?.tecnico]);
 
@@ -143,7 +153,10 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   // Outro computador mudou uma OS (ou a verificação dela): recarrega em silêncio e destaca o que mudou.
   const { destaques, lembrar } = useDestaquesAoVivo(equipamentos, (eq) => eq.id, (eq) => eq.atualizado_em);
   useAtualizacaoAoVivo(["equipamentos", "verificacoes"], () => {
-    if (cargaVisivelPendente.current) return;
+    if (cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     lembrar();
     void carregar({ silencioso: true });
   });

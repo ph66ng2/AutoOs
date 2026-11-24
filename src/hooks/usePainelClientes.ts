@@ -9,12 +9,17 @@ export function useContagemClientes(busca?: string) {
   const [data, setData] = useState<ContagemClientes | null>(null);
   const pedido = useRef(0);
   const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
   const buscaAtual = useRef(busca);
   buscaAtual.current = busca;
 
   const carregar = useCallback(async (segundoPlano = false) => {
     const minhaBusca = buscaAtual.current;
-    if (segundoPlano && cargaVisivelPendente.current) return;
+    if (segundoPlano && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const meu = ++pedido.current;
     if (!segundoPlano) cargaVisivelPendente.current = true;
     try {
@@ -25,7 +30,13 @@ export function useContagemClientes(busca?: string) {
       console.error("Erro ao contar clientes:", err);
       setData(null);
     } finally {
-      if (meu === pedido.current && minhaBusca === buscaAtual.current) cargaVisivelPendente.current = false;
+      if (meu === pedido.current && minhaBusca === buscaAtual.current) {
+        cargaVisivelPendente.current = false;
+        if (!segundoPlano && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar(true);
+        }
+      }
     }
   }, []);
 
@@ -34,6 +45,7 @@ export function useContagemClientes(busca?: string) {
     return () => {
       ++pedido.current;
       cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
     };
   }, [busca, carregar]);
   useAtualizacaoAoVivo(["clientes", "equipamentos"], () => { void carregar(true); });
@@ -50,10 +62,15 @@ export function useResumoCliente(clienteId: number | null) {
   const [cache, setCache] = useState<{ chave: string; resumo: ResumoCliente } | null>(null);
   const pedido = useRef(0);
   const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
 
   const carregar = useCallback(async (segundoPlano = false) => {
     if (clienteId == null || sessao == null) return;
-    if (segundoPlano && cargaVisivelPendente.current) return;
+    if (segundoPlano && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const meu = ++pedido.current;
     if (!segundoPlano) cargaVisivelPendente.current = true;
     try {
@@ -62,7 +79,13 @@ export function useResumoCliente(clienteId: number | null) {
     } catch (err) {
       if (meu === pedido.current) console.error("Erro ao carregar resumo do cliente:", err);
     } finally {
-      if (meu === pedido.current) cargaVisivelPendente.current = false;
+      if (meu === pedido.current) {
+        cargaVisivelPendente.current = false;
+        if (!segundoPlano && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar(true);
+        }
+      }
     }
   }, [clienteId, sessao, chave]);
 
@@ -72,6 +95,7 @@ export function useResumoCliente(clienteId: number | null) {
     return () => {
       ++pedido.current;
       cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
     };
   }, [carregar]);
 

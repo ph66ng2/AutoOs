@@ -123,10 +123,19 @@ describe("useClientes", () => {
       expect(result.current.loading).toBe(true);
 
       await act(async () => resolver({ items: [{ id: 51 }], total: 60 }));
-      expect(result.current.clientes).toEqual([{ id: 51 }]);
-      expect(result.current.total).toBe(60);
+      // A mudança não se perde: uma única recarga silenciosa roda depois da carga visível.
+      await waitFor(() => expect(leitura).toHaveBeenCalledTimes(chamadas + 1));
+      expect(leitura).toHaveBeenLastCalledWith(undefined, 1, undefined, true);
+      if (cenario === "falharia") {
+        expect(result.current.clientes).toEqual([{ id: 51 }]);
+        expect(result.current.total).toBe(60);
+      } else {
+        await waitFor(() => expect(result.current.clientes).toEqual([{ id: 99 }]));
+      }
       expect(result.current.loading).toBe(false);
       expect(result.current.error).toBeNull();
+      await act(async () => {});
+      expect(leitura).toHaveBeenCalledTimes(chamadas + 1);
     } finally {
       leitura.mockReset().mockResolvedValue({ items: [], total: 0 });
     }
