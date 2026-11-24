@@ -55,8 +55,10 @@ function FormularioDaVenda({ orcamentoId }: { orcamentoId: number | null }) {
   const destino = orcamentoId != null ? `/vendas/${orcamentoId}` : "/vendas";
   // Menu, Ctrl+K ou voltar com a venda pela metade: pergunta antes. Voltar/Cancelar também avisa.
   const aviso = useAvisoAoSair(alterado && editavel);
-  // Esc volta como o botão "(Esc)"; com alterações, o aviso de saída pergunta antes.
-  useEscSai(true, () => navigate(destino));
+  // Voltar, "Descartar alterações (Esc)" e o próprio Esc saem pelo mesmo aviso: com alterações,
+  // perguntam antes; sem elas, voltam na hora. Não depende só do bloqueio do roteador.
+  const voltarComAviso = () => aviso.sairComAviso(() => navigate(destino));
+  useEscSai(true, voltarComAviso);
 
   // "Renovar validade" chega com ?foco=validade.
   useEffect(() => {
@@ -77,7 +79,7 @@ function FormularioDaVenda({ orcamentoId }: { orcamentoId: number | null }) {
   const voltar = (
     <button
       type="button"
-      onClick={() => navigate(destino)}
+      onClick={voltarComAviso}
       className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-rapida hover:text-foreground"
     >
       <ChevronLeft className="h-4 w-4" aria-hidden="true" /> {detalhe ? detalhe.numero_exibicao : "Vendas de insumos"}
@@ -260,7 +262,7 @@ function FormularioDaVenda({ orcamentoId }: { orcamentoId: number | null }) {
           )}
         </p>
         <div className="flex gap-2">
-          <Button variant="outline" className="h-10" onClick={() => navigate(destino)}>
+          <Button variant="outline" className="h-10" onClick={voltarComAviso}>
             {alterado ? "Descartar alterações" : "Voltar"}
             <TeclaNoBotao tecla="Esc" />
           </Button>

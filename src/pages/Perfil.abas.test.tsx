@@ -93,6 +93,44 @@ describe("Perfil: trocar de aba com alteração não salva", () => {
     expect(m.openProfileSelector).toHaveBeenCalledOnce();
   });
 
+  it("Esc sem alteração não pergunta nem troca de aba", async () => {
+    const user = userEvent.setup();
+    const router = montar();
+    await user.click(screen.getByRole("tab", { name: "Personalizar" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Personalizar" })).toHaveAttribute("aria-selected", "true");
+    expect(router.state.location.pathname).toBe("/perfil");
+  });
+
+  it("nome alterado: Esc pergunta; continuar mantém o texto, sair volta à Visão geral sem salvar", async () => {
+    const user = userEvent.setup();
+    const router = montar();
+    await user.click(screen.getByRole("tab", { name: "Personalizar" }));
+    await user.type(screen.getByLabelText("Nome de exibição"), " Paula");
+
+    await user.keyboard("{Escape}");
+    expect(await screen.findAllByRole("alertdialog")).toHaveLength(1);
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    // Esc com o aviso aberto só fecha o aviso (como "Continuar editando").
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Nome de exibição")).toHaveValue("Ana Paula");
+
+    await user.keyboard("{Escape}");
+    await user.click(await screen.findByRole("button", { name: "Continuar editando" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Nome de exibição")).toHaveValue("Ana Paula");
+
+    await user.keyboard("{Escape}");
+    await user.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Visão geral" })).toHaveAttribute("aria-selected", "true"));
+    expect(router.state.location.pathname).toBe("/perfil");
+    expect(m.savePersonalization).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("tab", { name: "Personalizar" }));
+    expect(screen.getByLabelText("Nome de exibição")).toHaveValue("Ana");
+  });
+
   it("depois de salvar, trocar de aba não pergunta", async () => {
     const user = userEvent.setup();
     montar();
