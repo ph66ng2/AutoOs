@@ -91,6 +91,33 @@ describe("Modo Balcão", () => {
     await waitFor(() => expect(db.salvarVerificacao).toHaveBeenCalledWith(expect.objectContaining({ tecnico_nome: "Administrador" })));
   }, 20000);
 
+  it("Cancelar entrada sem nada preenchido volta direto ao início", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /nova entrada/i })).toBeInTheDocument();
+  });
+
+  it("Cancelar entrada com cliente escolhido pergunta; continuar mantém, sair descarta", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /continuar/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    await user.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    expect(await screen.findByRole("button", { name: /nova entrada/i })).toBeInTheDocument();
+    // Voltando, a entrada começa do zero.
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+  });
+
   it("cria uma entrada recebida depois da conferência", async () => {
     const user = userEvent.setup(); renderCounter(); await reachReview(user);
     await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));

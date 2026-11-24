@@ -11,6 +11,7 @@ import { EVENT_LABELS, resumirStatusAuditado } from "@/lib/eventos-auditoria";
 import { AppearancePicker } from "@/components/perfil/AppearancePicker";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import { profileAppearance, type ProfileTheme } from "@/lib/profile-appearance";
@@ -224,7 +225,7 @@ function CapabilityItem({ title, note, allowed }: { title: string; note: string;
   );
 }
 
-function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved: () => Promise<void> }) {
+export function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved: () => Promise<void> }) {
   const look = profileAppearance(profile);
   const [nome, setNome] = useState(profile.nome);
   const [email, setEmail] = useState(profile.email_profissional ?? "");
@@ -233,6 +234,12 @@ function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved:
   const [theme, setTheme] = useState<ProfileTheme>(look.theme);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // O que está salvo; muda ao salvar, sem depender de o perfil recarregado chegar.
+  const [salvo, setSalvo] = useState(() => ({ nome: profile.nome.trim(), email: (profile.email_profissional ?? "").trim(), color: look.color, icon: look.icon, theme: look.theme }));
+  const alterado = nome.trim() !== salvo.nome || email.trim() !== salvo.email
+    || color !== salvo.color || icon !== salvo.icon || theme !== salvo.theme;
+  // Menu, Ctrl+K ou voltar com o perfil alterado e não salvo: pergunta antes.
+  const avisoAoSair = useAvisoAoSair(alterado);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -250,6 +257,7 @@ function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved:
         tema: theme,
         concluir_onboarding: false,
       });
+      setSalvo({ nome: nome.trim(), email: email.trim(), color, icon, theme });
       await onSaved();
       toast.success("Perfil atualizado.");
     } catch (cause) {
@@ -261,6 +269,7 @@ function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved:
 
   return (
     <Card className="max-w-3xl">
+      {avisoAoSair.dialogo}
       <CardContent className="p-6">
         <form noValidate onSubmit={(event) => void save(event)} className="space-y-7">
           <div className="flex items-center gap-4">
