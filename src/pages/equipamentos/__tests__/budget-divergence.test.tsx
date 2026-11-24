@@ -18,6 +18,7 @@ import * as equipamentoImagemUtils from "@/lib/equipamento-imagem-utils";
 
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockListen = vi.hoisted(() => vi.fn(() => Promise.resolve(vi.fn())));
+const rota = vi.hoisted(() => ({ pathname: "/equipamentos" }));
 const mockNavigate = vi.hoisted(() => vi.fn());
 
 const mockFinalizarVerificacao = vi.hoisted(() => vi.fn());
@@ -25,6 +26,7 @@ const mockMarcarPronto = vi.hoisted(() => vi.fn());
 const mockPermissions = vi.hoisted(() => ({ list: ["FINANCIAL_ACTIONS"] as string[] }));
 const mockEnsureSensitiveAccess = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 const mockAtualizarServicosVerificacao = vi.hoisted(() => vi.fn());
+const mockProrrogarPrazoOrcamento = vi.hoisted(() => vi.fn());
 const mockAnalisarAjusteOrcamento = vi.hoisted(() => vi.fn());
 const mockAprovarOrcamento = vi.hoisted(() => vi.fn());
 const mockAtualizarStatusEquipamento = vi.hoisted(() => vi.fn());
@@ -49,7 +51,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 vi.mock("react-router-dom", () => ({
-  useLocation: () => ({ state: {}, pathname: "/equipamentos" }),
+  useLocation: () => ({ state: {}, pathname: rota.pathname }),
   useNavigate: () => mockNavigate,
 }));
 
@@ -95,6 +97,7 @@ vi.mock("@/hooks/useNotification", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
+    prorrogarPrazoOrcamento: mockProrrogarPrazoOrcamento,
     listarProdutos: vi.fn().mockResolvedValue([]),
     buscarEquipamento: mockBuscarEquipamento,
     listarPecasBaixaPendente: mockListarPecasBaixaPendente,
@@ -194,7 +197,8 @@ vi.mock("@/components/equipamentos/PhotoUploadDialog", () => ({
 }));
 
 vi.mock("@/components/equipamentos/VerificacaoTecnica", () => ({
-  VerificacaoTecnica: () => <div data-testid="verificacao-tecnica" />,
+  VerificacaoTecnica: ({ open, equipamento }: { open: boolean; equipamento: { id: number } }) =>
+    open ? <div data-testid="verificacao-tecnica">Verificação da OS {equipamento.id}</div> : null,
 }));
 
 vi.mock("@/components/equipamentos/HistoricoComunicacoes", () => ({
@@ -339,6 +343,10 @@ beforeEach(() => semearTecnicosPadrao());
 
 describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {
+    rota.pathname = "/equipamentos";
+    mockNavigate.mockImplementation((destino: string) => {
+      if (destino.endsWith("/orcamento") || destino.endsWith("/verificacao")) rota.pathname = destino;
+    });
     vi.clearAllMocks();
     mockAtualizarEquipamento.mockResolvedValue({
       sucesso: true,
@@ -759,6 +767,83 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(mockNavigate).toHaveBeenCalledWith(`/equipamentos/${equipamentoVerificado.id}/orcamento`);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Serviços e peças" })).toBeInTheDocument();
+  });
+
+  it("troca de OS na rota de orçamento recarrega os itens e salva na nova OS", async () => {
+    rota.pathname = "/equipamentos/10/orcamento";
+    const outraOs = { ...equipamentoVerificado, id: 11 };
+    mockBuscarEquipamento
+      .mockResolvedValueOnce(equipamentoVerificado)
+      .mockResolvedValueOnce(outraOs)
+      .mockResolvedValueOnce(outraOs);
+    mockBuscarVerificacao
+      .mockResolvedValueOnce(makeVerificacao())
+      .mockResolvedValueOnce({
+        ...makeVerificacao({
+          servicos: [{ id: "s2", descricao: "Reparo da placa", valor: 100 }],
+          pecas: [{ id: "p2", nome: "Placa lógica", quantidade: 1, valorTotal: 50 }],
+        }),
+        equipamento_id: 11,
+      });
+    const view = render(<Equipamentos />);
+    expect(await screen.findByText(/Fonte 24V/)).toBeInTheDocument();
+
+    rota.pathname = "/equipamentos/11/orcamento";
+    view.rerender(<Equipamentos />);
+    expect(screen.queryByText(/Fonte 24V/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/Placa lógica/)).toBeInTheDocument();
+    expect(mockBuscarVerificacao).toHaveBeenLastCalledWith(11, equipamentoVerificado.empresa_id);
+
+    await clicarConfirmarStatus();
+    fireEvent.click(await screen.findByTestId("confirm-action"));
+    await waitFor(() => expect(mockAtualizarServicosVerificacao).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/equipamentos/11"));
+    expect(mockAtualizarServicosVerificacao.mock.calls[0][0]).toMatchObject({
+      equipamento_id: 11,
+      servicos: [expect.objectContaining({ descricao: "Reparo da placa" })],
+    });
+  });
+
+  it("não prorroga o prazo da OS anterior se a rota mudar durante a busca da versão", async () => {
+    rota.pathname = "/equipamentos/10/orcamento";
+    const os = {
+      ...equipamentoVerificado,
+      status: "AGUARDANDO_APROVACAO",
+      prazo_aprovacao: "2099-01-20",
+    };
+    let resolverVersao!: (value: typeof os) => void;
+    const versaoPendente = new Promise<typeof os>((resolve) => { resolverVersao = resolve; });
+    mockBuscarEquipamento
+      .mockResolvedValueOnce(os)
+      .mockReturnValueOnce(versaoPendente)
+      .mockResolvedValueOnce({ ...os, id: 11 });
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    const view = render(<Equipamentos />);
+    fireEvent.change(await screen.findByDisplayValue("20/01/2099"), { target: { value: "2099-01-21" } });
+    await clicarConfirmarStatus();
+    fireEvent.click(await screen.findByTestId("confirm-action"));
+    await waitFor(() => expect(mockBuscarEquipamento).toHaveBeenNthCalledWith(2, 10));
+
+    rota.pathname = "/equipamentos/11/orcamento";
+    view.rerender(<Equipamentos />);
+    await act(async () => resolverVersao(os));
+
+    expect(mockAtualizarServicosVerificacao).toHaveBeenCalledTimes(1);
+    expect(mockProrrogarPrazoOrcamento).not.toHaveBeenCalled();
+  });
+
+  it("troca de OS na rota de verificação abre a verificação da nova OS", async () => {
+    rota.pathname = "/equipamentos/10/verificacao";
+    mockBuscarEquipamento
+      .mockResolvedValueOnce({ ...equipamentoVerificado, status: "EM_VERIFICACAO" })
+      .mockResolvedValueOnce({ ...equipamentoVerificado, id: 11, status: "EM_VERIFICACAO" });
+    const view = render(<Equipamentos />);
+    expect(await screen.findByText("Verificação da OS 10")).toBeInTheDocument();
+
+    rota.pathname = "/equipamentos/11/verificacao";
+    view.rerender(<Equipamentos />);
+    expect(screen.queryByText("Verificação da OS 10")).not.toBeInTheDocument();
+    expect(await screen.findByText("Verificação da OS 11")).toBeInTheDocument();
   });
 
   it("orçamento aprovado alterado: pergunta o que fazer e envia o modo escolhido", async () => {

@@ -917,12 +917,16 @@ export const db = {
   // ─── Arquivo Temporário ────────────────────────────────
 
   /**
-   * Salva bytes em arquivo temporário e abre com app padrão → Rust: salvar_arquivo_temp.
-   * Usado pelo DocxService para gerar e abrir orçamentos DOCX.
+   * Salva bytes em arquivo temporário → Rust: salvar_arquivo_temp.
    * @returns Caminho absoluto do arquivo salvo
    */
   async salvarArquivoTemp(bytes: number[], filename: string): Promise<string> {
     return invoke<string>("salvar_arquivo_temp", { bytes, filename });
+  },
+
+  /** Salva o CSV e o mostra no gerenciador de arquivos. */
+  async salvarExportacaoCsv(bytes: number[], filename: string): Promise<string> {
+    return invoke<string>("salvar_exportacao_csv", { bytes, filename });
   },
 
   /**

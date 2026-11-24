@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { db } from "@/lib/db";
+import { baixarCsv } from "@/lib/exportacao-csv";
 import { STATUS_LABELS, type Equipamento, type StatusEquipamento } from "@/types";
 
 function campoCsv(valor: unknown) {
@@ -32,13 +33,11 @@ export async function salvarCsvEquipamentos(itens: Equipamento[], sufixo = ""): 
     ];
     const hoje = new Date();
     const nome = `equipamentos${sufixo}-${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}.csv`;
-    await db.salvarArquivoTemp(Array.from(new TextEncoder().encode(`﻿${linhas.join("\n")}`)), nome);
-    return nome;
+    return baixarCsv(linhas, nome);
 }
 
 /**
- * Baixa em CSV a lista de equipamentos com os filtros da tela (todas as páginas), na pasta
- * temporária do app, como a exportação de Finanças. Devolve o nome do arquivo.
+ * Baixa em CSV a lista de equipamentos com os filtros da tela (todas as páginas).
  */
 export function useExportarEquipamentos() {
   return useCallback(async (filtros: FiltrosExportacao) => {
