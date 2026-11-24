@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { argSegundoPlano } from "@/lib/ao-vivo";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import { receitaPorMes } from "@/hooks/useReceitaPorMes";
 import type { GastoFixo, GastoVariavel } from "@/types";
@@ -24,66 +26,73 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
   const [anterior, setAnterior] = useState<MesFinancas[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pedido = useRef(0);
   const [tick, setTick] = useState(0);
+  const recarregar = useCallback(() => setTick((n) => n + 1), []);
   const anoAtual = hoje.getFullYear();
   const mesAtual = hoje.getMonth() + 1;
-  const recarregar = useCallback(() => {
-    setTick((n) => n + 1);
-  }, []);
 
-  useEffect(() => {
-    let ativo = true;
-    setLoading(true);
-    setError(null);
+  const carregar = useCallback(async ({ silencioso = false } = {}) => {
+    const meu = ++pedido.current;
+    if (!silencioso) {
+      setLoading(true);
+      setError(null);
+    }
     const lista = [ano - 1, ano].flatMap((a) => Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, ano: a })));
     const futuro = (m: { mes: number; ano: number }) => m.ano > anoAtual || (m.ano === anoAtual && m.mes > mesAtual);
-    void (async () => {
-      try {
-        const [receita, resumos] = await Promise.all([
-          // Todas as OS aprovadas no período (sem o limite de 50 da lista). Um ano a mais de cada
-          // lado: `data_aprovacao` com hora pode cair em outro ano no fuso local.
-          db.listarReceitaAprovada(ano - 2, ano + 1).then(receitaPorMes).catch(() => null),
-          Promise.all(
-            lista.map(async (m) => {
-              if (futuro(m)) return { ok: true as const, total_variavel: 0 };
-              try {
-                const resumo = await db.resumoMensal(m.mes, m.ano);
-                return { ok: true as const, total_variavel: resumo?.total_variavel ?? 0 };
-              } catch {
-                return { ok: false as const, total_variavel: 0 };
-              }
-            }),
-          ),
-        ]);
-        if (!ativo) return;
-        if (resumos.some((item) => !item.ok)) {
-          setAnterior([]);
-          setMeses([]);
-          setError("Não foi possível carregar os gastos de alguns meses.");
-          return;
-        }
-        const porChave = new Map((receita ?? []).map((item) => [item.chave, item.valor]));
-        const todos = lista.map((m, indice) => {
-          const ehFuturo = futuro(m);
-          return {
-            ...m,
-            futuro: ehFuturo,
-            faturado: ehFuturo ? 0 : porChave.get(`${m.ano}-${String(m.mes).padStart(2, "0")}`) ?? 0,
-            fixo: ehFuturo ? 0 : totalFixo,
-            variavel: ehFuturo ? 0 : resumos[indice].total_variavel,
-          };
-        });
-        setAnterior(todos.slice(0, 12));
-        setMeses(todos.slice(12));
-        if (receita == null) setError("Não foi possível carregar o faturado.");
-      } finally {
-        if (ativo) setLoading(false);
+    try {
+      const [receita, resumos] = await Promise.all([
+        // Todas as OS aprovadas no período (sem o limite de 50 da lista). Um ano a mais de cada
+        // lado: `data_aprovacao` com hora pode cair em outro ano no fuso local.
+        db.listarReceitaAprovada(ano - 2, ano + 1, ...argSegundoPlano(silencioso)).then(receitaPorMes).catch(() => null),
+        Promise.all(
+          lista.map(async (m) => {
+            if (futuro(m)) return { ok: true as const, total_variavel: 0 };
+            try {
+              const resumo = await db.resumoMensal(m.mes, m.ano, ...argSegundoPlano(silencioso));
+              return { ok: true as const, total_variavel: resumo?.total_variavel ?? 0 };
+            } catch {
+              return { ok: false as const, total_variavel: 0 };
+            }
+          }),
+        ),
+      ]);
+      if (meu !== pedido.current) return;
+      if (silencioso && receita == null) return;
+      if (resumos.some((item) => !item.ok)) {
+        if (silencioso) return;
+        setAnterior([]);
+        setMeses([]);
+        setError("Não foi possível carregar os gastos de alguns meses.");
+        return;
       }
-    })();
-    return () => {
-      ativo = false;
-    };
-  }, [ano, totalFixo, anoAtual, mesAtual, tick]);
+      const porChave = new Map((receita ?? []).map((item) => [item.chave, item.valor]));
+      const todos = lista.map((m, indice) => {
+        const ehFuturo = futuro(m);
+        return {
+          ...m,
+          futuro: ehFuturo,
+          faturado: ehFuturo ? 0 : porChave.get(`${m.ano}-${String(m.mes).padStart(2, "0")}`) ?? 0,
+          fixo: ehFuturo ? 0 : totalFixo,
+          variavel: ehFuturo ? 0 : resumos[indice].total_variavel,
+        };
+      });
+      setAnterior(todos.slice(0, 12));
+      setMeses(todos.slice(12));
+      setError(receita == null ? "Não foi possível carregar o faturado." : null);
+    } finally {
+      if (meu === pedido.current) setLoading(false);
+    }
+  }, [ano, totalFixo, anoAtual, mesAtual]);
+
+  useEffect(() => {
+    void carregar();
+    return () => { ++pedido.current; };
+  }, [carregar, tick]);
+
+  useAtualizacaoAoVivo(["equipamentos", "verificacoes", "gastos_variaveis"], () => {
+    void carregar({ silencioso: true });
+  });
 
   return { meses, anterior, loading, error, recarregar };
 }

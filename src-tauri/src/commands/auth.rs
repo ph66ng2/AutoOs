@@ -988,7 +988,19 @@ async fn active_session_company_query_error(error: sqlx::Error) -> String {
 }
 
 pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, String> {
-    let profile = evaluate_permission_gate(Some(require_sensitive_access()?), permission)
+    require_permission_para_leitura(permission, None)
+}
+
+pub fn require_permission_para_leitura(
+    permission: &str,
+    segundo_plano: Option<bool>,
+) -> Result<SecurityProfileSummary, String> {
+    let sessao = if segundo_plano == Some(true) {
+        require_sensitive_access_without_touch()?
+    } else {
+        require_sensitive_access()?
+    };
+    let profile = evaluate_permission_gate(Some(sessao), permission)
     .map_err(|failure| match failure {
         PermissionGateFailure::SessionLocked => {
             spawn_security_event(
@@ -1014,7 +1026,9 @@ pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, St
         }
     })?;
 
-    touch_sensitive_access()?;
+    if segundo_plano != Some(true) {
+        touch_sensitive_access()?;
+    }
     Ok(profile)
 }
 

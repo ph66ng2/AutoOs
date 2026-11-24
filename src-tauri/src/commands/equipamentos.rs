@@ -664,11 +664,15 @@ pub(crate) fn faixa_de_anos_receita(ano_inicio: i32, ano_fim: i32) -> Result<(St
 /// O valor segue o de `EQUIPAMENTO_SELECT` (orçamento, ou o custo da última verificação).
 #[tauri::command]
 #[instrument(skip_all, fields(ano_inicio = ano_inicio, ano_fim = ano_fim))]
-pub async fn listar_receita_aprovada(ano_inicio: i32, ano_fim: i32) -> Result<Vec<ReceitaAprovadaRow>, String> {
-    require_permission(crate::commands::auth::PERMISSION_VIEW_EXPENSES)?;
+pub async fn listar_receita_aprovada(
+    ano_inicio: i32,
+    ano_fim: i32,
+    segundo_plano: Option<bool>,
+) -> Result<Vec<ReceitaAprovadaRow>, String> {
+    super::auth::require_permission_para_leitura(super::auth::PERMISSION_VIEW_EXPENSES, segundo_plano)?;
     let (inicio, fim) = faixa_de_anos_receita(ano_inicio, ano_fim)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     sqlx::query_as::<_, ReceitaAprovadaRow>(
         "SELECT data_aprovacao,
                 COALESCE(

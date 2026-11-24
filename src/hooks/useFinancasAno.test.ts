@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ db: mocks }));
 
+import { distribuirMudancas } from "@/lib/ao-vivo";
 import { useFinancasAno } from "@/hooks/useFinancasAno";
 
 function deferred<T>() {
@@ -54,6 +55,33 @@ describe("useFinancasAno", () => {
     expect(result.current.meses.map((m) => m.ano)).toEqual(Array(12).fill(2025));
     expect(result.current.meses[5]?.faturado).toBe(500);
     expect(result.current.meses.some((m) => m.faturado === 99999)).toBe(false);
+  });
+
+  it("atualiza os dois anos em segundo plano e ignora uma leitura ao vivo atrasada", async () => {
+    const inicial = { data_aprovacao: "2026-03-10", valor_orcamento: 100 };
+    const atrasada = deferred<unknown[]>();
+    const atual = deferred<unknown[]>();
+    mocks.listarReceitaAprovada.mockResolvedValueOnce([inicial])
+      .mockReturnValueOnce(atrasada.promise).mockReturnValueOnce(atual.promise);
+    const { result } = renderHook(() => useFinancasAno(2026, 40, new Date("2026-11-18T12:00:00")));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    mocks.resumoMensal.mockClear();
+
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 10, referencia: null, operacao: "U" }]));
+    act(() => distribuirMudancas([{ tabela: "verificacoes", id: 20, referencia: 10, operacao: "U" }]));
+    expect(mocks.listarReceitaAprovada).toHaveBeenCalledTimes(3);
+    expect(mocks.listarReceitaAprovada).toHaveBeenLastCalledWith(2024, 2027, true);
+    expect(mocks.resumoMensal.mock.calls.every((args) => args[2] === true)).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.meses[2]?.faturado).toBe(100);
+
+    await act(async () => atual.resolve([
+      { ...inicial, valor_orcamento: 250 },
+      { ...inicial, data_aprovacao: "2025-03-10", valor_orcamento: 80 },
+    ]));
+    await act(async () => atrasada.resolve([]));
+    expect(result.current.meses[2]).toMatchObject({ faturado: 250, fixo: 40 });
+    expect(result.current.anterior[2]?.faturado).toBe(80);
   });
 
   it("avisa quando um resumo mensal falha em vez de tratar o mês como zero", async () => {

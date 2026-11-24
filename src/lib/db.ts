@@ -211,8 +211,8 @@ export const db = {
   },
 
   /** Todas as OS aprovadas da empresa entre os anos (inclusive), sem paginação: faturado de Finanças. */
-  async listarReceitaAprovada(anoInicio: number, anoFim: number): Promise<Pick<Equipamento, "data_aprovacao" | "valor_orcamento" | "valor_final">[]> {
-    return invoke("listar_receita_aprovada", { anoInicio, anoFim });
+  async listarReceitaAprovada(anoInicio: number, anoFim: number, segundoPlano = false): Promise<Pick<Equipamento, "data_aprovacao" | "valor_orcamento" | "valor_final">[]> {
+    return invoke("listar_receita_aprovada", { anoInicio, anoFim, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Datas de entrada/entrega/reprovação de todas as OS com movimento nos anos pedidos (Início, sem paginação) → Rust: listar_movimento_bancada */
@@ -842,8 +842,8 @@ export const db = {
   },
 
   /** Resumo mensal de gastos (fixos + variáveis + por categoria) → Rust: resumo_mensal */
-  async resumoMensal(mes: number, ano: number): Promise<GastoResumoMensal> {
-    return invoke<GastoResumoMensal>("resumo_mensal", { mes, ano });
+  async resumoMensal(mes: number, ano: number, segundoPlano = false): Promise<GastoResumoMensal> {
+    return invoke<GastoResumoMensal>("resumo_mensal", { mes, ano, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Consulta a versão do schema e as migrações conhecidas/aplicadas → Rust: obter_status_schema_banco */

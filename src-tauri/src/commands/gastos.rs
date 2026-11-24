@@ -315,8 +315,12 @@ async fn buscar_gasto_variavel(id: i32) -> Result<GastoVariavelRow, String> {
 /// Resumo mensal de gastos (fixos + variáveis + por categoria).
 #[tauri::command]
 #[instrument(skip_all, fields(mes = mes, ano = ano))]
-pub async fn resumo_mensal(mes: i32, ano: i32) -> Result<GastoResumoMensal, String> {
-    let _actor = require_permission(PERMISSION_VIEW_EXPENSES)?;
+pub async fn resumo_mensal(
+    mes: i32,
+    ano: i32,
+    segundo_plano: Option<bool>,
+) -> Result<GastoResumoMensal, String> {
+    super::auth::require_permission_para_leitura(PERMISSION_VIEW_EXPENSES, segundo_plano)?;
     debug!("Calculando resumo mensal para {}/{}", mes, ano);
     let pool = get_pool().await.map_err(|e| {
         error!("Erro ao obter pool: {}", e);
