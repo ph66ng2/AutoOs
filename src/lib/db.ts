@@ -195,8 +195,8 @@ export const db = {
   },
 
   /** Nomes de técnico já gravados nas verificações (filtro de técnico) → Rust: listar_nomes_tecnicos_verificacoes */
-  async listarNomesTecnicosVerificacoes(): Promise<string[]> {
-    return invoke<string[]>("listar_nomes_tecnicos_verificacoes");
+  async listarNomesTecnicosVerificacoes(segundoPlano = false): Promise<string[]> {
+    return invoke<string[]>("listar_nomes_tecnicos_verificacoes", seSegundoPlano(segundoPlano));
   },
 
   /** Busca equipamento por ID → Rust: buscar_equipamento */
