@@ -23,6 +23,18 @@ describe("db — equipamentos", () => {
     expect(mockInvoke).toHaveBeenLastCalledWith("listar_nomes_tecnicos_verificacoes", {});
   });
 
+  it("histórico do cliente pede a lista completa; a lista resumida não", async () => {
+    mockInvoke.mockResolvedValue([]);
+    await db.listarHistoricoEquipamentosCliente(7, ["Oficina"], true);
+    expect(mockInvoke).toHaveBeenLastCalledWith("listar_equipamentos_cliente", { clienteId: 7, nomes: ["Oficina"], completo: true, segundoPlano: true });
+
+    await db.listarHistoricoEquipamentosCliente(7, ["Oficina"]);
+    expect(mockInvoke).toHaveBeenLastCalledWith("listar_equipamentos_cliente", { clienteId: 7, nomes: ["Oficina"], completo: true });
+
+    await db.listarEquipamentosCliente(7, ["Oficina"]);
+    expect(mockInvoke).toHaveBeenLastCalledWith("listar_equipamentos_cliente", { clienteId: 7, nomes: ["Oficina"] });
+  });
+
   it("criarEquipamento envia payload em `input` (contrato Rust)", async () => {
     const payload: Omit<Equipamento, "id"> = {
       serial_number: "SN-UNIT-001",

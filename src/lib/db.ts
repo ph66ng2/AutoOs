@@ -179,6 +179,11 @@ export const db = {
     return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes, ...seSegundoPlano(segundoPlano) });
   },
 
+  /** Histórico inteiro do cliente (sem o limite de 200 OS), para somar passagens e serviços → Rust: listar_equipamentos_cliente (completo) */
+  async listarHistoricoEquipamentosCliente(clienteId: number, nomes: string[] = [], segundoPlano = false): Promise<Equipamento[]> {
+    return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes, completo: true, ...seSegundoPlano(segundoPlano) });
+  },
+
   async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE", tecnico?: string, segundoPlano = false): Promise<PaginatedResult<Equipamento>> {
     return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao, tecnico: tecnico ?? null, ...seSegundoPlano(segundoPlano) });
   },
