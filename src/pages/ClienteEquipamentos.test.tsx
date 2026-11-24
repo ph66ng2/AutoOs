@@ -5,7 +5,7 @@ import ClienteEquipamentos from "./ClienteEquipamentos";
 
 const dbMocks = vi.hoisted(() => ({
   buscarCliente: vi.fn(),
-  listarEquipamentosCliente: vi.fn(),
+  listarHistoricoEquipamentosCliente: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: dbMocks }));
 
@@ -27,7 +27,7 @@ function renderPagina() {
 describe("ClienteEquipamentos", () => {
   it("agrupa as OS por aparelho, conta passagens e serviços e abre a OS", async () => {
     dbMocks.buscarCliente.mockResolvedValue({ id: 7, tipo_pessoa: "PJ", nome: "Oficina do Porto" });
-    dbMocks.listarEquipamentosCliente.mockResolvedValue([
+    dbMocks.listarHistoricoEquipamentosCliente.mockResolvedValue([
       os(11, "ZT-1", "ENTREGUE", "2025-02-01", { data_pronto: "2025-02-05", data_saida: "2025-02-06" }),
       os(12, "ZT-1", "RECEBIDO", "2026-11-10"),
       os(13, "GC-9", "ENTREGUE", "2026-03-01"),
@@ -36,7 +36,7 @@ describe("ClienteEquipamentos", () => {
 
     expect(await screen.findByRole("heading", { name: "Equipamentos de Oficina do Porto" })).toBeInTheDocument();
     expect(screen.getByText("2 equipamentos · 3 passagens pela assistência · 1 serviço feito")).toBeInTheDocument();
-    expect(dbMocks.listarEquipamentosCliente).toHaveBeenCalledWith(7, ["Oficina do Porto", "Oficina do Porto"]);
+    expect(dbMocks.listarHistoricoEquipamentosCliente).toHaveBeenCalledWith(7, ["Oficina do Porto", "Oficina do Porto"]);
 
     const aparelho = screen.getByRole("button", { name: /ZT-1/ });
     expect(aparelho).toHaveAttribute("aria-expanded", "false");
@@ -50,7 +50,7 @@ describe("ClienteEquipamentos", () => {
 
   it("cliente sem equipamentos mostra o estado vazio", async () => {
     dbMocks.buscarCliente.mockResolvedValue({ id: 7, tipo_pessoa: "PF", nome: "Sônia Reis" });
-    dbMocks.listarEquipamentosCliente.mockResolvedValue([]);
+    dbMocks.listarHistoricoEquipamentosCliente.mockResolvedValue([]);
     renderPagina();
     expect(await screen.findByText("Este cliente ainda não trouxe equipamentos")).toBeInTheDocument();
   });

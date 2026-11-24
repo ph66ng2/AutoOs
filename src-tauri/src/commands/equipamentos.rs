@@ -739,34 +739,41 @@ pub async fn listar_movimento_bancada(
     })
 }
 
+/// Quantas OS (as mais recentes) a lista resumida do cliente traz.
+const LIMITE_EQUIPAMENTOS_CLIENTE: i64 = 200;
+
 /// Lista os equipamentos de um cliente pelo `cliente_id`. Equipamentos antigos sem
 /// `cliente_id` entram apenas se o `cliente_nome` gravado for igual (sem diferenciar
-/// maiúsculas) a um dos `nomes` informados.
+/// maiúsculas) a um dos `nomes` informados. Sem `completo`, traz só as 200 OS mais
+/// recentes (painel de Clientes, seletor da Nova entrada); com `completo = true`, traz o
+/// histórico inteiro, para a tela que soma passagens e serviços por aparelho.
 #[tauri::command]
 #[instrument(skip_all, fields(cliente_id = cliente_id))]
 pub async fn listar_equipamentos_cliente(
     cliente_id: i32,
     nomes: Option<Vec<String>>,
+    completo: Option<bool>,
     segundo_plano: Option<bool>,
 ) -> Result<Vec<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
-    listar_equipamentos_cliente_on_connection(&mut connection, empresa_id, cliente_id, nomes.unwrap_or_default()).await
+    let limite = if completo.unwrap_or(false) { None } else { Some(LIMITE_EQUIPAMENTOS_CLIENTE) };
+    listar_equipamentos_cliente_on_connection(&mut connection, empresa_id, cliente_id, nomes.unwrap_or_default(), limite).await
 }
 
-pub(crate) async fn listar_equipamentos_cliente_on_connection(
-    connection: &mut PgConnection,
+fn consulta_equipamentos_cliente(
     empresa_id: i32,
     cliente_id: i32,
     nomes: Vec<String>,
-) -> Result<Vec<EquipamentoRow>, String> {
+    limite: Option<i64>,
+) -> QueryBuilder<Postgres> {
     let nomes: Vec<String> = nomes
         .into_iter()
         .map(|nome| nome.trim().to_lowercase())
         .filter(|nome| !nome.is_empty())
         .collect();
-    let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(EQUIPAMENTO_SELECT);
+    let mut query_builder = QueryBuilder::<Postgres>::new(EQUIPAMENTO_SELECT);
     query_builder.push(" WHERE empresa_id = ");
     query_builder.push_bind(empresa_id);
     query_builder.push(" AND (cliente_id = ");
@@ -774,8 +781,22 @@ pub(crate) async fn listar_equipamentos_cliente_on_connection(
     query_builder.push(" OR (cliente_id IS NULL AND LOWER(BTRIM(COALESCE(cliente_nome, ''))) = ANY(");
     query_builder.push_bind(nomes);
     query_builder.push(")))");
-    query_builder.push(" ORDER BY id DESC LIMIT 200");
+    query_builder.push(" ORDER BY id DESC");
+    if let Some(limite) = limite {
+        query_builder.push(" LIMIT ");
+        query_builder.push_bind(limite);
+    }
+    query_builder
+}
 
+pub(crate) async fn listar_equipamentos_cliente_on_connection(
+    connection: &mut PgConnection,
+    empresa_id: i32,
+    cliente_id: i32,
+    nomes: Vec<String>,
+    limite: Option<i64>,
+) -> Result<Vec<EquipamentoRow>, String> {
+    let mut query_builder = consulta_equipamentos_cliente(empresa_id, cliente_id, nomes, limite);
     query_builder
         .build_query_as::<EquipamentoRow>()
         .fetch_all(&mut *connection)
@@ -1709,6 +1730,19 @@ mod tests {
         assert!(faixa_de_anos_receita(2027, 2024).is_err());
         assert!(faixa_de_anos_receita(99, 2024).is_err());
         assert!(faixa_de_anos_receita(2024, 10_000).is_err());
+    }
+
+    #[test]
+    fn historico_completo_do_cliente_nao_tem_limite() {
+        let resumida = consulta_equipamentos_cliente(1, 7, vec!["Oficina".into()], Some(LIMITE_EQUIPAMENTOS_CLIENTE));
+        let sql = resumida.sql().as_str().to_string();
+        assert!(sql.contains("WHERE empresa_id = $1"), "{sql}");
+        assert!(sql.trim_end().ends_with("ORDER BY id DESC LIMIT $4"), "{sql}");
+
+        let completa = consulta_equipamentos_cliente(1, 7, vec!["Oficina".into()], None);
+        let sql = completa.sql().as_str().to_string();
+        assert!(sql.contains("WHERE empresa_id = $1"), "{sql}");
+        assert!(sql.trim_end().ends_with("ORDER BY id DESC"), "{sql}");
     }
 
     #[test]

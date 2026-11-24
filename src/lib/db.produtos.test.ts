@@ -25,6 +25,14 @@ describe("db — produtos", () => {
     vi.clearAllMocks();
   });
 
+  it("obterOrcamentoInsumos envia segundoPlano só na leitura de fundo", async () => {
+    mockInvoke.mockResolvedValue({ id: 3 });
+    await db.obterOrcamentoInsumos(3, true);
+    expect(mockInvoke).toHaveBeenLastCalledWith("obter_orcamento_insumos", { id: 3, segundoPlano: true });
+    await db.obterOrcamentoInsumos(3);
+    expect(mockInvoke).toHaveBeenLastCalledWith("obter_orcamento_insumos", { id: 3 });
+  });
+
   it("criarProduto envia payload em `input` (contrato Rust)", async () => {
     mockInvoke.mockResolvedValue({ ...payload, id: 5 });
 

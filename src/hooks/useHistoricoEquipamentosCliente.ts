@@ -6,7 +6,7 @@ import { agruparHistoricoEquipamentos } from "@/lib/historico-equipamentos";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import type { Cliente, Equipamento } from "@/types";
 
-/** Cliente e todas as OS dele, agrupadas por aparelho. */
+/** Cliente e todas as OS dele (sem o limite da lista resumida), agrupadas por aparelho. */
 export function useHistoricoEquipamentosCliente(clienteId: number | null) {
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
@@ -48,7 +48,7 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
       if (!vale()) return;
       // OS antigas sem cliente_id são achadas pelo nome, como no painel de Clientes.
       const nomes = [nomeExibicaoCliente(encontrado), encontrado.nome ?? ""];
-      const lista = await db.listarEquipamentosCliente(clienteId, nomes, ...argSegundoPlano(silencioso));
+      const lista = await db.listarHistoricoEquipamentosCliente(clienteId, nomes, ...argSegundoPlano(silencioso));
       if (!vale()) return;
       setCliente(encontrado);
       setEquipamentos(lista);
