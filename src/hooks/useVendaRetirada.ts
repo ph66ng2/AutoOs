@@ -84,9 +84,11 @@ export function useVendaRetirada(vendaId: number) {
       setError(null);
       return null;
     } catch (causa) {
+      // Conflito ou venda mudada em outro computador: relê em silêncio para a tela mostrar o status atual.
+      void carregar({ silencioso: true });
       return textoDoErro(causa);
     }
-  }, [venda]);
+  }, [venda, carregar]);
 
   // Enquanto outra venda carrega, a anterior não aparece (a entrega usaria o id errado).
   const vendaAtual = venda != null && venda.id === vendaId ? venda : null;

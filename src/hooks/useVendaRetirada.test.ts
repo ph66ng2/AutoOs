@@ -99,4 +99,18 @@ describe("useVendaRetirada", () => {
     await act(async () => { atrasada.resolver(venda("APROVADO")); });
     expect(result.current.venda?.status).toBe("ENTREGUE");
   });
+
+  it("entrega recusada (conflito) relê a venda em silêncio para mostrar o status atual", async () => {
+    mocks.obterOrcamentoInsumos.mockResolvedValueOnce(venda("APROVADO")).mockResolvedValueOnce(venda("CANCELADO"));
+    const { result } = renderHook(() => useVendaRetirada(7));
+    await waitFor(() => expect(result.current.venda?.status).toBe("APROVADO"));
+
+    mocks.marcarOrcamentoInsumosEntregue.mockRejectedValueOnce("Conflito de concorrência");
+    let falha: string | null = null;
+    await act(async () => { falha = await result.current.entregar(); });
+    expect(falha).toBe("Conflito de concorrência");
+    await waitFor(() => expect(result.current.venda?.status).toBe("CANCELADO"));
+    expect(mocks.obterOrcamentoInsumos).toHaveBeenLastCalledWith(7, true);
+    expect(result.current.loading).toBe(false);
+  });
 });
