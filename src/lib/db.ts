@@ -372,8 +372,8 @@ export const db = {
   // ─── Contatos de cliente ─────────────────────────────
 
   /** Lista contatos ativos do cliente dentro da empresa informada. */
-  async listarClienteContatos(clienteId: number, empresaId: number): Promise<ClienteContato[]> {
-    return invoke<ClienteContato[]>("listar_cliente_contatos", { clienteId, empresaId });
+  async listarClienteContatos(clienteId: number, empresaId: number, segundoPlano = false): Promise<ClienteContato[]> {
+    return invoke<ClienteContato[]>("listar_cliente_contatos", { clienteId, empresaId, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Cria um contato explicitamente vinculado a cliente e empresa. */

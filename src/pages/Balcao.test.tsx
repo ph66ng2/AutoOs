@@ -12,6 +12,7 @@ const db = vi.hoisted(() => ({
 }));
 const emailService = vi.hoisted(() => ({ enviarOrdemEntrada: vi.fn() }));
 const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
+const openProfileSelector = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({ db }));
 import { PdfService } from "@/lib/pdf-service";
@@ -26,7 +27,7 @@ beforeEach(() => {
 });
 vi.mock("@/lib/email-service", () => ({ EmailService: emailService }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
-  useSensitiveAccess: () => ({ status: m.sessao, ensureSensitiveAccess, lockSensitiveAccess: vi.fn(), openProfileSelector: vi.fn() }),
+  useSensitiveAccess: () => ({ status: m.sessao, ensureSensitiveAccess, lockSensitiveAccess: vi.fn(), openProfileSelector }),
 }));
 vi.mock("@/components/equipamentos/ClienteSelector", () => ({
   ClienteSelector: ({ onClienteSelecionado }: { onClienteSelecionado: (client: unknown) => void }) => <button onClick={() => onClienteSelecionado({ id: 9, empresa_id: 7, nome: "Cliente balcão", telefone: "71999999999" })}>Selecionar cliente de teste</button>,
@@ -90,6 +91,74 @@ describe("Modo Balcão", () => {
     expect(db.criarEquipamento.mock.calls[0]![0].observacoes ?? "").not.toMatch(/Técnico inicial/);
     await waitFor(() => expect(db.salvarVerificacao).toHaveBeenCalledWith(expect.objectContaining({ tecnico_nome: "Administrador" })));
   }, 20000);
+
+  it("Cancelar entrada sem nada preenchido volta direto ao início", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /nova entrada/i })).toBeInTheDocument();
+  });
+
+  it("Cancelar entrada com cliente escolhido pergunta; continuar mantém, sair descarta", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /continuar/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    await user.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    expect(await screen.findByRole("button", { name: /nova entrada/i })).toBeInTheDocument();
+    // Voltando, a entrada começa do zero.
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+  });
+
+  it("trocar de operador sem nada preenchido abre os perfis direto", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: "Ivan" }));
+    expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+    expect(openProfileSelector).toHaveBeenCalledOnce();
+    // Nada a perder: a tela continua onde estava.
+    expect(screen.getByRole("button", { name: /cancelar entrada/i })).toBeInTheDocument();
+  });
+
+  it("trocar de operador com a entrada pela metade pergunta; continuar mantém, sair recomeça e abre os perfis", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+
+    await user.click(screen.getByRole("button", { name: "Ivan" }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(openProfileSelector).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /continuar/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Ivan" }));
+    await user.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    expect(openProfileSelector).toHaveBeenCalledOnce();
+    expect(await screen.findByRole("button", { name: /nova entrada/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+  });
+
+  it("o botão Início do balcão também pergunta com a entrada pela metade", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: "Início do balcão" }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(screen.getByRole("button", { name: /continuar/i })).toBeInTheDocument();
+  });
 
   it("cria uma entrada recebida depois da conferência", async () => {
     const user = userEvent.setup(); renderCounter(); await reachReview(user);

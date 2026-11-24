@@ -68,7 +68,8 @@ pub struct DatabaseInitError {
 
 const DATABASE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(6);
 const DATABASE_SCHEMA_TIMEOUT: Duration = Duration::from_secs(6);
-const DATABASE_MAX_CONNECTIONS: u32 = 5;
+// 7 PCs × 4 + 2 = 30, abaixo do Pool Size 35 do Supavisor Session.
+const DATABASE_MAX_CONNECTIONS: u32 = 4;
 const DATABASE_CAPACITY_DIAGNOSTIC_TIMEOUT: Duration = Duration::from_secs(2);
 const DATABASE_CAPACITY_BACKOFF: Duration = Duration::from_secs(30);
 const STARTUP_CONNECT_ATTEMPTS: usize = 2;

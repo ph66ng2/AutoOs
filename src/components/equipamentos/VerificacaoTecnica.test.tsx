@@ -4,6 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { VerificacaoTecnica } from "./VerificacaoTecnica";
 import { MENSAGEM_TOTAL_ZERO_SEM_GARANTIA } from "@/lib/orcamento-estoque";
 import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+import { useState } from "react";
+import { createMemoryRouter, RouterProvider, useNavigate } from "react-router-dom";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 
 beforeEach(() => semearTecnicosPadrao());
 
@@ -268,5 +271,103 @@ describe("VerificacaoTecnica", () => {
     await user.click(screen.getByLabelText("Técnico responsável"));
     await user.click(await screen.findByRole("option", { name: "Isaias" }));
     await waitFor(() => expect(onSujoChange).toHaveBeenLastCalledWith(true));
+  });
+});
+
+// Mesma ligação de Equipamentos.tsx: a seta de voltar vai para `onVoltar`, que com algo
+// preenchido navega pelo bloqueio "Sair sem salvar?" e, limpo, fecha a página direto.
+function PaginaVerificacaoComAviso({ onOpenChange }: { onOpenChange: (aberta: boolean) => void }) {
+  const [sujo, setSujo] = useState(false);
+  const [aberta, setAberta] = useState(true);
+  const navigate = useNavigate();
+  const aviso = useAvisoAoSair(aberta && sujo);
+  const fechar = () => {
+    setAberta(false);
+    onOpenChange(false);
+    navigate("/equipamentos");
+  };
+  return (
+    <>
+      <VerificacaoTecnica
+        equipamento={{ id: 1, marca: "Zebra", modelo: "ZT230", serial_number: "SN", tipo: "Impressora", status: "EM_VERIFICACAO", data_entrada: "2026-10-01" } as never}
+        open={aberta}
+        onOpenChange={(valor) => { if (!valor) fechar(); }}
+        onConcluir={vi.fn()}
+        onSujoChange={setSujo}
+        onVoltar={() => (sujo ? navigate("/equipamentos") : fechar())}
+      />
+      {aviso.dialogo}
+    </>
+  );
+}
+
+function montarComAviso() {
+  const onOpenChange = vi.fn();
+  const router = createMemoryRouter(
+    [
+      { path: "/equipamentos/1/verificacao", element: <PaginaVerificacaoComAviso onOpenChange={onOpenChange} /> },
+      { path: "/equipamentos", element: <p>Lista de equipamentos</p> },
+    ],
+    { initialEntries: ["/equipamentos/1/verificacao"] },
+  );
+  render(<RouterProvider router={router} />);
+  return { router, onOpenChange };
+}
+
+describe("VerificacaoTecnica — seta de voltar", () => {
+  it("preenchida: pergunta antes; continuar editando mantém o diagnóstico", async () => {
+    const user = userEvent.setup();
+    const { router, onOpenChange } = montarComAviso();
+    await user.type(screen.getByLabelText("Diagnóstico técnico"), "Cabeça gasta");
+    await user.click(screen.getByRole("button", { name: /Zebra ZT230 · SN/ }));
+
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(router.state.location.pathname).toBe("/equipamentos/1/verificacao");
+    expect(screen.getByLabelText("Diagnóstico técnico")).toHaveValue("Cabeça gasta");
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("preenchida: sair sem salvar descarta e navega", async () => {
+    const user = userEvent.setup();
+    const { router } = montarComAviso();
+    await user.type(screen.getByLabelText("Diagnóstico técnico"), "Cabeça gasta");
+    await user.click(screen.getByRole("button", { name: /Zebra ZT230 · SN/ }));
+    await user.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    expect(await screen.findByText("Lista de equipamentos")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/equipamentos");
+  });
+
+  it("limpa: volta sem perguntar", async () => {
+    const user = userEvent.setup();
+    const { router, onOpenChange } = montarComAviso();
+    await user.click(screen.getByRole("button", { name: /Zebra ZT230 · SN/ }));
+    expect(await screen.findByText("Lista de equipamentos")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(router.state.location.pathname).toBe("/equipamentos");
+  });
+
+  it("sem onVoltar, a seta fecha como o Cancelar", async () => {
+    const onOpenChange = vi.fn();
+    render(
+      <VerificacaoTecnica equipamento={{ id: 1, marca: "Zebra", modelo: "ZT230", serial_number: "SN" } as never} open onOpenChange={onOpenChange} onConcluir={vi.fn()} />,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: /Zebra ZT230 · SN/ }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("com onVoltar, a seta não limpa o formulário nem fecha a página", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    const onVoltar = vi.fn();
+    render(
+      <VerificacaoTecnica equipamento={{ id: 1, marca: "Zebra", modelo: "ZT230", serial_number: "SN" } as never} open onOpenChange={onOpenChange} onConcluir={vi.fn()} onVoltar={onVoltar} />,
+    );
+    await user.type(screen.getByLabelText("Diagnóstico técnico"), "Rolete");
+    await user.click(screen.getByRole("button", { name: /Zebra ZT230 · SN/ }));
+    expect(onVoltar).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Diagnóstico técnico")).toHaveValue("Rolete");
   });
 });

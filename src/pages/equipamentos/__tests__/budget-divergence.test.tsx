@@ -174,7 +174,13 @@ vi.mock("@/lib/whatsapp-service", () => ({
 }));
 
 vi.mock("@/components/equipamentos/ClienteSelector", () => ({
-  ClienteSelector: () => <div data-testid="cliente-selector" />,
+  ClienteSelector: ({ onClienteSelecionado }: { onClienteSelecionado?: (cliente: unknown) => void }) => (
+    <div data-testid="cliente-selector">
+      <button type="button" onClick={() => onClienteSelecionado?.({ id: 999, nome: "Outro cliente", empresa_id: 1 })}>
+        Trocar cliente (teste)
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("@/components/equipamentos/ContatoResponsavelSelector", () => ({
@@ -1366,7 +1372,9 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mockAtualizarEquipamento).toHaveBeenCalledOnce());
 
+    // A gravação ainda não terminou: a seta pergunta antes de descartar a edição.
     fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar equipamento" })).not.toBeInTheDocument());
     fireEvent.click(screen.getByTestId("action-editar"));
     await screen.findByRole("heading", { name: "Editar equipamento" });
@@ -1862,4 +1870,113 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(mockSubstituirImagensEquipamento).not.toHaveBeenCalled();
   });
 
+
+  describe("saída da edição e do ajuste pelo aviso 'Sair sem salvar?'", () => {
+    const fotoEntrada = {
+      id: 77, equipamento_id: 10, categoria: "ENTRADA", filename: "entrada.jpg", mime_type: "image/jpeg",
+      tamanho_bytes: 123, largura: 800, altura: 600, ordem: 0, storage_path: "data:image/jpeg;base64,conteudo",
+    };
+
+    async function abrirEdicao() {
+      render(<Equipamentos />);
+      fireEvent.click(screen.getByTestId("action-editar"));
+      await screen.findByRole("heading", { name: "Editar equipamento" });
+    }
+
+    it("edição limpa: a seta volta direto, sem aviso", async () => {
+      await abrirEdicao();
+      mockNavigate.mockClear();
+      fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar equipamento" })).not.toBeInTheDocument());
+      expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ["campo", () => fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "ZT999" } })],
+      ["cliente", () => fireEvent.click(screen.getByRole("button", { name: "Trocar cliente (teste)" }))],
+    ])("edição com %s alterado: a seta pergunta; continuar mantém, sair descarta", async (_nome, alterar) => {
+      await abrirEdicao();
+      alterar();
+      mockNavigate.mockClear();
+
+      fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+      expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+      await waitFor(() => expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument());
+      expect(screen.getByRole("heading", { name: "Editar equipamento" })).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(mockAtualizarEquipamento).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar equipamento" })).not.toBeInTheDocument());
+      expect(mockAtualizarEquipamento).not.toHaveBeenCalled();
+    });
+
+    it("edição com foto removida: a seta pergunta e, ao continuar, a foto segue fora", async () => {
+      mockListarImagensEquipamento.mockResolvedValue([fotoEntrada]);
+      await abrirEdicao();
+      await screen.findByText("entrada.jpg");
+      fireEvent.click(screen.getByRole("button", { name: "Remover entrada.jpg" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+      expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+      await waitFor(() => expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument());
+      expect(screen.queryByText("entrada.jpg")).not.toBeInTheDocument();
+      expect(mockSubstituirImagensEquipamento).not.toHaveBeenCalled();
+    });
+
+    it("edição alterada: Esc e Cancelar passam pelo mesmo aviso", async () => {
+      await abrirEdicao();
+      fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "ZT999" } });
+
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+      await waitFor(() => expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole("button", { name: /^Cancelar/ }));
+      expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+      await waitFor(() => expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument());
+      expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("ZT999");
+    });
+
+    async function abrirAjuste() {
+      equipamentoVerificado.status = "EM_MANUTENCAO";
+      mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+      render(<Equipamentos />);
+      await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+      });
+      await screen.findByRole("heading", { name: "Ajuste de orçamento" });
+      await screen.findByText(/Fonte 24V/);
+    }
+    const setaDoAjuste = () => screen.getByRole("button", { name: /Zebra ZT230 ·/ });
+
+    it("ajuste limpo: a seta volta direto, sem aviso", async () => {
+      await abrirAjuste();
+      fireEvent.click(setaDoAjuste());
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "Ajuste de orçamento" })).not.toBeInTheDocument());
+      expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+    });
+
+    it("ajuste alterado: a seta pergunta; continuar mantém, sair descarta", async () => {
+      await abrirAjuste();
+      fireEvent.change(screen.getByLabelText("Observações"), { target: { value: "nova observação" } });
+
+      fireEvent.click(setaDoAjuste());
+      expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+      await waitFor(() => expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument());
+      expect(screen.getByLabelText("Observações")).toHaveValue("nova observação");
+
+      fireEvent.click(setaDoAjuste());
+      fireEvent.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "Ajuste de orçamento" })).not.toBeInTheDocument());
+      expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+    });
+  });
 });
