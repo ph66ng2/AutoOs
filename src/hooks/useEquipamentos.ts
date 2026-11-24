@@ -58,6 +58,8 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const cargaVisivelPendente = useRef(false);
   // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
   const recargaPendente = useRef(false);
+  // Depois da primeira carga, falha de recarga silenciosa (ex.: sessão bloqueada) mantém a lista sem faixa de erro.
+  const carregouUmaVez = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -96,8 +98,8 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     if (!silencioso) {
       cargaVisivelPendente.current = true;
       setLoading(true);
+      setError(null);
     }
-    setError(null);
     setAvisoAtualizacao(null);
     try {
       const params = paramsRef.current;
@@ -115,6 +117,8 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
       );
       const numeros = await contagem;
       if (!atual()) return { status: "obsoleto" };
+      carregouUmaVez.current = true;
+      setError(null);
       setContagens(numeros);
       setEquipamentos(data.items);
       setTotal(data.total);
@@ -122,7 +126,8 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     } catch (err: any) {
       if (!atual()) return { status: "obsoleto" };
       const erro = mensagemErro(err, "Erro ao carregar equipamentos");
-      setError(erro);
+      // Recarga após gravação continua mostrando a falha (o aviso acompanha a gravação).
+      if (!silencioso || !carregouUmaVez.current || opcoes?.aposGravacao) setError(erro);
       setAvisoAtualizacao(opcoes?.aposGravacao ? erro : null);
       console.error("Erro ao carregar equipamentos:", err);
       return { status: "falhou", erro };

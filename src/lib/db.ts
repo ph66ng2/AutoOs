@@ -114,14 +114,17 @@ export interface ImpressoraWindows {
   padrao: boolean;
 }
 
-const invoke = <T>(command: string, args?: Record<string, unknown>): Promise<T> =>
-  withSensitiveAccessRetry(() => args === undefined
-    ? tauriInvoke<T>(command)
-    : tauriInvoke<T>(command, args)).catch((error: unknown) => {
+const invoke = <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+  const chamar = () => (args === undefined ? tauriInvoke<T>(command) : tauriInvoke<T>(command, args));
+  // Leitura de segundo plano (recarga ao vivo) nunca abre o diálogo de PIN: com a sessão
+  // bloqueada ela só falha, e a tela mantém o que já mostrava.
+  const execucao = args?.segundoPlano === true ? chamar() : withSensitiveAccessRetry(chamar);
+  return execucao.catch((error: unknown) => {
     // Falha com cara de queda de conexão pede a checagem do banco (useDatabaseHealth).
     reportarFalhaDeComando(command, error);
     throw error;
   });
+};
 
 /** Payload esperado pelo Rust em `criar_cliente` / `atualizar_cliente` (parâmetro `input`). */
 function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {

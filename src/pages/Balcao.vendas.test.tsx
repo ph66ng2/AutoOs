@@ -112,7 +112,7 @@ describe("Balcão: entregar venda de insumos (V.7)", () => {
     expect(screen.getAllByRole("button", { name: "Registrar Entrega" })).toHaveLength(12);
     expect(screen.queryByText(/OI-10\d/)).not.toBeInTheDocument();
     expect(screen.queryByText("Nada encontrado para essa busca.")).not.toBeInTheDocument();
-    expect(db.listarOrcamentosInsumos).toHaveBeenCalledWith(expect.objectContaining({ busca: "Farmácia", status: "APROVADO", page: 1 }));
+    expect(db.listarOrcamentosInsumos).toHaveBeenCalledWith(expect.objectContaining({ busca: "Farmácia", status: "APROVADO", page: 1 }), false);
   });
 
   it("entregar confirma, pede o PIN com Ações financeiras e chama o mesmo marcar entregue", async () => {
