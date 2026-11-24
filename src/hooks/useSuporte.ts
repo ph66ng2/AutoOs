@@ -68,20 +68,64 @@ export function useSuporte() {
  * Conversa de um chamado; só carrega com `ativo` (chamado aberto na lista). `versao` recarrega.
  * Trocar de chamado volta a "carregando" (null) em vez de mostrar a conversa do anterior; a recarga
  * por `versao` (atualização ao vivo) é de segundo plano e não renova a sessão.
+ * Uma releitura que falha (banco fora por um instante) mantém a conversa já na tela e marca
+ * `falhou`; a próxima mudança, a volta do foco ou a reconexão tentam de novo em segundo plano, e
+ * `tentarDeNovo` (botão da tela) relê na hora. Falha não vira conversa vazia.
  */
 export function useMensagensChamado(id: number, ativo: boolean, versao: string) {
   const [carregadas, setCarregadas] = useState<{ id: number; lista: MensagemSuporte[] } | null>(null);
+  const [falhouEm, setFalhouEm] = useState<number | null>(null);
+  const [tentativa, setTentativa] = useState<{ id: number; n: number; segundoPlano: boolean } | null>(null);
   const idCarregado = useRef<number | null>(null);
+  const falhouRef = useRef<number | null>(null);
+  const idAtual = useRef(id);
+  idAtual.current = id;
   useEffect(() => {
     if (!ativo) return;
     let vivo = true;
-    const segundoPlano = idCarregado.current === id;
+    // Releitura do chamado já na tela, ou nova tentativa automática: segundo plano (não renova a sessão).
+    const segundoPlano = idCarregado.current === id || (tentativa?.id === id && tentativa.segundoPlano);
     db.listarMensagensChamado(id, segundoPlano)
-      .then((lista) => { if (vivo) { idCarregado.current = id; setCarregadas({ id, lista }); } })
-      .catch(() => { if (vivo) { idCarregado.current = id; setCarregadas({ id, lista: [] }); } });
+      .then((lista) => {
+        if (!vivo) return;
+        idCarregado.current = id;
+        falhouRef.current = null;
+        setFalhouEm(null);
+        setCarregadas({ id, lista });
+      })
+      .catch(() => {
+        if (!vivo) return;
+        falhouRef.current = id;
+        setFalhouEm(id);
+      });
     return () => { vivo = false; };
-  }, [id, ativo, versao]);
-  return carregadas?.id === id ? carregadas.lista : null;
+  }, [id, ativo, versao, tentativa]);
+  const tentar = useCallback((segundoPlano: boolean) => {
+    setTentativa((atual) => ({ id: idAtual.current, n: (atual?.n ?? 0) + 1, segundoPlano }));
+  }, []);
+  const tentarDeNovo = useCallback(() => tentar(false), [tentar]);
+  useAtualizacaoAoVivo(["suporte_chamados", "suporte_mensagens"], () => {
+    if (falhouRef.current === idAtual.current) tentar(true);
+  });
+  return {
+    mensagens: carregadas?.id === id ? carregadas.lista : null,
+    falhou: falhouEm === id,
+    tentarDeNovo,
+  };
+}
+
+/** Chamado escolhido que não veio na lista (encerrado antigo): lido pelo id. `null` enquanto não chega. */
+export function useChamadoForaDaLista(id: number | null) {
+  const [achado, setAchado] = useState<ChamadoSuporte | null>(null);
+  useEffect(() => {
+    if (id == null) return;
+    let vivo = true;
+    db.buscarChamadoSuporte(id)
+      .then((chamado) => { if (vivo) setAchado(chamado); })
+      .catch(() => undefined);
+    return () => { vivo = false; };
+  }, [id]);
+  return id != null && achado?.id === id ? achado : null;
 }
 
 /** Configuração do suporte (Configurações › Integrações). */

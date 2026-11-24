@@ -12,12 +12,16 @@ const m = vi.hoisted(() => ({
   abrirUrl: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
   mensagens: [] as unknown[],
+  mensagensFalhou: false,
+  tentarDeNovo: vi.fn(),
+  foraDaLista: vi.fn((_id: number | null) => null as unknown),
   admin: false,
   status: { unlocked: true, active_profile_id: 1 } as { unlocked: boolean; active_profile_id: number | null },
 }));
 vi.mock("@/hooks/useSuporte", () => ({
   useSuporte: () => ({ config: m.config, chamados: m.chamados, loading: false, error: null, abrirChamado: m.abrirChamado, responder: m.responder, retorno: m.retorno, recarregar: vi.fn() }),
-  useMensagensChamado: () => m.mensagens,
+  useMensagensChamado: () => ({ mensagens: m.mensagensFalhou ? null : m.mensagens, falhou: m.mensagensFalhou, tentarDeNovo: m.tentarDeNovo }),
+  useChamadoForaDaLista: (id: number | null) => m.foraDaLista(id),
 }));
 // A sessão é uma loja externa: trocar `m.status` com `mudarSessao` re-renderiza até dentro do RouterProvider.
 const avisos = vi.hoisted(() => new Set<() => void>());
@@ -57,6 +61,9 @@ describe("Suporte", () => {
   beforeEach(() => {
     m.config = { token_neste_computador: true, canal: "C0CE5M6GTRV" };
     m.chamados = [];
+    m.mensagensFalhou = false;
+    m.tentarDeNovo.mockReset();
+    m.foraDaLista.mockReset().mockReturnValue(null);
     m.status = { unlocked: true, active_profile_id: 1 };
     Object.values(m.toast).forEach((fn) => fn.mockReset());
     m.abrirChamado.mockReset().mockResolvedValue({ id: 12 });
@@ -178,6 +185,32 @@ describe("Suporte", () => {
     m.chamados = [aberto12];
     renderizar({ chamadoId: 12 });
     expect(screen.getByRole("heading", { name: "Chamado #12" })).toBeInTheDocument();
+  });
+
+  it("'Ver' de um chamado fora da lista (encerrado antigo) lê pelo id e mostra a conversa, não o Novo", () => {
+    m.chamados = [aberto12];
+    m.foraDaLista.mockImplementation((id: number | null) => (id === 3 ? { ...aberto12, id: 3, situacao: "resolvido" } : null));
+    renderizar({ chamadoId: 3 });
+    expect(m.foraDaLista).toHaveBeenCalledWith(3);
+    expect(screen.getByRole("heading", { name: "Chamado #3" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("O que aconteceu?")).not.toBeInTheDocument();
+  });
+
+  it("chamado que está na lista não é lido de novo pelo id", () => {
+    m.chamados = [aberto12];
+    renderizar({ chamadoId: 12 });
+    expect(m.foraDaLista).not.toHaveBeenCalledWith(12);
+  });
+
+  it("conversa que não carregou avisa e deixa tentar de novo (não vira conversa vazia)", async () => {
+    const user = userEvent.setup();
+    m.chamados = [aberto12];
+    m.mensagensFalhou = true;
+    renderizar({ chamadoId: 12 });
+    expect(screen.getByText("Não foi possível carregar a conversa.")).toBeInTheDocument();
+    expect(screen.queryByText(/assim que o suporte responder/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Tentar de novo" }));
+    expect(m.tentarDeNovo).toHaveBeenCalledTimes(1);
   });
 
   it("enquanto envia, o rascunho fica parado (o que vai é o que está na tela)", async () => {
