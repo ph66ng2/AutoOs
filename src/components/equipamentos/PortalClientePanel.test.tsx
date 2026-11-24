@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { PortalClienteBotao } from "@/components/equipamentos/PortalClienteBotao";
 import { PortalClienteProvider } from "@/components/equipamentos/portal-cliente-context";
 import type { Cliente, DecisaoOrcamentoInfo, Equipamento } from "@/types";
@@ -13,6 +13,14 @@ const mocks = vi.hoisted(() => ({
   linkInfo: vi.fn(),
   cliente: vi.fn(),
   verSenha: vi.fn(),
+  sessao: {
+    valor: { unlocked: true, active_profile_id: 1 } as { unlocked: boolean; active_profile_id: number | null },
+    ouvintes: new Set<() => void>(),
+    trocar(valor: { unlocked: boolean; active_profile_id: number | null }) {
+      this.valor = valor;
+      this.ouvintes.forEach((ouvir) => ouvir());
+    },
+  },
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -26,9 +34,19 @@ vi.mock("@/lib/db", () => ({
     abrirUrl: vi.fn(),
   },
 }));
-vi.mock("@/hooks/useSensitiveAccess", () => ({
-  useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensure }),
-}));
+vi.mock("@/hooks/useSensitiveAccess", async () => {
+  const { useSyncExternalStore } = await import("react");
+  const assinar = (ouvir: () => void) => {
+    mocks.sessao.ouvintes.add(ouvir);
+    return () => mocks.sessao.ouvintes.delete(ouvir);
+  };
+  return {
+    useSensitiveAccess: () => ({
+      ensureSensitiveAccess: mocks.ensure,
+      status: useSyncExternalStore(assinar, () => mocks.sessao.valor),
+    }),
+  };
+});
 // O diálogo do link tem testes próprios; aqui só importa que o painel o abre com o acesso liberado.
 vi.mock("@/components/equipamentos/PublicStatusLinkDialog", () => ({
   PublicStatusLinkDialog: ({ open }: { open: boolean }) => (open ? <p>Diálogo do link sem login aberto</p> : null),
@@ -70,6 +88,7 @@ describe("PortalClientePanel", () => {
     mocks.ensure.mockResolvedValue(true);
     mocks.contatos.mockResolvedValue([]);
     mocks.cliente.mockResolvedValue(cliente);
+    mocks.sessao.valor = { unlocked: true, active_profile_id: 1 };
   });
 
   it("mostra a situação da publicação: versão, data e validade", async () => {
@@ -219,6 +238,28 @@ describe("PortalClientePanel", () => {
     await screen.findByText("Painel de contatos de Gráfica Exemplo");
     fireEvent.keyDown(screen.getByText("Painel de contatos de Gráfica Exemplo"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByText("abc-123-xyz")).not.toBeInTheDocument());
+  });
+
+  it("esconde a senha mostrada quando o perfil ativo muda ou a sessão bloqueia", async () => {
+    mocks.obter.mockResolvedValue(info());
+    mocks.ensure.mockResolvedValue(true);
+    mocks.verSenha.mockResolvedValue("abc-123-xyz");
+    mocks.contatos.mockResolvedValue([
+      { id: 5, empresa_id: 1, cliente_id: 2, nome: "Ana Souza", ativo: true, portal_acesso: "DECIDIR", portal_senha_definida_em: "2026-10-16T10:00:00Z" },
+    ]);
+    const painel = await abrirPainel();
+    const lista = await within(painel).findByRole("list", { name: "Contatos com acesso" });
+    fireEvent.click(within(lista).getByRole("button", { name: "Ver senha" }));
+    expect(await within(lista).findByText("abc-123-xyz")).toBeInTheDocument();
+    act(() => mocks.sessao.trocar({ unlocked: true, active_profile_id: 2 }));
+    expect(within(lista).queryByText("abc-123-xyz")).not.toBeInTheDocument();
+    act(() => mocks.sessao.trocar({ unlocked: true, active_profile_id: 1 }));
+    expect(within(lista).queryByText("abc-123-xyz")).not.toBeInTheDocument();
+
+    fireEvent.click(within(lista).getByRole("button", { name: "Ver senha" }));
+    expect(await within(lista).findByText("abc-123-xyz")).toBeInTheDocument();
+    act(() => mocks.sessao.trocar({ unlocked: false, active_profile_id: 1 }));
+    expect(within(lista).queryByText("abc-123-xyz")).not.toBeInTheDocument();
   });
 
   it("não busca a senha quando o PIN é negado", async () => {

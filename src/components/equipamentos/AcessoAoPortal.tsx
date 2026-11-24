@@ -9,8 +9,11 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS, type ClienteContato } from "@/types";
 import { CarregandoSkeleton, SkeletonTexto } from "@/components/ui/skeleton";
 
-/** Senha consultada por contato: o texto, ou `null` quando não há senha guardada para mostrar. */
-type SenhaVista = { [contatoId: number]: string | null };
+/**
+ * Senha consultada por contato: o texto (ou `null` quando não há senha guardada) e o perfil que a
+ * consultou. Só aparece enquanto esse perfil está ativo e desbloqueado.
+ */
+type SenhaVista = { [contatoId: number]: { valor: string | null; perfilId: number } };
 
 async function copiar(texto: string, ok: string) {
   try {
@@ -27,7 +30,10 @@ async function copiar(texto: string, ok: string) {
  */
 export function AcessoAoPortal() {
   const { equipamento, contatosVersao, abrirContatos } = usePortalCliente();
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess, status } = useSensitiveAccess();
+  const perfilAtivo = status?.unlocked ? status.active_profile_id ?? null : null;
+  const perfilAtivoRef = useRef(perfilAtivo);
+  perfilAtivoRef.current = perfilAtivo;
   const { data, loading, error, verSenha } = useAcessoPortalCliente(equipamento.cliente_id, equipamento.empresa_id, contatosVersao);
   const [senhas, setSenhas] = useState<SenhaVista>({});
   const [buscando, setBuscando] = useState<number | null>(null);
@@ -39,6 +45,16 @@ export function AcessoAoPortal() {
     setSenhas({});
     setBuscando(null);
   }, [contatosVersao, equipamento.cliente_id]);
+  // Troca de perfil ou bloqueio: some o que outro perfil consultou, e uma leitura a caminho é descartada.
+  useEffect(() => {
+    geracao.current += 1;
+    setSenhas((atual) => {
+      const proximo: SenhaVista = {};
+      for (const [id, item] of Object.entries(atual)) if (item.perfilId === perfilAtivo) proximo[Number(id)] = item;
+      return proximo;
+    });
+    setBuscando(null);
+  }, [perfilAtivo]);
 
   if (!equipamento.cliente_id) {
     return <p className="text-xs text-muted-foreground">Atendimento sem cliente cadastrado.</p>;
@@ -57,12 +73,16 @@ export function AcessoAoPortal() {
         : { permission: SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS }),
     });
     if (!liberado) return;
+    // O PIN pode ter trocado o perfil: deixa a tela aplicar a troca antes de marcar a leitura.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const minhaGeracao = geracao.current;
+    const perfilDaLeitura = perfilAtivoRef.current;
+    if (perfilDaLeitura == null) return;
     setBuscando(contato.id);
     try {
       const senha = await verSenha(contato.id);
       if (minhaGeracao !== geracao.current) return;
-      setSenhas((atual) => ({ ...atual, [contato.id!]: senha }));
+      setSenhas((atual) => ({ ...atual, [contato.id!]: { valor: senha, perfilId: perfilDaLeitura } }));
     } catch (cause) {
       if (minhaGeracao !== geracao.current) return;
       toast.error(cause instanceof Error ? cause.message : String(cause));
@@ -99,8 +119,9 @@ export function AcessoAoPortal() {
         <ul aria-label="Contatos com acesso" className="space-y-2">
           {contatos.map((contato) => {
             const id = contato.id!;
-            const vista = id in senhas;
-            const senha = senhas[id];
+            const item = senhas[id];
+            const vista = Boolean(item) && item.perfilId === perfilAtivo;
+            const senha = vista ? item.valor : null;
             return (
               <li key={id} className="space-y-1">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
