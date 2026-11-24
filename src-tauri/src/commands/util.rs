@@ -730,8 +730,9 @@ pub async fn salvar_arquivo_temp(filename: String, bytes: Vec<u8>) -> Result<Str
 #[tauri::command]
 pub async fn salvar_exportacao_csv(filename: String, bytes: Vec<u8>) -> Result<String, String> {
     let path = gravar_exportacao_csv(&default_documents_directory()?, &filename, &bytes)?;
-    reveal_file_in_manager(&path)
-        .map_err(|e| format!("CSV salvo em {}, mas não foi possível mostrar o arquivo: {e}", path.display()))?;
+    if let Err(reveal_error) = reveal_file_in_manager(&path) {
+        error!("CSV salvo, mas não foi possível mostrar o arquivo: {}", reveal_error);
+    }
     Ok(path.to_string_lossy().into_owned())
 }
 

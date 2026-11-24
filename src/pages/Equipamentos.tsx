@@ -420,6 +420,12 @@ export default function Equipamentos() {
   const { success, error: showError, warning } = useNotification();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const cancelarConfirmacaoRef = useRef<(() => void) | null>(null);
+  const geracaoAjusteRef = useRef(0);
+  const invalidarAjuste = useCallback(() => {
+    geracaoAjusteRef.current += 1;
+    cancelarConfirmacaoRef.current?.();
+  }, []);
   const [confirmProps, setConfirmProps] = useState<{
     title: string;
     description?: string;
@@ -514,6 +520,9 @@ export default function Equipamentos() {
     const encontrado = /^\/equipamentos\/(\d+)\/editar\/?$/.exec(location.pathname);
     return encontrado ? Number(encontrado[1]) : null;
   })();
+  const idEquipamentoRota = idAjusteRota ?? idDetalhesRota ?? idVerificacaoRota ?? idEdicaoRota;
+  // Invalida na troca da rota, antes que uma resposta assíncrona retome o ajuste anterior.
+  useLayoutEffect(() => invalidarAjuste, [idEquipamentoRota, idAjusteRota, invalidarAjuste]);
   /** De onde a pessoa abriu a Nova entrada ou a edição: Cancelar e salvar voltam para lá. */
   const origemEntradaRef = useRef<string>("/equipamentos");
   /** Origem fora de Equipamentos guardada até o diálogo da ordem de entrada fechar. */
@@ -1824,6 +1833,7 @@ export default function Equipamentos() {
 
     await prepararAjusteOrcamentoPadrao(eq, aindaValido);
     if (!aindaValido()) return false;
+    invalidarAjuste();
     setSelecionado(eq);
     setNovoStatus("");
     setAjusteOrcamentoSemMudancaStatus(true);
@@ -1844,6 +1854,7 @@ export default function Equipamentos() {
    * carregados de novo: depois de salvar mudaram, e num link direto nunca foram carregados.
    */
   function fecharPaginaAjuste() {
+    invalidarAjuste();
     const alvo = selecionado;
     setStatusDialogOpen(false);
     setAjusteOrcamentoSemMudancaStatus(false);
@@ -2491,8 +2502,9 @@ export default function Equipamentos() {
 
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
+    const geracaoAjuste = geracaoAjusteRef.current;
     const ajusteNaRota = () => !ajusteOrcamentoSemMudancaStatus || (
-      selecionado.id === idAjusteRota && pathnameAtualRef.current === location.pathname
+      selecionado.id === idAjusteRota && geracaoAjusteRef.current === geracaoAjuste
     );
     if (!ajusteNaRota()) return;
     if (servicosAjuste.some((s) => !validarPecas(s.pecas ?? []))) {
@@ -2594,6 +2606,7 @@ export default function Equipamentos() {
             garantiaConfirmadaRef.current = false;
             return;
           }
+          if (!ajusteNaRota()) return;
           opcoesAjuste = escolha;
         }
       } catch (err) {
@@ -2725,7 +2738,8 @@ export default function Equipamentos() {
           }
         }
         await recarregar();
-        if (ajusteNaRota()) fecharPaginaAjuste();
+        if (!ajusteNaRota()) return;
+        fecharPaginaAjuste();
         success(
           "Equipamentos",
           ["Orçamento atualizado.", portalAjuste?.mensagem, portalProrrogacao?.mensagem].filter(Boolean).join(" "),
@@ -2862,13 +2876,20 @@ export default function Equipamentos() {
   /** Pergunta ao operador e devolve a resposta (usa o diálogo de confirmação da página). */
   function confirmarComOperador(title: string, description: string, confirmLabel: string): Promise<boolean> {
     return new Promise((resolve) => {
+      const responder = (confirmado: boolean) => {
+        cancelarConfirmacaoRef.current = null;
+        setConfirmOpen(false);
+        resolve(confirmado);
+      };
+      const cancelar = () => responder(false);
+      cancelarConfirmacaoRef.current = cancelar;
       setConfirmProps({
         title,
         description,
         confirmLabel,
         cancelLabel: "Cancelar",
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
+        onConfirm: () => responder(true),
+        onCancel: cancelar,
       });
       setConfirmOpen(true);
     });
@@ -4918,7 +4939,10 @@ export default function Equipamentos() {
 
       <ConfirmDialog
         open={confirmOpen}
-        onOpenChange={setConfirmOpen}
+        onOpenChange={(aberto) => {
+          if (!aberto) cancelarConfirmacaoRef.current?.();
+          setConfirmOpen(aberto);
+        }}
         title={confirmProps.title}
         description={confirmProps.description}
         variant={confirmProps.variant}
