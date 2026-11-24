@@ -7,17 +7,28 @@ import type { ContagemClientes, ResumoCliente } from "@/types";
 /** Contagem dos filtros da lista de clientes (com a busca aplicada). */
 export function useContagemClientes(busca?: string) {
   const [data, setData] = useState<ContagemClientes | null>(null);
-  const carregar = useCallback(async () => {
+  const pedido = useRef(0);
+  const buscaAtual = useRef(busca);
+  buscaAtual.current = busca;
+
+  const carregar = useCallback(async (segundoPlano = false) => {
+    const minhaBusca = buscaAtual.current;
+    const meu = ++pedido.current;
     try {
-      setData(await db.contarClientesPorFiltro(busca));
+      const contagem = await db.contarClientesPorFiltro(minhaBusca, segundoPlano);
+      if (meu === pedido.current && minhaBusca === buscaAtual.current) setData(contagem);
     } catch (err) {
+      if (meu !== pedido.current || minhaBusca !== buscaAtual.current) return;
       console.error("Erro ao contar clientes:", err);
       setData(null);
     }
-  }, [busca]);
+  }, []);
+
   useEffect(() => {
     void carregar();
-  }, [carregar]);
+    return () => { pedido.current += 1; };
+  }, [busca, carregar]);
+  useAtualizacaoAoVivo(["clientes", "equipamentos"], () => { void carregar(true); });
   return { data, recarregar: carregar };
 }
 

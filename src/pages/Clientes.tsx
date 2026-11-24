@@ -409,6 +409,7 @@ export default function Clientes() {
           throw new Error(resultado.erro || "Não foi possível criar o cliente.");
         }
       }
+      void recarregarContagem();
       setDialogOpen(false);
     } catch (err: any) {
       console.error("Erro:", err);
@@ -429,7 +430,8 @@ export default function Clientes() {
     if (!deletando) return;
     setSalvando(true);
     try {
-      await deletar(deletando.id!);
+      const resultado = await deletar(deletando.id!);
+      if (resultado.sucesso) void recarregarContagem();
       setDeleteDialogOpen(false);
       setDeletando(null);
     } catch (err) {

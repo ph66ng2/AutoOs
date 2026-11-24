@@ -285,8 +285,8 @@ export const db = {
   },
 
   /** Contagem de cada filtro da lista de clientes → Rust: contar_clientes_por_filtro */
-  async contarClientesPorFiltro(busca?: string): Promise<ContagemClientes> {
-    return invoke<ContagemClientes>("contar_clientes_por_filtro", { busca: busca ?? null });
+  async contarClientesPorFiltro(busca?: string, segundoPlano = false): Promise<ContagemClientes> {
+    return invoke<ContagemClientes>("contar_clientes_por_filtro", { busca: busca ?? null, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Números do painel do cliente → Rust: resumo_cliente (faturado só com permissão de Finanças) */
