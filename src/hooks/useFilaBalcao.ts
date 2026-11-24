@@ -21,10 +21,13 @@ export function useFilaBalcao() {
   const [error, setError] = useState<string | null>(null);
 
   const pedido = useRef(0);
+  const cargaVisivelPendente = useRef(false);
 
   const carregar = useCallback(async ({ silencioso = false } = {}) => {
+    if (silencioso && cargaVisivelPendente.current) return;
     const meu = ++pedido.current;
     if (!silencioso) {
+      cargaVisivelPendente.current = true;
       setLoading(true);
       setError(null);
     }
@@ -49,13 +52,19 @@ export function useFilaBalcao() {
     } catch (e) {
       if (meu === pedido.current && !silencioso) setError(e instanceof Error ? e.message : String(e));
     } finally {
-      if (meu === pedido.current) setLoading(false);
+      if (meu === pedido.current) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void carregar();
-    return () => { pedido.current += 1; };
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+    };
   }, [carregar]);
 
   useAtualizacaoAoVivo(["equipamentos", "orcamentos_insumos", "clientes"], () => {

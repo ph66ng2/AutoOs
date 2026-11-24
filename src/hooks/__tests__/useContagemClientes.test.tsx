@@ -41,3 +41,25 @@ it("descarta resposta atrasada e recarrega com a busca atual", async () => {
   await act(async () => responder({ todos: 1 }));
   expect(result.current.data).toEqual({ todos: 2 });
 });
+
+
+it("preserva a contagem da nova busca quando um evento chega durante a carga", async () => {
+  let responder!: (valor: { todos: number }) => void;
+  const pendente = new Promise<{ todos: number }>((resolve) => { responder = resolve; });
+  contarClientesPorFiltro.mockClear().mockImplementation((busca, segundoPlano) => {
+    if (segundoPlano) return Promise.resolve({ todos: 99 });
+    return busca === "Bia" ? pendente : Promise.resolve({ todos: 1 });
+  });
+  const { result, rerender } = renderHook(({ busca }) => useContagemClientes(busca), {
+    initialProps: { busca: "Ana" },
+  });
+  await waitFor(() => expect(result.current.data).toEqual({ todos: 1 }));
+
+  rerender({ busca: "Bia" });
+  expect(contarClientesPorFiltro).toHaveBeenLastCalledWith("Bia", false);
+  await act(async () => distribuirMudancas([{ tabela: "clientes", id: 1, referencia: null, operacao: "U" }]));
+  expect(contarClientesPorFiltro).toHaveBeenCalledTimes(2);
+
+  await act(async () => responder({ todos: 2 }));
+  expect(result.current.data).toEqual({ todos: 2 });
+});

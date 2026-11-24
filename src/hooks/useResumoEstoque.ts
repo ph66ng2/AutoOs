@@ -19,14 +19,20 @@ export function useResumoEstoque() {
     : "bloqueada";
   const [resumo, setResumo] = useState<ResumoEstoque | null>(null);
   const pedido = useRef(0);
+  const cargaVisivelPendente = useRef(false);
 
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
+    const silencioso = opcoes?.silencioso === true;
+    if (silencioso && cargaVisivelPendente.current) return;
     const meu = ++pedido.current;
+    if (!silencioso) cargaVisivelPendente.current = true;
     try {
-      const dados = (await db.resumoEstoque(...argSegundoPlano(opcoes?.silencioso === true))) ?? null;
+      const dados = (await db.resumoEstoque(...argSegundoPlano(silencioso))) ?? null;
       if (meu === pedido.current) setResumo(dados);
     } catch {
       if (meu === pedido.current) setResumo(null);
+    } finally {
+      if (meu === pedido.current) cargaVisivelPendente.current = false;
     }
     // `sessao` refaz a leitura quando o perfil ou as permissões mudam.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -35,6 +41,10 @@ export function useResumoEstoque() {
   useEffect(() => {
     setResumo(null);
     void carregar();
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+    };
   }, [carregar]);
 
   useAtualizacaoAoVivo(["produtos", "equipamentos", "orcamentos_insumos"], () => {

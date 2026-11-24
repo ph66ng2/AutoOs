@@ -8,12 +8,15 @@ import type { ContagemClientes, ResumoCliente } from "@/types";
 export function useContagemClientes(busca?: string) {
   const [data, setData] = useState<ContagemClientes | null>(null);
   const pedido = useRef(0);
+  const cargaVisivelPendente = useRef(false);
   const buscaAtual = useRef(busca);
   buscaAtual.current = busca;
 
   const carregar = useCallback(async (segundoPlano = false) => {
     const minhaBusca = buscaAtual.current;
+    if (segundoPlano && cargaVisivelPendente.current) return;
     const meu = ++pedido.current;
+    if (!segundoPlano) cargaVisivelPendente.current = true;
     try {
       const contagem = await db.contarClientesPorFiltro(minhaBusca, segundoPlano);
       if (meu === pedido.current && minhaBusca === buscaAtual.current) setData(contagem);
@@ -21,12 +24,17 @@ export function useContagemClientes(busca?: string) {
       if (meu !== pedido.current || minhaBusca !== buscaAtual.current) return;
       console.error("Erro ao contar clientes:", err);
       setData(null);
+    } finally {
+      if (meu === pedido.current && minhaBusca === buscaAtual.current) cargaVisivelPendente.current = false;
     }
   }, []);
 
   useEffect(() => {
     void carregar();
-    return () => { pedido.current += 1; };
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+    };
   }, [busca, carregar]);
   useAtualizacaoAoVivo(["clientes", "equipamentos"], () => { void carregar(true); });
   return { data, recarregar: carregar };
@@ -41,22 +49,30 @@ export function useResumoCliente(clienteId: number | null) {
   const chave = JSON.stringify([clienteId, sessao]);
   const [cache, setCache] = useState<{ chave: string; resumo: ResumoCliente } | null>(null);
   const pedido = useRef(0);
+  const cargaVisivelPendente = useRef(false);
 
   const carregar = useCallback(async (segundoPlano = false) => {
     if (clienteId == null || sessao == null) return;
+    if (segundoPlano && cargaVisivelPendente.current) return;
     const meu = ++pedido.current;
+    if (!segundoPlano) cargaVisivelPendente.current = true;
     try {
       const resumo = await db.resumoCliente(clienteId, segundoPlano);
       if (meu === pedido.current) setCache({ chave, resumo });
     } catch (err) {
       if (meu === pedido.current) console.error("Erro ao carregar resumo do cliente:", err);
+    } finally {
+      if (meu === pedido.current) cargaVisivelPendente.current = false;
     }
   }, [clienteId, sessao, chave]);
 
   useEffect(() => {
     setCache(null);
     void carregar();
-    return () => { pedido.current += 1; };
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+    };
   }, [carregar]);
 
   useAtualizacaoAoVivo(["equipamentos", "clientes"], () => { void carregar(true); });

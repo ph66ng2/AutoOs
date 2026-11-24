@@ -7,12 +7,15 @@ const SEM_PENDENCIAS = new Set<string>();
 export function usePecasBaixaPendente(equipamentoId?: number) {
   const [cache, setCache] = useState<{ id: number; pendentes: Set<string> } | null>(null);
   const pedido = useRef(0);
+  const cargaVisivelPendente = useRef(false);
   const idAtual = useRef(equipamentoId);
   idAtual.current = equipamentoId;
 
   const recarregar = useCallback(async (segundoPlano = false) => {
     if (!equipamentoId || equipamentoId !== idAtual.current) return;
+    if (segundoPlano && cargaVisivelPendente.current) return;
     const meu = ++pedido.current;
+    if (!segundoPlano) cargaVisivelPendente.current = true;
     try {
       const linhas = await db.listarPecasBaixaPendente(equipamentoId, segundoPlano);
       if (meu === pedido.current && equipamentoId === idAtual.current) {
@@ -20,13 +23,18 @@ export function usePecasBaixaPendente(equipamentoId?: number) {
       }
     } catch {
       if (meu === pedido.current && equipamentoId === idAtual.current) setCache(null);
+    } finally {
+      if (meu === pedido.current && equipamentoId === idAtual.current) cargaVisivelPendente.current = false;
     }
   }, [equipamentoId]);
 
   useEffect(() => {
     setCache(null);
     void recarregar();
-    return () => { pedido.current += 1; };
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+    };
   }, [recarregar]);
 
   return { pendentes: cache && cache.id === equipamentoId ? cache.pendentes : SEM_PENDENCIAS, recarregar };

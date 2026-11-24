@@ -24,6 +24,24 @@ describe("useHistoricoEquipamentosCliente", () => {
     buscarCliente.mockImplementation(async (id: number) => ({ id, nome: `Cliente ${id}` }));
   });
 
+  it("preserva a carga inicial quando chega uma recarga ao vivo", async () => {
+    const inicial = adiado<unknown[]>();
+    listarEquipamentosCliente.mockReturnValueOnce(inicial.promessa)
+      .mockRejectedValue(new Error("Acesso sensível bloqueado"));
+    const { result } = renderHook(() => useHistoricoEquipamentosCliente(1));
+    await waitFor(() => expect(listarEquipamentosCliente).toHaveBeenCalledTimes(1));
+
+    await act(async () => distribuirMudancas([{ tabela: "equipamentos", id: 10, referencia: null, operacao: "U" }]));
+    expect(buscarCliente).toHaveBeenCalledTimes(1);
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => inicial.resolver([equipamento(10, "Cliente 1")]));
+    expect(result.current.cliente?.id).toBe(1);
+    expect(result.current.totalOs).toBe(1);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
   it("atualiza o cliente e as passagens sem esconder o histórico", async () => {
     const pendente = adiado<unknown[]>();
     listarEquipamentosCliente.mockResolvedValueOnce([equipamento(10, "Cliente 1")])

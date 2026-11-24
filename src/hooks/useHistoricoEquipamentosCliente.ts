@@ -16,18 +16,24 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
   // Só o pedido mais recente do cliente atual mexe no estado: resposta atrasada de outro
   // cliente (ou de uma leitura anterior) é descartada.
   const pedido = useRef(0);
+  const cargaVisivelPendente = useRef(false);
   const clienteAtual = useRef(clienteId);
   clienteAtual.current = clienteId;
 
   const carregar = useCallback(async ({ silencioso = false } = {}) => {
-    const meu = ++pedido.current;
-    const vale = () => meu === pedido.current && clienteAtual.current === clienteId;
+    if (clienteId !== clienteAtual.current) return;
     if (clienteId == null) {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
       setLoading(false);
       setError("Cliente não encontrado.");
       return;
     }
+    if (silencioso && cargaVisivelPendente.current) return;
+    const meu = ++pedido.current;
+    const vale = () => meu === pedido.current && clienteAtual.current === clienteId;
     if (!silencioso) {
+      cargaVisivelPendente.current = true;
       setLoading(true);
       setError(null);
     }
@@ -44,7 +50,10 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
     } catch (e) {
       if (vale() && !silencioso) setError(e instanceof Error ? e.message : String(e));
     } finally {
-      if (vale()) setLoading(false);
+      if (vale()) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+      }
     }
   }, [clienteId]);
 
@@ -53,7 +62,10 @@ export function useHistoricoEquipamentosCliente(clienteId: number | null) {
     setCliente(null);
     setEquipamentos([]);
     void carregar();
-    return () => { ++pedido.current; };
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+    };
   }, [carregar]);
 
   useAtualizacaoAoVivo(["equipamentos", "clientes"], () => {
