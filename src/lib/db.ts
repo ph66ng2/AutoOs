@@ -175,8 +175,8 @@ export const db = {
   },
 
   /** Equipamentos de um cliente por cliente_id (nomes só para legados sem cliente_id) → Rust: listar_equipamentos_cliente */
-  async listarEquipamentosCliente(clienteId: number, nomes: string[] = []): Promise<Equipamento[]> {
-    return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes });
+  async listarEquipamentosCliente(clienteId: number, nomes: string[] = [], segundoPlano = false): Promise<Equipamento[]> {
+    return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes, ...seSegundoPlano(segundoPlano) });
   },
 
   async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE", tecnico?: string, segundoPlano = false): Promise<PaginatedResult<Equipamento>> {
@@ -211,8 +211,8 @@ export const db = {
   },
 
   /** Todas as OS aprovadas da empresa entre os anos (inclusive), sem paginação: faturado de Finanças. */
-  async listarReceitaAprovada(anoInicio: number, anoFim: number): Promise<Pick<Equipamento, "data_aprovacao" | "valor_orcamento" | "valor_final">[]> {
-    return invoke("listar_receita_aprovada", { anoInicio, anoFim });
+  async listarReceitaAprovada(anoInicio: number, anoFim: number, segundoPlano = false): Promise<Pick<Equipamento, "data_aprovacao" | "valor_orcamento" | "valor_final">[]> {
+    return invoke("listar_receita_aprovada", { anoInicio, anoFim, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Datas de entrada/entrega/reprovação de todas as OS com movimento nos anos pedidos (Início, sem paginação) → Rust: listar_movimento_bancada */
@@ -295,8 +295,8 @@ export const db = {
   },
 
   /** Busca cliente por ID → Rust: buscar_cliente */
-  async buscarCliente(id: number): Promise<Cliente> {
-    return invoke<Cliente>("buscar_cliente", { id });
+  async buscarCliente(id: number, segundoPlano = false): Promise<Cliente> {
+    return invoke<Cliente>("buscar_cliente", { id, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Cria novo cliente (PF ou PJ) → Rust: criar_cliente. Retorna o registro persistido */
@@ -817,8 +817,8 @@ export const db = {
   // ─── Gastos Fixos e Variáveis ───────────────────────────
 
   /** Lista todos os gastos fixos ativos → Rust: listar_gastos_fixos */
-  async listarGastosFixos(): Promise<GastoFixo[]> {
-    return invoke<GastoFixo[]>("listar_gastos_fixos");
+  async listarGastosFixos(segundoPlano = false): Promise<GastoFixo[]> {
+    return invoke<GastoFixo[]>("listar_gastos_fixos", segundoPlano ? seSegundoPlano(true) : undefined);
   },
 
   /** Cria novo gasto fixo → Rust: criar_gasto_fixo. Retorna o registro persistido */
@@ -832,8 +832,8 @@ export const db = {
   },
 
   /** Lista gastos variáveis de um mês/ano → Rust: listar_gastos_variaveis */
-  async listarGastosVariaveis(mes: number, ano: number): Promise<GastoVariavel[]> {
-    return invoke<GastoVariavel[]>("listar_gastos_variaveis", { mes, ano });
+  async listarGastosVariaveis(mes: number, ano: number, segundoPlano = false): Promise<GastoVariavel[]> {
+    return invoke<GastoVariavel[]>("listar_gastos_variaveis", { mes, ano, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Cria novo gasto variável → Rust: criar_gasto_variavel. Retorna o registro persistido */
@@ -842,8 +842,8 @@ export const db = {
   },
 
   /** Resumo mensal de gastos (fixos + variáveis + por categoria) → Rust: resumo_mensal */
-  async resumoMensal(mes: number, ano: number): Promise<GastoResumoMensal> {
-    return invoke<GastoResumoMensal>("resumo_mensal", { mes, ano });
+  async resumoMensal(mes: number, ano: number, segundoPlano = false): Promise<GastoResumoMensal> {
+    return invoke<GastoResumoMensal>("resumo_mensal", { mes, ano, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Consulta a versão do schema e as migrações conhecidas/aplicadas → Rust: obter_status_schema_banco */

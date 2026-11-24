@@ -25,10 +25,11 @@ it("atualiza os selos da mesma OS em segundo plano e mantém a recarga manual no
 });
 
 it("descarta respostas atrasadas da mesma OS e de outra OS", async () => {
-  listarPecasBaixaPendente.mockResolvedValue([]);
+  listarPecasBaixaPendente.mockResolvedValueOnce([peca]).mockResolvedValue([]);
   const { result, rerender } = renderHook(({ id }) => usePecasBaixaPendente(id), {
     initialProps: { id: 1 },
   });
+  await waitFor(() => expect(result.current.pendentes.has("s1:2")).toBe(true));
   let responder!: (linhas: typeof peca[]) => void;
 
   const atrasarRecarga = () => {

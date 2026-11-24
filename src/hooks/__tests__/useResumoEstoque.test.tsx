@@ -88,4 +88,23 @@ describe("useResumoEstoque", () => {
     expect(resumoEstoque).toHaveBeenLastCalledWith(true);
     unmount();
   });
+
+  it("mudanças durante a carga visível geram uma única releitura em segundo plano depois dela", async () => {
+    sessao.status = { unlocked: true, active_profile_id: 1, permissions: [] };
+    let responder: (valor: unknown) => void = () => undefined;
+    resumoEstoque.mockReturnValueOnce(new Promise((resolve) => { responder = resolve; }));
+    resumoEstoque.mockResolvedValue({ ...base, totalItens: 7, valorEstoque: null });
+    const { result, unmount } = renderHook(() => useResumoEstoque());
+    expect(resumoEstoque).toHaveBeenCalledTimes(1);
+
+    act(() => distribuirMudancas([{ tabela: "produtos", id: 5, referencia: null, operacao: "I" }]));
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 9, referencia: null, operacao: "U" }]));
+    expect(resumoEstoque).toHaveBeenCalledTimes(1);
+
+    await act(async () => responder({ ...base, valorEstoque: null }));
+    await waitFor(() => expect(result.current.resumo?.totalItens).toBe(7));
+    expect(resumoEstoque).toHaveBeenCalledTimes(2);
+    expect(resumoEstoque).toHaveBeenLastCalledWith(true);
+    unmount();
+  });
 });

@@ -21,10 +21,18 @@ export function useFilaBalcao() {
   const [error, setError] = useState<string | null>(null);
 
   const pedido = useRef(0);
+  const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
 
   const carregar = useCallback(async ({ silencioso = false } = {}) => {
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
     const meu = ++pedido.current;
     if (!silencioso) {
+      cargaVisivelPendente.current = true;
       setLoading(true);
       setError(null);
     }
@@ -49,13 +57,24 @@ export function useFilaBalcao() {
     } catch (e) {
       if (meu === pedido.current && !silencioso) setError(e instanceof Error ? e.message : String(e));
     } finally {
-      if (meu === pedido.current) setLoading(false);
+      if (meu === pedido.current) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar({ silencioso: true });
+        }
+      }
     }
   }, []);
 
   useEffect(() => {
     void carregar();
-    return () => { pedido.current += 1; };
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
+    };
   }, [carregar]);
 
   useAtualizacaoAoVivo(["equipamentos", "orcamentos_insumos", "clientes"], () => {

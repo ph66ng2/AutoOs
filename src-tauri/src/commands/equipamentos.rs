@@ -664,11 +664,15 @@ pub(crate) fn faixa_de_anos_receita(ano_inicio: i32, ano_fim: i32) -> Result<(St
 /// O valor segue o de `EQUIPAMENTO_SELECT` (orçamento, ou o custo da última verificação).
 #[tauri::command]
 #[instrument(skip_all, fields(ano_inicio = ano_inicio, ano_fim = ano_fim))]
-pub async fn listar_receita_aprovada(ano_inicio: i32, ano_fim: i32) -> Result<Vec<ReceitaAprovadaRow>, String> {
-    require_permission(crate::commands::auth::PERMISSION_VIEW_EXPENSES)?;
+pub async fn listar_receita_aprovada(
+    ano_inicio: i32,
+    ano_fim: i32,
+    segundo_plano: Option<bool>,
+) -> Result<Vec<ReceitaAprovadaRow>, String> {
+    super::auth::require_permission_para_leitura(super::auth::PERMISSION_VIEW_EXPENSES, segundo_plano)?;
     let (inicio, fim) = faixa_de_anos_receita(ano_inicio, ano_fim)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     sqlx::query_as::<_, ReceitaAprovadaRow>(
         "SELECT data_aprovacao,
                 COALESCE(
@@ -743,9 +747,10 @@ pub async fn listar_movimento_bancada(
 pub async fn listar_equipamentos_cliente(
     cliente_id: i32,
     nomes: Option<Vec<String>>,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
     listar_equipamentos_cliente_on_connection(&mut connection, empresa_id, cliente_id, nomes.unwrap_or_default()).await
 }
