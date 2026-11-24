@@ -54,6 +54,8 @@ export function AcessoAoPortal() {
     setBuscando(null);
     setSenhas((atual) => {
       const proximo: SenhaVista = {};
+      // Lista vazia = recarga geral (reconexão ou foco da janela): pode ter perdido avisos, some tudo.
+      if (mudancas.length === 0) return proximo;
       for (const [id, item] of Object.entries(atual)) if (!ids.has(Number(id)) && !ids.has(null)) proximo[Number(id)] = item;
       return proximo;
     });
