@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mocks = vi.hoisted(() => ({
@@ -10,10 +10,11 @@ const mocks = vi.hoisted(() => ({
     listarMovimentoBancada: vi.fn(),
   },
   navigate: vi.fn(),
+  aoVivo: null as null | (() => void),
 }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ status: { active_profile_name: "Ana" } }) }));
-vi.mock("@/hooks/useAtualizacaoAoVivo", () => ({ useAtualizacaoAoVivo: () => undefined }));
+vi.mock("@/hooks/useAtualizacaoAoVivo", () => ({ useAtualizacaoAoVivo: (_tabelas: string[], recarregar: () => void) => { mocks.aoVivo = recarregar; } }));
 vi.mock("react-router-dom", async (original) => ({ ...(await original<typeof import("react-router-dom")>()), useNavigate: () => mocks.navigate }));
 vi.mock("recharts", async (original) => {
   const real = await original<typeof import("recharts")>();
@@ -84,5 +85,52 @@ describe("Início", () => {
     expect(filtro.split(",")).not.toContain("ENTREGUE");
     expect(filtro.split(",")).not.toContain("ABANDONADO");
     expect(filtro.split(",")).toContain("AGUARDANDO_PECA");
+  });
+
+  it("recarga ao vivo antiga que termina por último não volta os números", async () => {
+    render(<Dashboard />);
+    const aprovacao = await screen.findByRole("button", { name: /Aguardando aprovação/ });
+    expect(aprovacao).toHaveTextContent("12");
+
+    let resolverPrimeira: (valor: Record<string, number>) => void = () => undefined;
+    let resolverSegunda: (valor: Record<string, number>) => void = () => undefined;
+    mocks.db.contarEquipamentosPorStatus
+      .mockImplementationOnce(() => new Promise((resolve) => { resolverPrimeira = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolverSegunda = resolve; }));
+
+    act(() => { mocks.aoVivo?.(); });
+    act(() => { mocks.aoVivo?.(); });
+    expect(mocks.db.contarEquipamentosPorStatus).toHaveBeenCalledTimes(3);
+
+    await act(async () => { resolverSegunda({ AGUARDANDO_APROVACAO: 30, PRONTO: 7 }); });
+    expect(screen.getByRole("button", { name: /Aguardando aprovação/ })).toHaveTextContent("30");
+
+    await act(async () => { resolverPrimeira({ AGUARDANDO_APROVACAO: 20, PRONTO: 6 }); });
+    expect(screen.getByRole("button", { name: /Aguardando aprovação/ })).toHaveTextContent("30");
+    expect(screen.getByRole("button", { name: /Prontos para entrega/ })).toHaveTextContent("7");
+  });
+
+  it("recarga ao vivo que falha mantém os números na tela", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(<Dashboard />);
+    expect(await screen.findByRole("button", { name: /Aguardando aprovação/ })).toHaveTextContent("12");
+    mocks.db.contarEquipamentosPorStatus.mockRejectedValueOnce(new Error("rede"));
+    await act(async () => { mocks.aoVivo?.(); });
+    expect(screen.getByRole("button", { name: /Aguardando aprovação/ })).toHaveTextContent("12");
+    expect(screen.queryByLabelText("Carregando início")).not.toBeInTheDocument();
+  });
+
+  it("mudança durante a primeira carga vira uma recarga silenciosa no fim dela", async () => {
+    let resolverInicial: (valor: Record<string, number>) => void = () => undefined;
+    mocks.db.contarEquipamentosPorStatus
+      .mockImplementationOnce(() => new Promise((resolve) => { resolverInicial = resolve; }))
+      .mockResolvedValueOnce({ AGUARDANDO_APROVACAO: 9 });
+    render(<Dashboard />);
+    act(() => { mocks.aoVivo?.(); });
+    expect(mocks.db.contarEquipamentosPorStatus).toHaveBeenCalledTimes(1);
+    await act(async () => { resolverInicial({ AGUARDANDO_APROVACAO: 4 }); });
+    expect(mocks.db.contarEquipamentosPorStatus).toHaveBeenCalledTimes(2);
+    expect(mocks.db.contarEquipamentosPorStatus).toHaveBeenLastCalledWith(undefined, undefined, true);
+    expect(await screen.findByRole("button", { name: /Aguardando aprovação/ })).toHaveTextContent("9");
   });
 });
