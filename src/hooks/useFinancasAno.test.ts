@@ -88,10 +88,10 @@ describe("useFinancasAno", () => {
     ["faturado", "Não foi possível carregar o faturado."],
     ["gastos", "Não foi possível carregar os gastos de alguns meses."],
   ])("mostra a falha silenciosa de %s antes da primeira leitura completa", async (origem, mensagem) => {
-    const inicial = deferred<unknown[]>();
-    mocks.listarReceitaAprovada.mockReturnValueOnce(inicial.promise);
+    mocks.listarReceitaAprovada.mockRejectedValueOnce(new Error("Falha inicial"));
     const { result } = renderHook(() => useFinancasAno(2026, 1000, new Date("2026-11-18T12:00:00")));
-    expect(result.current.loading).toBe(true);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("Não foi possível carregar o faturado.");
 
     mocks.listarReceitaAprovada.mockResolvedValue([]);
     const leitura = origem === "faturado" ? mocks.listarReceitaAprovada : mocks.resumoMensal;
@@ -100,8 +100,6 @@ describe("useFinancasAno", () => {
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBe(mensagem);
 
-    await act(async () => inicial.resolve([]));
-    expect(result.current.error).toBe(mensagem);
   });
 
   it("avisa quando um resumo mensal falha em vez de tratar o mês como zero", async () => {

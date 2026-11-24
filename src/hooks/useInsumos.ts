@@ -59,6 +59,7 @@ export function useInsumos(params?: UseInsumosParams) {
 
   const requestIdRef = useRef(0);
   const carregouUmaVez = useRef(false);
+  const cargaVisivelPendente = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -87,10 +88,12 @@ export function useInsumos(params?: UseInsumosParams) {
    */
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
     if (!mountedRef.current) return;
+    const silencioso = opcoes?.silencioso === true;
+    if (silencioso && cargaVisivelPendente.current) return;
     const requestId = ++requestIdRef.current;
     const atual = () => mountedRef.current && requestIdRef.current === requestId;
-    const silencioso = opcoes?.silencioso === true;
     if (!silencioso) {
+      cargaVisivelPendente.current = true;
       setLoading(true);
       setError(null);
     }
@@ -114,13 +117,19 @@ export function useInsumos(params?: UseInsumosParams) {
       setError(err?.toString() || "Erro ao carregar produtos");
       console.error("Erro ao carregar produtos:", err);
     } finally {
-      if (atual()) setLoading(false);
+      if (atual()) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void carregar();
-    return () => { requestIdRef.current += 1; };
+    return () => {
+      requestIdRef.current += 1;
+      cargaVisivelPendente.current = false;
+    };
   }, [carregar, params?.busca, params?.categoria, params?.apenasEstoqueBaixo, params?.page]);
 
   // Outro computador mudou algo desta lista: recarrega em silêncio e destaca o que mudou.
@@ -129,6 +138,7 @@ export function useInsumos(params?: UseInsumosParams) {
 
   useAtualizacaoAoVivo(["produtos"], () => {
 
+    if (cargaVisivelPendente.current) return;
     lembrar();
 
     void carregar({ silencioso: true });

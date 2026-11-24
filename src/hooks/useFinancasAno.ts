@@ -28,14 +28,17 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
   const [error, setError] = useState<string | null>(null);
   const pedido = useRef(0);
   const carregouUmaVez = useRef(false);
+  const cargaVisivelPendente = useRef(false);
   const [tick, setTick] = useState(0);
   const recarregar = useCallback(() => setTick((n) => n + 1), []);
   const anoAtual = hoje.getFullYear();
   const mesAtual = hoje.getMonth() + 1;
 
   const carregar = useCallback(async ({ silencioso = false } = {}) => {
+    if (silencioso && cargaVisivelPendente.current) return;
     const meu = ++pedido.current;
     if (!silencioso) {
+      cargaVisivelPendente.current = true;
       setLoading(true);
       setError(null);
     }
@@ -84,13 +87,19 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
       setMeses(todos.slice(12));
       setError(receita == null ? "Não foi possível carregar o faturado." : null);
     } finally {
-      if (meu === pedido.current) setLoading(false);
+      if (meu === pedido.current) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+      }
     }
   }, [ano, totalFixo, anoAtual, mesAtual]);
 
   useEffect(() => {
     void carregar();
-    return () => { ++pedido.current; };
+    return () => {
+      ++pedido.current;
+      cargaVisivelPendente.current = false;
+    };
   }, [carregar, tick]);
 
   useAtualizacaoAoVivo(["equipamentos", "verificacoes", "gastos_variaveis"], () => {

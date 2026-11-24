@@ -54,6 +54,7 @@ export function useClientes(params?: UseClientesParams) {
 
   const requestIdRef = useRef(0);
   const carregouUmaVez = useRef(false);
+  const cargaVisivelPendente = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -79,10 +80,12 @@ export function useClientes(params?: UseClientesParams) {
    */
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
     if (!mountedRef.current) return;
+    const silencioso = opcoes?.silencioso === true;
+    if (silencioso && cargaVisivelPendente.current) return;
     const requestId = ++requestIdRef.current;
     const atual = () => mountedRef.current && requestIdRef.current === requestId;
-    const silencioso = opcoes?.silencioso === true;
     if (!silencioso) {
+      cargaVisivelPendente.current = true;
       setLoading(true);
       setError(null);
     }
@@ -104,13 +107,19 @@ export function useClientes(params?: UseClientesParams) {
       setError(err?.toString() || "Erro ao carregar clientes");
       console.error("Erro ao carregar clientes:", err);
     } finally {
-      if (atual()) setLoading(false);
+      if (atual()) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void carregar();
-    return () => { requestIdRef.current += 1; };
+    return () => {
+      requestIdRef.current += 1;
+      cargaVisivelPendente.current = false;
+    };
   }, [carregar, params?.busca, params?.page, params?.filtro]);
 
   // Outro computador mudou algo desta lista: recarrega em silêncio (segundo plano, sem renovar
@@ -119,6 +128,7 @@ export function useClientes(params?: UseClientesParams) {
   const { destaques, lembrar } = useDestaquesAoVivo(clientes, (item) => item.id, (item) => JSON.stringify(item));
 
   useAtualizacaoAoVivo(["clientes", "cliente_contatos", "equipamentos"], () => {
+    if (cargaVisivelPendente.current) return;
     lembrar();
     void carregar({ silencioso: true });
   });

@@ -82,24 +82,53 @@ describe("useClientes", () => {
     }
   });
 
-  it("mostra a falha de uma recarga silenciosa que substitui a primeira leitura", async () => {
+  it("mostra a falha silenciosa se nenhuma leitura teve sucesso", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      let rejeitar!: (erro: Error) => void;
-      const inicial = new Promise<never>((_, reject) => { rejeitar = reject; });
-      mocks.listarClientesPaginados.mockReturnValueOnce(inicial)
+      mocks.listarClientesPaginados.mockRejectedValueOnce(new Error("Falha inicial"))
         .mockRejectedValueOnce(new Error("Falha em segundo plano"));
       const { result } = renderHook(() => useClientes());
-      expect(result.current.loading).toBe(true);
+      await waitFor(() => expect(result.current.error).toContain("Falha inicial"));
 
       await act(async () => mocks.aoVivo?.());
       expect(result.current.error).toContain("Falha em segundo plano");
       expect(result.current.loading).toBe(false);
-
-      await act(async () => rejeitar(new Error("Falha antiga")));
-      expect(result.current.error).toContain("Falha em segundo plano");
     } finally {
       log.mockRestore();
+    }
+  });
+
+  it.each(["falharia", "terminaria antes"])("mantém a carga da página se uma recarga ao vivo %s", async (cenario) => {
+    let resolver!: (pagina: { items: { id: number }[]; total: number }) => void;
+    const visivel = new Promise<{ items: { id: number }[]; total: number }>((resolve) => {
+      resolver = resolve;
+    });
+    mocks.listarClientesPaginados.mockResolvedValueOnce({ items: [{ id: 1 }], total: 60 });
+    const { result, rerender } = renderHook(({ page }) => useClientes({ page }), {
+      initialProps: { page: 1 },
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const leitura = mocks.listarClientesPaginados;
+    leitura.mockReturnValueOnce(visivel);
+    if (cenario === "falharia") leitura.mockRejectedValueOnce(new Error("Sessão bloqueada"));
+    else leitura.mockResolvedValueOnce({ items: [{ id: 99 }], total: 99 });
+
+    try {
+      rerender({ page: 2 });
+      expect(leitura).toHaveBeenLastCalledWith(undefined, 1, undefined);
+      const chamadas = leitura.mock.calls.length;
+      await act(async () => mocks.aoVivo?.());
+      expect(leitura).toHaveBeenCalledTimes(chamadas);
+      expect(result.current.loading).toBe(true);
+
+      await act(async () => resolver({ items: [{ id: 51 }], total: 60 }));
+      expect(result.current.clientes).toEqual([{ id: 51 }]);
+      expect(result.current.total).toBe(60);
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toBeNull();
+    } finally {
+      leitura.mockReset().mockResolvedValue({ items: [], total: 0 });
     }
   });
 });

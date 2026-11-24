@@ -21,6 +21,7 @@ export function useServicos(params?: UseServicosParams) {
 
   const requestIdRef = useRef(0);
   const carregouUmaVez = useRef(false);
+  const cargaVisivelPendente = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -39,10 +40,12 @@ export function useServicos(params?: UseServicosParams) {
 
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
     if (!mountedRef.current) return;
+    const silencioso = opcoes?.silencioso === true;
+    if (silencioso && cargaVisivelPendente.current) return;
     const requestId = ++requestIdRef.current;
     const atual = () => mountedRef.current && requestIdRef.current === requestId;
-    const silencioso = opcoes?.silencioso === true;
     if (!silencioso) {
+      cargaVisivelPendente.current = true;
       setLoading(true);
       setError(null);
     }
@@ -67,13 +70,19 @@ export function useServicos(params?: UseServicosParams) {
       setError(err?.toString() || "Erro ao carregar serviços");
       console.error("Erro ao carregar serviços:", err);
     } finally {
-      if (atual()) setLoading(false);
+      if (atual()) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void carregar();
-    return () => { requestIdRef.current += 1; };
+    return () => {
+      requestIdRef.current += 1;
+      cargaVisivelPendente.current = false;
+    };
   }, [carregar, params?.busca, params?.situacao, params?.page]);
 
   // Outro computador mudou algo desta lista: recarrega em silêncio e destaca o que mudou.
@@ -82,6 +91,7 @@ export function useServicos(params?: UseServicosParams) {
 
   useAtualizacaoAoVivo(["servicos_catalogo"], () => {
 
+    if (cargaVisivelPendente.current) return;
     lembrar();
 
     void carregar({ silencioso: true });
