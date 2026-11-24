@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, ChevronLeft, Loader2 } from "lucide-react";
 import { Selo } from "@/components/detalhe/Selo";
 import { Button } from "@/components/ui/button";
@@ -45,9 +45,16 @@ export function VendaRetirada({
   const [enviando, setEnviando] = useState(false);
   const [erroEntrega, setErroEntrega] = useState<string | null>(null);
   const [entregueEm, setEntregueEm] = useState<string | null>(null);
+  const statusAtual = venda?.status;
+
+  // Outro computador cancelou ou entregou: a confirmação aberta deixa de valer.
+  useEffect(() => {
+    if (statusAtual !== "APROVADO") setConfirmando(false);
+  }, [statusAtual]);
 
   async function confirmarEntrega() {
     setConfirmando(false);
+    if (venda?.status !== "APROVADO") return;
     const liberado = await ensureSensitiveAccess({
       title: "Confirmar retirada",
       description: "Informe o PIN para marcar como entregue.",
@@ -151,7 +158,11 @@ export function VendaRetirada({
           <p role="status" className="rounded-xl bg-muted px-4 py-3 text-sm">
             {venda.status === "ENTREGUE"
               ? "Esta venda já foi entregue."
-              : "Ainda não dá para entregar: o cliente não aprovou este orçamento."}
+              : venda.status === "CANCELADO"
+                ? "Esta venda foi cancelada e não pode mais ser entregue."
+                : venda.status === "REPROVADO"
+                  ? "O cliente reprovou este orçamento: não há o que entregar."
+                  : "Ainda não dá para entregar: o cliente não aprovou este orçamento."}
           </p>
         )}
         {erroEntrega && (
@@ -214,7 +225,7 @@ export function VendaRetirada({
         )}
       </div>
 
-      <Dialog open={confirmando} onOpenChange={setConfirmando}>
+      <Dialog open={confirmando && aprovado} onOpenChange={setConfirmando}>
         <DialogContent tamanho="m">
           <DialogHeader>
             <DialogTitle>
