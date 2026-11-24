@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { distribuirMudancas } from "@/lib/ao-vivo";
 import * as equipamentoImagemUtils from "@/lib/equipamento-imagem-utils";
 
 // ─── Hoisted Mocks ──────────────────────────────────────
@@ -29,6 +30,7 @@ const mockAprovarOrcamento = vi.hoisted(() => vi.fn());
 const mockAtualizarStatusEquipamento = vi.hoisted(() => vi.fn());
 const mockEnviarOrcamentoEmail = vi.hoisted(() => vi.fn());
 const mockBuscarEquipamento = vi.hoisted(() => vi.fn().mockResolvedValue({ atualizado_em: "2024-01-15T10:00:01Z" }));
+const mockListarPecasBaixaPendente = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 const mockBuscarVerificacao = vi.hoisted(() => vi.fn());
 const mockListarServicosCatalogoAtivos = vi.hoisted(() => vi.fn());
 const mockListarImagensEquipamento = vi.hoisted(() => vi.fn());
@@ -95,6 +97,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     listarProdutos: vi.fn().mockResolvedValue([]),
     buscarEquipamento: mockBuscarEquipamento,
+    listarPecasBaixaPendente: mockListarPecasBaixaPendente,
     obterDestinatarioOrcamento: vi.fn().mockResolvedValue({ contatoId: null, nome: "Cliente A", email: "a@ex.com" }),
     buscarVerificacao: (...args: unknown[]) => mockBuscarVerificacao(...args),
     listarServicosCatalogoAtivos: (...args: unknown[]) => mockListarServicosCatalogoAtivos(...args),
@@ -369,6 +372,18 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("reconsulta baixas pendentes em segundo plano ao receber mudança da OS aberta", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    mockBuscarEquipamento.mockResolvedValueOnce(equipamentoVerificado);
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" }));
+    await waitFor(() => expect(mockListarPecasBaixaPendente).toHaveBeenCalledWith(10, false));
+
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 10, referencia: null, operacao: "U" }]));
+    await waitFor(() => expect(mockListarPecasBaixaPendente).toHaveBeenLastCalledWith(10, true));
   });
 
   // ─── Helpers ─────────────────────────────────────────

@@ -448,9 +448,12 @@ pub async fn listar_consumos_orcamento(
 /// "baixa pendente" na aba Orçamento. Só diz quais são: quantidades e a confirmação
 /// continuam em `listar_consumos_orcamento`, com permissão de estoque.
 #[tauri::command]
-pub async fn listar_pecas_baixa_pendente(equipamento_id: i32) -> Result<Vec<PecaBaixaPendente>, String> {
+pub async fn listar_pecas_baixa_pendente(
+    equipamento_id: i32,
+    segundo_plano: Option<bool>,
+) -> Result<Vec<PecaBaixaPendente>, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     sqlx::query_as::<_, PecaBaixaPendente>(
         "SELECT c.servico_id, c.produto_id
          FROM orcamento_consumos c
