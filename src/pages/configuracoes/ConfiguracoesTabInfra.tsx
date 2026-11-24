@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { TabsContent } from "@/components/ui/tabs";
 import type { DatabaseSchemaStatus, PostgresBackupToolsStatus } from "@/types";
 import type { RestoreMode } from "./detect-restore-mode";
+import { CarregandoSkeleton, SkeletonCartoes, SkeletonTexto } from "@/components/ui/skeleton";
 
 export type ConfiguracoesTabInfraProps = {
   canManageProfiles: boolean;
@@ -65,9 +66,7 @@ export function ConfiguracoesTabInfra({
         </CardHeader>
         <CardContent className="space-y-4">
           {schemaLoading && !schemaStatus ? (
-            <div className="flex items-center justify-center h-24">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-            </div>
+            <CarregandoSkeleton rotulo="Carregando banco e schema"><SkeletonTexto linhas={4} /></CarregandoSkeleton>
           ) : schemaError ? (
             <ErrorAlert variant="warning" context="Schema" message={schemaError} />
           ) : schemaStatus ? (
@@ -140,9 +139,7 @@ export function ConfiguracoesTabInfra({
           ) : (
             <>
               {backupLoading && !backupToolsStatus ? (
-                <div className="flex items-center justify-center h-24">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-                </div>
+                <CarregandoSkeleton rotulo="Carregando ferramentas de backup"><SkeletonCartoes /></CarregandoSkeleton>
               ) : backupToolsStatus ? (
                 <div className="grid gap-4 md:grid-cols-4">
                   <div className="rounded-lg border bg-muted/40 p-4 text-sm">

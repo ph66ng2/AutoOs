@@ -19,6 +19,7 @@ import {
 import { formatDatePtBr } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 import type { GastoFixo, GastoVariavel } from "@/types";
+import { CarregandoSkeleton, Skeleton } from "@/components/ui/skeleton";
 
 export const COR_ENTRA = "hsl(var(--primary))";
 export const COR_FIXO = "hsl(var(--st-bad))";
@@ -222,11 +223,11 @@ export function GraficoFaturamento({
       {error && <p role="alert" className="mt-2 text-sm text-status-wait">{error}</p>}
       <div className="mt-4 h-64">
         {loading ? (
-          <div aria-busy="true" className="flex h-full items-end gap-3 px-2">
+          <CarregandoSkeleton rotulo="Carregando gráfico" className="flex h-full items-end gap-3 px-2">
             {Array.from({ length: 12 }, (_, indice) => (
-              <span key={indice} aria-hidden="true" className="flex-1 rounded-t bg-muted" style={{ height: `${30 + ((indice * 37) % 50)}%` }} />
+              <Skeleton key={indice} className="flex-1 rounded-b-none rounded-t" style={{ height: `${30 + ((indice * 37) % 50)}%` }} />
             ))}
-          </div>
+          </CarregandoSkeleton>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart

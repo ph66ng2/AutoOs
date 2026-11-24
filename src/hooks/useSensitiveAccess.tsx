@@ -29,6 +29,7 @@ import { isTemporaryDatabaseAccessMessage, sensitiveAccessErrorMessage } from "@
 import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
 import { requestTour } from "@/lib/tour-request";
 import { movimentoReduzido } from "@/lib/preferencias-computador";
+import { CarregandoSkeleton, SkeletonPagina } from "@/components/ui/skeleton";
 import {
   SENSITIVE_PERMISSION_LABELS,
   type SensitiveAccessStatus,
@@ -801,9 +802,7 @@ export function SensitiveRoute({
 
   if (loading || !status) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
+      <CarregandoSkeleton rotulo="Carregando página"><SkeletonPagina /></CarregandoSkeleton>
     );
   }
 

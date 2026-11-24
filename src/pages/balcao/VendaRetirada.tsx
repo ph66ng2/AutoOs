@@ -10,6 +10,7 @@ import { formaPagamentoRotulo, STATUS_ORCAMENTO_INSUMOS_COR, STATUS_ORCAMENTO_IN
 import { formatCurrency } from "@/lib/utils";
 import { formatarTelefone } from "@/lib/validations";
 import { SENSITIVE_PERMISSIONS } from "@/types";
+import { CarregandoSkeleton, SkeletonPagina, SkeletonTabela } from "@/components/ui/skeleton";
 
 function dataHora(valor?: string | null): string {
   if (!valor) return "—";
@@ -74,7 +75,9 @@ export function VendaRetirada({
     return (
       <section>
         {voltar}
-        <p className="mt-6 text-muted-foreground">Carregando venda...</p>
+        <CarregandoSkeleton rotulo="Carregando venda..." className="mt-6">
+          <SkeletonPagina><SkeletonTabela linhas={3} colunas={3} /></SkeletonPagina>
+        </CarregandoSkeleton>
       </section>
     );
   }

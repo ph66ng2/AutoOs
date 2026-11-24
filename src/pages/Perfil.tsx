@@ -22,6 +22,7 @@ import { BASE_MODULES, newPermissions } from "@/lib/tour-steps";
 import { ListaAtalhos } from "@/components/busca/AjudaAtalhos";
 import { PreferenciasNotificacao } from "@/components/perfil/PreferenciasNotificacao";
 import { cn } from "@/lib/utils";
+import { CarregandoSkeleton, Skeleton, SkeletonFormulario, SkeletonLista, SkeletonPagina, SkeletonTexto } from "@/components/ui/skeleton";
 import {
   SENSITIVE_PERMISSION_LABELS,
   SENSITIVE_PERMISSIONS,
@@ -43,7 +44,14 @@ export default function Perfil() {
   const unlocked = Boolean(status?.unlocked);
 
   if (!profile) {
-    return <p className="py-16 text-center text-sm text-muted-foreground">Carregando perfil...</p>;
+    return (
+      <CarregandoSkeleton rotulo="Carregando perfil...">
+        <SkeletonPagina>
+          <div className="flex items-center gap-4 rounded-xl border p-5"><Skeleton className="h-16 w-16 rounded-full" /><SkeletonTexto linhas={2} className="flex-1" /></div>
+          <div className="space-y-4 rounded-xl border p-5"><SkeletonFormulario campos={4} /></div>
+        </SkeletonPagina>
+      </CarregandoSkeleton>
+    );
   }
 
   const look = profileAppearance(profile);
@@ -175,7 +183,7 @@ function VisaoGeral({
           </CardHeader>
           <CardContent>
             {activity === null ? (
-              <p className="text-sm text-muted-foreground">Carregando...</p>
+              <CarregandoSkeleton rotulo="Carregando últimas ações"><SkeletonLista itens={4} compacta /></CarregandoSkeleton>
             ) : activity.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma ação registrada ainda.</p>
             ) : (

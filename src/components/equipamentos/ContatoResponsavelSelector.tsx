@@ -9,6 +9,7 @@ import { useNotification } from "@/hooks/useNotification";
 import { db } from "@/lib/db";
 import { celularValido, clienteContatoSchema, digitosTelefoneBr, formatarTelefone, type ClienteContatoFormData } from "@/lib/validations";
 import type { Cliente, ClienteContato } from "@/types";
+import { CarregandoSkeleton, SkeletonLista } from "@/components/ui/skeleton";
 
 interface ContatoResponsavelSelectorProps {
   cliente: Cliente | null;
@@ -157,7 +158,7 @@ export function ContatoResponsavelSelector({
               <Button type="button" variant="ghost" className="w-full justify-start text-sm" onClick={() => onChange(null)} disabled={disabled}>
                 Sem responsável específico
               </Button>
-              {carregando && <p className="text-xs text-muted-foreground">Carregando contatos ativos...</p>}
+              {carregando && <CarregandoSkeleton rotulo="Carregando contatos ativos..."><SkeletonLista itens={3} compacta /></CarregandoSkeleton>}
               {erro && <ErrorAlert variant="error" context="Equipamentos" message={erro} />}
               {!carregando && filtrados.length > 0 && (
                 <div className="max-h-40 overflow-y-auto rounded-md border bg-background">

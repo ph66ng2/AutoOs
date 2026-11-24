@@ -33,6 +33,7 @@ import { MENSAGEM_TRAVA_056, perfilCompativel056 } from "@/lib/compatibilidade-0
 import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { SENSITIVE_PERMISSIONS, type CodigoPrimeiroAcesso, type SecurityAuditEvent, type SecurityProfile, type SensitivePermission } from "@/types";
+import { CarregandoSkeleton, Skeleton, SkeletonLista } from "@/components/ui/skeleton";
 
 type Action = "edit" | "code" | "deactivate" | "reactivate";
 
@@ -82,7 +83,7 @@ function AuditoriaRecente() {
       {falhou ? (
         <p className="mt-3 text-sm text-muted-foreground">Não foi possível carregar a auditoria.</p>
       ) : eventos == null ? (
-        <p className="mt-3 text-sm text-muted-foreground">Carregando…</p>
+        <CarregandoSkeleton rotulo="Carregando auditoria" className="mt-3"><SkeletonLista itens={3} compacta /></CarregandoSkeleton>
       ) : eventos.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">Nenhum evento ainda.</p>
       ) : (
@@ -303,9 +304,11 @@ export function TeamAccessManager({
             </Button>
           </div>
         ) : loading ? (
-          <p role="status" className="py-8 text-center text-sm text-muted-foreground">
-            Carregando equipe...
-          </p>
+          <CarregandoSkeleton rotulo="Carregando equipe" className="grid content-start gap-4 md:grid-cols-2">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="space-y-3 rounded-2xl border p-5"><SkeletonLista itens={1} /><Skeleton className="h-3 w-2/3" /></div>
+            ))}
+          </CarregandoSkeleton>
         ) : (
           <div role="list" aria-label="Colaboradores" className="grid content-start gap-4 md:grid-cols-2">
             {visible.length === 0 && (

@@ -42,6 +42,7 @@ import { ABAS_CONFIGURACOES, abasConfiguracoes, type AbaConfiguracoesId } from "
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Lock } from "lucide-react";
+import { CarregandoSkeleton, SkeletonFormulario, SkeletonPagina } from "@/components/ui/skeleton";
 import {
   SENSITIVE_PERMISSIONS,
   type SensitivePermission,
@@ -714,9 +715,9 @@ export default function Configuracoes() {
 
   if ((canConfigureSmtp && loading) || (canConfigureWhatsapp && whatsappLoading) || (canConfigurePhotoTunnel && photoTunnelLoading)) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
+      <CarregandoSkeleton rotulo="Carregando configurações">
+        <SkeletonPagina><div className="space-y-4 rounded-xl border p-5"><SkeletonFormulario campos={6} /></div></SkeletonPagina>
+      </CarregandoSkeleton>
     );
   }
 

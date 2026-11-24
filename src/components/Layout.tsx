@@ -60,6 +60,7 @@ import { abrirPainelAtualizacao, useAtualizacaoDisponivel } from "@/lib/atualiza
 import { EVENTO_CONFIG_SUPORTE, registrarAbrirSuporte } from "@/lib/suporte-ponte";
 import { useBuscaRespostasSuporte } from "@/hooks/useBuscaRespostasSuporte";
 import { useFecharErrosAoTrocarDeTela } from "@/hooks/useNotification";
+import { CarregandoSkeleton, SkeletonPagina } from "@/components/ui/skeleton";
 
 
 interface NavItem {
@@ -463,7 +464,7 @@ export function Layout() {
           </header>
         )}
         <div className="mx-auto max-w-7xl p-4 md:p-6">
-          <Suspense fallback={<div role="status" aria-live="polite">Carregando página</div>}>
+          <Suspense fallback={<CarregandoSkeleton rotulo="Carregando página"><SkeletonPagina /></CarregandoSkeleton>}>
             <Outlet />
           </Suspense>
         </div>

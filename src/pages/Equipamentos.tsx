@@ -246,6 +246,7 @@ import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGran
 import { OrcamentoDaOs } from "@/components/equipamentos/OrcamentoDaOs";
 import { CartaoCliente } from "@/components/detalhe/CartaoCliente";
 import { HistoricoOs } from "@/components/equipamentos/HistoricoOs";
+import { CarregandoSkeleton, Skeleton, SkeletonFormulario, SkeletonLista, SkeletonPagina, SkeletonTabela, SkeletonTexto } from "@/components/ui/skeleton";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
 // do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
@@ -3273,7 +3274,7 @@ export default function Equipamentos() {
   // ─── Sub-renders para abas do drawer de detalhes ──────
 
   function renderVerificacaoTab() {
-    if (carregandoDetalhes) return <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>;
+    if (carregandoDetalhes) return <CarregandoSkeleton rotulo="Carregando histórico"><SkeletonLista itens={4} /></CarregandoSkeleton>;
     if (!verificacaoDetalhes) return <div className="text-center py-8 text-muted-foreground"><ClipboardCheck className="h-10 w-10 mx-auto mb-2 opacity-20" /><p>Nenhuma verificação realizada</p></div>;
 
     const v = verificacaoDetalhes;
@@ -3637,7 +3638,9 @@ export default function Equipamentos() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
+            <CarregandoSkeleton rotulo="Carregando equipamentos">
+              {telaLarga ? <SkeletonTabela colunas={6} /> : <SkeletonLista itens={5} />}
+            </CarregandoSkeleton>
           ) : equipamentos.length === 0 && erroListaEquipamentos ? (
             <ListaIndisponivel oque="equipamentos" onTentarDeNovo={() => void recarregar()} />
           ) : equipamentos.length === 0 ? (
@@ -3821,9 +3824,9 @@ export default function Equipamentos() {
 
       {/* ═══ Nova entrada e edição em página (/equipamentos/nova e /equipamentos/:id/editar, decisão 27) ═══ */}
       {(rotaNovaEntrada || idEdicaoRota != null) && !dialogOpen && (
-        <div role="status" aria-label="Carregando cadastro" className="flex h-64 items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </div>
+        <CarregandoSkeleton rotulo="Carregando cadastro">
+          <SkeletonPagina><div className="space-y-6 rounded-xl border p-5"><SkeletonFormulario campos={8} /></div></SkeletonPagina>
+        </CarregandoSkeleton>
       )}
       {dialogOpen && (editando || entradaDaChaveAtual) && (
         <section aria-labelledby="entrada-titulo" className="-mb-4 flex min-h-[calc(100vh-8rem)] flex-col gap-4 lg:-mb-8">
@@ -4117,9 +4120,9 @@ export default function Equipamentos() {
                       }
                     />
                     {carregandoImagensFormulario ? (
-                      <div role="status" aria-label="Carregando fotos" className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-                      </div>
+                      <CarregandoSkeleton rotulo="Carregando fotos" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                        {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="aspect-square w-full rounded-lg" />)}
+                      </CarregandoSkeleton>
                     ) : (
                       <GaleriaImagensEquipamento
                         imagens={filtrarImagensPorCategoria(imagensFormulario, "ENTRADA")}
@@ -4155,9 +4158,9 @@ export default function Equipamentos() {
 
       {/* ═══ Detalhes da OS (rota /equipamentos/:id) ═══ */}
       {idVerificacaoRota != null && !verificacaoDialogOpen && (
-        <div role="status" aria-label="Carregando verificação" className="flex h-64 items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </div>
+        <CarregandoSkeleton rotulo="Carregando verificação">
+          <SkeletonPagina><div className="space-y-4 rounded-xl border p-5"><SkeletonTexto linhas={2} /><SkeletonTabela linhas={4} colunas={4} /></div></SkeletonPagina>
+        </CarregandoSkeleton>
       )}
       {/* ═══ Verificação técnica (rota /equipamentos/:id/verificacao, decisão 24) ═══ */}
       <VerificacaoTecnica
@@ -4175,16 +4178,22 @@ export default function Equipamentos() {
 
       {/* ═══ Ajuste de orçamento (rota /equipamentos/:id/orcamento, decisão 24) ═══ */}
       {idAjusteRota != null && !paginaAjusteAberta && (
-        <div role="status" aria-label="Carregando ajuste de orçamento" className="flex h-64 items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </div>
+        <CarregandoSkeleton rotulo="Carregando ajuste de orçamento">
+          <SkeletonPagina><SkeletonTabela linhas={4} colunas={4} /></SkeletonPagina>
+        </CarregandoSkeleton>
       )}
       {paginaAjusteAberta && selecionado && renderPaginaAjuste(selecionado)}
 
       {detalhesDialogOpen && !paginaAjusteAberta && !verificacaoDialogOpen && selecionado?.id !== idDetalhesAberto && (
-        <div role="status" aria-label="Carregando atendimento" className="flex h-64 items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </div>
+        <CarregandoSkeleton rotulo="Carregando atendimento">
+          <SkeletonPagina>
+            <div className="flex gap-2">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-9 w-24" />)}</div>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="space-y-4 rounded-xl border p-5 lg:col-span-2"><SkeletonTexto linhas={5} /></div>
+              <div className="space-y-4 rounded-xl border p-5"><SkeletonLista itens={3} /></div>
+            </div>
+          </SkeletonPagina>
+        </CarregandoSkeleton>
       )}
       {detalhesDialogOpen && !paginaAjusteAberta && !verificacaoDialogOpen && selecionado && selecionado.id === idDetalhesAberto && (
         <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal} onConfigurarPortal={irParaConfiguracoesPortal}>
@@ -4247,7 +4256,7 @@ export default function Equipamentos() {
 
                   <TabsContent value="orcamento" className="mt-0 space-y-4 p-5">
                     {carregandoDetalhes ? (
-                      <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
+                      <CarregandoSkeleton rotulo="Carregando orçamento"><SkeletonTabela linhas={3} colunas={4} /></CarregandoSkeleton>
                     ) : (
                       <OrcamentoDaOs
                         equipamento={selecionado}
@@ -4298,9 +4307,9 @@ export default function Equipamentos() {
                             </div>
                           </div>
                           {carregandoDetalhes ? (
-                            <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-                            </div>
+                            <CarregandoSkeleton rotulo="Carregando fotos" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                              {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="aspect-square w-full rounded-lg" />)}
+                            </CarregandoSkeleton>
                           ) : (
                             <GaleriaImagensEquipamento
                               imagens={filtrarImagensPorCategoria(imagensDetalhes, categoria)}
@@ -4321,7 +4330,7 @@ export default function Equipamentos() {
 
                   <TabsContent value="comunicacoes" className="mt-0 p-5">
                     {carregandoDetalhes ? (
-                      <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
+                      <CarregandoSkeleton rotulo="Carregando comunicações"><SkeletonLista itens={3} /></CarregandoSkeleton>
                     ) : (
                       <HistoricoComunicacoes
                         equipamentoId={selecionado.id!}
@@ -4652,9 +4661,9 @@ export default function Equipamentos() {
                       }
                     />
                     {carregandoImagensSaidaEntrega ? (
-                      <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-                      </div>
+                      <CarregandoSkeleton rotulo="Carregando fotos" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                        {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="aspect-square w-full rounded-lg" />)}
+                      </CarregandoSkeleton>
                     ) : (
                       <GaleriaImagensEquipamento
                         imagens={imagensSaidaEntrega}

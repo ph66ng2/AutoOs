@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import type { GastoFixo, GastoVariavel, GastosFixosCategoria } from "@/types";
 import { formatDatePtBr } from "@/lib/date-utils";
 import { dinheiro } from "@/lib/financas";
+import { CarregandoSkeleton, Skeleton } from "@/components/ui/skeleton";
 
 const CATEGORIAS: GastosFixosCategoria[] = [
   "Aluguel",
@@ -150,11 +151,11 @@ export function GastosTable({
       </div>
 
       {loading ? (
-        <div aria-busy="true" className="mt-4 space-y-3">
+        <CarregandoSkeleton rotulo="Carregando gastos" className="mt-4 space-y-3">
           {Array.from({ length: 4 }, (_, indice) => (
-            <span key={indice} aria-hidden="true" className="block h-10 rounded-lg bg-muted" />
+            <Skeleton key={indice} className="h-10 rounded-lg" />
           ))}
-        </div>
+        </CarregandoSkeleton>
       ) : rows.length === 0 ? (
         <div className="py-10 text-center">
           <p className="font-semibold">{filtrando ? "Nenhum gasto com esses filtros." : "Nenhum gasto neste mês."}</p>

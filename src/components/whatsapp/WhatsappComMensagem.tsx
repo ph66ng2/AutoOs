@@ -6,6 +6,7 @@ import { montarLinkWhatsapp } from "@/lib/contato-cliente";
 import { db } from "@/lib/db";
 import { preencherMensagem, type DadosMensagem } from "@/lib/mensagens-prontas";
 import { cn } from "@/lib/utils";
+import { CarregandoSkeleton, SkeletonLista } from "@/components/ui/skeleton";
 
 const SEM_TEXTO = "__sem_texto__";
 
@@ -57,7 +58,7 @@ export function WhatsappComMensagem({
         WhatsApp
       </SelectTrigger>
       <SelectContent align="end" className="w-[280px] rounded-2xl p-1.5">
-        {loading && <div className="px-2.5 py-2 text-xs text-muted-foreground">Carregando mensagens…</div>}
+        {loading && <CarregandoSkeleton rotulo="Carregando mensagens…" className="px-2.5 py-2"><SkeletonLista itens={3} compacta /></CarregandoSkeleton>}
         {modelos.map((modelo) => (
           <SelectItem key={modelo.id} value={String(modelo.id)} className="rounded-lg">
             <span className="block text-sm font-semibold">{modelo.titulo}</span>

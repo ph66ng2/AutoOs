@@ -1,6 +1,5 @@
 import {
   Building2,
-  Loader2,
   Mail,
   MapPin,
   Phone,
@@ -16,6 +15,7 @@ import { nomeExibicaoCliente, telefoneExibicaoCliente } from "@/components/clien
 import type { Cliente, Equipamento } from "@/types";
 import { formatarDocumento } from "@/lib/validations";
 import { useLocation, useNavigate } from "react-router-dom";
+import { CarregandoSkeleton, SkeletonLista } from "@/components/ui/skeleton";
 
 export function ClienteSelectorClienteCard({
   cliente,
@@ -95,9 +95,7 @@ export function ClienteSelectorClienteCard({
         )}
 
         {carregandoEquip ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" /> Carregando equipamentos...
-          </div>
+          <CarregandoSkeleton rotulo="Carregando equipamentos..." className="border-t pt-2 mt-2"><SkeletonLista itens={2} compacta /></CarregandoSkeleton>
         ) : equipamentosCliente.length > 0 ? (
           <div className="border-t pt-2 mt-2">
             <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">

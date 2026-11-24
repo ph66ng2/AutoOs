@@ -73,6 +73,7 @@ import { useTecnicos } from "@/hooks/useTecnicos";
 import { avisoBalcaoSemTecnicos, linhaTecnicoInicial, tecnicoDoBalcao, tecnicoPadrao } from "@/lib/tecnicos";
 import { todayLocalIsoDate } from "@/lib/date-utils";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
+import { CarregandoSkeleton, Skeleton, SkeletonLista } from "@/components/ui/skeleton";
 import {
   STATUS_LABELS,
   type Cliente,
@@ -261,7 +262,7 @@ function BalcaoInicio({
       <aside className="space-y-4" aria-label="Fila do dia">
         <FilaCard titulo="Prontos para retirada" contagem={fila.loading ? undefined : fila.totalProntos}>
           {fila.loading ? (
-            <p className="px-5 py-4 text-sm text-muted-foreground">Carregando...</p>
+            <CarregandoSkeleton rotulo="Carregando fila" className="px-5 py-4"><SkeletonLista itens={3} compacta /></CarregandoSkeleton>
           ) : fila.error ? (
             <p className="px-5 py-4 text-sm text-muted-foreground">Não foi possível carregar a fila.</p>
           ) : fila.prontos.length === 0 ? (
@@ -473,9 +474,11 @@ function CounterStock({ onBack }: { onBack: () => void }) {
 
       {erro && <p role="alert" className="mt-4 text-destructive">{erro}</p>}
       {carregando ? (
-        <div className="mt-8 flex min-h-40 items-center justify-center gap-3 text-lg text-muted-foreground">
-          <Loader2 className="animate-spin" /> Carregando estoque...
-        </div>
+        <CarregandoSkeleton rotulo="Carregando estoque" className="mt-8 grid gap-3 sm:grid-cols-2">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="space-y-3 rounded-xl border bg-card p-5"><Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-1/3" /></div>
+          ))}
+        </CarregandoSkeleton>
       ) : produtos.length === 0 ? (
         <p className="mt-8 rounded-xl border bg-card p-6 text-lg text-muted-foreground">
           Nenhum insumo encontrado.

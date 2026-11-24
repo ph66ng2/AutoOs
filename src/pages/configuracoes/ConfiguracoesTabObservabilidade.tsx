@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { TabsContent } from "@/components/ui/tabs";
 import type { LocalSupportStatus, SecurityAuditEvent } from "@/types";
+import { CarregandoSkeleton, SkeletonCartoes } from "@/components/ui/skeleton";
 
 export type ConfiguracoesTabObservabilidadeProps = {
   supportLoading: boolean;
@@ -61,9 +62,7 @@ export function ConfiguracoesTabObservabilidade({
         </CardHeader>
         <CardContent className="space-y-4">
           {supportLoading && !supportStatus ? (
-            <div className="flex items-center justify-center h-24">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-            </div>
+            <CarregandoSkeleton rotulo="Carregando suporte local"><SkeletonCartoes /></CarregandoSkeleton>
           ) : supportStatus ? (
             <>
               <div className="grid gap-4 md:grid-cols-4">

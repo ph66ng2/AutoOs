@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { formatarDocumento } from "@/components/equipamentos/AcessoPortalDialog";
 import { usePortalCliente } from "@/components/equipamentos/portal-cliente-context";
 import { useAcessoPortalCliente } from "@/hooks/useAcessoPortalCliente";
+import { CarregandoSkeleton, SkeletonTexto } from "@/components/ui/skeleton";
 
 /** Login do portal do cliente e quem pode entrar nele. A senha nunca aparece aqui. */
 export function AcessoAoPortal() {
@@ -29,7 +30,7 @@ export function AcessoAoPortal() {
   return (
     <div className="space-y-3 text-sm">
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {loading && !data && <p className="text-xs text-muted-foreground">Carregando acesso…</p>}
+      {loading && !data && <CarregandoSkeleton rotulo="Carregando acesso…"><SkeletonTexto linhas={2} /></CarregandoSkeleton>}
 
       {data && (
         documento ? (

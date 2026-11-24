@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import type { AnaliseCorrecaoDecisao, Equipamento, ModoCorrecaoDecisao, PortalAjusteInfo } from "@/types";
+import { CarregandoSkeleton, SkeletonTexto } from "@/components/ui/skeleton";
 
 type Props = {
   equipamento: Equipamento | null;
@@ -103,7 +103,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
           </DialogDescription>
         </DialogHeader>
 
-        {loading && <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin" /></div>}
+        {loading && <CarregandoSkeleton rotulo="Carregando decisão" className="py-2"><SkeletonTexto linhas={3} /></CarregandoSkeleton>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
         {analise && (

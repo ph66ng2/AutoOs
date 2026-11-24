@@ -11,6 +11,7 @@ import { useHistoricoEquipamentosCliente } from "@/hooks/useHistoricoEquipamento
 import type { EquipamentoHistorico } from "@/lib/historico-equipamentos";
 import { formatDatePtBr } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
+import { CarregandoSkeleton, SkeletonLista } from "@/components/ui/skeleton";
 
 const COLUNAS = "md:grid md:grid-cols-[minmax(0,1fr)_6.5rem_7.5rem_9.5rem_11rem_1.25rem] md:items-center md:gap-4";
 
@@ -76,7 +77,7 @@ export default function ClienteEquipamentos() {
       <Card>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex h-32 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" /></div>
+            <CarregandoSkeleton rotulo="Carregando equipamentos" className="p-4"><SkeletonLista itens={4} /></CarregandoSkeleton>
           ) : aparelhos.length === 0 ? (
             !error && (
               <div className="py-12 text-center text-muted-foreground">

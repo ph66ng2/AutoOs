@@ -50,6 +50,7 @@ import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 import { PageHeader } from "@/components/PageHeader";
 import { etapaOsAtual, statusDaEtapaOs } from "@/lib/status-familia";
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
+import { CarregandoSkeleton, Skeleton, SkeletonCartoes, SkeletonLista, SkeletonPagina } from "@/components/ui/skeleton";
 
 
 interface DashboardMetrics {
@@ -158,9 +159,15 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
+      <CarregandoSkeleton rotulo="Carregando início">
+        <SkeletonPagina>
+          <SkeletonCartoes />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-4 rounded-xl border p-5"><Skeleton className="h-5 w-40" /><Skeleton className="h-40 w-full" /></div>
+            <div className="space-y-4 rounded-xl border p-5"><Skeleton className="h-5 w-40" /><SkeletonLista itens={4} /></div>
+          </div>
+        </SkeletonPagina>
+      </CarregandoSkeleton>
     );
   }
 
