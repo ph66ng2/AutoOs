@@ -93,6 +93,8 @@ import { CarregandoSkeleton, SkeletonLista, SkeletonTabela } from "@/components/
 export default function Clientes() {
   const navigate = useNavigate();
   const LIMITE_EQUIPAMENTOS_EXPANDIDOS = 3;
+  /** O painel lê só as 200 OS mais recentes (listar_equipamentos_cliente sem `completo`). */
+  const LIMITE_OS_PAINEL = 200;
   const FILTROS_CLIENTES: Array<{ valor: FiltroClientes; rotulo: string }> = [
     { valor: "TODOS", rotulo: "Todos" },
     { valor: "EMPRESAS", rotulo: "Empresas" },
@@ -791,7 +793,9 @@ export default function Clientes() {
                     <span className="flex items-center gap-3">
                       {aparelhosCliente.length > 0 && (
                         <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => navigate(`/clientes/${clienteAberto.id}/equipamentos`)}>
-                          {aparelhosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS ? `Ver todos (${aparelhosCliente.length})` : "Histórico"}
+                          {aparelhosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS
+                            ? `Ver todos (${aparelhosCliente.length}${equipamentosCliente.length >= LIMITE_OS_PAINEL ? "+" : ""})`
+                            : "Histórico"}
                         </button>
                       )}
                       {/* Nova entrada já com este cliente; Cancelar e salvar voltam para Clientes. */}

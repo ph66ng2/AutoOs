@@ -48,7 +48,8 @@ export function useContagemClientes(busca?: string) {
       recargaPendente.current = false;
     };
   }, [busca, carregar]);
-  useAtualizacaoAoVivo(["clientes", "equipamentos"], () => { void carregar(true); });
+  // "Portal ativo" depende de cliente_contatos (acesso, senha, ativo).
+  useAtualizacaoAoVivo(["clientes", "equipamentos", "cliente_contatos"], () => { void carregar(true); });
   return { data, recarregar: carregar };
 }
 
