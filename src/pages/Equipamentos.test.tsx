@@ -12,6 +12,8 @@ const { dbMocks, status, enviarOrcamento, enviarEmailOrcamento, ensureSensitiveA
   }),
   dbMocks: {
     buscarEquipamento: vi.fn(),
+    listarServicosCatalogoAtivos: vi.fn(),
+    prorrogarPrazoOrcamento: vi.fn(),
     obterDestinatarioOrcamento: vi.fn(),
     salvarVerificacao: vi.fn(),
     buscarCliente: vi.fn(),
@@ -76,6 +78,10 @@ function RotaDeTeste() {
     <>
       <output>{pathname}</output>
       <button onClick={() => navigate("/equipamentos/2")}>Abrir B</button>
+      <button onClick={() => navigate("/equipamentos/1/orcamento")}>Editar orçamento A</button>
+      <button onClick={() => navigate("/equipamentos/2/orcamento")}>Editar orçamento B</button>
+      <button onClick={() => navigate("/equipamentos/1/verificacao")}>Verificar A</button>
+      <button onClick={() => navigate("/equipamentos/2/verificacao")}>Verificar B</button>
       <button onClick={() => navigate("/equipamentos/nova")}>Ir para entrada</button>
       <Equipamentos />
     </>
@@ -405,5 +411,87 @@ describe("reenvio de orçamento por e-mail", () => {
     await waitFor(() => expect(toastMock.warning).toHaveBeenCalled());
     expect(dbMocks.obterDestinatarioOrcamento).toHaveBeenNthCalledWith(2, 1);
     expect(enviarEmailOrcamento).not.toHaveBeenCalled();
+  });
+});
+
+describe("prorrogação de prazo ao trocar de OS", () => {
+  function osComOrcamento(id: number) {
+    return {
+      ...os(id),
+      status: "AGUARDANDO_APROVACAO",
+      valor_orcamento: 150,
+      prazo_aprovacao: "2099-12-01",
+      atualizado_em: "2026-11-22T12:00:00Z",
+    };
+  }
+
+  beforeEach(() => {
+    dbMocks.buscarEquipamento.mockImplementation(async (id: number) => osComOrcamento(id));
+    dbMocks.listarServicosCatalogoAtivos.mockResolvedValue([]);
+  });
+
+  async function confirmarNovoPrazo() {
+    const confirmar = await screen.findByRole("button", { name: "Confirmar", exact: true });
+    fireEvent.change(screen.getByPlaceholderText("dd/mm/aaaa"), { target: { value: "2099-12-31" } });
+    await act(async () => { fireEvent.click(confirmar); });
+  }
+
+  it("descarta a prorrogação de A se a versão chegar depois de navegar de A para B e voltar a A", async () => {
+    abrir("/equipamentos/1/orcamento");
+    await screen.findByRole("button", { name: /Marca Modelo 1/ });
+    const versao = buscaPendente();
+    await confirmarNovoPrazo();
+    await waitFor(() => expect(dbMocks.buscarEquipamento).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByText("Editar orçamento B"));
+    await screen.findByRole("button", { name: /Marca Modelo 2/ });
+    fireEvent.click(screen.getByText("Editar orçamento A"));
+    await screen.findByRole("button", { name: /Marca Modelo 1/ });
+
+    await act(async () => { versao.resolver(osComOrcamento(1)); });
+    expect(dbMocks.prorrogarPrazoOrcamento).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Confirmar", exact: true })).toBeEnabled();
+  });
+
+  it("cancela a decisão pendente de A e libera o botão Confirmar de B", async () => {
+    dbMocks.prorrogarPrazoOrcamento.mockResolvedValue({ prorrogado: false });
+    abrir("/equipamentos/1/orcamento");
+    await confirmarNovoPrazo();
+    await screen.findByText("Prorrogar anula a resposta pendente. Continuar?");
+
+    fireEvent.click(screen.getByText("Editar orçamento B"));
+
+    expect(await screen.findByRole("button", { name: /Marca Modelo 2/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Confirmar", exact: true })).toBeEnabled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(dbMocks.prorrogarPrazoOrcamento).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("finalização da verificação ao trocar de OS", () => {
+  it("descarta a finalização de A se o destinatário chegar depois de navegar de A para B e voltar a A", async () => {
+    dbMocks.buscarEquipamento.mockImplementation(async (id: number) => ({ ...os(id), status: "EM_VERIFICACAO" }));
+    let resolverDestinatario!: (dest: { precisaContato: boolean }) => void;
+    dbMocks.obterDestinatarioOrcamento.mockImplementationOnce(() => new Promise((resolve) => {
+      resolverDestinatario = resolve;
+    }));
+
+    abrir("/equipamentos/1/verificacao");
+    fireEvent.click(await screen.findByRole("button", { name: "Finalizar verificação" }));
+    await waitFor(() => expect(dbMocks.obterDestinatarioOrcamento).toHaveBeenCalledWith(1));
+
+    fireEvent.click(screen.getByText("Verificar B"));
+    await waitFor(() => expect(dbMocks.buscarEquipamento).toHaveBeenCalledWith(2));
+    expect(await screen.findByRole("button", { name: "Finalizar verificação" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Verificar A"));
+    await waitFor(() => expect(dbMocks.buscarEquipamento).toHaveBeenCalledTimes(3));
+    expect(await screen.findByRole("button", { name: "Finalizar verificação" })).toBeInTheDocument();
+
+    await act(async () => { resolverDestinatario({ precisaContato: false }); });
+
+    expect(dbMocks.salvarVerificacao).not.toHaveBeenCalled();
+    expect(enviarOrcamento).not.toHaveBeenCalled();
+    expect(screen.getByText("/equipamentos/1/verificacao")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Finalizar verificação" })).toBeInTheDocument();
   });
 });

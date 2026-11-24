@@ -8,10 +8,11 @@ const mocks = vi.hoisted(() => ({
     listarGastosVariaveis: vi.fn(),
     resumoMensal: vi.fn(),
     listarReceitaAprovada: vi.fn(),
-    salvarArquivoTemp: vi.fn(),
+    salvarExportacaoCsv: vi.fn(),
   },
   success: vi.fn(),
 }));
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: vi.fn().mockResolvedValue(true) }) }));
 vi.mock("@/hooks/useNotification", () => ({ useNotification: () => ({ error: vi.fn(), success: mocks.success, warning: vi.fn() }) }));
@@ -49,7 +50,7 @@ beforeEach(() => {
     { id: 1, serial_number: "A", marca: "Z", modelo: "Z", tipo: "Impressora", status: "ENTREGUE", data_entrada: "2026-11-01", data_aprovacao: "2026-11-10", valor_orcamento: 12000 },
     { id: 2, serial_number: "B", marca: "Z", modelo: "Z", tipo: "Impressora", status: "ENTREGUE", data_entrada: "2026-10-01", data_aprovacao: "2026-10-10", valor_orcamento: 9000 },
   ]);
-  mocks.db.salvarArquivoTemp.mockResolvedValue("/tmp/x.csv");
+  mocks.db.salvarExportacaoCsv.mockResolvedValue("/tmp/x.csv");
 });
 
 describe("Finanças (fase 8)", () => {
@@ -139,7 +140,7 @@ describe("Finanças (fase 8)", () => {
     mocks.db.listarGastosVariaveis.mockReturnValueOnce(new Promise((resolve) => { liberar = resolve; }));
     render(<Gastos />);
     expect(screen.getByRole("button", { name: "Baixar lançamentos do mês (CSV)" })).toBeDisabled();
-    expect(mocks.db.salvarArquivoTemp).not.toHaveBeenCalled();
+    expect(mocks.db.salvarExportacaoCsv).not.toHaveBeenCalled();
     liberar(variaveis);
     await waitFor(() => expect(screen.getByRole("button", { name: "Baixar lançamentos do mês (CSV)" })).toBeEnabled());
   });
@@ -149,9 +150,10 @@ describe("Finanças (fase 8)", () => {
     render(<Gastos />);
     await screen.findByRole("region", { name: "Gastos fixos" });
     await usuario.click(screen.getByRole("button", { name: "Baixar lançamentos do mês (CSV)" }));
-    await waitFor(() => expect(mocks.db.salvarArquivoTemp).toHaveBeenCalled());
-    const [bytes, nome] = mocks.db.salvarArquivoTemp.mock.calls[0];
+    await waitFor(() => expect(mocks.db.salvarExportacaoCsv).toHaveBeenCalled());
+    const [bytes, nome] = mocks.db.salvarExportacaoCsv.mock.calls[0];
     expect(nome).toBe("financas-2026-11.csv");
+    expect(mocks.success).toHaveBeenCalledWith("Finanças", "Lançamentos salvos em /tmp/x.csv.");
     const texto = new TextDecoder().decode(new Uint8Array(bytes));
     expect(texto).toContain('"variável","Etiquetas","Fornecedores","2026-11-09","2000.00"');
   });

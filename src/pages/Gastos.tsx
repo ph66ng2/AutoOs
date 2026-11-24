@@ -194,7 +194,7 @@ export default function Gastos() {
     }
     try {
       const nome = await exportar(mes, ano, gastosFixos, gastosVariaveis);
-      success("Finanças", `Lançamentos salvos em ${nome}, na pasta temporária do app.`);
+      success("Finanças", `Lançamentos salvos em ${nome}.`);
     } catch (err) {
       showError("Finanças", "Baixar lançamentos", err);
     }

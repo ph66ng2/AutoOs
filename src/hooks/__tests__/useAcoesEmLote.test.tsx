@@ -4,12 +4,13 @@ import type { Equipamento } from "@/types";
 
 const m = vi.hoisted(() => ({
   atualizarStatusEquipamento: vi.fn(),
-  salvarArquivoTemp: vi.fn(),
+  salvarExportacaoCsv: vi.fn(),
   gerarOrdemServico: vi.fn(),
   solicitarEnvio: vi.fn(),
   buscarEquipamento: vi.fn(),
 }));
-vi.mock("@/lib/db", () => ({ db: { atualizarStatusEquipamento: m.atualizarStatusEquipamento, salvarArquivoTemp: m.salvarArquivoTemp, buscarEquipamento: m.buscarEquipamento } }));
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+vi.mock("@/lib/db", () => ({ db: { atualizarStatusEquipamento: m.atualizarStatusEquipamento, salvarExportacaoCsv: m.salvarExportacaoCsv, buscarEquipamento: m.buscarEquipamento } }));
 vi.mock("@/lib/pdf-service", () => ({ PdfService: { gerarOrdemServico: m.gerarOrdemServico } }));
 vi.mock("@/lib/whatsapp-service", () => ({ WhatsAppService: { solicitarEnvio: m.solicitarEnvio } }));
 
@@ -55,11 +56,12 @@ describe("useAcoesEmLote", () => {
   });
 
   it("exportar: planilha só com as selecionadas", async () => {
-    m.salvarArquivoTemp.mockResolvedValue("/tmp/x.csv");
+    m.salvarExportacaoCsv.mockResolvedValue("/tmp/x.csv");
     const { result } = renderHook(() => useAcoesEmLote());
     const nome = await result.current.exportar([eq(1, "PRONTO")]);
-    expect(nome).toMatch(/^equipamentos-selecionados-\d{4}-\d{2}-\d{2}\.csv$/);
-    const csv = new TextDecoder().decode(new Uint8Array(m.salvarArquivoTemp.mock.calls[0][0]));
+    expect(nome).toBe("/tmp/x.csv");
+    expect(m.salvarExportacaoCsv.mock.calls[0][1]).toMatch(/^equipamentos-selecionados-\d{4}-\d{2}-\d{2}\.csv$/);
+    const csv = new TextDecoder().decode(new Uint8Array(m.salvarExportacaoCsv.mock.calls[0][0]));
     expect(csv.split("\n")).toHaveLength(2);
     expect(csv).toContain("S1");
   });
