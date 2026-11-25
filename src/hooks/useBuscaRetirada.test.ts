@@ -121,3 +121,16 @@ it("mudança durante a busca visível vira uma releitura silenciosa depois dela"
   expect(db.listarEquipamentos).toHaveBeenCalledTimes(2);
   expect(db.listarEquipamentos).toHaveBeenLastCalledWith("Farm", undefined, true);
 });
+
+it("relê a busca quando um contato muda em outro computador (a busca também filtra por contato)", async () => {
+  db.listarEquipamentos.mockResolvedValue([]);
+  db.listarOrcamentosInsumos.mockImplementation(vendasPorStatus([]));
+  const { result } = renderHook(() => useBuscaRetirada("Maria"));
+  await waitFor(() => expect(db.listarEquipamentos).toHaveBeenCalledTimes(1));
+  expect(result.current.data).toHaveLength(0);
+
+  db.listarEquipamentos.mockResolvedValue([eq(3, "PRONTO")]);
+  act(() => distribuirMudancas([{ tabela: "cliente_contatos", id: 9, referencia: 4, operacao: "U" }]));
+  await waitFor(() => expect(result.current.data).toHaveLength(1));
+  expect(db.listarEquipamentos).toHaveBeenLastCalledWith("Maria", undefined, true);
+});

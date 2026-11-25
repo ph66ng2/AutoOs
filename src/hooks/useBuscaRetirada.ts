@@ -33,7 +33,7 @@ async function vendasDoStatus(
 }
 
 /** Tabelas cuja mudança (em outro computador) pode mudar o resultado da busca. */
-const TABELAS_AO_VIVO = ["equipamentos", "orcamentos_insumos", "clientes"];
+const TABELAS_AO_VIVO = ["equipamentos", "orcamentos_insumos", "clientes", "cliente_contatos"];
 
 /**
  * Busca do Balcão para entregar ao cliente: equipamentos e vendas de insumos

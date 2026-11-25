@@ -12,18 +12,25 @@ export function useSuporte() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Só a leitura mais nova é aplicada: uma recarga ao vivo que responde depois da recarga de uma
+  // ação local (ex.: "Resolveu") não pode trazer de volta a lista antiga.
+  const pedidoRef = useRef(0);
   const carregar = useCallback(async (silencioso = false) => {
+    const pedido = ++pedidoRef.current;
+    const atual = () => pedido === pedidoRef.current;
     if (!silencioso) setLoading(true);
     setError(null);
     try {
       // Silencioso = atualização ao vivo: lê em segundo plano, sem renovar a sessão.
       const [cfg, lista] = await Promise.all([db.obterConfigSuporte(), db.listarChamadosSuporte(silencioso)]);
+      if (!atual()) return;
       setConfig(cfg);
       setChamados(lista);
     } catch (causa) {
+      if (!atual()) return;
       setError(causa instanceof Error ? causa.message : String(causa));
     } finally {
-      setLoading(false);
+      if (atual()) setLoading(false);
     }
   }, []);
 

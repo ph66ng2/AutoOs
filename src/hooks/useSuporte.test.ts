@@ -38,6 +38,29 @@ describe("useSuporte", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(mocks.listarChamadosSuporte).toHaveBeenCalledTimes(2);
   });
+
+  it("uma recarga antiga que responde por último não traz de volta o chamado já resolvido", async () => {
+    mocks.unlocked = true;
+    mocks.obterConfigSuporte.mockResolvedValue({ token_neste_computador: true, canal: "C0CE5M6GTRV" });
+    const chamado = (situacao: string) => ({ id: 5, texto: "Impressora", situacao, criado_em: "", atualizado_em: "", respostas: 1 });
+    mocks.listarChamadosSuporte.mockReset();
+    mocks.listarChamadosSuporte.mockResolvedValueOnce([chamado("aberto")]);
+    const { result } = renderHook(() => useSuporte());
+    await waitFor(() => expect(result.current.chamados[0]?.situacao).toBe("aberto"));
+
+    let soltarAntiga: (lista: unknown[]) => void = () => undefined;
+    mocks.listarChamadosSuporte
+      .mockImplementationOnce(() => new Promise((r) => { soltarAntiga = r; }))
+      .mockResolvedValueOnce([chamado("resolvido")]);
+    let antiga!: Promise<void>;
+    await act(async () => {
+      antiga = result.current.recarregar(true);
+      await result.current.recarregar(true);
+    });
+    expect(result.current.chamados[0]?.situacao).toBe("resolvido");
+    await act(async () => { soltarAntiga([chamado("aberto")]); await antiga; });
+    expect(result.current.chamados[0]?.situacao).toBe("resolvido");
+  });
 });
 
 const msg = (id: number, texto: string) => ({ id, autor: "suporte", autor_nome: "Erykah", texto, automatica: true, criado_em: "2026-11-21 10:00:00+00" });
