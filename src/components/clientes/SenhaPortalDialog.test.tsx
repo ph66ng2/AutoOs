@@ -26,7 +26,7 @@ describe("SenhaPortalDialog", () => {
     expect(senhaPortalValida("semnumeros")).toBe(false);
   });
 
-  it("operador cria a senha e vê os dados de acesso uma única vez", async () => {
+  it("operador cria a senha e vê os dados de acesso para entregar", async () => {
     mocks.definir.mockResolvedValue({ ...contato, portal_senha_definida_em: "2026-10-16T10:00:00Z" });
     const onSalvo = vi.fn();
     render(<SenhaPortalDialog contato={contato} documentoCliente="11.222.333/0001-81" onClose={vi.fn()} onSalvo={onSalvo} />);
@@ -38,7 +38,7 @@ describe("SenhaPortalDialog", () => {
     expect(dados.textContent).toContain("Seu CPF/CNPJ:\n11222333000181\n");
     expect(dados.textContent).toContain("Sua senha:\nGrafica-2026\n");
     expect(dados.textContent).toContain("Para trocá-la, fale com a equipe");
-    expect(screen.getByText(/não será mostrada de novo/)).toBeInTheDocument();
+    expect(screen.getByText((_, el) => el?.tagName === "P" && /use Ver senha no acesso ao portal/i.test(el.textContent ?? ""))).toBeInTheDocument();
   });
 
   it("senha de quem só acompanha pede Acessos do portal; de quem decide, Orçamentos ou financeiro", async () => {

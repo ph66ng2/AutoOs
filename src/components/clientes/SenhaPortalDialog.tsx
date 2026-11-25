@@ -157,7 +157,7 @@ export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo
     return (
       <div className="space-y-3">
         <p className="rounded-md border border-status-ok/30 bg-status-ok-bg p-3 text-sm text-status-ok">
-          Senha salva. Entregue os dados ao contato. <strong>Ela não será mostrada de novo</strong>: o AutoOS guarda só uma versão cifrada.
+          Senha salva. Entregue os dados ao contato. Se precisar dela depois, use <strong>Ver senha</strong> no acesso ao portal do equipamento.
         </p>
         <pre className="whitespace-pre-wrap rounded-md border bg-muted/40 p-3 font-mono text-sm" aria-label="Dados de acesso">{instrucoes}</pre>
         {erro && <p className="text-sm text-destructive" role="alert">{erro}</p>}
