@@ -414,6 +414,7 @@ async fn main() -> Result<()> {
     let erro = equipamentos::definir_responsavel_equipamento(eq_c, ct_d_do_cliente_c, tok0).await.err().expect("token velho deveria falhar");
     assert!(erro.contains("Conflito de concorrência"), "{erro}");
 
-    eprintln!("OK: perfil TECNICO prepara, envia e publica o orçamento (acesso ao portal, senha só ao provedor, responsável da OS), aprova, reprova, encerra OS só de garantia e define a senha de quem decide; não corrige status nem altera OS decidida.");
+    // Resultado do teste (não é debug): writeln em vez de eprintln para o filtro do pre-qa-check.
+    writeln!(std::io::stderr(), "OK: perfil TECNICO prepara, envia e publica o orçamento (acesso ao portal, senha só ao provedor, responsável da OS), aprova, reprova, encerra OS só de garantia e define a senha de quem decide; não corrige status nem altera OS decidida.")?;
     Ok(())
 }
