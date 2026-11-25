@@ -1,7 +1,7 @@
 -- Comunicações enviadas (orçamento, aviso de pronto, WhatsApp/e-mail) também avisam ao vivo.
 -- Sem isto, a OS aberta em outro computador continua mostrando o orçamento como não enviado
 -- até alguém reabrir a OS. O aviso leva só ids: ref = equipamento_id da comunicação.
--- Mesma função da 0063, acrescida do ref de `comunicacoes`.
+-- Mesma função da 0063 (a 0064 não a altera), acrescida do ref de `comunicacoes`.
 CREATE OR REPLACE FUNCTION public.avisar_mudanca()
 RETURNS trigger
 LANGUAGE plpgsql
