@@ -30,7 +30,6 @@ export function BuscaGlobal({ aberta, onAbertaChange, telas }: { aberta: boolean
   const abrir = (item: ResultadoBusca | undefined) => {
     if (!item) return;
     onAbertaChange(false);
-    item.aoAbrir?.();
     navigate(item.destino.path, item.destino.state ? { state: item.destino.state } : undefined);
   };
 

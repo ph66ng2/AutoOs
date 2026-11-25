@@ -55,7 +55,10 @@ vi.mock("@/pages/equipamentos/EquipamentosPageGallery", () => ({
   ),
 }));
 vi.mock("@/hooks/useTecnicos", () => ({ useTecnicos: () => [], useNomesFiltroTecnico: () => [] }));
-vi.mock("@/hooks/useAtualizacaoAoVivo", () => ({ useAtualizacaoAoVivo: () => {} }));
+const aoVivo = vi.hoisted(() => new Map<string, (mudancas: { tabela: string; id: number | null; referencia: number | null; operacao: string }[]) => void>());
+vi.mock("@/hooks/useAtualizacaoAoVivo", () => ({
+  useAtualizacaoAoVivo: (tabelas: string[], recarregar: (mudancas: never[]) => void) => { aoVivo.set(tabelas.join(","), recarregar); },
+}));
 
 vi.mock("@/lib/envio-orcamento", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/envio-orcamento")>(),
@@ -503,5 +506,25 @@ describe("finalização da verificação ao trocar de OS", () => {
     expect(enviarOrcamento).not.toHaveBeenCalled();
     expect(screen.getByText("/equipamentos/1/verificacao")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Finalizar verificação" })).toBeInTheDocument();
+  });
+});
+
+describe("OS aberta ao vivo", () => {
+  const ouvinteDaOsAberta = () => [...aoVivo.entries()].find(([chave]) => chave.split(",").includes("comunicacoes"))?.[1];
+
+  it("recarrega as comunicações quando outro computador envia o orçamento desta OS", async () => {
+    dbMocks.buscarEquipamento.mockResolvedValue(os(1));
+    abrir();
+    expect(await screen.findByRole("heading", { name: "Marca Modelo 1" })).toBeInTheDocument();
+    await waitFor(() => expect(dbMocks.listarComunicacoes).toHaveBeenCalledTimes(1));
+    const ouvinte = ouvinteDaOsAberta();
+    expect(ouvinte).toBeDefined();
+
+    await act(async () => { ouvinte!([{ tabela: "comunicacoes", id: 50, referencia: 2, operacao: "I" }]); });
+    expect(dbMocks.listarComunicacoes).toHaveBeenCalledTimes(1);
+
+    await act(async () => { ouvinte!([{ tabela: "comunicacoes", id: 51, referencia: 1, operacao: "I" }]); });
+    await waitFor(() => expect(dbMocks.listarComunicacoes).toHaveBeenCalledTimes(2));
+    expect(dbMocks.listarComunicacoes).toHaveBeenLastCalledWith(1);
   });
 });

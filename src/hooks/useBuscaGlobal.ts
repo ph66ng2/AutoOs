@@ -11,14 +11,13 @@ export interface ResultadoBusca {
   detalhe?: string;
   /** Rota e estado de navegação ao escolher. */
   destino: { path: string; state?: Record<string, unknown> };
-  aoAbrir?: () => void;
 }
 
 export interface TelaBuscavel {
   label: string;
   path: string;
-  /** Algo a fazer antes de navegar (ex.: trocar para o Modo Balcão). */
-  aoAbrir?: () => void;
+  /** Estado da navegação (ex.: pedido de troca para o Modo Balcão, aplicado só se a navegação acontecer). */
+  state?: Record<string, unknown>;
 }
 
 const POR_GRUPO = 5;
@@ -34,7 +33,7 @@ export function telasQueCasam(telas: TelaBuscavel[], termo: string): ResultadoBu
   if (!alvo) return [];
   return telas
     .filter((tela) => semAcento(tela.label).includes(alvo))
-    .map((tela) => ({ chave: `tela:${tela.path}`, grupo: "Telas" as const, titulo: tela.label, destino: { path: tela.path }, aoAbrir: tela.aoAbrir }));
+    .map((tela) => ({ chave: `tela:${tela.path}`, grupo: "Telas" as const, titulo: tela.label, destino: tela.state ? { path: tela.path, state: tela.state } : { path: tela.path } }));
 }
 
 /**
