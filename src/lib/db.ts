@@ -1027,6 +1027,11 @@ export const db = {
     return invoke<ChamadoSuporte[]>("listar_chamados_suporte", seSegundoPlano(segundoPlano));
   },
 
+  /** Um chamado do perfil da sessão pelo id (fora da lista) → Rust: buscar_chamado_suporte */
+  async buscarChamadoSuporte(id: number, segundoPlano = false): Promise<ChamadoSuporte> {
+    return invoke<ChamadoSuporte>("buscar_chamado_suporte", { id, ...seSegundoPlano(segundoPlano) });
+  },
+
   /** Conversa de um chamado → Rust: listar_mensagens_chamado */
   /** Traz da thread do Slack as respostas novas dos chamados abertos do perfil (segundo plano) → Rust: sincronizar_suporte */
   async sincronizarSuporte(): Promise<RespostaNovaSuporte[]> {

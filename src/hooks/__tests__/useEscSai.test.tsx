@@ -34,4 +34,19 @@ describe("useEscSai", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(aoSair).toHaveBeenCalledTimes(1);
   });
+
+  it("menu, aviso de confirmação e popover abertos também seguram o Esc", () => {
+    const aoSair = vi.fn();
+    renderHook(() => useEscSai(true, aoSair));
+    for (const camada of [
+      <div key="m" role="menu" data-state="open" />,
+      <div key="a" role="alertdialog" data-state="open" />,
+      <div key="p" data-radix-popper-content-wrapper="" />,
+    ]) {
+      const aberta = render(camada);
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      aberta.unmount();
+    }
+    expect(aoSair).not.toHaveBeenCalled();
+  });
 });

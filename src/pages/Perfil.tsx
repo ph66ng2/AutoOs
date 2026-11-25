@@ -12,6 +12,7 @@ import { AppearancePicker } from "@/components/perfil/AppearancePicker";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { EscopoAvisoAoSair, useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+import { useEscSai } from "@/hooks/useEscSai";
 import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import { profileAppearance, type ProfileTheme } from "@/lib/profile-appearance";
@@ -49,6 +50,10 @@ export default function Perfil() {
   // Um só aviso para a página: Personalizar informa o que não foi salvo; trocar de aba ou de
   // perfil, menu, Ctrl+K e voltar perguntam antes de perder.
   const avisoAoSair = useAvisoAoSair(false);
+  // Esc com algo não salvo (ex.: Personalizar) sai do formulário como trocar de aba: pergunta e,
+  // em "Sair sem salvar", volta à Visão geral sem gravar. Sem nada pela metade, o Esc não faz nada.
+  const perfilId = profile?.id ?? null;
+  useEscSai(avisoAoSair.algoNaoSalvo, () => avisoAoSair.sairComAviso(() => setAbaAberta({ perfil: perfilId, aba: "visao" })));
 
   if (!profile) {
     return (

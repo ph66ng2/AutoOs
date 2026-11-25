@@ -73,6 +73,7 @@ import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "@/lib/logo-monochrome-base64"
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
 import { useTecnicos } from "@/hooks/useTecnicos";
 import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+import { useEscSai } from "@/hooks/useEscSai";
 import { avisoBalcaoSemTecnicos, linhaTecnicoInicial, tecnicoDoBalcao, tecnicoPadrao } from "@/lib/tecnicos";
 import { todayLocalIsoDate } from "@/lib/date-utils";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
@@ -635,6 +636,9 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     || Object.values(data).some((valor) => (Array.isArray(valor) ? valor.length > 0 : valor.trim() !== ""))
   );
   const avisoAoSair = useAvisoAoSair(entradaSuja);
+  // Esc com a entrada pela metade faz o mesmo que "Cancelar entrada": pergunta antes. Limpa, o
+  // Esc continua sem fazer nada aqui.
+  useEscSai(entradaSuja, () => avisoAoSair.sairComAviso(onBack));
   // Sem escolha ainda: o próprio perfil, se faz atendimento técnico, ou o único técnico da
   // empresa. Com vários e nenhum deles a sessão, a pessoa escolhe (nunca "o primeiro da lista").
   const padraoDoTecnico = tecnicoPadrao(tecnicos, sessaoDoBalcao?.unlocked ? sessaoDoBalcao.active_profile_id : null);

@@ -285,10 +285,30 @@ pub(crate) fn push_busca_no_contato(query: &mut QueryBuilder<Postgres>, busca: &
     query.push(")");
 }
 
+/// A OS `e` é do cliente `c` (alias da tabela `clientes` na consulta externa), sempre na mesma
+/// empresa: pelo `cliente_id` ou, nas OS antigas sem `cliente_id`, pelo `cliente_nome` gravado igual
+/// (sem diferenciar maiúsculas nem espaços nas pontas) ao nome de exibição ou ao `nome` do cliente.
+/// É o mesmo critério que o painel e o histórico usam em `listar_equipamentos_cliente` (a tela manda
+/// `nomeExibicaoCliente` e `nome`), para os totais baterem com as OS que a tela mostra.
+fn os_do_cliente(c: &str) -> String {
+    format!(
+        "e.empresa_id = {c}.empresa_id AND (e.cliente_id = {c}.id OR (e.cliente_id IS NULL
+           AND BTRIM(COALESCE(e.cliente_nome, '')) <> ''
+           AND LOWER(BTRIM(e.cliente_nome)) IN (
+             LOWER(BTRIM(COALESCE({c}.nome, ''))),
+             LOWER(BTRIM(CASE WHEN {c}.tipo_pessoa = 'PJ'
+               THEN COALESCE(NULLIF({c}.nome_fantasia, ''), NULLIF({c}.razao_social, ''), {c}.nome, '')
+               ELSE '' END)))))"
+    )
+}
+
 /// OS do cliente ainda em atendimento (não entregue nem abandonada). `clientes` é a tabela externa.
-const EXISTE_OS_ABERTA: &str = " EXISTS (SELECT 1 FROM equipamentos e
-   WHERE e.cliente_id = clientes.id AND e.empresa_id IS NOT DISTINCT FROM clientes.empresa_id
-     AND e.status NOT IN ('ENTREGUE', 'ABANDONADO'))";
+fn existe_os_aberta() -> String {
+    format!(
+        " EXISTS (SELECT 1 FROM equipamentos e WHERE {} AND e.status NOT IN ('ENTREGUE', 'ABANDONADO'))",
+        os_do_cliente("clientes")
+    )
+}
 
 /// Algum contato ativo entra no portal (tem acesso e senha definida).
 const EXISTE_PORTAL_ATIVO: &str = " EXISTS (SELECT 1 FROM cliente_contatos ct
@@ -310,7 +330,7 @@ fn add_client_filters_com(query: &mut QueryBuilder<Postgres>, empresa_id: i32, b
             query.push(" AND tipo_pessoa = 'PF'");
         }
         Some("COM_OS_ABERTA") => {
-            query.push(" AND").push(EXISTE_OS_ABERTA);
+            query.push(" AND").push(existe_os_aberta());
         }
         Some("PORTAL_ATIVO") => {
             query.push(" AND").push(EXISTE_PORTAL_ATIVO);
@@ -361,7 +381,7 @@ async fn preencher_resumo_da_pagina(pool: &PgPool, empresa_id: i32, items: &mut 
         return Ok(());
     }
     let ids: Vec<i32> = items.iter().map(|row| row.id).collect();
-    let linhas = sqlx::query(
+    let consulta = format!(
         "SELECT c.id,
                 COALESCE(
                   (SELECT ct.nome FROM equipamentos e
@@ -373,18 +393,18 @@ async fn preencher_resumo_da_pagina(pool: &PgPool, empresa_id: i32, items: &mut 
                     ORDER BY ct.id LIMIT 1)
                 ) AS contato_principal,
                 (SELECT COUNT(*) FROM equipamentos e
-                  WHERE e.cliente_id = c.id AND e.empresa_id IS NOT DISTINCT FROM c.empresa_id
-                    AND e.status NOT IN ('ENTREGUE', 'ABANDONADO')) AS os_abertas,
-                (SELECT MAX(e.data_entrada) FROM equipamentos e
-                  WHERE e.cliente_id = c.id AND e.empresa_id IS NOT DISTINCT FROM c.empresa_id) AS ultimo_atendimento
+                  WHERE {os} AND e.status NOT IN ('ENTREGUE', 'ABANDONADO')) AS os_abertas,
+                (SELECT MAX(e.data_entrada) FROM equipamentos e WHERE {os}) AS ultimo_atendimento
            FROM clientes c
           WHERE c.empresa_id = $1 AND c.id = ANY($2)",
-    )
-    .bind(empresa_id)
-    .bind(&ids)
-    .fetch_all(pool)
-    .await
-    .map_err(super::operator_errors::mapear_erro_sql)?;
+        os = os_do_cliente("c")
+    );
+    let linhas = sqlx::query(sqlx::AssertSqlSafe(&*consulta))
+        .bind(empresa_id)
+        .bind(&ids)
+        .fetch_all(pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     for linha in linhas {
         let id: i32 = linha.try_get("id").map_err(|e| e.to_string())?;
         if let Some(item) = items.iter_mut().find(|row| row.id == id) {
@@ -520,7 +540,7 @@ pub(crate) async fn contar_clientes_por_filtro_on_pool(
                 COUNT(*) FILTER (WHERE",
     );
     query
-        .push(EXISTE_OS_ABERTA)
+        .push(existe_os_aberta())
         .push(") AS com_os_aberta, COUNT(*) FILTER (WHERE")
         .push(EXISTE_PORTAL_ATIVO)
         .push(") AS portal_ativo FROM clientes");
@@ -550,22 +570,24 @@ pub(crate) async fn resumo_cliente_on_pool(
     ver_faturado: bool,
 ) -> Result<ResumoCliente, String> {
     let ano = chrono::Local::now().format("%Y").to_string();
-    let row = sqlx::query(
+    let consulta = format!(
         "SELECT
-           COUNT(*) FILTER (WHERE e.status NOT IN ('ENTREGUE', 'ABANDONADO')) AS os_abertas,
-           COUNT(*) FILTER (WHERE LEFT(e.data_entrada, 4) = $3) AS no_ano,
+           COUNT(e.id) FILTER (WHERE e.status NOT IN ('ENTREGUE', 'ABANDONADO')) AS os_abertas,
+           COUNT(e.id) FILTER (WHERE LEFT(e.data_entrada, 4) = $3) AS no_ano,
            COALESCE(SUM(COALESCE(e.valor_final, e.valor_orcamento, 0))
              FILTER (WHERE e.status = 'ENTREGUE' AND LEFT(COALESCE(e.data_saida, ''), 4) = $3), 0)::FLOAT8 AS faturado
-         FROM equipamentos e
-         JOIN clientes c ON c.id = e.cliente_id AND c.empresa_id = $2
-         WHERE e.cliente_id = $1 AND e.empresa_id IS NOT DISTINCT FROM c.empresa_id",
-    )
-    .bind(cliente_id)
-    .bind(empresa_id)
-    .bind(&ano)
-    .fetch_one(pool)
-    .await
-    .map_err(super::operator_errors::mapear_erro_sql)?;
+         FROM clientes c
+         JOIN equipamentos e ON {}
+         WHERE c.id = $1 AND c.empresa_id = $2",
+        os_do_cliente("c")
+    );
+    let row = sqlx::query(sqlx::AssertSqlSafe(&*consulta))
+        .bind(cliente_id)
+        .bind(empresa_id)
+        .bind(&ano)
+        .fetch_one(pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     Ok(ResumoCliente {
         os_abertas: row.try_get("os_abertas").map_err(|e| e.to_string())?,
         no_ano: row.try_get("no_ano").map_err(|e| e.to_string())?,
@@ -936,6 +958,21 @@ mod tests {
         let sql = query.sql().as_str().to_string();
         assert!(!sql.contains("cliente_contatos"));
         assert!(sql.contains("NULL::TEXT AS contato_encontrado"));
+    }
+
+    #[test]
+    fn totais_do_cliente_contam_os_legadas_pelo_nome_na_mesma_empresa() {
+        let criterio = os_do_cliente("c");
+        assert!(criterio.starts_with("e.empresa_id = c.empresa_id AND ("));
+        assert!(criterio.contains("e.cliente_id = c.id OR (e.cliente_id IS NULL"));
+        assert!(criterio.contains("BTRIM(COALESCE(e.cliente_nome, '')) <> ''"));
+        assert!(criterio.contains("NULLIF(c.nome_fantasia, '')"));
+        let aberta = existe_os_aberta();
+        assert!(aberta.contains("e.empresa_id = clientes.empresa_id"));
+        assert!(aberta.contains("e.cliente_id IS NULL"));
+        let mut contagem = QueryBuilder::<Postgres>::new("");
+        add_client_filters_com(&mut contagem, 1, None, Some("COM_OS_ABERTA"));
+        assert!(contagem.sql().as_str().contains("LOWER(BTRIM(e.cliente_nome))"));
     }
 
     #[test]

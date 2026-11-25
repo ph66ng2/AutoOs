@@ -155,9 +155,13 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const recarregar = useCallback(() => carregar(), [carregar]);
   const atualizarEmSegundoPlano = useCallback(() => carregar({ silencioso: true }), [carregar]);
 
-  // Outro computador mudou uma OS (ou a verificação dela): recarrega em silêncio e destaca o que mudou.
+  // Outro computador mudou uma OS, a verificação dela ou um contato de cliente (a busca também
+  // acha a OS pelo nome, telefone ou e-mail dos contatos): recarrega em silêncio e destaca o que mudou.
   const { destaques, lembrar } = useDestaquesAoVivo(equipamentos, (eq) => eq.id, (eq) => eq.atualizado_em);
-  useAtualizacaoAoVivo(["equipamentos", "verificacoes"], () => {
+  useAtualizacaoAoVivo(["equipamentos", "verificacoes", "cliente_contatos"], (mudancas) => {
+    // Contato mudou e não há busca: nem a lista nem as pílulas dependem dos contatos.
+    const soContatos = mudancas.length > 0 && mudancas.every((m) => m.tabela === "cliente_contatos");
+    if (soContatos && !paramsRef.current?.busca?.trim()) return;
     if (cargaVisivelPendente.current) {
       recargaPendente.current = true;
       return;

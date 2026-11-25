@@ -602,24 +602,43 @@ async fn buscar_chamado(pool: &sqlx::PgPool, empresa_id: i32, profile_id: i32, i
     .ok_or_else(|| "Chamado não encontrado.".to_string())
 }
 
-/// Chamados do perfil da sessão, do mais recente para o mais antigo.
+/// Quantos chamados encerrados (os mais recentes) a lista traz além dos abertos.
+const LIMITE_CHAMADOS_RECENTES: i64 = 50;
+
+/// Chamados do perfil da sessão, do mais recente para o mais antigo: todos os abertos (podem
+/// receber resposta e ainda precisam de "Isso resolveu?") e os 50 mais recentes de qualquer situação.
+const LISTAR_CHAMADOS_SQL: &str = "SELECT c.id, c.texto, c.situacao, c.criado_em::TEXT AS criado_em, c.atualizado_em::TEXT AS atualizado_em,
+        (SELECT COUNT(*) FROM suporte_mensagens m WHERE m.chamado_id = c.id AND m.autor = 'suporte') AS respostas
+ FROM suporte_chamados c WHERE c.empresa_id = $1 AND c.profile_id = $2
+   AND (c.situacao = 'aberto' OR c.id IN (
+     SELECT r.id FROM suporte_chamados r WHERE r.empresa_id = $1 AND r.profile_id = $2
+     ORDER BY r.criado_em DESC, r.id DESC LIMIT $3))
+ ORDER BY c.criado_em DESC, c.id DESC";
+
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn listar_chamados_suporte(segundo_plano: Option<bool>) -> Result<Vec<ChamadoSuporte>, String> {
     let perfil = perfil_da_leitura(segundo_plano)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
-    sqlx::query_as::<_, ChamadoSuporte>(
-        "SELECT c.id, c.texto, c.situacao, c.criado_em::TEXT AS criado_em, c.atualizado_em::TEXT AS atualizado_em,
-                (SELECT COUNT(*) FROM suporte_mensagens m WHERE m.chamado_id = c.id AND m.autor = 'suporte') AS respostas
-         FROM suporte_chamados c WHERE c.empresa_id = $1 AND c.profile_id = $2
-         ORDER BY c.criado_em DESC LIMIT 50",
-    )
-    .bind(empresa_id)
-    .bind(perfil.id)
-    .fetch_all(&pool)
-    .await
-    .map_err(super::operator_errors::mapear_erro_sql)
+    sqlx::query_as::<_, ChamadoSuporte>(LISTAR_CHAMADOS_SQL)
+        .bind(empresa_id)
+        .bind(perfil.id)
+        .bind(LIMITE_CHAMADOS_RECENTES)
+        .fetch_all(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+/// Um chamado do perfil da sessão pelo id, para abrir um que não veio na lista (encerrado antigo,
+/// "Ver" de uma notificação). Mesmo recorte de empresa e perfil da lista.
+#[tauri::command]
+#[instrument(skip_all, fields(id = id))]
+pub async fn buscar_chamado_suporte(id: i32, segundo_plano: Option<bool>) -> Result<ChamadoSuporte, String> {
+    let perfil = perfil_da_leitura(segundo_plano)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    buscar_chamado(&pool, empresa_id, perfil.id, id).await
 }
 
 /// Conversa de um chamado do perfil da sessão.
@@ -1318,6 +1337,16 @@ fn relatorio_externo_retem_apenas_metadados_permitidos() {
     assert!(montar_mensagem(1, "Perfil", "Papel", "Texto", tela, None, Some(&limpo)).contains(&limpo));
 }
 
+
+#[cfg(test)]
+#[test]
+fn lista_de_chamados_mantem_todos_os_abertos_alem_dos_recentes() {
+    assert!(LISTAR_CHAMADOS_SQL.contains("c.situacao = 'aberto' OR c.id IN ("));
+    assert!(LISTAR_CHAMADOS_SQL.contains("r.empresa_id = $1 AND r.profile_id = $2"));
+    assert!(LISTAR_CHAMADOS_SQL.contains("LIMIT $3"));
+    assert!(!LISTAR_CHAMADOS_SQL.contains("LIMIT 50"));
+    assert_eq!(LIMITE_CHAMADOS_RECENTES, 50);
+}
 
 #[cfg(test)]
 #[test]

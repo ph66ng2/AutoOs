@@ -119,6 +119,50 @@ describe("Modo Balcão", () => {
     expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
   });
 
+  it("Esc sem nada preenchido não pergunta nem sai da entrada", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /cancelar entrada/i })).toBeInTheDocument();
+  });
+
+  it("Esc com a entrada pela metade pergunta como Cancelar entrada; continuar mantém o texto, sair descarta sem salvar", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: /continuar/i }));
+    await user.type(screen.getAllByRole("textbox")[0]!, "SN-77");
+
+    await user.keyboard("{Escape}");
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getAllByRole("textbox")[0]).toHaveValue("SN-77");
+
+    await user.keyboard("{Escape}");
+    await user.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    expect(await screen.findByRole("button", { name: /nova entrada/i })).toBeInTheDocument();
+    expect(db.criarEquipamento).not.toHaveBeenCalled();
+    // A entrada recomeça do zero: Esc limpo não pergunta.
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("Esc com uma lista aberta fecha só a lista, mesmo com a entrada pela metade", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: /continuar/i }));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    expect(await screen.findByRole("listbox")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /cancelar entrada/i })).toBeInTheDocument();
+  });
+
   it("trocar de operador sem nada preenchido abre os perfis direto", async () => {
     const user = userEvent.setup(); renderCounter();
     await user.click(screen.getByRole("button", { name: /nova entrada/i }));

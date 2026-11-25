@@ -85,17 +85,48 @@ describe("VendaFormulario (/vendas/novo e /vendas/:id/editar)", () => {
     expect(mocks.navigate).toHaveBeenCalledWith("/vendas/34");
   });
 
-  it("salvar recusado (PIN ou erro) não sai da página; descartar volta ao orçamento", async () => {
+  it("salvar recusado (PIN ou erro) não sai da página; descartar pergunta e volta ao orçamento", async () => {
+    const salvar = vi.fn().mockResolvedValue(null);
     mocks.editor = editor({
       detalhe: { id: 34, numero_exibicao: "OI-34", status: "RASCUNHO", empresa_id: 1 },
-      status: "RASCUNHO", alterado: true, podeSalvar: true, motivoSemSalvar: null, salvar: vi.fn().mockResolvedValue(null),
+      status: "RASCUNHO", alterado: true, podeSalvar: true, motivoSemSalvar: null, salvar,
     });
     const usuario = userEvent.setup();
     renderEm("/vendas/34/editar");
     await usuario.click(screen.getByRole("button", { name: "Salvar orçamento" }));
     expect(mocks.navigate).not.toHaveBeenCalled();
-    await usuario.click(screen.getByRole("button", { name: "Descartar alterações" }));
+    await usuario.click(screen.getByRole("button", { name: /Descartar alterações/ }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    await usuario.click(screen.getByRole("button", { name: "Sair sem salvar" }));
     expect(mocks.navigate).toHaveBeenCalledWith("/vendas/34");
+    expect(salvar).toHaveBeenCalledOnce();
+  });
+
+  it("Esc sem alterações volta ao orçamento como o botão Voltar (Esc)", async () => {
+    mocks.editor = editor({ detalhe: { id: 34, numero_exibicao: "OI-34", status: "RASCUNHO", empresa_id: 1 }, status: "RASCUNHO" });
+    renderEm("/vendas/34/editar");
+    await userEvent.setup().keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(mocks.navigate).toHaveBeenCalledWith("/vendas/34");
+  });
+
+  it("Esc com alterações pergunta antes, mesmo sem o bloqueio do roteador; continuar fica, sair volta sem salvar", async () => {
+    const salvar = vi.fn();
+    mocks.editor = editor({
+      detalhe: { id: 34, numero_exibicao: "OI-34", status: "RASCUNHO", empresa_id: 1 },
+      status: "RASCUNHO", alterado: true, podeSalvar: true, motivoSemSalvar: null, salvar,
+    });
+    const usuario = userEvent.setup();
+    renderEm("/vendas/34/editar");
+    await usuario.keyboard("{Escape}");
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await usuario.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    await usuario.keyboard("{Escape}");
+    await usuario.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/vendas/34");
+    expect(salvar).not.toHaveBeenCalled();
   });
 
   it("aprovado não pode ser editado; sem Ações financeiras não abre o formulário", () => {

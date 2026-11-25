@@ -23,6 +23,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useForm, useWatch } from "react-hook-form";
 import { EscopoAvisoAoSair, useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+import { useEscSai } from "@/hooks/useEscSai";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { db } from "@/lib/db";
@@ -204,6 +205,9 @@ export default function Configuracoes() {
       setSecurityMessage(null);
     });
   }
+  // Esc com algum cartão pela metade sai dele como trocar de aba: pergunta e, em "Sair sem
+  // salvar", descarta tudo e volta à aba inicial. Sem nada pela metade, o Esc não faz nada.
+  useEscSai(avisoAoSair.algoNaoSalvo, () => trocarDeAba(abas.inicial));
 
   async function loadAuditEvents() {
     if (!canManageProfiles) {
