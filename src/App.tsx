@@ -35,7 +35,7 @@ import { CounterLayout } from "@/components/CounterLayout";
 import { CounterSessionGate } from "@/components/CounterSessionGate";
 import { ReleaseHighlightsDialog } from "@/components/ReleaseHighlightsDialog";
 import { UpdateNotice } from "@/components/UpdateNotice";
-import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
+import { getAppMode, modoPedidoAoNavegar, setAppMode, type AppMode } from "@/lib/app-mode";
 import { ROTA_TELA_INICIAL, telaInicial } from "@/lib/preferencias-computador";
 
 /**
@@ -243,13 +243,23 @@ function AppModeChoice({ visible, onSelect }: { visible: boolean; onSelect: (mod
   return <AppModeSelector onSelect={(mode) => { setAppMode(mode); onSelect(mode); navigate(mode === "counter" ? "/balcao" : "/"); }} />;
 }
 
-function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean }) {
+export function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   // "Abrir o app em" (Configurações › Geral) vale só na primeira entrada desta abertura.
   const telaInicialAplicada = useRef(false);
   useEffect(() => {
     if (!ready || !mode) return;
+    // Pedido de troca de modo que chegou com a navegação (já passou pelo aviso de saída). Sai do
+    // histórico para voltar/avançar não trocar o modo de novo.
+    const pedido = modoPedidoAoNavegar(location.state);
+    if (pedido) {
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+      if (pedido !== mode) {
+        setAppMode(pedido);
+        return;
+      }
+    }
     const isCounterRoute = location.pathname.startsWith("/balcao");
     if (mode === "counter" && !isCounterRoute) navigate("/balcao", { replace: true });
     if (mode === "standard" && isCounterRoute) navigate("/", { replace: true });
@@ -258,7 +268,7 @@ function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean
       const destino = ROTA_TELA_INICIAL[telaInicial()];
       if (mode === "standard" && location.pathname === "/" && destino !== "/") navigate(destino, { replace: true });
     }
-  }, [location.pathname, mode, navigate, ready]);
+  }, [location.key, location.pathname, location.search, location.state, mode, navigate, ready]);
   return null;
 }
 

@@ -630,13 +630,18 @@ export default function Equipamentos() {
     recargaOsEmVooRef.current = true;
     const abertura = aberturaOsRef.current;
     try {
-      const [eq, verif, historico] = await Promise.allSettled([
+      const [eq, verif, historico, comms] = await Promise.allSettled([
         db.buscarEquipamento(id, true),
         db.buscarVerificacao(id),
         db.listarHistoricoEquipamento(id, true),
+        Promise.resolve().then(() => db.listarComunicacoes(id)),
       ]);
       if (abertura !== aberturaOsRef.current) return;
       if (eq.status !== "fulfilled" || selecionadoIdRef.current !== id || !detalhesAbertoRef.current) return;
+      // Comunicações só são exibidas (não entram no formulário nem no token de concorrência) e
+      // mudam sem alterar o atualizado_em da OS: atualizam em toda recarga, mesmo sem a OS mudar.
+      // Com a edição aberta, o aviso só marca a recarga pendente, que roda ao fechar a edição.
+      if (comms.status === "fulfilled") setComunicacoes(comms.value);
       // A edição pode ter aberto enquanto a recarga estava a caminho: não troca a OS por baixo
       // dela (o token de concorrência da edição tem de continuar o de quando ela abriu).
       if (edicaoEmAndamentoRef.current) {
@@ -660,11 +665,14 @@ export default function Equipamentos() {
     }
   }, [recarregarPecasPendentes]);
   recarregarOsAbertaRef.current = recarregarOsAberta;
-  useAtualizacaoAoVivo(["equipamentos", "verificacoes"], (mudancas) => {
+  useAtualizacaoAoVivo(["equipamentos", "verificacoes", "comunicacoes"], (mudancas) => {
     const abertoId = selecionadoIdRef.current;
     if (!detalhesAbertoRef.current || !abertoId) return;
     const mudouVerificacao = mudancas.some((m) => m.tabela === "verificacoes" && m.referencia === abertoId);
-    const tocaAberta = mudancas.length === 0 || mudouVerificacao || mudancas.some((m) => m.tabela === "equipamentos" && m.id === abertoId);
+    // Orçamento/aviso enviado em outro computador: grava em `comunicacoes` sem mexer na OS.
+    const mudouComunicacao = mudancas.some((m) => m.tabela === "comunicacoes" && m.referencia === abertoId);
+    const tocaAberta = mudancas.length === 0 || mudouVerificacao || mudouComunicacao
+      || mudancas.some((m) => m.tabela === "equipamentos" && m.id === abertoId);
     if (!tocaAberta) return;
     if (edicaoEmAndamentoRef.current) {
       recargaPendenteRef.current = abertoId;

@@ -37,7 +37,7 @@ import {
   Store,
   Download,
 } from "lucide-react";
-import { setAppMode, type AppMode } from "@/lib/app-mode";
+import { pedirModoAoNavegar, setAppMode, type AppMode } from "@/lib/app-mode";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { useEmpresaAtiva } from "@/hooks/useEmpresaAtiva";
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -189,8 +189,7 @@ export function Layout() {
   useBuscaRespostasSuporte(suporteHabilitado, status?.active_profile_id ?? null);
   const abrirModoBalcao = () => {
     setMobileOpen(false);
-    setAppMode("counter");
-    navigate("/balcao");
+    navigate("/balcao", { state: pedirModoAoNavegar("counter") });
   };
   const [buscaAberta, setBuscaAberta] = useState(false);
   const [ajudaAberta, setAjudaAberta] = useState(false);
@@ -200,7 +199,7 @@ export function Layout() {
     () => [...visibleGroups.flatMap((grupo) => grupo.itens), configuracoesItem]
       .filter((item) => !item.modo)
       .map((item): TelaBuscavel => ({ label: item.label, path: item.path }))
-      .concat({ label: "Modo Balcão", path: "/balcao", aoAbrir: () => setAppMode("counter") }),
+      .concat({ label: "Modo Balcão", path: "/balcao", state: pedirModoAoNavegar("counter") }),
     [chaveTelas],
   );
   useAtalhosGlobais({
