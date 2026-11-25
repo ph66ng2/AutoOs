@@ -1,9 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VerificacaoTecnica } from "./VerificacaoTecnica";
 import { MENSAGEM_TOTAL_ZERO_SEM_GARANTIA } from "@/lib/orcamento-estoque";
 import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
+import type { SecurityProfile } from "@/types";
 import { useState } from "react";
 import { createMemoryRouter, RouterProvider, useNavigate } from "react-router-dom";
 import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
@@ -271,6 +273,40 @@ describe("VerificacaoTecnica", () => {
     await user.click(screen.getByLabelText("Técnico responsável"));
     await user.click(await screen.findByRole("option", { name: "Isaias" }));
     await waitFor(() => expect(onSujoChange).toHaveBeenLastCalledWith(true));
+  });
+
+  it("a lista de técnicos que muda depois não troca o técnico escolhido; sem escolha, segue a sugestão nova", async () => {
+    HTMLElement.prototype.hasPointerCapture = () => false;
+    HTMLElement.prototype.scrollIntoView = () => undefined;
+    const user = userEvent.setup();
+    const base = { role: "TECNICO", permissions: [], pin_configured: true, is_default: false, ativo: true, atende_tecnico: true };
+    // A lista sai em ordem alfabética: com Ana na equipe, a sugestão (primeiro técnico) vira Ana.
+    const entraAna = () => definirTecnicosDaEmpresa(
+      ["Ana", "Isaias", "Ivan"].map((nome, i) => ({ ...base, id: 950 + i, nome, email_profissional: `${nome.toLowerCase()}@exemplo.test` })) as SecurityProfile[],
+    );
+    const props = {
+      equipamento: { id: 1, marca: "Zebra", modelo: "ZT230", serial_number: "SN", tipo: "Impressora", status: "EM_VERIFICACAO", data_entrada: "2026-10-01" } as never,
+      open: true, onOpenChange: vi.fn(), onConcluir: vi.fn(),
+    };
+    const campo = () => screen.getByLabelText("Técnico responsável");
+
+    // Sem escolha: a sugestão acompanha a lista nova.
+    const { unmount } = render(<VerificacaoTecnica {...props} />);
+    await waitFor(() => expect(campo()).toHaveTextContent("Isaias"));
+    act(() => entraAna());
+    await waitFor(() => expect(campo()).toHaveTextContent("Ana"));
+    unmount();
+
+    // Com escolha: a lista nova não troca o técnico escolhido.
+    semearTecnicosPadrao();
+    render(<VerificacaoTecnica {...props} />);
+    await waitFor(() => expect(campo()).toHaveTextContent("Isaias"));
+    await user.click(campo());
+    await user.click(await screen.findByRole("option", { name: "Ivan" }));
+    await waitFor(() => expect(campo()).toHaveTextContent("Ivan"));
+    act(() => entraAna());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(campo()).toHaveTextContent("Ivan");
   });
 });
 

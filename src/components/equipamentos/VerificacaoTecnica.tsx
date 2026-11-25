@@ -24,7 +24,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { useTecnicos } from "@/hooks/useTecnicos";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Camera, ChevronLeft, Lock, Plus, Search, Trash2 } from "lucide-react";
 import { LinhaServicoCelular } from "@/components/equipamentos/LinhaServicoCelular";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
@@ -108,6 +108,13 @@ export function VerificacaoTecnica({
   // Sem técnico sugerido pela entrada: o primeiro da lista de técnicos.
   const tecnicoPadrao = tecnicoInicial || tecnicos[0]?.nome || "";
   const [tecnicoNome, setTecnicoNome] = useState<TecnicoDisponivel>(tecnicoPadrao);
+  // A pessoa escolheu o técnico nesta verificação: a lista de técnicos que chega depois (ou muda
+  // ao vivo) não troca a escolha. Volta a falso a cada abertura/troca de OS (resetForm).
+  const tecnicoEscolhidoRef = useRef(false);
+  const escolherTecnico = (nome: TecnicoDisponivel) => {
+    tecnicoEscolhidoRef.current = true;
+    setTecnicoNome(nome);
+  };
   // OS antiga com um técnico que não é perfil (texto gravado na época) continua aparecendo.
   const opcoesTecnico = tecnicoNome && !tecnicos.some((t) => t.nome === tecnicoNome)
     ? [...tecnicos.map((t) => t.nome), tecnicoNome]
@@ -134,8 +141,10 @@ export function VerificacaoTecnica({
       .finally(() => setCarregandoCatalogo(false));
   }, [open]);
 
+  // A sugestão chega depois de abrir (lista de técnicos assíncrona): aplica só enquanto a pessoa
+  // não escolheu outro técnico.
   useEffect(() => {
-    if (!open) return;
+    if (!open || tecnicoEscolhidoRef.current) return;
     setTecnicoNome(tecnicoPadrao);
   }, [open, tecnicoPadrao]);
 
@@ -166,6 +175,7 @@ export function VerificacaoTecnica({
     setChecklist(CHECKLIST_PADRAO.map((item) => ({ ...item })));
     setServicos([]);
     setObservacoesVerif("");
+    tecnicoEscolhidoRef.current = false;
     setTecnicoNome(tecnicoPadrao);
     setImagensVerificacao([]);
     setValoresServicoInvalidos({});
@@ -363,7 +373,7 @@ export function VerificacaoTecnica({
         <div className="grid gap-4 md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
           <div className="space-y-2">
             <label htmlFor="verificacao-tecnico" className="text-sm font-medium">Técnico responsável</label>
-            <Select value={tecnicoNome || undefined} onValueChange={setTecnicoNome}>
+            <Select value={tecnicoNome || undefined} onValueChange={escolherTecnico}>
               <SelectTrigger id="verificacao-tecnico" className="w-full">
                 <SelectValue placeholder="Selecione o técnico" />
               </SelectTrigger>
