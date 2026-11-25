@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import {
+  ArrowDownCircle,
+  ArrowUpCircle,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -75,8 +77,13 @@ import { useEscSai } from "@/hooks/useEscSai";
 import { avisoBalcaoSemTecnicos, linhaTecnicoInicial, tecnicoDoBalcao, tecnicoPadrao } from "@/lib/tecnicos";
 import { todayLocalIsoDate } from "@/lib/date-utils";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { movimentacaoSchema, type MovimentacaoFormData } from "@/lib/validations";
+import { InsumosMovimentacaoDialog } from "@/pages/insumos/InsumosDialogs";
 import { CarregandoSkeleton, Skeleton, SkeletonLista } from "@/components/ui/skeleton";
 import {
+  SENSITIVE_PERMISSIONS,
   STATUS_LABELS,
   type Cliente,
   type ClienteContato,
@@ -431,6 +438,49 @@ function CounterStock({ onBack }: { onBack: () => void }) {
     void carregarProdutos("");
   }, []);
 
+  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const [movimentando, setMovimentando] = useState<Produto | null>(null);
+  const [salvandoMov, setSalvandoMov] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const movForm = useForm<MovimentacaoFormData>({
+    resolver: zodResolver(movimentacaoSchema),
+    defaultValues: { tipo: "ENTRADA", quantidade: 1, origem: "", referencia: "" },
+  });
+
+  /** Só entrada e baixa: saldo e preço não se editam no balcão, para não perder o histórico. */
+  async function abrirMovimentacao(produto: Produto, tipo: "ENTRADA" | "SAIDA") {
+    setAviso(null);
+    const liberado = await ensureSensitiveAccess({
+      title: tipo === "ENTRADA" ? "Registrar chegada no estoque" : "Registrar baixa no estoque",
+      description: "Informe o PIN de um perfil com controle de estoque.",
+      permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
+    });
+    if (!liberado) return;
+    movForm.reset({ tipo, quantidade: 1, origem: "", referencia: "" });
+    setMovimentando(produto);
+  }
+
+  async function registrarMovimentacao(data: MovimentacaoFormData) {
+    if (!movimentando?.id) return;
+    setSalvandoMov(true);
+    try {
+      await db.registrarMovimentacao(
+        movimentando.id,
+        data.tipo,
+        Number(data.quantidade),
+        data.origem,
+        data.referencia || undefined,
+      );
+      setAviso(`${data.tipo === "ENTRADA" ? "Chegada" : "Baixa"} de ${data.quantidade} un. registrada em ${movimentando.nome}.`);
+      setMovimentando(null);
+      await carregarProdutos();
+    } catch (cause) {
+      movForm.setError("root", { message: cause instanceof Error ? cause.message : String(cause) });
+    } finally {
+      setSalvandoMov(false);
+    }
+  }
+
   return (
     <section className="mx-auto max-w-6xl">
       <Back onBack={onBack} />
@@ -438,7 +488,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
         <div>
           <h1 className="text-3xl font-bold">Estoque e preços</h1>
           <p className="mt-2 text-lg text-muted-foreground">
-            Consulte os insumos disponíveis e o preço de venda ao cliente.
+            Consulte os insumos e o preço de venda. Registre aqui a chegada e a baixa de itens.
           </p>
         </div>
         <Button
@@ -475,6 +525,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
       </form>
 
       {erro && <p role="alert" className="mt-4 text-destructive">{erro}</p>}
+      {aviso && <p role="status" className="mt-4 text-status-ok">{aviso}</p>}
       {carregando ? (
         <CarregandoSkeleton rotulo="Carregando estoque" className="mt-8 grid gap-3 sm:grid-cols-2">
           {Array.from({ length: 4 }, (_, i) => (
@@ -511,12 +562,43 @@ function CounterStock({ onBack }: { onBack: () => void }) {
                       <p className="mt-1 text-2xl font-bold text-acc-soft-foreground">{formatarPreco(produto.preco_venda)}</p>
                     </div>
                   </div>
+                  {produto.id != null && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-12 gap-2 text-base"
+                        aria-label={`Chegou: ${produto.nome}`}
+                        onClick={() => void abrirMovimentacao(produto, "ENTRADA")}
+                      >
+                        <ArrowUpCircle className="text-status-ok" /> Chegou
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-12 gap-2 text-base"
+                        aria-label={`Baixa: ${produto.nome}`}
+                        disabled={produto.quantidade_estoque <= 0}
+                        onClick={() => void abrirMovimentacao(produto, "SAIDA")}
+                      >
+                        <ArrowDownCircle className="text-destructive" /> Baixa
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
           })}
         </div>
       )}
+      <InsumosMovimentacaoDialog
+        open={movimentando !== null}
+        onOpenChange={(open) => { if (!open && !salvandoMov) setMovimentando(null); }}
+        movimentando={movimentando}
+        movForm={movForm}
+        salvando={salvandoMov}
+        onMovSubmit={registrarMovimentacao}
+      />
     </section>
   );
 }

@@ -265,6 +265,8 @@ export function InsumosMovimentacaoDialog({
             />
           </div>
 
+          <FormValidationError message={movForm.formState.errors.root?.message} />
+
           {movimentando && (
             <div className="bg-muted p-3 rounded-lg text-sm">
               <p>
