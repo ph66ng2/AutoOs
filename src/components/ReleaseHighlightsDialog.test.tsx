@@ -31,20 +31,20 @@ describe("ReleaseHighlightsDialog", () => {
     runtime.write.mockImplementation(async () => { runtime.savedVersion = runtime.version; });
   });
 
-  it("usa a versão real e mostra os textos do JSON da 0.6.3", async () => {
-    runtime.version = "0.6.3";
+  it("usa a versão real e mostra os textos do JSON da 0.7.0", async () => {
+    runtime.version = "0.7.0";
     render(<ReleaseHighlightsDialog enabled />);
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("Versão 0.6.3")).toBeInTheDocument();
+    expect(screen.getByText("Versão 0.7.0")).toBeInTheDocument();
     for (const text of [
       "Novidades do AutoOS",
-      "Confira o que mudou no AutoOS 0.6.3.",
-      "As novidades aparecem uma única vez por versão neste computador, mesmo ao fechar o app sem dispensar o aviso.",
-      "As próximas versões trazem um resumo das mudanças escrito pela equipe.",
-      "Agora dá para desligar os sons da interface em Perfil › Personalizar.",
-      "Ao ativar o perfil num computador ou usar \"Esqueci meu PIN\", o cursor já fica no campo do código.",
-      "Voltar aos perfis durante a animação do primeiro acesso não fecha mais a janela de perfis.",
+      "Confira o que mudou no AutoOS 0.7.0.",
+      "Quando o servidor fica fora do ar, o AutoOS tenta reconectar sozinho e mostra quando será a próxima tentativa, sem precisar fechar o app.",
+      "Novo visual em todo o app, nos temas claro e escuro, mais leve e com menos cor fora do lugar.",
+      "As telas se atualizam sozinhas quando outro computador muda algo.",
+      "Nova página Suporte: abra um chamado com prints e acompanhe a resposta no próprio app. Erros podem ser enviados direto ao suporte.",
+      "A busca do Balcão acha o equipamento pelo CPF/CNPJ do cliente e pelo nome, telefone ou e-mail dos contatos.",
     ]) expect(screen.getByText(text)).toBeInTheDocument();
     expect(runtime.getVersion).toHaveBeenCalled();
   });
