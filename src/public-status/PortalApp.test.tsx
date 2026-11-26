@@ -587,17 +587,17 @@ describe("painel do orçamento (ticket T4)", () => {
     expect(screen.queryByText("Como a equipe pode falar com você?")).not.toBeInTheDocument();
   });
 
-  it("aviso de testes: no login só o texto; com a empresa conhecida, link para o WhatsApp", async () => {
+  it("aviso de testes: sem WhatsApp configurado, no login só o texto; com a empresa conhecida, botão para o WhatsApp", async () => {
     const { unmount } = render(<PortalApp />);
     expect(screen.getByText(/Portal em período de testes/)).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /conte o que achou/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Enviar feedback pelo WhatsApp/ })).not.toBeInTheDocument();
     unmount();
 
     logar();
     window.location.hash = "#/atendimentos/28";
     api.detalhe.mockResolvedValue(detalhe());
     render(<PortalApp />);
-    const link = await screen.findByRole("link", { name: /conte o que achou/ });
+    const link = await screen.findByRole("link", { name: "Enviar feedback pelo WhatsApp" });
     expect(link.getAttribute("href")).toMatch(/^https:\/\/wa\.me\/5571933334444\?text=/);
   });
 });

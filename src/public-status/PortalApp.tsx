@@ -9,17 +9,35 @@ import { StatusBrand } from "./StatusView";
 /** Portal das Impressoras do Cliente: `#/` lista, `#/atendimentos/<id>` detalhe, `#/entrar` login. */
 const MENSAGEM_TESTE = "Olá, equipe BMI TAG! Estou testando o Portal das Impressoras e queria contar o que achei: ";
 
-/** Faixa discreta de período de testes; o WhatsApp da empresa só existe depois de abrir um atendimento. */
+/**
+ * WhatsApp para o feedback do período de testes. Vem da configuração do build
+ * (VITE_PORTAL_WHATSAPP_FEEDBACK, variável PORTAL_WHATSAPP_FEEDBACK do repositório) para o botão
+ * aparecer já no login; sem ela, usa o WhatsApp da empresa, que chega ao abrir um atendimento.
+ */
+const WHATSAPP_FEEDBACK: string | null = (import.meta.env.VITE_PORTAL_WHATSAPP_FEEDBACK as string | undefined)?.trim() || null;
+
+function IconeWhatsapp() {
+  return (
+    <svg className="portal-feedback-icone" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7.5-.1 1.5-.6 1.8-1.2.2-.6.2-1.1.1-1.2l-.4-.2Z" />
+    </svg>
+  );
+}
+
+/** Faixa do período de testes com um botão que abre o WhatsApp com a mensagem já começada. */
 function AvisoTeste() {
   const contato = useContatoEmpresa();
-  const whatsapp = contato?.whatsapp ?? null;
+  const whatsapp = WHATSAPP_FEEDBACK ?? contato?.whatsapp ?? null;
   return (
-    <p className="portal-beta" role="note">
-      Portal em período de testes. Sua opinião ajuda muito:{" "}
-      {whatsapp
-        ? <a href={whatsappUrl(whatsapp, MENSAGEM_TESTE)} target="_blank" rel="noopener noreferrer">conte o que achou para a equipe.</a>
-        : "conte o que achou para a equipe."}
-    </p>
+    <div className="portal-beta" role="note">
+      <span>Portal em período de testes. Sua opinião ajuda muito{whatsapp ? "." : ": conte o que achou para a equipe."}</span>
+      {whatsapp && (
+        <a className="portal-feedback" href={whatsappUrl(whatsapp, MENSAGEM_TESTE)} target="_blank" rel="noopener noreferrer">
+          <IconeWhatsapp />
+          Enviar feedback pelo WhatsApp
+        </a>
+      )}
+    </div>
   );
 }
 
