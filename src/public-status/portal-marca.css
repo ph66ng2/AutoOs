@@ -120,11 +120,30 @@ h1, h2, h3, .portal-title, .equipment-name, .portal-item-name { letter-spacing: 
   backdrop-filter: blur(14px);
 }
 .portal-topbar .status-brand img { height: 44px; max-width: 8rem; filter: brightness(0) invert(1); }
-.portal-topbar .portal-userbar { color: var(--marca-barra-ink-2); }
-.portal-topbar .portal-userbar span { color: var(--marca-barra-ink-2); }
+/* Nome do portal ao lado do logo, separado por um fio. */
+.portal-topbar { gap: 1rem; }
+.portal-topbar-nome {
+  margin-right: auto; padding-left: 1rem; border-left: 1px solid rgb(255 255 255 / 0.16);
+  color: var(--marca-barra-ink); font-size: 0.95rem; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap;
+}
+/* Quem está logado: inicial no azul da marca, nome em branco e o tipo de acesso logo abaixo. */
+.portal-topbar .portal-userbar { gap: 0.6rem; color: var(--marca-barra-ink); }
+.portal-quem {
+  display: flex; align-items: center; gap: 0.6rem; min-width: 0;
+  padding: 4px 14px 4px 4px; border-radius: 999px; background: var(--marca-barra-ctl);
+}
+.portal-topbar .portal-userbar .portal-quem-inicial {
+  display: grid; place-items: center; flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%;
+  color: var(--marca-branco); background: var(--marca-azul); font-size: 0.95rem; font-weight: 700;
+}
+.portal-topbar .portal-userbar .portal-quem-texto { display: grid; min-width: 0; line-height: 1.2; }
+.portal-quem-texto strong {
+  overflow: hidden; color: var(--marca-barra-ink); font-size: 0.92rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap;
+}
+.portal-quem-texto small { color: var(--marca-barra-ink-2); font-size: 0.75rem; font-weight: 500; white-space: nowrap; }
 .portal-topbar .portal-sair {
   min-height: 44px; padding: 0 1.1rem; border: 0; border-radius: 999px;
-  color: var(--marca-barra-ink); background: var(--marca-barra-ctl);
+  color: var(--marca-barra-ink); background: transparent; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
 }
 .portal-topbar .portal-sair:hover { background: var(--marca-barra-ctl-hover); }
 .portal-topbar .portal-sair:focus-visible { outline: 3px solid var(--marca-foco); outline-offset: 2px; }
@@ -253,6 +272,13 @@ h1, h2, h3, .portal-title, .equipment-name, .portal-item-name { letter-spacing: 
     margin: 16px 0 1rem; min-height: 56px; padding: 6px 8px 6px 16px; border-radius: 16px;
   }
   .portal-topbar .status-brand img { height: 34px; }
+  .portal-topbar-nome { display: none; }
+  .portal-topbar .portal-userbar { margin-left: auto; }
+  /* No celular fica só a inicial; o nome continua para o leitor de tela. */
+  .portal-quem { padding: 0; background: none; }
+  .portal-topbar .portal-userbar .portal-quem-texto {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
   .portal-hero-title { font-size: clamp(2.2rem, 11vw, 2.9rem); }
   .portal-hero-lead { font-size: 0.98rem; }
   .portal-manada { margin-top: 1.25rem; }

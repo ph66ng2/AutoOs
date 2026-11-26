@@ -67,9 +67,16 @@ export default function PortalApp() {
       <div className={`portal-topo${session ? " tem-ceu" : ""}`}>
         <div className="portal-topbar">
           <StatusBrand />
+          <span className="portal-topbar-nome" aria-hidden="true">Portal das Impressoras</span>
           {session && (
             <div className="portal-userbar">
-              <span>{session.contato}{session.acesso === "ACOMPANHAR" ? " · somente acompanhamento" : ""}</span>
+              <div className="portal-quem">
+                <span className="portal-quem-inicial" aria-hidden="true">{session.contato.trim().charAt(0).toUpperCase() || "?"}</span>
+                <span className="portal-quem-texto">
+                  <strong>{session.contato}</strong>
+                  <small>{session.acesso === "ACOMPANHAR" ? "Somente acompanhamento" : "Pode responder orçamentos"}</small>
+                </span>
+              </div>
               <button className="secondary-button portal-sair" type="button" onClick={() => void sair()}>Sair</button>
             </div>
           )}
