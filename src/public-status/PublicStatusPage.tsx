@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { buscarStatusPublico, PublicStatusRequestError, type PublicStatusResponse } from "./api";
 import { EnderecoRetirada } from "./EnderecoRetirada";
 import { formatDate, StatusBrand, StatusView } from "./StatusView";
+import { Zebra, pelagemDoTitulo } from "./Zebra";
 
 function tokenFromFragment() {
   const match = window.location.hash.match(/^#\/c\/([a-f\d]{64})$/i);
@@ -74,6 +75,8 @@ export default function PublicStatusPage() {
       : { title: "Este acompanhamento não está disponível", description: "Confira se o link está correto ou fale com a equipe BMI TAG pelo canal em que recebeu o link." };
 
   return (
+    <>
+    <div className="portal-ceu" aria-hidden="true" />
     <main className="status-shell portal-publico">
       <div className="portal-topbar"><StatusBrand /></div>
 
@@ -101,6 +104,7 @@ export default function PublicStatusPage() {
 
         {!loading && !error && data && (
           <>
+            <Zebra pelagem={pelagemDoTitulo(data.titulo)} className="portal-zebra-status" />
             <StatusView
               equipamento={data.equipamento}
               titulo={data.titulo}
@@ -138,5 +142,6 @@ export default function PublicStatusPage() {
         <p>Este link mostra somente a etapa atual do atendimento e não permite aprovar orçamento nem alterar informações.</p>
       </footer>
     </main>
+    </>
   );
 }

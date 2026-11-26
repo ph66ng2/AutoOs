@@ -5,6 +5,7 @@ import PortalLogin from "./PortalLogin";
 import { definirContatoEmpresa, portalApi, useContatoEmpresa, whatsappUrl } from "./portal-api";
 import { clearSession, loadSession, navigate, parseRoute, saveSession, type PortalSession } from "./portal-session";
 import { StatusBrand } from "./StatusView";
+import { Zebra } from "./Zebra";
 
 /** Portal das Impressoras do Cliente: `#/` lista, `#/atendimentos/<id>` detalhe, `#/entrar` login. */
 const MENSAGEM_TESTE = "Olá, equipe BMI TAG! Estou testando o Portal das Impressoras e queria contar o que achei: ";
@@ -59,6 +60,9 @@ export default function PortalApp() {
   };
 
   return (
+    <>
+    {/* Faixa de céu pixelado da marca, atrás do topo da página (só enfeite). */}
+    <div className={`portal-ceu${session ? "" : " is-alto"}`} aria-hidden="true" />
     <main className="status-shell portal-shell">
       {/* Barra do topo (prancheta do Portal): marca à esquerda, quem está logado e Sair à direita. */}
       <div className="portal-topbar">
@@ -77,9 +81,11 @@ export default function PortalApp() {
       {session && route.kind !== "detalhe" && <PortalLista session={session} onExpirou={expirou} />}
 
       <footer className="status-footer">
+        <Zebra pelagem="padrao" className="portal-zebra-rodape" />
         <p>Portal das Impressoras BMI TAG. O acesso é pessoal: não compartilhe sua senha.</p>
         <p>Recebeu um link individual de acompanhamento? Ele continua funcionando.</p>
       </footer>
     </main>
+    </>
   );
 }

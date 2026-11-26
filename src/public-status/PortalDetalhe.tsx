@@ -6,6 +6,7 @@ import { formatDate, ORIENTACAO_EM_PREPARACAO, StatusView, TITULO_EM_PREPARACAO 
 import PortalFotos from "./PortalFotos";
 import PortalHistorico from "./PortalHistorico";
 import { DestaqueConcluido, DestaqueProntoRetirada, DocumentosCard, LinhaValorAtualizado, NotaValorAtualizado } from "./PortalDestaques";
+import { Zebra, pelagemDoTitulo } from "./Zebra";
 
 const REFRESH_MS = 60_000;
 
@@ -118,6 +119,7 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
             <div className="portal-detail-grid">
               <div className="portal-detail-main">
                 <div className="portal-cartao portal-cartao-status">
+                <Zebra pelagem={pelagemDoTitulo(preparando ? TITULO_EM_PREPARACAO : data.titulo, concluido)} className="portal-zebra-status" />
                 <StatusView
                   equipamento={data.equipamento}
                   titulo={preparando ? TITULO_EM_PREPARACAO : data.titulo}

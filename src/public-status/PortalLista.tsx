@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PortalError, portalApi, shortDate, type AtendimentoResumo, type ListaAtendimentos } from "./portal-api";
 import { navigate, type PortalSession } from "./portal-session";
 import { TITULO_EM_PREPARACAO, toneForTitle } from "./StatusView";
+import { Zebra, pelagemDoTitulo } from "./Zebra";
 
 type Ordem = "ATIVIDADE" | "ENTRADA";
 type Aba = "ATUAIS" | "HISTORICO";
@@ -111,6 +112,7 @@ export default function PortalLista({ session, onExpirou }: Props) {
           return (
           <li key={item.id}>
             <a className="portal-item" href={`#/atendimentos/${item.id}`} onClick={(event) => { event.preventDefault(); navigate(`#/atendimentos/${item.id}`); }}>
+              <Zebra pelagem={pelagemDoTitulo(titulo, item.status === "ENTREGUE")} className="portal-item-zebra" />
               <span className="portal-item-name">{item.equipamento}</span>
               <span className="portal-item-id">
                 {item.serie && <>Série {item.serie}</>}
