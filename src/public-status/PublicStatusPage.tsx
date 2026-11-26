@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { buscarStatusPublico, PublicStatusRequestError, type PublicStatusResponse } from "./api";
 import { EnderecoRetirada } from "./EnderecoRetirada";
 import { formatDate, StatusBrand, StatusView } from "./StatusView";
-import { Zebra, pelagemDoTitulo } from "./Zebra";
 
 function tokenFromFragment() {
   const match = window.location.hash.match(/^#\/c\/([a-f\d]{64})$/i);
@@ -76,9 +75,8 @@ export default function PublicStatusPage() {
 
   return (
     <>
-    <div className="portal-ceu" aria-hidden="true" />
     <main className="status-shell portal-publico">
-      <div className="portal-topbar"><StatusBrand /></div>
+      <div className="portal-topo tem-ceu"><div className="portal-topbar"><StatusBrand /></div></div>
 
       <section className="status-card is-publico" aria-live="polite">
         <div className="portal-cartao">
@@ -104,7 +102,6 @@ export default function PublicStatusPage() {
 
         {!loading && !error && data && (
           <>
-            <Zebra pelagem={pelagemDoTitulo(data.titulo)} className="portal-zebra-status" />
             <StatusView
               equipamento={data.equipamento}
               titulo={data.titulo}

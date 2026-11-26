@@ -92,6 +92,19 @@ h1, h2, h3, .portal-title, .equipment-name, .portal-item-name { letter-spacing: 
 .portal-ceu.is-alto { height: min(36rem, 92vh); }
 .status-shell { position: relative; z-index: 1; }
 
+/* Logado e link individual: o céu é a faixa do topo (barra + aviso) e acaba antes do conteúdo,
+   para nada ficar metade dentro, metade fora dele. */
+.portal-topo { display: flex; flex-direction: column; }
+.portal-topo.tem-ceu {
+  margin: 12px calc(50% - 50vw + 12px) 1.75rem;
+  padding: 24px calc(50vw - 50% - 12px) 1.25rem;
+  border-radius: var(--r-big);
+  background: var(--marca-ceu) url("./marca/ceu.png") center bottom / 1920px 576px repeat-x;
+  image-rendering: pixelated;
+}
+.portal-topo.tem-ceu .portal-topbar { margin: 0; }
+.portal-topo.tem-ceu .portal-beta { margin: 1rem 0 0; }
+
 /* ─── Barra do topo: pílula escura flutuando sobre o céu ─── */
 .portal-topbar,
 .portal-shell .portal-topbar,
@@ -185,6 +198,11 @@ h1, h2, h3, .portal-title, .equipment-name, .portal-item-name { letter-spacing: 
 .primary-button:disabled { box-shadow: none; }
 .portal-login-card .primary-button.portal-full { min-height: 3.5rem; font-size: 1.05rem; }
 
+/* Contato: botões com canto de controle (não pílula), espaçados quando quebram linha. */
+.contact-card ul { margin-top: 0.9rem; gap: 0.6rem; }
+.contact-card li { display: flex; }
+.contact-card a.secondary-button { border-radius: var(--r-ctl); }
+
 /* WhatsApp no verde da marca, como na landing. */
 .contact-card a.portal-contato-whats,
 .portal-whats-suave {
@@ -198,13 +216,6 @@ h1, h2, h3, .portal-title, .equipment-name, .portal-item-name { letter-spacing: 
 .status-card.portal-login-card,
 .portal-item { border-radius: var(--r-card); }
 .portal-cartao, .portal-detail-side > :not(.notice-box):not(.portal-valor-linha) { box-shadow: 0 10px 30px rgb(6 34 63 / 0.06); }
-.portal-cartao-status, .is-publico > .portal-cartao { position: relative; }
-
-/* Zebra da etapa: espia por cima do canto do cartão da situação. */
-.portal-zebra-status {
-  position: absolute; top: -50px; right: 22px; width: 46px; height: auto;
-}
-.portal-cartao-status .current-status, .is-publico .current-status { margin-right: 3.5rem; }
 
 /* Selo da etapa: pílula branca com o ponto colorido (os cartões de status da landing). */
 .current-status, .portal-pill {
@@ -215,44 +226,29 @@ h1, h2, h3, .portal-title, .equipment-name, .portal-item-name { letter-spacing: 
 .current-status .status-pulse, .portal-shell .status-pulse { background: var(--stage-color); }
 
 /* ─── Lista ─── */
-.portal-pagina > .eyebrow { color: rgb(255 255 255 / 0.85); }
-.portal-pagina > .portal-title { color: var(--marca-branco); text-shadow: 0 1px 2px rgb(6 34 63 / 0.25); }
 .portal-pagina > .notice-box { border-radius: var(--r-ctl); }
 .portal-tabs { border-radius: 999px; }
 .portal-tabs button { border-radius: 999px; }
 .portal-sort select { border-radius: var(--r-ctl); }
 .portal-item {
-  grid-template-columns: 52px minmax(0, 1fr); column-gap: 1rem; align-items: center;
   padding: 1rem 1.25rem;
   transition: border-color 160ms var(--ease-marca), box-shadow 160ms var(--ease-marca), transform 160ms var(--ease-marca);
-}
-.portal-item > :not(.portal-item-zebra) { grid-column: 2; }
-/* A zebra fica num ladrilho de céu: o contorno escuro dela aparece nos dois temas. */
-.portal-item-zebra {
-  grid-column: 1; grid-row: 1 / span 4; align-self: center; justify-self: center;
-  width: 52px; height: auto; padding: 7px 8px 5px; border-radius: 14px; background: var(--marca-ceu);
 }
 @media (hover: hover) and (pointer: fine) {
   .portal-item:hover { transform: translateY(-2px); }
 }
 
 /* ─── Detalhe ─── */
-.portal-back { display: flex; justify-content: space-between; align-items: center; }
-.portal-back a, .portal-back .link-button {
-  display: inline-flex; align-items: center; min-height: 2.5rem; padding: 0 1rem; border-radius: 999px;
-  color: var(--marca-ceu-ink); background: rgb(255 255 255 / 0.85); text-decoration: none; font-weight: 650;
-}
-.portal-back a:hover { text-decoration: none; background: var(--marca-branco); }
+.portal-back { display: flex; justify-content: space-between; align-items: center; margin: 0 0 1rem; }
 .timeline li.is-complete::before, .timeline li.is-complete .timeline-step::before { background: hsl(var(--primary)); }
-
-/* ─── Rodapé ─── */
-.status-footer { position: relative; }
-.portal-zebra-rodape { width: 40px; height: auto; margin: 0 auto 0.75rem; padding: 5px 6px 4px; border-radius: 10px; background: var(--marca-ceu); }
 
 /* ─── Celular ─── */
 @media (max-width: 640px) {
-  .portal-ceu { top: 8px; left: 8px; right: 8px; height: 13rem; border-radius: 22px; }
+  .portal-ceu { top: 8px; left: 8px; right: 8px; border-radius: 22px; }
   .portal-ceu.is-alto { height: 31rem; }
+  .portal-topo.tem-ceu {
+    margin: 8px calc(50% - 50vw + 8px) 1.25rem; padding: 16px calc(50vw - 50% - 8px) 1rem; border-radius: 22px;
+  }
   .portal-topbar, .portal-shell .portal-topbar, .portal-publico .portal-topbar {
     margin: 16px 0 1rem; min-height: 56px; padding: 6px 8px 6px 16px; border-radius: 16px;
   }
@@ -260,17 +256,10 @@ h1, h2, h3, .portal-title, .equipment-name, .portal-item-name { letter-spacing: 
   .portal-hero-title { font-size: clamp(2.2rem, 11vw, 2.9rem); }
   .portal-hero-lead { font-size: 0.98rem; }
   .portal-manada { margin-top: 1.25rem; }
-  .portal-item { grid-template-columns: 40px minmax(0, 1fr); column-gap: 0.8rem; padding: 0.9rem 1rem; }
-  .portal-item-zebra { width: 42px; padding: 5px 6px 4px; border-radius: 12px; }
-  /* No celular a linha de cima tem botões dos dois lados: a zebra entra no canto do cartão. */
-  .portal-zebra-status { width: 36px; top: 16px; right: 14px; }
+  .portal-item { padding: 0.9rem 1rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .portal-marcado-dot::after { animation: none; }
   .portal-item:hover { transform: none; }
 }
-
-/* Link individual: a barra fica logo acima do cartão, então a zebra mora no canto dele. */
-.is-publico .portal-zebra-status { top: 16px; right: 16px; width: 40px; }
-.is-publico .eyebrow { margin-right: 3.25rem; }

@@ -5,7 +5,6 @@ import PortalLogin from "./PortalLogin";
 import { definirContatoEmpresa, portalApi, useContatoEmpresa, whatsappUrl } from "./portal-api";
 import { clearSession, loadSession, navigate, parseRoute, saveSession, type PortalSession } from "./portal-session";
 import { StatusBrand } from "./StatusView";
-import { Zebra } from "./Zebra";
 
 /** Portal das Impressoras do Cliente: `#/` lista, `#/atendimentos/<id>` detalhe, `#/entrar` login. */
 const MENSAGEM_TESTE = "Olá, equipe BMI TAG! Estou testando o Portal das Impressoras e queria contar o que achei: ";
@@ -61,27 +60,28 @@ export default function PortalApp() {
 
   return (
     <>
-    {/* Faixa de céu pixelado da marca, atrás do topo da página (só enfeite). */}
-    <div className={`portal-ceu${session ? "" : " is-alto"}`} aria-hidden="true" />
+    {/* Entrar: céu pixelado alto atrás do título e da manada (só enfeite). Logado, o céu fica só no topo. */}
+    {!session && <div className="portal-ceu is-alto" aria-hidden="true" />}
     <main className="status-shell portal-shell">
       {/* Barra do topo (prancheta do Portal): marca à esquerda, quem está logado e Sair à direita. */}
-      <div className="portal-topbar">
-        <StatusBrand />
-        {session && (
-          <div className="portal-userbar">
-            <span>{session.contato}{session.acesso === "ACOMPANHAR" ? " · somente acompanhamento" : ""}</span>
-            <button className="secondary-button portal-sair" type="button" onClick={() => void sair()}>Sair</button>
-          </div>
-        )}
+      <div className={`portal-topo${session ? " tem-ceu" : ""}`}>
+        <div className="portal-topbar">
+          <StatusBrand />
+          {session && (
+            <div className="portal-userbar">
+              <span>{session.contato}{session.acesso === "ACOMPANHAR" ? " · somente acompanhamento" : ""}</span>
+              <button className="secondary-button portal-sair" type="button" onClick={() => void sair()}>Sair</button>
+            </div>
+          )}
+        </div>
+        <AvisoTeste />
       </div>
-      <AvisoTeste />
 
       {!session && <PortalLogin aviso={aviso} onEntrou={entrou} />}
       {session && route.kind === "detalhe" && <PortalDetalhe session={session} equipamentoId={route.id} onExpirou={expirou} />}
       {session && route.kind !== "detalhe" && <PortalLista session={session} onExpirou={expirou} />}
 
       <footer className="status-footer">
-        <Zebra pelagem="padrao" className="portal-zebra-rodape" />
         <p>Portal das Impressoras BMI TAG. O acesso é pessoal: não compartilhe sua senha.</p>
         <p>Recebeu um link individual de acompanhamento? Ele continua funcionando.</p>
       </footer>
