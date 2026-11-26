@@ -26,11 +26,14 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { emitirOrcamentoPublicado, type ReferenciaPdfPortal } from "@/lib/portal-documentos";
 import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
+import { reportarFalhaDeComando } from "@/lib/database-health";
+import type { TecnicoDaEmpresa } from "@/lib/tecnicos";
 import type {
   AcessoPortalContato,
   DatabaseInitError,
   AjusteOrcamentoInput,
   AlertaPortal,
+  AvisoInterno,
   ContatoPortalEmpresa,
   OrcamentoPublicado,
   OrcamentoPendentePortal,
@@ -39,6 +42,10 @@ import type {
   AprovarOrcamentoInput,
   ConsumoOrcamento,
   Cliente,
+  ContagemClientes,
+  FiltroClientes,
+  ResumoCliente,
+  ResumoEstoque,
   ClienteContato,
   ClienteContatoInput,
   ContatoInicialInput,
@@ -89,8 +96,17 @@ import type {
   EmailSendRequest,
   ResultadoVerificacaoCredenciais,
   ServicoCatalogo,
+  SituacaoServico,
   SupabaseStorageConfig,
   Verificacao,
+  ModeloMensagem,
+  ModeloMensagemInput,
+  ConfigSuporte,
+  ChamadoSuporte,
+  MensagemSuporte,
+  RespostaNovaSuporte,
+  ResponderChamadoInput,
+  AbrirChamadoInput,
 } from "@/types";
 
 export interface ImpressoraWindows {
@@ -98,10 +114,17 @@ export interface ImpressoraWindows {
   padrao: boolean;
 }
 
-const invoke = <T>(command: string, args?: Record<string, unknown>): Promise<T> =>
-  withSensitiveAccessRetry(() => args === undefined
-    ? tauriInvoke<T>(command)
-    : tauriInvoke<T>(command, args));
+const invoke = <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+  const chamar = () => (args === undefined ? tauriInvoke<T>(command) : tauriInvoke<T>(command, args));
+  // Leitura de segundo plano (recarga ao vivo) nunca abre o diálogo de PIN: com a sessão
+  // bloqueada ela só falha, e a tela mantém o que já mostrava.
+  const execucao = args?.segundoPlano === true ? chamar() : withSensitiveAccessRetry(chamar);
+  return execucao.catch((error: unknown) => {
+    // Falha com cara de queda de conexão pede a checagem do banco (useDatabaseHealth).
+    reportarFalhaDeComando(command, error);
+    throw error;
+  });
+};
 
 /** Payload esperado pelo Rust em `criar_cliente` / `atualizar_cliente` (parâmetro `input`). */
 function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
@@ -133,32 +156,80 @@ function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
   };
 }
 
+/** Só leva o sinal de leitura em segundo plano quando ele vale (não renovar a sessão). */
+function seSegundoPlano(segundoPlano: boolean): { segundoPlano?: true } {
+  return segundoPlano ? { segundoPlano: true } : {};
+}
+
 export const db = {
   /** Reconecta com a configuração de banco já salva. `null` significa que conectou. */
   tentarReconectarBanco: () => invoke<DatabaseInitError | null>("tentar_reconectar_banco"),
   obterErroInicializacaoBanco: () => invoke<DatabaseInitError | null>("obter_erro_inicializacao_banco"),
+  /** Checagem rápida com o app aberto (`SELECT 1`). `null` quando o banco respondeu. */
+  verificarSaudeBanco: () => invoke<DatabaseInitError | null>("verificar_saude_banco"),
   getSeenReleaseHighlights: () => invoke<string | null>("get_seen_release_highlights"),
   markReleaseHighlightsSeen: () => invoke<void>("mark_release_highlights_seen"),
 
   // ─── Equipamentos ─────────────────────────────────────
 
   /** Lista equipamentos com filtro opcional de busca e status → Rust: listar_equipamentos */
-  async listarEquipamentos(busca?: string, status?: string): Promise<Equipamento[]> {
-    return invoke<Equipamento[]>("listar_equipamentos", { busca, status });
+  async listarEquipamentos(busca?: string, status?: string, segundoPlano = false): Promise<Equipamento[]> {
+    return invoke<Equipamento[]>("listar_equipamentos", { busca, status, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Equipamentos de um cliente por cliente_id (nomes só para legados sem cliente_id) → Rust: listar_equipamentos_cliente */
-  async listarEquipamentosCliente(clienteId: number, nomes: string[] = []): Promise<Equipamento[]> {
-    return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes });
+  async listarEquipamentosCliente(clienteId: number, nomes: string[] = [], segundoPlano = false): Promise<Equipamento[]> {
+    return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes, ...seSegundoPlano(segundoPlano) });
   },
 
-  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE"): Promise<PaginatedResult<Equipamento>> {
-    return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao });
+  /** Histórico inteiro do cliente (sem o limite de 200 OS), para somar passagens e serviços → Rust: listar_equipamentos_cliente (completo) */
+  async listarHistoricoEquipamentosCliente(clienteId: number, nomes: string[] = [], segundoPlano = false): Promise<Equipamento[]> {
+    return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes, completo: true, ...seSegundoPlano(segundoPlano) });
+  },
+
+  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE", tecnico?: string, segundoPlano = false): Promise<PaginatedResult<Equipamento>> {
+    return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao, tecnico: tecnico ?? null, ...seSegundoPlano(segundoPlano) });
+  },
+
+  /** Nome da empresa da sessão (topo do menu) → Rust: obter_empresa_ativa */
+  async obterEmpresaAtiva(): Promise<string> {
+    return invoke<string>("obter_empresa_ativa");
+  },
+
+  /** Total por status com a mesma busca/técnico da lista (números das pílulas) → Rust: contar_equipamentos_por_status */
+  async contarEquipamentosPorStatus(busca?: string, tecnico?: string, segundoPlano = false): Promise<Record<string, number>> {
+    const linhas = await invoke<Array<{ status: string; total: number }>>("contar_equipamentos_por_status", { busca: busca ?? null, tecnico: tecnico ?? null, ...seSegundoPlano(segundoPlano) });
+    return Object.fromEntries(linhas.map((linha) => [linha.status, Number(linha.total)]));
+  },
+
+  /** Nomes de técnico já gravados nas verificações (filtro de técnico) → Rust: listar_nomes_tecnicos_verificacoes */
+  async listarNomesTecnicosVerificacoes(segundoPlano = false): Promise<string[]> {
+    return invoke<string[]>("listar_nomes_tecnicos_verificacoes", seSegundoPlano(segundoPlano));
   },
 
   /** Busca equipamento por ID → Rust: buscar_equipamento */
-  async buscarEquipamento(id: number): Promise<Equipamento> {
-    return invoke<Equipamento>("buscar_equipamento", { id });
+  /** Técnicos da empresa da sessão (perfis ativos com "faz atendimento técnico"); não renova a sessão. */
+  async listarTecnicosDaEmpresa(): Promise<TecnicoDaEmpresa[]> {
+    return invoke<TecnicoDaEmpresa[]>("listar_tecnicos_da_empresa");
+  },
+
+  /** Se os e-mails da empresa da sessão levam a cópia da gerência (lib/copia-gerencia); não renova a sessão. */
+  async copiaGerenciaDaEmpresa(): Promise<boolean> {
+    return invoke<boolean>("copia_gerencia_da_empresa");
+  },
+
+  /** Todas as OS aprovadas da empresa entre os anos (inclusive), sem paginação: faturado de Finanças. */
+  async listarReceitaAprovada(anoInicio: number, anoFim: number, segundoPlano = false): Promise<Pick<Equipamento, "data_aprovacao" | "valor_orcamento" | "valor_final">[]> {
+    return invoke("listar_receita_aprovada", { anoInicio, anoFim, ...seSegundoPlano(segundoPlano) });
+  },
+
+  /** Datas de entrada/entrega/reprovação de todas as OS com movimento nos anos pedidos (Início, sem paginação) → Rust: listar_movimento_bancada */
+  async listarMovimentoBancada(anoInicio: number, anoFim: number, segundoPlano = false): Promise<Pick<Equipamento, "status" | "data_entrada" | "data_saida" | "data_reprovacao">[]> {
+    return invoke("listar_movimento_bancada", { anoInicio, anoFim, ...seSegundoPlano(segundoPlano) });
+  },
+
+  async buscarEquipamento(id: number, segundoPlano = false): Promise<Equipamento> {
+    return invoke<Equipamento>("buscar_equipamento", { id, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Busca equipamentos por número de série (case-insensitive) → Rust: buscar_equipamentos_por_serial */
@@ -212,13 +283,28 @@ export const db = {
     return invoke<Cliente[]>("listar_clientes", { busca: busca ?? null });
   },
 
-  async listarClientesPaginados(busca: string | undefined, page: number): Promise<PaginatedResult<Cliente>> {
-    return invoke<PaginatedResult<Cliente>>("listar_clientes_paginados", { busca: busca ?? null, page });
+  async listarClientesPaginados(busca: string | undefined, page: number, filtro?: FiltroClientes, segundoPlano = false): Promise<PaginatedResult<Cliente>> {
+    return invoke<PaginatedResult<Cliente>>("listar_clientes_paginados", {
+      busca: busca ?? null,
+      page,
+      filtro: filtro && filtro !== "TODOS" ? filtro : null,
+      ...seSegundoPlano(segundoPlano),
+    });
+  },
+
+  /** Contagem de cada filtro da lista de clientes → Rust: contar_clientes_por_filtro */
+  async contarClientesPorFiltro(busca?: string, segundoPlano = false): Promise<ContagemClientes> {
+    return invoke<ContagemClientes>("contar_clientes_por_filtro", { busca: busca ?? null, ...seSegundoPlano(segundoPlano) });
+  },
+
+  /** Números do painel do cliente → Rust: resumo_cliente (faturado só com permissão de Finanças) */
+  async resumoCliente(clienteId: number, segundoPlano = false): Promise<ResumoCliente> {
+    return invoke<ResumoCliente>("resumo_cliente", { clienteId, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Busca cliente por ID → Rust: buscar_cliente */
-  async buscarCliente(id: number): Promise<Cliente> {
-    return invoke<Cliente>("buscar_cliente", { id });
+  async buscarCliente(id: number, segundoPlano = false): Promise<Cliente> {
+    return invoke<Cliente>("buscar_cliente", { id, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Cria novo cliente (PF ou PJ) → Rust: criar_cliente. Retorna o registro persistido */
@@ -286,8 +372,8 @@ export const db = {
   // ─── Contatos de cliente ─────────────────────────────
 
   /** Lista contatos ativos do cliente dentro da empresa informada. */
-  async listarClienteContatos(clienteId: number, empresaId: number): Promise<ClienteContato[]> {
-    return invoke<ClienteContato[]>("listar_cliente_contatos", { clienteId, empresaId });
+  async listarClienteContatos(clienteId: number, empresaId: number, segundoPlano = false): Promise<ClienteContato[]> {
+    return invoke<ClienteContato[]>("listar_cliente_contatos", { clienteId, empresaId, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Cria um contato explicitamente vinculado a cliente e empresa. */
@@ -308,8 +394,8 @@ export const db = {
   // ─── Verificações ─────────────────────────────────────
 
   /** Salva resultado da verificação técnica → Rust: salvar_verificacao_tecnica */
-  async salvarVerificacao(verificacao: Omit<Verificacao, "id">): Promise<number> {
-    return invoke<number>("salvar_verificacao_tecnica", { input: verificacao });
+  async salvarVerificacao(verificacao: Omit<Verificacao, "id">) {
+    return invoke<{ equipamento: Equipamento; verificacao: Verificacao }>("salvar_verificacao_tecnica", { input: verificacao });
   },
 
   /** Busca última verificação de um equipamento → Rust: buscar_verificacao_tecnica */
@@ -321,8 +407,8 @@ export const db = {
   },
 
   /** Lista etapas e mudanças de status auditadas no tenant do perfil ativo. */
-  async listarHistoricoEquipamento(equipamentoId: number): Promise<EquipamentoHistoricoEvento[]> {
-    return invoke<EquipamentoHistoricoEvento[]>("listar_historico_equipamento", { equipamentoId });
+  async listarHistoricoEquipamento(equipamentoId: number, segundoPlano = false): Promise<EquipamentoHistoricoEvento[]> {
+    return invoke<EquipamentoHistoricoEvento[]>("listar_historico_equipamento", { equipamentoId, ...seSegundoPlano(segundoPlano) });
   },
 
   async obterLinkStatusPublico(equipamentoId: number): Promise<PublicStatusLinkInfo | null> {
@@ -342,11 +428,27 @@ export const db = {
     return invoke<AlertaPortal[]>("listar_alertas_portal", { apenasNaoLidos, limite });
   },
 
-  async contarAlertasPortalNaoLidos(): Promise<number> {
-    return invoke<number>("contar_alertas_portal_nao_lidos");
+  /** `aposId`: só os alertas com id maior (chegaram depois da última abertura do sino). */
+  async contarAlertasPortalNaoLidos(aposId?: number): Promise<number> {
+    return invoke<number>("contar_alertas_portal_nao_lidos", aposId != null ? { aposId } : {});
   },
 
   /** Sem `alertaId`, marca todos os não lidos da empresa ativa. */
+  /** Avisos internos do perfil da sessão (nova OS, vence amanhã, pronto parado…) → Rust: listar_avisos_internos */
+  async listarAvisosInternos(): Promise<AvisoInterno[]> {
+    return invoke<AvisoInterno[]>("listar_avisos_internos");
+  },
+
+  /** Tipos de aviso que o perfil da sessão não quer receber → Rust: salvar_avisos_desligados */
+  async salvarAvisosDesligados(tipos: string[]): Promise<string[]> {
+    return invoke<string[]>("salvar_avisos_desligados", { tipos });
+  },
+
+  /** Marca avisos internos como lidos para o perfil da sessão → Rust: marcar_avisos_lidos */
+  async marcarAvisosLidos(chaves: string[]): Promise<number> {
+    return invoke<number>("marcar_avisos_lidos", { chaves });
+  },
+
   async marcarAlertasPortalLidos(alertaId?: number): Promise<number> {
     return invoke<number>("marcar_alertas_portal_lidos", { alertaId: alertaId ?? null });
   },
@@ -358,6 +460,11 @@ export const db = {
   /** `senha = null` remove a senha. A senha não volta do backend; só a data em que foi criada. */
   async definirSenhaPortalContato(contatoId: number, senha: string | null): Promise<ClienteContato> {
     return invoke<ClienteContato>("definir_senha_portal_contato", { contatoId, senha });
+  },
+
+  /** Senha atual do portal do contato (definida pela equipe a partir da 0064), ou null → Rust: ver_senha_portal_contato */
+  async verSenhaPortalContato(contatoId: number): Promise<string | null> {
+    return invoke<string | null>("ver_senha_portal_contato", { contatoId });
   },
 
   async obterVersaoDocumentoPortal(equipamentoId: number): Promise<DecisaoOrcamentoInfo | null> {
@@ -406,8 +513,9 @@ export const db = {
     return invoke<ContatoPortalEmpresa>("salvar_contato_portal_empresa", { input });
   },
 
-  async obterDecisaoOrcamento(equipamentoId: number): Promise<DecisaoOrcamentoInfo | null> {
-    return invoke<DecisaoOrcamentoInfo | null>("obter_decisao_orcamento", { equipamentoId });
+  /** `segundoPlano`: recarga automática (ao vivo, alerta do portal), não renova a sessão. */
+  async obterDecisaoOrcamento(equipamentoId: number, segundoPlano = false): Promise<DecisaoOrcamentoInfo | null> {
+    return invoke<DecisaoOrcamentoInfo | null>("obter_decisao_orcamento", { equipamentoId, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Único ponto de envio de WhatsApp ao cliente → Rust: solicitar_envio_whatsapp */
@@ -489,13 +597,20 @@ export const db = {
     categoria?: string,
     apenasEstoqueBaixo?: boolean,
     page = 0,
+    segundoPlano = false,
   ): Promise<Produto[]> {
     return invoke<Produto[]>("listar_produtos", {
       page,
       busca: busca ?? null,
       categoria: categoria ?? null,
       apenasEstoqueBaixo: apenasEstoqueBaixo || false,
+      ...seSegundoPlano(segundoPlano),
     });
+  },
+
+  /** Números do topo de Insumos e peças → Rust: resumo_estoque */
+  async resumoEstoque(segundoPlano = false): Promise<ResumoEstoque> {
+    return invoke<ResumoEstoque>("resumo_estoque", seSegundoPlano(segundoPlano));
   },
 
   async listarProdutosPaginados(
@@ -503,16 +618,23 @@ export const db = {
     categoria: string | undefined,
     apenasEstoqueBaixo: boolean,
     page: number,
+    segundoPlano = false,
   ): Promise<PaginatedResult<Produto>> {
     return invoke<PaginatedResult<Produto>>("listar_produtos_paginados", {
       page,
       busca: busca ?? null,
       categoria: categoria ?? null,
       apenasEstoqueBaixo,
+      ...seSegundoPlano(segundoPlano),
     });
   },
 
   /** Cria novo produto → Rust: criar_produto */
+  /** Busca um produto do estoque → Rust: buscar_produto */
+  async buscarProduto(id: number): Promise<Produto> {
+    return invoke<Produto>("buscar_produto", { id });
+  },
+
   async criarProduto(produto: Omit<Produto, "id">): Promise<Produto> {
     return invoke<Produto>("criar_produto", { input: produto });
   },
@@ -557,19 +679,30 @@ export const db = {
   // ─── Orçamento de venda avulsa de insumos (OI-<n>) ───────────
 
   /** Lista orçamentos de insumos da empresa → Rust: listar_orcamentos_insumos */
-  async listarOrcamentosInsumos(filtros: FiltrosOrcamentosInsumos = {}): Promise<PaginatedResult<OrcamentoInsumos>> {
+  async listarOrcamentosInsumos(filtros: FiltrosOrcamentosInsumos = {}, segundoPlano = false): Promise<PaginatedResult<OrcamentoInsumos>> {
     return invoke<PaginatedResult<OrcamentoInsumos>>("listar_orcamentos_insumos", {
       filtros: {
         status: filtros.status && filtros.status !== "TODOS" ? filtros.status : null,
         cliente_id: filtros.cliente_id ?? null,
         busca: filtros.busca?.trim() || null,
         page: filtros.page ?? 0,
+        criado_por_profile_id: filtros.criado_por_profile_id ?? null,
       },
+      ...seSegundoPlano(segundoPlano),
     });
   },
 
-  async obterOrcamentoInsumos(id: number): Promise<OrcamentoInsumosDetalhe> {
-    return invoke<OrcamentoInsumosDetalhe>("obter_orcamento_insumos", { id });
+  /** Total por situação com a mesma busca da lista (números das pílulas) → Rust: contar_orcamentos_insumos_por_status */
+  async contarOrcamentosInsumosPorStatus(busca?: string, segundoPlano = false, criadoPor: number | null = null): Promise<Record<string, number>> {
+    const linhas = await invoke<Array<{ status: string; total: number }>>("contar_orcamentos_insumos_por_status", {
+      filtros: { status: null, cliente_id: null, busca: busca?.trim() || null, page: 0, criado_por_profile_id: criadoPor },
+      ...seSegundoPlano(segundoPlano),
+    });
+    return Object.fromEntries(linhas.map((linha) => [linha.status, Number(linha.total)]));
+  },
+
+  async obterOrcamentoInsumos(id: number, segundoPlano = false): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("obter_orcamento_insumos", { id, ...seSegundoPlano(segundoPlano) });
   },
 
   async criarOrcamentoInsumos(input: OrcamentoInsumosInput): Promise<OrcamentoInsumosDetalhe> {
@@ -652,11 +785,14 @@ export const db = {
     });
   },
 
-  async listarServicosPaginados(busca: string | undefined, apenasAtivos: boolean, page: number): Promise<PaginatedResult<ServicoCatalogo>> {
+  /** Lista o catálogo por situação: ativos, só os inativos (para reativar) ou todos. */
+  async listarServicosPaginados(busca: string | undefined, situacao: SituacaoServico, page: number, segundoPlano = false): Promise<PaginatedResult<ServicoCatalogo>> {
     return invoke<PaginatedResult<ServicoCatalogo>>("listar_servicos_paginados", {
       busca: busca ?? null,
-      apenasAtivos,
+      apenasAtivos: situacao === "ATIVOS",
+      apenasInativos: situacao === "INATIVOS",
       page,
+      ...seSegundoPlano(segundoPlano),
     });
   },
 
@@ -680,11 +816,22 @@ export const db = {
     return invoke<void>("deletar_servico", { id });
   },
 
+  /** Números dos filtros de Serviços → Rust: contar_servicos. */
+  async contarServicos(busca?: string, segundoPlano = false): Promise<{ ativos: number; inativos: number }> {
+    const contagem = await invoke<{ ativos: number; inativos: number }>("contar_servicos", { busca: busca ?? null, ...seSegundoPlano(segundoPlano) });
+    return { ativos: Number(contagem.ativos), inativos: Number(contagem.inativos) };
+  },
+
+  /** Reativa serviço desativado → Rust: reativar_servico. */
+  async reativarServico(id: number): Promise<ServicoCatalogo> {
+    return invoke<ServicoCatalogo>("reativar_servico", { id });
+  },
+
   // ─── Gastos Fixos e Variáveis ───────────────────────────
 
   /** Lista todos os gastos fixos ativos → Rust: listar_gastos_fixos */
-  async listarGastosFixos(): Promise<GastoFixo[]> {
-    return invoke<GastoFixo[]>("listar_gastos_fixos");
+  async listarGastosFixos(segundoPlano = false): Promise<GastoFixo[]> {
+    return invoke<GastoFixo[]>("listar_gastos_fixos", segundoPlano ? seSegundoPlano(true) : undefined);
   },
 
   /** Cria novo gasto fixo → Rust: criar_gasto_fixo. Retorna o registro persistido */
@@ -698,8 +845,8 @@ export const db = {
   },
 
   /** Lista gastos variáveis de um mês/ano → Rust: listar_gastos_variaveis */
-  async listarGastosVariaveis(mes: number, ano: number): Promise<GastoVariavel[]> {
-    return invoke<GastoVariavel[]>("listar_gastos_variaveis", { mes, ano });
+  async listarGastosVariaveis(mes: number, ano: number, segundoPlano = false): Promise<GastoVariavel[]> {
+    return invoke<GastoVariavel[]>("listar_gastos_variaveis", { mes, ano, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Cria novo gasto variável → Rust: criar_gasto_variavel. Retorna o registro persistido */
@@ -708,8 +855,8 @@ export const db = {
   },
 
   /** Resumo mensal de gastos (fixos + variáveis + por categoria) → Rust: resumo_mensal */
-  async resumoMensal(mes: number, ano: number): Promise<GastoResumoMensal> {
-    return invoke<GastoResumoMensal>("resumo_mensal", { mes, ano });
+  async resumoMensal(mes: number, ano: number, segundoPlano = false): Promise<GastoResumoMensal> {
+    return invoke<GastoResumoMensal>("resumo_mensal", { mes, ano, ...seSegundoPlano(segundoPlano) });
   },
 
   /** Consulta a versão do schema e as migrações conhecidas/aplicadas → Rust: obter_status_schema_banco */
@@ -778,12 +925,16 @@ export const db = {
   // ─── Arquivo Temporário ────────────────────────────────
 
   /**
-   * Salva bytes em arquivo temporário e abre com app padrão → Rust: salvar_arquivo_temp.
-   * Usado pelo DocxService para gerar e abrir orçamentos DOCX.
+   * Salva bytes em arquivo temporário → Rust: salvar_arquivo_temp.
    * @returns Caminho absoluto do arquivo salvo
    */
   async salvarArquivoTemp(bytes: number[], filename: string): Promise<string> {
     return invoke<string>("salvar_arquivo_temp", { bytes, filename });
+  },
+
+  /** Salva o CSV e o mostra no gerenciador de arquivos. */
+  async salvarExportacaoCsv(bytes: number[], filename: string): Promise<string> {
+    return invoke<string>("salvar_exportacao_csv", { bytes, filename });
   },
 
   /**
@@ -841,6 +992,66 @@ export const db = {
   },
 
   /** Abre URL no navegador padrão do sistema → Rust: abrir_url */
+  /** Mensagens prontas de WhatsApp da empresa → Rust: listar_modelos_mensagem */
+  async listarModelosMensagem(segundoPlano = false): Promise<ModeloMensagem[]> {
+    return invoke<ModeloMensagem[]>("listar_modelos_mensagem", seSegundoPlano(segundoPlano));
+  },
+
+  /** Cria ou altera uma mensagem pronta (permissão de comunicação) → Rust: salvar_modelo_mensagem */
+  async salvarModeloMensagem(input: ModeloMensagemInput): Promise<ModeloMensagem> {
+    return invoke<ModeloMensagem>("salvar_modelo_mensagem", { input: { id: input.id ?? null, titulo: input.titulo, texto: input.texto, ordem: input.ordem ?? null, atualizado_em: input.atualizado_em ?? null } });
+  },
+
+  /** Exclui uma mensagem pronta (permissão de comunicação) → Rust: excluir_modelo_mensagem */
+  async excluirModeloMensagem(id: number): Promise<void> {
+    return invoke<void>("excluir_modelo_mensagem", { id });
+  },
+
+  /** Suporte: canal (empresa) e se este computador tem o token → Rust: obter_config_suporte */
+  async obterConfigSuporte(): Promise<ConfigSuporte> {
+    return invoke<ConfigSuporte>("obter_config_suporte");
+  },
+
+  /** Grava canal e, se informado, o token do bot neste computador → Rust: salvar_config_suporte */
+  async salvarConfigSuporte(canal: string, token?: string | null): Promise<ConfigSuporte> {
+    return invoke<ConfigSuporte>("salvar_config_suporte", { input: { canal, token: token?.trim() || null } });
+  },
+
+  /** Abre um chamado no canal do Slack → Rust: abrir_chamado_suporte */
+  async abrirChamadoSuporte(input: AbrirChamadoInput): Promise<ChamadoSuporte> {
+    return invoke<ChamadoSuporte>("abrir_chamado_suporte", { input });
+  },
+
+  /** Chamados do perfil da sessão → Rust: listar_chamados_suporte */
+  async listarChamadosSuporte(segundoPlano = false): Promise<ChamadoSuporte[]> {
+    return invoke<ChamadoSuporte[]>("listar_chamados_suporte", seSegundoPlano(segundoPlano));
+  },
+
+  /** Um chamado do perfil da sessão pelo id (fora da lista) → Rust: buscar_chamado_suporte */
+  async buscarChamadoSuporte(id: number, segundoPlano = false): Promise<ChamadoSuporte> {
+    return invoke<ChamadoSuporte>("buscar_chamado_suporte", { id, ...seSegundoPlano(segundoPlano) });
+  },
+
+  /** Conversa de um chamado → Rust: listar_mensagens_chamado */
+  /** Traz da thread do Slack as respostas novas dos chamados abertos do perfil (segundo plano) → Rust: sincronizar_suporte */
+  async sincronizarSuporte(): Promise<RespostaNovaSuporte[]> {
+    return invoke<RespostaNovaSuporte[]>("sincronizar_suporte", seSegundoPlano(true));
+  },
+
+  /** Responde na thread do chamado → Rust: responder_chamado_suporte */
+  async responderChamadoSuporte(input: ResponderChamadoInput): Promise<ChamadoSuporte> {
+    return invoke<ChamadoSuporte>("responder_chamado_suporte", { input });
+  },
+
+  /** "Resolveu" (encerra) ou "Não resolveu" (avisa na thread) → Rust: retorno_chamado_suporte */
+  async retornoChamadoSuporte(id: number, resolvido: boolean): Promise<ChamadoSuporte> {
+    return invoke<ChamadoSuporte>("retorno_chamado_suporte", { id, resolvido });
+  },
+
+  async listarMensagensChamado(id: number, segundoPlano = false): Promise<MensagemSuporte[]> {
+    return invoke<MensagemSuporte[]>("listar_mensagens_chamado", { id, ...seSegundoPlano(segundoPlano) });
+  },
+
   async abrirUrl(url: string): Promise<void> {
     return invoke<void>("abrir_url", { url });
   },
@@ -854,6 +1065,16 @@ export const db = {
   },
 
   /** Salva configuração de bloqueio por inatividade → Rust: salvar_config_inatividade */
+  /** Prazo de garantia dos serviços em dias, contados de quando ficou pronta → Rust: obter_garantia_servicos_dias */
+  async obterGarantiaServicosDias(): Promise<number> {
+    return invoke<number>("obter_garantia_servicos_dias");
+  },
+
+  /** Altera o prazo de garantia (administrador) → Rust: salvar_garantia_servicos_dias */
+  async salvarGarantiaServicosDias(dias: number): Promise<number> {
+    return invoke<number>("salvar_garantia_servicos_dias", { dias });
+  },
+
   async salvarConfigInatividade(enabled: boolean): Promise<ConfigInatividade> {
     const result = await invoke<boolean>("salvar_config_inatividade", { enabled });
     return { inactivity_lock_enabled: result };
@@ -965,6 +1186,11 @@ export const db = {
   /** Aprova orçamento, pagamento e status APROVADO atomicamente no backend. */
   async aprovarOrcamento(input: AprovarOrcamentoInput): Promise<Equipamento> {
     return invoke<Equipamento>("aprovar_orcamento", { input });
+  },
+
+  /** Peças com baixa pendente (só quais são; sem permissão de estoque) → Rust: listar_pecas_baixa_pendente */
+  async listarPecasBaixaPendente(equipamentoId: number, segundoPlano = false): Promise<Array<{ servico_id: string; produto_id: number }>> {
+    return invoke<Array<{ servico_id: string; produto_id: number }>>("listar_pecas_baixa_pendente", { equipamentoId, ...seSegundoPlano(segundoPlano) });
   },
 
   async listarConsumosOrcamento(equipamentoId: number): Promise<ConsumoOrcamento[]> {

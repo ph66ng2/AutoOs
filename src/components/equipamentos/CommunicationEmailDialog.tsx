@@ -66,7 +66,7 @@ export function CommunicationEmailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="h-4 w-4" /> Envio por e-mail
@@ -97,7 +97,7 @@ export function CommunicationEmailDialog({
                   placeholder="email@exemplo.com"
                   autoFocus
                 />
-                {erro && <p className="text-xs text-red-600" role="alert">{erro}</p>}
+                {erro && <p className="text-xs text-destructive" role="alert">{erro}</p>}
               </div>
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox checked={salvar} onCheckedChange={setSalvar} />
@@ -105,7 +105,7 @@ export function CommunicationEmailDialog({
               </label>
             </div>
           )}
-          {temEndereco && erro && <p className="text-xs text-red-600" role="alert">{erro}</p>}
+          {temEndereco && erro && <p className="text-xs text-destructive" role="alert">{erro}</p>}
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={cancelar}>Cancelar envio</Button>

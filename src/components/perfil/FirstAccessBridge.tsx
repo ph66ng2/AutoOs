@@ -1,13 +1,13 @@
 import { useLayoutEffect, useRef } from "react";
 import { playUiSound } from "@/lib/ui-sounds";
 import "./first-access-bridge.css";
+import { movimentoReduzido } from "@/lib/preferencias-computador";
 
 /** Duração do voo do avatar até o cadeado. */
 export const FIRST_ACCESS_BRIDGE_MS = 720;
 
 function reducedMotion() {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return movimentoReduzido();
 }
 
 interface FirstAccessBridgeProps {

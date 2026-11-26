@@ -47,5 +47,8 @@ export function useAcessoPortalCliente(clienteId?: number | null, empresaId?: nu
     void carregar();
   }, [carregar, versao]);
 
-  return { data, loading, error, recarregar: carregar };
+  /** Senha atual do contato para a equipe repassar; null quando não foi guardada (criada antes da 0064 ou trocada). */
+  const verSenha = useCallback((contatoId: number) => db.verSenhaPortalContato(contatoId), []);
+
+  return { data, loading, error, verSenha, recarregar: carregar };
 }

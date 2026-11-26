@@ -64,15 +64,41 @@ fn validate_preco_padrao(preco: f64) -> Result<(), String> {
     Ok(())
 }
 
+/// Filtro da lista do catálogo: ativos (padrão), só os inativos (para reativar) ou todos.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SituacaoServico {
+    Ativos,
+    Inativos,
+    Todos,
+}
+
+impl SituacaoServico {
+    fn de(apenas_ativos: Option<bool>, apenas_inativos: Option<bool>) -> Self {
+        if apenas_inativos.unwrap_or(false) {
+            SituacaoServico::Inativos
+        } else if apenas_ativos.unwrap_or(true) {
+            SituacaoServico::Ativos
+        } else {
+            SituacaoServico::Todos
+        }
+    }
+}
+
 fn add_service_filters(
     query: &mut QueryBuilder<Postgres>,
     empresa_id: i32,
     busca: Option<&str>,
-    apenas_ativos: bool,
+    situacao: SituacaoServico,
 ) {
     query.push(" WHERE empresa_id = ").push_bind(empresa_id);
-    if apenas_ativos {
-        query.push(" AND ativo = true");
+    match situacao {
+        SituacaoServico::Ativos => {
+            query.push(" AND ativo = true");
+        }
+        SituacaoServico::Inativos => {
+            query.push(" AND ativo = false");
+        }
+        SituacaoServico::Todos => {}
     }
 
     if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
@@ -91,11 +117,11 @@ async fn query_service_page(
     empresa_id: i32,
     page: Option<i32>,
     busca: Option<&str>,
-    apenas_ativos: bool,
+    situacao: SituacaoServico,
     page_size: i32,
 ) -> Result<PaginatedResult<ServicoCatalogoRow>, String> {
     let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM servicos_catalogo");
-    add_service_filters(&mut count_query, empresa_id, busca, apenas_ativos);
+    add_service_filters(&mut count_query, empresa_id, busca, situacao);
     let total = count_query
         .build_query_scalar::<i64>()
         .fetch_one(pool)
@@ -104,7 +130,7 @@ async fn query_service_page(
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
     let mut items_query = QueryBuilder::<Postgres>::new(SERVICO_CATALOGO_SELECT);
-    add_service_filters(&mut items_query, empresa_id, busca, apenas_ativos);
+    add_service_filters(&mut items_query, empresa_id, busca, situacao);
     items_query
         .push(" ORDER BY nome ASC, id ASC LIMIT ")
         .push_bind(page_size)
@@ -179,7 +205,7 @@ pub async fn listar_servicos(
         empresa_id,
         page,
         busca.as_deref(),
-        apenas_ativos.unwrap_or(true),
+        SituacaoServico::de(apenas_ativos, None),
         PAGE_SIZE,
     )
     .await?
@@ -192,18 +218,43 @@ pub async fn listar_servicos_paginados(
     page: Option<i32>,
     busca: Option<String>,
     apenas_ativos: Option<bool>,
+    apenas_inativos: Option<bool>,
+    segundo_plano: Option<bool>,
 ) -> Result<PaginatedResult<ServicoCatalogoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     query_service_page(
         &pool,
         empresa_id,
         page,
         busca.as_deref(),
-        apenas_ativos.unwrap_or(true),
+        SituacaoServico::de(apenas_ativos, apenas_inativos),
         super::equipamentos::UI_PAGE_SIZE,
     )
     .await
+}
+
+/// Quantos serviços ativos e inativos a busca encontra (números dos filtros da tela).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn contar_servicos(busca: Option<String>, segundo_plano: Option<bool>) -> Result<ContagemServicos, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    let mut query = QueryBuilder::<Postgres>::new(
+        "SELECT COUNT(*) FILTER (WHERE ativo) AS ativos, COUNT(*) FILTER (WHERE NOT ativo) AS inativos FROM servicos_catalogo",
+    );
+    add_service_filters(&mut query, empresa_id, busca.as_deref(), SituacaoServico::Todos);
+    query
+        .build_query_as::<ContagemServicos>()
+        .fetch_one(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct ContagemServicos {
+    pub ativos: i64,
+    pub inativos: i64,
 }
 
 #[tauri::command]
@@ -375,9 +426,53 @@ pub async fn deletar_servico(id: i32) -> Result<bool, String> {
     Ok(deleted)
 }
 
+/// Reativa um serviço desativado: volta a aparecer na verificação técnica e nos orçamentos.
+#[tauri::command]
+#[instrument(skip_all, fields(id = id))]
+pub async fn reativar_servico(id: i32) -> Result<ServicoCatalogoRow, String> {
+    let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let result = sqlx::query(
+        "UPDATE servicos_catalogo SET ativo = true, atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2 AND ativo = false",
+    )
+    .bind(id)
+    .bind(empresa_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        if let Some(message) = duplicate_service_name_message(&e) {
+            return message;
+        }
+        error!("Erro ao reativar serviço {}: {}", id, e);
+        super::operator_errors::erro_sql_para_operador(&e)
+    })?;
+
+    let reativado = result.rows_affected() > 0;
+    record_security_event(
+        "SERVICE_CATALOG_REACTIVATED",
+        Some(&actor),
+        format!("servico_id={}; reactivated={}", id, reativado),
+        reativado,
+    )
+    .await;
+    if !reativado {
+        return Err("Serviço não encontrado na empresa ativa ou já está ativo. Recarregue a tela.".to_string());
+    }
+    buscar_servico(id).await
+}
+
 #[cfg(test)]
 mod tests {
-    use super::validate_preco_padrao;
+    use super::{validate_preco_padrao, SituacaoServico};
+
+    #[test]
+    fn situacao_padrao_e_ativos_e_inativos_vence() {
+        assert_eq!(SituacaoServico::de(None, None), SituacaoServico::Ativos);
+        assert_eq!(SituacaoServico::de(Some(false), None), SituacaoServico::Todos);
+        assert_eq!(SituacaoServico::de(Some(true), Some(true)), SituacaoServico::Inativos);
+        assert_eq!(SituacaoServico::de(Some(false), Some(false)), SituacaoServico::Todos);
+    }
 
     #[test]
     fn aceita_preco_zero_de_garantia() {

@@ -12,10 +12,11 @@ use crate::commands::types::{
 use crate::commands::auth::{
     record_security_event, require_permission, require_sensitive_access, PERMISSION_COMMUNICATION_SETTINGS,
 };
+use crate::db::get_pool;
 use keyring::Entry;
 use lettre::{
     Address,
-    message::{header::ContentType, Attachment, MultiPart, SinglePart},
+    message::{header::ContentType, Attachment, Mailbox, MultiPart, SinglePart},
     transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
@@ -242,6 +243,14 @@ pub async fn carregar_config_smtp() -> Result<SmtpConfigResponse, String> {
     })
 }
 
+fn montar_mailbox(nome: &str, email: &str) -> Result<Mailbox, lettre::address::AddressError> {
+    let nome = nome.trim();
+    let email = email.trim();
+    let nome = (!nome.is_empty() && nome != email && !nome.contains('@'))
+        .then(|| nome.to_owned());
+    Ok(Mailbox::new(nome, email.parse()?))
+}
+
 /// Enviar email real via SMTP.
 /// Suporta anexos (bytes diretos ou caminho de arquivo).
 #[tauri::command]
@@ -250,32 +259,41 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
     let actor = require_sensitive_access()?;
     debug!("Enviando email via SMTP");
 
-    let audit_details = format!(
+    let mut audit_details = format!(
         "destinatario={}; email={}; assunto={}",
         input.destinatario.trim(),
         input.email.trim(),
         input.assunto.trim(),
     );
 
-    let config = match load_stored_smtp_config()? {
-        Some(config) => config,
-        None => {
-            let details = format!("{}; motivo=configuracao_ausente", audit_details);
-            record_security_event("EMAIL_SEND_FAILED", Some(&actor), details, false).await;
-            return Err("Configure o SMTP primeiro".to_string());
-        }
+    if let Some(id) = input.orcamento_equipamento_id.or(input.equipamento_id) {
+        audit_details.push_str(&format!("; equipamento_id={id}"));
+    }
+    let evento_envio = if input.orcamento_equipamento_id.is_some() {
+        "BUDGET_EMAIL_SENT"
+    } else {
+        "EMAIL_SENT"
     };
+    let resultado = enviar_email_smtp(&input).await;
+    match &resultado {
+        Ok(()) => record_security_event(evento_envio, Some(&actor), audit_details, true).await,
+        Err(erro) => {
+            let details = format!("{}; motivo={}", audit_details, erro);
+            record_security_event("EMAIL_SEND_FAILED", Some(&actor), details, false).await;
+        }
+    }
+    resultado.map(|()| true)
+}
 
-    // Construir a mensagem
-    let from = format!("{} <{}>", config.from_name, config.from_email);
-    let to = format!("{} <{}>", input.destinatario, input.email);
+async fn enviar_email_smtp(input: &EmailSendInput) -> Result<(), String> {
+    let config = load_stored_smtp_config()?.ok_or_else(|| "Configure o SMTP primeiro".to_string())?;
 
     let mut message_builder = Message::builder()
-        .from(from.parse().map_err(|e| {
+        .from(montar_mailbox(&config.from_name, &config.from_email).map_err(|e| {
             error!("Email de origem inválido: {}", e);
             format!("Email de origem inválido: {}", e)
         })?)
-        .to(to.parse().map_err(|e| {
+        .to(montar_mailbox(&input.destinatario, &input.email).map_err(|e| {
             error!("Email de destino inválido: {}", e);
             format!("Email de destino inválido: {}", e)
         })?)
@@ -287,7 +305,7 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
             if cc_email.is_empty() {
                 continue;
             }
-            message_builder = message_builder.cc(cc_email.parse().map_err(|e| {
+            message_builder = message_builder.cc(montar_mailbox("", cc_email).map_err(|e| {
                 error!("Email de CC inválido: {}", e);
                 format!("Email de CC inválido: {}", e)
             })?);
@@ -416,19 +434,11 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
     // Enviar
     mailer.send(email).await.map_err(|e| {
         error!("Erro ao enviar email: {}", e);
-        let error_message = format!("Erro ao enviar email: {}", e);
-        let details = format!("{}; motivo={}", audit_details, error_message);
-        let actor = actor.clone();
-        tauri::async_runtime::spawn(async move {
-            record_security_event("EMAIL_SEND_FAILED", Some(&actor), details, false).await;
-        });
-        error_message
+        format!("Erro ao enviar email: {}", e)
     })?;
 
-    record_security_event("EMAIL_SENT", Some(&actor), audit_details, true).await;
-
     info!("Email enviado com sucesso para {}", input.email);
-    Ok(true)
+    Ok(())
 }
 
 /// Tamanho máximo de anexo permitido (25 MB).
@@ -473,4 +483,67 @@ fn get_attachment_bytes(anexo: &EmailAttachmentInput) -> Result<Vec<u8>, String>
         "Anexo {} não tem bytes nem caminho",
         anexo.filename
     ))
+}
+
+/// A cópia fixa da gerência (CC_GERENCIA no frontend) é da BMITAG. Vale para a empresa da sessão
+/// quando a instalação tem uma só empresa ativa (instalações atuais, de empresa única) ou quando
+/// ela é a empresa vinculada ao canal de suporte (só a BMITAG, por desenho). Numa instalação com
+/// várias empresas e canal sem vínculo, nenhuma empresa leva a cópia.
+pub(crate) fn copia_gerencia_permitida(empresas_ativas: i64, empresa_vinculada: Option<i32>, empresa_id: i32) -> bool {
+    empresas_ativas == 1 || empresa_vinculada == Some(empresa_id)
+}
+
+/// Se os e-mails automáticos da empresa da sessão levam a cópia da gerência. Lido sozinho quando
+/// a sessão muda: exige a sessão desbloqueada, mas não a renova.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn copia_gerencia_da_empresa() -> Result<bool, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = crate::commands::auth::require_active_session_company_id_without_touch(&pool).await?;
+    let (empresas_ativas, vinculada): (i64, Option<i32>) = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM empresas WHERE LOWER(status) = 'ativo'),
+                (SELECT suporte_slack_empresa_id FROM configuracoes_sistema WHERE id = 1)",
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(copia_gerencia_permitida(empresas_ativas, vinculada, empresa_id))
+}
+
+#[cfg(test)]
+mod copia_gerencia_tests {
+    use super::copia_gerencia_permitida;
+
+    #[test]
+    fn empresa_unica_mantem_a_copia() {
+        assert!(copia_gerencia_permitida(1, None, 5));
+        assert!(copia_gerencia_permitida(1, Some(9), 5));
+    }
+
+    #[test]
+    fn varias_empresas_so_a_vinculada_ao_suporte() {
+        assert!(copia_gerencia_permitida(2, Some(5), 5));
+        assert!(!copia_gerencia_permitida(2, Some(9), 5));
+        assert!(!copia_gerencia_permitida(3, None, 5));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::montar_mailbox;
+
+    #[test]
+    fn monta_caixas_postais_com_endereco_validado() {
+        for (nome, email, nome_esperado) in [
+            ("Suporte @ Loja", "suporte@example.com", None),
+            ("  ", "contato@example.com", None),
+            ("  Ana, da Loja  ", "ana@example.com", Some("Ana, da Loja")),
+            ("tecnico@example.com", "tecnico@example.com", None),
+        ] {
+            let mailbox = montar_mailbox(nome, email).unwrap();
+            assert_eq!(mailbox.name.as_deref(), nome_esperado);
+            assert_eq!(mailbox.email.to_string(), email);
+        }
+        assert!(montar_mailbox("Ana", "inválido").is_err());
+    }
 }

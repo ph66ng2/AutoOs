@@ -1,12 +1,21 @@
 /** Mock mínimo de IPC para Playwright; não substitui Tauri/PostgreSQL real. */
 const status = {
   pin_configured: true, unlocked: true, expires_at: null,
-  active_profile_id: 1, active_profile_name: "Atendente de teste", active_role: "ATENDENTE",
+  active_profile_id: 1, active_empresa_id: 1, active_profile_name: "Atendente de teste", active_role: "ATENDENTE",
   permissions: ["FINANCIAL_ACTIONS"], can_manage_profiles: false, profiles: [],
 };
 
 /** Stubs de runtime exigidos por @tauri-apps/plugin-updater durante o bootstrap. */
 export class Resource {}
+
+/** Stub exigido por @tauri-apps/plugin-notification (sem plugins no navegador de teste). */
+export class PluginListener {
+  async unregister(): Promise<void> {}
+}
+export async function addPluginListener(): Promise<PluginListener> {
+  return new PluginListener();
+}
+
 export class Channel<T> {
   onmessage: ((message: T) => void) | null = null;
 }
@@ -29,7 +38,12 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     case "set_active_security_profile":
     case "unlock_sensitive_access": return status as T;
     case "lock_sensitive_access": return true as T;
+    case "obter_garantia_servicos_dias": return 90 as T;
     case "listar_equipamentos":
+    case "listar_receita_aprovada":
+    case "listar_movimento_bancada":
+    case "contar_equipamentos_por_status":
+    case "listar_tecnicos_da_empresa":
     case "listar_equipamentos_cliente":
     case "listar_clientes":
     case "buscar_equipamentos_por_serial": return [] as T;

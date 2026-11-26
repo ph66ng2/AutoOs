@@ -1,6 +1,15 @@
 /** Mock com dados de demonstração: Contatos, Alterar Orçamento e PDF. */
 
 export class Resource {}
+
+/** Stub exigido por @tauri-apps/plugin-notification (sem plugins no navegador de teste). */
+export class PluginListener {
+  async unregister(): Promise<void> {}
+}
+export async function addPluginListener(): Promise<PluginListener> {
+  return new PluginListener();
+}
+
 export class Channel<T> {
   onmessage: ((message: T) => void) | null = null;
 }
@@ -22,7 +31,10 @@ const status = {
   active_role: "ATENDENTE",
   permissions: ["FINANCIAL_ACTIONS", "VIEW_EXPENSES", "STOCK_CONTROL"],
   can_manage_profiles: false,
-  profiles: [],
+  profiles: [
+    { id: 1, nome: "Atendente BMITAG", role: "ATENDENTE", permissions: [], pin_configured: true, pin_required: true, is_default: true, ativo: true, email_profissional: "atendimento@empresa.test", atende_tecnico: false },
+    { id: 2, nome: "Ivan Santos", role: "TECNICO", permissions: [], pin_configured: true, pin_required: true, is_default: false, ativo: true, email_profissional: "ivan@empresa.test", atende_tecnico: true },
+  ],
 };
 
 const cliente = {
@@ -119,6 +131,11 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return status as T;
     case "lock_sensitive_access":
       return true as T;
+    case "salvar_tema_perfil": {
+      const perfil = status.profiles.find((item: { id: number }) => item.id === status.active_profile_id) as { tema?: unknown } | undefined;
+      if (perfil) perfil.tema = args?.tema;
+      return status as T;
+    }
     case "verificar_config_inatividade":
       return false as T;
     case "listar_clientes":
@@ -137,7 +154,11 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     }
     case "buscar_cliente":
       return cliente as T;
+    case "listar_tecnicos_da_empresa":
+      return status.profiles.filter((p) => p.ativo && p.atende_tecnico) as T;
     case "listar_equipamentos_cliente":
+    case "listar_receita_aprovada":
+    case "listar_movimento_bancada":
       return [equipamento] as T;
     case "listar_equipamentos": {
       const statusFiltro = args?.status as string | undefined;
@@ -160,8 +181,44 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     }
     case "buscar_equipamento":
       return equipamento as T;
-    case "buscar_equipamentos_por_serial":
+    case "buscar_equipamentos_por_serial": {
+      const serie = String(args?.serial ?? "").toUpperCase();
+      // Serial de impressora já entregue (retorno dentro da garantia) para a Nova entrada.
+      if (serie.startsWith("GC420")) {
+        const saida = new Date(Date.now() - 23 * 86_400_000).toISOString().slice(0, 10);
+        return [{
+          ...equipamento, id: 7, serial_number: "GC420T-0001", marca: "Zebra", modelo: "GC420T", patrimonio: "PAT-120",
+          status: "ENTREGUE", data_entrada: "2026-09-02", data_pronto: saida, data_saida: saida, defeito_relatado: "Etiqueta saindo torta",
+        }] as T;
+      }
       return [equipamento] as T;
+    }
+    case "obter_garantia_servicos_dias":
+      return 90 as T;
+    case "obter_config_suporte":
+      return { token_neste_computador: true, token_da_instalacao: true, canal: "C0CE5M6GTRV" } as T;
+    case "listar_chamados_suporte":
+      return [
+        { id: 12, texto: "A OS do Mercado Bom Preço não salva, fica girando.", situacao: "aberto", criado_em: agora, atualizado_em: agora, respostas: 1 },
+        { id: 9, texto: "Como reenviar o orçamento por e-mail?", situacao: "resolvido", criado_em: "2026-09-10T12:00:00Z", atualizado_em: "2026-09-10T12:20:00Z", respostas: 2 },
+      ] as T;
+    case "listar_mensagens_chamado":
+      return [
+        { id: 1, autor: "pessoa", autor_nome: "Atendente", texto: "A OS do Mercado Bom Preço não salva, fica girando.", automatica: false, criado_em: agora },
+        { id: 2, autor: "suporte", autor_nome: "Erykah", texto: "Isso costuma ser outro computador alterando a mesma OS. Recarregue a OS e salve de novo.", automatica: true, criado_em: agora },
+        { id: 3, autor: "suporte", autor_nome: "Erykah", texto: "Achei a causa e já corrigi. Instale a versão nova:\n<https://github.com/ph66ng2/AutoOs/releases/download/v0.6.4/AutoOS_0.6.4_x64-setup.exe|Baixar AutoOS 0.6.4>\nDepois de instalar, abra a OS de novo.", automatica: true, criado_em: agora },
+      ] as T;
+    case "sincronizar_suporte":
+      return [] as T;
+    case "responder_chamado_suporte":
+    case "retorno_chamado_suporte":
+      return { id: 12, texto: "A OS do Mercado Bom Preço não salva, fica girando.", situacao: args?.resolvido ? "resolvido" : "aberto", criado_em: agora, atualizado_em: agora, respostas: 1 } as T;
+    case "listar_modelos_mensagem":
+      return [
+        { id: 1, titulo: "Equipamento pronto", texto: "Olá, {contato}! O equipamento {equipamento} (OS {os}) está pronto para retirada.", ordem: 1, atualizado_em: agora },
+        { id: 2, titulo: "Lembrete de retirada", texto: "Olá, {contato}! Lembrando que o equipamento {equipamento} (OS {os}) continua aguardando retirada.", ordem: 2, atualizado_em: agora },
+        { id: 3, titulo: "Orçamento enviado", texto: "Olá, {contato}! Enviamos o orçamento do equipamento {equipamento} (OS {os}).", ordem: 3, atualizado_em: agora },
+      ] as T;
     case "listar_cliente_contatos":
       return contatos.filter((c) => c.ativo) as T;
     case "criar_cliente_contato": {
@@ -198,10 +255,31 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return verificacao as T;
     case "listar_servicos_catalogo_ativos":
       return catalogo as T;
+    case "contar_equipamentos_por_status":
+      return [{ status: equipamento.status, total: 1 }] as T;
+    case "contar_servicos":
+      return { ativos: catalogo.filter((item) => item.ativo !== false).length, inativos: catalogo.filter((item) => item.ativo === false).length } as T;
+    case "obter_empresa_ativa":
+      return "Sua empresa" as T;
+    case "listar_pecas_baixa_pendente":
+      return [] as T;
+    case "listar_alertas_portal":
+      return [] as T;
+    case "listar_avisos_internos":
+      return [
+        { chave: "os-nova:1", tipo: "os-nova", titulo: "Nova OS para você: Zebra ZD620", detalhe: "BMITAG · Não puxa a etiqueta", equipamentoId: 1, lido: false, quando: new Date().toISOString() },
+        { chave: "estoque-baixo:demo", tipo: "estoque-baixo", titulo: "2 itens com estoque baixo", detalhe: "Cabeça GC420t, Botão feed", lido: false, quando: new Date(Date.now() - 3_600_000).toISOString() },
+      ] as T;
+    case "marcar_avisos_lidos":
+      return 1 as T;
+    case "contar_alertas_portal_nao_lidos":
+      return 0 as T;
     case "listar_servicos_paginados": {
       const page = Math.max(0, Number(args?.page ?? 0));
       const busca = String(args?.busca ?? "").toLowerCase();
-      const items = catalogo.filter((item) => !busca || item.nome.toLowerCase().includes(busca));
+      const items = catalogo
+        .filter((item) => !busca || item.nome.toLowerCase().includes(busca))
+        .filter((item) => (args?.apenasInativos ? item.ativo === false : args?.apenasAtivos === false || item.ativo !== false));
       return { items: items.slice(page * 10, (page + 1) * 10), total: items.length } as T;
     }
     case "atualizar_servicos_verificacao": {

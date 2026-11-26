@@ -1,4 +1,4 @@
-import { AlertCircle, Printer } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,6 +9,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogClose,
+  DialogBody,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -23,9 +24,7 @@ import {
 import { ClienteFormularioCampos } from "@/components/clientes/ClienteFormularioCampos";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import type { ClienteFormData } from "@/lib/validations";
-import { formatDatePtBr } from "@/lib/date-utils";
-import type { Cliente, Equipamento } from "@/types";
-import { ClientesStatusBadge } from "./ClientesStatusBadge";
+import type { Cliente } from "@/types";
 import { ClienteContatosPanel } from "@/components/clientes/ClienteContatosPanel";
 
 export function ClientesFormDialog({
@@ -57,20 +56,22 @@ export function ClientesFormDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent tamanho="g">
         <DialogHeader>
           <DialogTitle>{editando ? "Editar Cliente" : "Novo Cliente"}</DialogTitle>
           <DialogDescription className="sr-only">
             Informe os dados do cliente e confirme o cadastro.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-          <ClienteFormularioCampos
-            form={form}
-            tipoPessoa={tipoPessoa}
-            buscarCep={buscarCep}
-            buscandoCep={buscandoCep}
-          />
+        <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody className="space-y-5">
+            <ClienteFormularioCampos
+              form={form}
+              tipoPessoa={tipoPessoa}
+              buscarCep={buscarCep}
+              buscandoCep={buscandoCep}
+            />
+          </DialogBody>
 
           <DialogFooter>
             <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
@@ -87,7 +88,7 @@ export function ClientesFormDialog({
             overlayClassName="bg-black/30"
           >
             <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-red-900">
+              <AlertDialogTitle className="flex items-center gap-2 text-destructive">
                 <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
                 CPF/CNPJ já cadastrado
               </AlertDialogTitle>
@@ -125,63 +126,13 @@ export function ClientesDeleteDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="p">
         <DialogHeader><DialogTitle>Confirmar Exclusão</DialogTitle></DialogHeader>
         <p className="text-muted-foreground">Excluir cliente <strong>{deletando ? nomeExibicaoCliente(deletando) : ""}</strong>?</p>
-        <p className="text-sm text-red-500">Esta ação não pode ser desfeita.</p>
+        <p className="text-sm text-destructive">Esta ação não pode ser desfeita.</p>
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
           <Button variant="destructive" onClick={onDelete} disabled={salvando}>{salvando ? "Excluindo..." : "Excluir"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-export function ClientesEquipamentosModal({
-  open,
-  onOpenChange,
-  cliente,
-  equipamentos,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  cliente: Cliente | null;
-  equipamentos: Equipamento[];
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            Todos os equipamentos - {cliente ? nomeExibicaoCliente(cliente) : "Cliente"}
-          </DialogTitle>
-        </DialogHeader>
-        {equipamentos.length === 0 ? (
-          <div className="text-sm text-muted-foreground">Nenhum equipamento vinculado.</div>
-        ) : (
-          <div className="space-y-2">
-            {equipamentos.map((eq) => (
-              <div key={eq.id} className="flex items-center justify-between rounded border p-2">
-                <div className="flex items-center gap-3">
-                  <Printer className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">{eq.marca} {eq.modelo}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{eq.serial_number}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <ClientesStatusBadge status={eq.status} />
-                  <span className="text-xs text-muted-foreground">
-                    {formatDatePtBr(eq.data_entrada, "")}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        <DialogFooter>
-          <DialogClose asChild><Button variant="outline">Fechar</Button></DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -199,7 +150,7 @@ export function ClientesContatosModal({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent tamanho="g" className="overflow-y-auto">
         {cliente && (
           <ClienteContatosPanel
             cliente={cliente}

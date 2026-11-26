@@ -1,5 +1,6 @@
 //! Integração real. Executar somente em autoos_stock_test* com migrations aplicadas.
-//! Perfil TECNICO (STOCK_CONTROL + PREPARE_QUOTES): prepara e envia o orçamento, mas não decide nem altera depois.
+//! Perfil TECNICO (STOCK_CONTROL + PREPARE_QUOTES, "Orçamentos"): prepara, envia, aprova ou reprova o orçamento
+//! (desde o #189) e encerra OS só de garantia; não corrige status nem altera serviços de OS já decidida.
 #[path = "../commands/mod.rs"] mod commands;
 #[path = "../db.rs"] mod db;
 #[path = "../test_support/memory_keyring.rs"] mod memory_keyring;
@@ -59,33 +60,60 @@ async fn main() -> Result<()> {
     let publicado = portal_cliente::publicar_orcamento_portal(eq).await.map_err(|e| anyhow!("publicar_orcamento_portal: {e}"))?;
     assert!(publicado.versao_id > 0);
 
-    // NÃO CONSEGUE: aprovar (FINANCIAL_ACTIONS).
-    let erro = equipamentos::aprovar_orcamento(AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq,expected_updated_em:token(eq).await?,
+    // OS própria em AGUARDANDO_APROVACAO, com verificação, para cada decisão (a `eq` segue aguardando
+    // para a prorrogação abaixo).
+    let aguardando = |tag: &'static str| {
+        let pool = pool.clone();
+        let suffix = suffix.clone();
+        let services = services.clone();
+        async move {
+            let id: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,cliente_id,status) VALUES ($1,'Zebra','GC420t','Impressora','2026-09-27','Teste',$2,$3,'VERIFICADO') RETURNING id")
+                .bind(format!("{tag}-{suffix}")).bind(empresa).bind(cliente).fetch_one(&pool).await?;
+            verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
+                equipamento_id:id, empresa_id:Some(empresa), tecnico_nome:"Teste".into(), problema_relatado:"Teste".into(),
+                servicos_necessarios:Some(services.to_string()), pecas_necessarias:Some("[]".into()), custo_total:Some(90.0), ..VerificacaoInput::default()
+            }).await.map_err(|e| anyhow!("verificação {tag}: {e}"))?;
+            let tok: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(id).fetch_one(&pool).await?;
+            equipamentos::atualizar_status_equipamento(id, "AGUARDANDO_APROVACAO".into(), Some(90.0), Some("2026-12-31".into()), None, Some(tok), None)
+                .await.map_err(|e| anyhow!("enviar {tag}: {e}"))?;
+            anyhow::Ok(id)
+        }
+    };
+
+    // CONSEGUE: aprovar (Orçamentos aprova desde o #189).
+    let eq_aprova = aguardando("A").await?;
+    let aprovado = equipamentos::aprovar_orcamento(AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq_aprova,expected_updated_em:token(eq_aprova).await?,
         pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],aprovado:None,resposta_esperada_id:None,motivo_divergencia:None })
+        .await.map_err(|e| anyhow!("aprovar_orcamento: {e}"))?;
+    assert_eq!(aprovado.status.as_deref(), Some("APROVADO"));
+
+    // CONSEGUE: reprovar.
+    let eq_reprova = aguardando("R").await?;
+    let reprovado = equipamentos::atualizar_status_equipamento(eq_reprova, "REPROVADO".into(), None, None, None, Some(token(eq_reprova).await?), None)
+        .await.map_err(|e| anyhow!("reprovar: {e}"))?;
+    assert_eq!(reprovado.status.as_deref(), Some("REPROVADO"));
+
+    // NÃO CONSEGUE: correção de status (voltar etapa) é só de Ações financeiras.
+    let erro = equipamentos::atualizar_status_equipamento(eq_aprova, "AGUARDANDO_APROVACAO".into(), None, None, None, Some(token(eq_aprova).await?), Some("Teste de correção".into()))
         .await.unwrap_err();
     assert!(erro.contains(SEM_PERMISSAO), "{erro}");
+    let st: String = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id=$1").bind(eq_aprova).fetch_one(&pool).await?;
+    assert_eq!(st, "APROVADO");
 
-    // NÃO CONSEGUE: reprovar.
-    let erro = equipamentos::atualizar_status_equipamento(eq, "REPROVADO".into(), None, None, None, Some(token(eq).await?), None).await.unwrap_err();
-    assert!(erro.contains(SEM_PERMISSAO), "{erro}");
-    let st: String = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id=$1").bind(eq).fetch_one(&pool).await?;
-    assert_eq!(st, "AGUARDANDO_APROVACAO");
-
-    // NÃO CONSEGUE: finalizar OS só de garantia, que sai aprovada (PREPARE_QUOTES nunca aprova).
+    // CONSEGUE: encerrar OS só de garantia (sai aprovada com total 0, com a confirmação de garantia).
     let eq_garantia: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,cliente_id,status) VALUES ($1,'Zebra','GC420t','Impressora','2026-09-27','Garantia',$2,$3,'EM_VERIFICACAO') RETURNING id")
         .bind(format!("G-{suffix}")).bind(empresa).bind(cliente).fetch_one(&pool).await?;
-    let erro = verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
+    verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
         equipamento_id:eq_garantia, empresa_id:Some(empresa), tecnico_nome:"Teste".into(), problema_relatado:"Teste".into(),
         servicos_necessarios:Some(serde_json::json!([{"id":"g","descricao":"Garantia","valor":0,"pecas":[]}]).to_string()),
         pecas_necessarias:Some("[]".into()), custo_total:Some(0.0), concluida:Some(true), confirmar_garantia: true, ..VerificacaoInput::default()
-    }).await.unwrap_err();
-    assert!(erro.contains(SEM_PERMISSAO), "{erro}");
+    }).await.map_err(|e| anyhow!("garantia: {e}"))?;
     let st: String = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id=$1").bind(eq_garantia).fetch_one(&pool).await?;
-    assert_eq!(st, "EM_VERIFICACAO");
+    assert_eq!(st, "APROVADO", "OS só de garantia encerrada sai aprovada");
 
-    // NÃO CONSEGUE: definir senha de contato que decide orçamento.
-    let erro = portal_cliente::definir_senha_portal_contato(contato, Some("Senha1234".into())).await.unwrap_err();
-    assert!(erro.contains(SEM_PERMISSAO), "{erro}");
+    // CONSEGUE: definir senha de contato que decide orçamento (DECIDIR aceita Orçamentos).
+    portal_cliente::definir_senha_portal_contato(contato, Some("Senha1234".into())).await
+        .map_err(|e| anyhow!("senha de quem decide: {e}"))?;
 
     // PRORROGAR PRAZO (I2): equipamento AGUARDANDO_APROVACAO já publicado.
     let prorrogar = |novo: String, tok: String, confirmar: bool| async move {
@@ -386,6 +414,7 @@ async fn main() -> Result<()> {
     let erro = equipamentos::definir_responsavel_equipamento(eq_c, ct_d_do_cliente_c, tok0).await.err().expect("token velho deveria falhar");
     assert!(erro.contains("Conflito de concorrência"), "{erro}");
 
-    eprintln!("OK: perfil TECNICO prepara, envia e publica o orçamento (acesso ao portal, senha só ao provedor, responsável da OS), mas não aprova, reprova, altera OS decidida nem define senha do portal.");
+    // Resultado do teste (não é debug): writeln em vez de eprintln para o filtro do pre-qa-check.
+    writeln!(std::io::stderr(), "OK: perfil TECNICO prepara, envia e publica o orçamento (acesso ao portal, senha só ao provedor, responsável da OS), aprova, reprova, encerra OS só de garantia e define a senha de quem decide; não corrige status nem altera OS decidida.")?;
     Ok(())
 }

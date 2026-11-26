@@ -52,7 +52,7 @@ export function PecasDoServico({ pecas, onChange }: Props) {
             <ValorDecimalInput aria-label={`Valor de ${peca.nome}`} className="w-24" min={0}
               value={Number(peca.valor_unitario) || 0} onValueChange={(valor) => onChange(pecas.map((item) =>
                 item.produto_id === peca.produto_id ? { ...item, valor_unitario: valor } : item))} />
-            <span className={saldo !== undefined && saldo < peca.quantidade ? "text-amber-700" : "text-muted-foreground"}>
+            <span className={saldo !== undefined && saldo < peca.quantidade ? "text-status-wait" : "text-muted-foreground"}>
               Saldo {saldo ?? "—"}{saldo !== undefined && saldo < peca.quantidade ? " · falta peça" : ""}
             </span>
             <Button type="button" variant="ghost" size="icon" aria-label={`Remover ${peca.nome}`}
@@ -64,7 +64,7 @@ export function PecasDoServico({ pecas, onChange }: Props) {
       })}
       <div className="flex items-center gap-2">
         <Plus className="h-4 w-4 text-muted-foreground" />
-        <select aria-label="Adicionar peça" className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
+        <select aria-label="Adicionar peça" className="h-9 w-full max-w-sm rounded-md border bg-background px-2 text-sm"
           value="" onChange={(event) => adicionar(Number(event.target.value))}>
           <option value="">Adicionar peça do estoque...</option>
           {opcoes.filter((produto) => produto.id && !pecas.some((peca) => peca.produto_id === produto.id))

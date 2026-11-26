@@ -1,4 +1,4 @@
--- Contrato SQL do Portal das Impressoras do Cliente (migrations 0035, 0036, 0038 e 0039).
+-- Contrato SQL do Portal das Impressoras do Cliente (migrations 0035, 0036, 0038, 0039 e 0064).
 -- Execute num banco descartável com as migrations SQLx aplicadas (nome iniciando por autoos_stock_test):
 --   psql --set ON_ERROR_STOP=1 --file=supabase/tests/portal_cliente_contract.sql
 -- Tudo roda numa transação desfeita no final; dados sintéticos TESTE-PORTAL.
@@ -713,6 +713,80 @@ BEGIN
     END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
         PERFORM pg_temp.ok(has_function_privilege('service_role', 'public.status_publico_retirada(text)', 'EXECUTE'), 'service_role lê o endereço');
+    END IF;
+END $$;
+
+-- ─── Senha visível para a equipe (0064) ─────────────────────────────────────
+-- A cópia legível some sempre que deixa de ser a senha que vale.
+DO $$
+DECLARE
+    v_emp INTEGER;
+    v_emp2 INTEGER;
+    v_cli INTEGER;
+    v_ct INTEGER;
+    v_perfil_outro INTEGER;
+BEGIN
+    INSERT INTO empresas (nome, email, status) VALUES ('TESTE-PORTAL senha visível', 'senha-visivel@teste-portal.invalid', 'ativo')
+    RETURNING id INTO v_emp;
+    INSERT INTO empresas (nome, email, status) VALUES ('TESTE-PORTAL outra', 'senha-visivel-2@teste-portal.invalid', 'ativo')
+    RETURNING id INTO v_emp2;
+    INSERT INTO clientes (empresa_id, nome, tipo_pessoa, documento) VALUES (v_emp, 'TESTE-PORTAL Cliente SV', 'PJ', '11444777000161')
+    RETURNING id INTO v_cli;
+    INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, ativo, portal_acesso)
+    VALUES (v_emp, v_cli, 'TESTE-PORTAL Ana', TRUE, 'ACOMPANHAR') RETURNING id INTO v_ct;
+
+    -- Contato de outra empresa não entra (FK composta).
+    PERFORM pg_temp.espera_erro(format(
+        'INSERT INTO portal_senhas_visiveis (contato_id, empresa_id, senha, senha_hash) VALUES (%s, %s, %L, %L)',
+        v_ct, v_emp2, 'x', 'y'), 'insert or update on table "portal_senhas_visiveis" violates foreign key constraint "fk_portal_senhas_visiveis_contato"');
+
+    -- Guarda e lê.
+    PERFORM portal_definir_senha_contato(v_emp, v_ct, 'Visivel-Senha-1', NULL);
+    PERFORM portal_guardar_senha_visivel(v_emp, v_ct, 'Visivel-Senha-1', NULL);
+    PERFORM pg_temp.ok(portal_ler_senha_visivel(v_emp, v_ct) = 'Visivel-Senha-1', 'senha guardada é lida');
+    PERFORM pg_temp.ok(portal_ler_senha_visivel(v_emp2, v_ct) IS NULL, 'outra empresa não lê');
+    PERFORM pg_temp.espera_erro(format('SELECT portal_guardar_senha_visivel(%s, %s, %L, NULL)', v_emp, v_ct, 'Errada-123'), 'SENHA_NAO_CONFERE');
+
+    -- Promoção a DECIDIR: a 0038 zera o hash, a cópia sai.
+    UPDATE cliente_contatos SET portal_acesso = 'DECIDIR' WHERE id = v_ct;
+    PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM portal_senhas_visiveis WHERE contato_id = v_ct), 'promover a DECIDIR apaga a cópia');
+
+    -- Troca de senha por outro caminho (sem guardar): a cópia antiga sai.
+    PERFORM portal_definir_senha_contato(v_emp, v_ct, 'Visivel-Senha-2', NULL);
+    PERFORM portal_guardar_senha_visivel(v_emp, v_ct, 'Visivel-Senha-2', NULL);
+    PERFORM portal_definir_senha_contato(v_emp, v_ct, 'Visivel-Senha-3', NULL);
+    PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM portal_senhas_visiveis WHERE contato_id = v_ct), 'senha trocada apaga a cópia antiga');
+
+    -- Acesso retirado.
+    PERFORM portal_guardar_senha_visivel(v_emp, v_ct, 'Visivel-Senha-3', NULL);
+    UPDATE cliente_contatos SET portal_acesso = 'NENHUM' WHERE id = v_ct;
+    PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM portal_senhas_visiveis WHERE contato_id = v_ct), 'retirar o acesso apaga a cópia');
+
+    -- Contato desativado.
+    UPDATE cliente_contatos SET portal_acesso = 'DECIDIR' WHERE id = v_ct;
+    PERFORM portal_definir_senha_contato(v_emp, v_ct, 'Visivel-Senha-4', NULL);
+    PERFORM portal_guardar_senha_visivel(v_emp, v_ct, 'Visivel-Senha-4', NULL);
+    UPDATE cliente_contatos SET ativo = FALSE WHERE id = v_ct;
+    PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM portal_senhas_visiveis WHERE contato_id = v_ct), 'desativar o contato apaga a cópia');
+
+    -- Senha removida pelo app.
+    UPDATE cliente_contatos SET ativo = TRUE, portal_acesso = 'DECIDIR' WHERE id = v_ct;
+    PERFORM portal_definir_senha_contato(v_emp, v_ct, 'Visivel-Senha-5', NULL);
+    PERFORM portal_guardar_senha_visivel(v_emp, v_ct, 'Visivel-Senha-5', NULL);
+    PERFORM portal_definir_senha_contato(v_emp, v_ct, NULL, NULL);
+    PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM portal_senhas_visiveis WHERE contato_id = v_ct), 'remover a senha apaga a cópia');
+
+    -- Perfil de outra empresa não pode constar como autor.
+    INSERT INTO security_profiles (nome, role, permissions, empresa_id)
+    VALUES ('TESTE-PORTAL perfil outra', 'ATENDENTE', '[]', v_emp2) RETURNING id INTO v_perfil_outro;
+    PERFORM portal_definir_senha_contato(v_emp, v_ct, 'Visivel-Senha-6', NULL);
+    PERFORM pg_temp.espera_erro(format('SELECT portal_guardar_senha_visivel(%s, %s, %L, %s)', v_emp, v_ct, 'Visivel-Senha-6', v_perfil_outro),
+        'insert or update on table "portal_senhas_visiveis" violates foreign key constraint "fk_portal_senhas_visiveis_perfil"');
+
+    PERFORM pg_temp.ok(NOT has_table_privilege('public', 'public.portal_senhas_visiveis', 'SELECT'), 'PUBLIC não lê a tabela');
+    PERFORM pg_temp.ok(NOT has_function_privilege('public', 'public.portal_ler_senha_visivel(integer, integer)', 'EXECUTE'), 'PUBLIC não lê a senha');
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        PERFORM pg_temp.ok(NOT has_table_privilege('service_role', 'public.portal_senhas_visiveis', 'SELECT'), 'service_role não lê a tabela');
     END IF;
 END $$;
 

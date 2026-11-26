@@ -1,8 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VerificacaoTecnica } from "./VerificacaoTecnica";
 import { MENSAGEM_TOTAL_ZERO_SEM_GARANTIA } from "@/lib/orcamento-estoque";
+import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
+import type { SecurityProfile } from "@/types";
+import { useState } from "react";
+import { createMemoryRouter, RouterProvider, useNavigate } from "react-router-dom";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+
+beforeEach(() => semearTecnicosPadrao());
 
 const warning = vi.hoisted(() => vi.fn());
 
@@ -98,6 +106,7 @@ describe("VerificacaoTecnica", () => {
     );
     await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
     await user.type(screen.getByPlaceholderText("Nome do serviço"), "Atendimento em garantia");
+    expect(screen.queryByText(/^Garantia$/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Finalizar Verificação/i }));
     expect(onConcluir).not.toHaveBeenCalled();
     expect(screen.getByText("Confirmar OS só de garantia?")).toBeInTheDocument();
@@ -167,5 +176,234 @@ describe("VerificacaoTecnica", () => {
     expect(screen.queryByDisplayValue("Falha no cabeçote do equipamento A")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("Troca de cabeçote")).not.toBeInTheDocument();
     expect(screen.getByText("Nenhum serviço adicionado.")).toBeInTheDocument();
+  });
+  it("salva o checklist marcado e mostra os custos enquanto digita", async () => {
+    const user = userEvent.setup();
+    const onConcluir = vi.fn().mockResolvedValue(true);
+    render(
+      <VerificacaoTecnica
+        equipamento={equipamento}
+        open
+        onOpenChange={vi.fn()}
+        onConcluir={onConcluir}
+      />,
+    );
+    expect(screen.getByText("0 de 7")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Teste de impressão" }));
+    await user.click(screen.getByRole("checkbox", { name: "Limpeza interna" }));
+    expect(screen.getByText("2 de 7")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
+    await user.type(screen.getByPlaceholderText("Nome do serviço"), "Limpeza da cabeça");
+    const campoValor = screen.getByLabelText("Valor do serviço");
+    await user.clear(campoValor);
+    await user.paste("120,00");
+    const custos = screen.getByRole("region", { name: "Custos" });
+    expect(within(custos).getAllByText("R$ 120,00").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: /Finalizar Verificação/i }));
+    await waitFor(() => expect(onConcluir).toHaveBeenCalled());
+    const itens = JSON.parse(onConcluir.mock.calls[0][0].itens_verificados) as { nome: string; verificado: boolean }[];
+    expect(itens).toHaveLength(7);
+    expect(itens.filter((item) => item.verificado).map((item) => item.nome)).toEqual(["Teste de impressão", "Limpeza interna"]);
+    expect(onConcluir.mock.calls[0][0].custo_total).toBe(120);
+  });
+
+  it("sem permissão de orçamento a página abre e avisa quem pode finalizar", () => {
+    render(<VerificacaoTecnica equipamento={equipamento} open onOpenChange={vi.fn()} onConcluir={vi.fn()} podeFinalizar={false} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Finalizar pede o PIN de quem tem Ações financeiras ou Elaborar e enviar orçamentos.");
+    expect(screen.getByRole("button", { name: /Finalizar Verificação/i })).toBeInTheDocument();
+  });
+
+  it("no celular cada serviço vira uma linha que abre a edição", async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((consulta: string) => ({ matches: false, media: consulta, addEventListener: () => undefined, removeEventListener: () => undefined })) as unknown as typeof window.matchMedia;
+    try {
+      const user = userEvent.setup();
+      render(<VerificacaoTecnica equipamento={equipamento} open onOpenChange={vi.fn()} onConcluir={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
+      await user.type(screen.getByPlaceholderText("Nome do serviço"), "Limpeza");
+      await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
+      const linha = screen.getByRole("button", { name: "Editar serviço Limpeza" });
+      expect(linha).toHaveClass("min-h-11");
+      expect(screen.getAllByPlaceholderText("Nome do serviço").filter((campo) => campo.closest("[hidden]") == null)).toHaveLength(1);
+      await user.click(linha);
+      expect(screen.getByDisplayValue("Limpeza").closest("[hidden]")).toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it("no celular, recolher um serviço com valor inválido mantém o erro visível ao reabrir", async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((consulta: string) => ({ matches: false, media: consulta, addEventListener: () => undefined, removeEventListener: () => undefined })) as unknown as typeof window.matchMedia;
+    try {
+      const user = userEvent.setup();
+      render(<VerificacaoTecnica equipamento={equipamento} open onOpenChange={vi.fn()} onConcluir={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
+      await user.type(screen.getByPlaceholderText("Nome do serviço"), "Limpeza");
+      const campo = screen.getByLabelText("Valor do serviço");
+      await user.clear(campo);
+      await user.paste("abc");
+      await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
+      await user.click(screen.getByRole("button", { name: "Editar serviço Limpeza" }));
+      expect(screen.getByText("Informe um valor válido.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Finalizar Verificação/i })).toBeDisabled();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it("trocar só o técnico já conta como verificação preenchida", async () => {
+    HTMLElement.prototype.hasPointerCapture = () => false;
+    HTMLElement.prototype.scrollIntoView = () => undefined;
+    const user = userEvent.setup();
+    const onSujoChange = vi.fn();
+    render(
+      <VerificacaoTecnica
+        equipamento={{ id: 1, marca: "Zebra", modelo: "ZT230", serial_number: "SN", tipo: "Impressora", status: "EM_VERIFICACAO", data_entrada: "2026-10-01" } as never}
+        open
+        onOpenChange={vi.fn()}
+        onConcluir={vi.fn()}
+        tecnicoInicial="Ivan"
+        onSujoChange={onSujoChange}
+      />,
+    );
+    await waitFor(() => expect(onSujoChange).toHaveBeenLastCalledWith(false));
+    await user.click(screen.getByLabelText("Técnico responsável"));
+    await user.click(await screen.findByRole("option", { name: "Isaias" }));
+    await waitFor(() => expect(onSujoChange).toHaveBeenLastCalledWith(true));
+  });
+
+  it("a lista de técnicos que muda depois não troca o técnico escolhido; sem escolha, segue a sugestão nova", async () => {
+    HTMLElement.prototype.hasPointerCapture = () => false;
+    HTMLElement.prototype.scrollIntoView = () => undefined;
+    const user = userEvent.setup();
+    const base = { role: "TECNICO", permissions: [], pin_configured: true, is_default: false, ativo: true, atende_tecnico: true };
+    // A lista sai em ordem alfabética: com Ana na equipe, a sugestão (primeiro técnico) vira Ana.
+    const entraAna = () => definirTecnicosDaEmpresa(
+      ["Ana", "Isaias", "Ivan"].map((nome, i) => ({ ...base, id: 950 + i, nome, email_profissional: `${nome.toLowerCase()}@exemplo.test` })) as SecurityProfile[],
+    );
+    const props = {
+      equipamento: { id: 1, marca: "Zebra", modelo: "ZT230", serial_number: "SN", tipo: "Impressora", status: "EM_VERIFICACAO", data_entrada: "2026-10-01" } as never,
+      open: true, onOpenChange: vi.fn(), onConcluir: vi.fn(),
+    };
+    const campo = () => screen.getByLabelText("Técnico responsável");
+
+    // Sem escolha: a sugestão acompanha a lista nova.
+    const { unmount } = render(<VerificacaoTecnica {...props} />);
+    await waitFor(() => expect(campo()).toHaveTextContent("Isaias"));
+    act(() => entraAna());
+    await waitFor(() => expect(campo()).toHaveTextContent("Ana"));
+    unmount();
+
+    // Com escolha: a lista nova não troca o técnico escolhido.
+    semearTecnicosPadrao();
+    render(<VerificacaoTecnica {...props} />);
+    await waitFor(() => expect(campo()).toHaveTextContent("Isaias"));
+    await user.click(campo());
+    await user.click(await screen.findByRole("option", { name: "Ivan" }));
+    await waitFor(() => expect(campo()).toHaveTextContent("Ivan"));
+    act(() => entraAna());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(campo()).toHaveTextContent("Ivan");
+  });
+});
+
+// Mesma ligação de Equipamentos.tsx: a seta de voltar vai para `onVoltar`, que com algo
+// preenchido navega pelo bloqueio "Sair sem salvar?" e, limpo, fecha a página direto.
+function PaginaVerificacaoComAviso({ onOpenChange }: { onOpenChange: (aberta: boolean) => void }) {
+  const [sujo, setSujo] = useState(false);
+  const [aberta, setAberta] = useState(true);
+  const navigate = useNavigate();
+  const aviso = useAvisoAoSair(aberta && sujo);
+  const fechar = () => {
+    setAberta(false);
+    onOpenChange(false);
+    navigate("/equipamentos");
+  };
+  return (
+    <>
+      <VerificacaoTecnica
+        equipamento={{ id: 1, marca: "Zebra", modelo: "ZT230", serial_number: "SN", tipo: "Impressora", status: "EM_VERIFICACAO", data_entrada: "2026-10-01" } as never}
+        open={aberta}
+        onOpenChange={(valor) => { if (!valor) fechar(); }}
+        onConcluir={vi.fn()}
+        onSujoChange={setSujo}
+        onVoltar={() => (sujo ? navigate("/equipamentos") : fechar())}
+      />
+      {aviso.dialogo}
+    </>
+  );
+}
+
+function montarComAviso() {
+  const onOpenChange = vi.fn();
+  const router = createMemoryRouter(
+    [
+      { path: "/equipamentos/1/verificacao", element: <PaginaVerificacaoComAviso onOpenChange={onOpenChange} /> },
+      { path: "/equipamentos", element: <p>Lista de equipamentos</p> },
+    ],
+    { initialEntries: ["/equipamentos/1/verificacao"] },
+  );
+  render(<RouterProvider router={router} />);
+  return { router, onOpenChange };
+}
+
+describe("VerificacaoTecnica — seta de voltar", () => {
+  it("preenchida: pergunta antes; continuar editando mantém o diagnóstico", async () => {
+    const user = userEvent.setup();
+    const { router, onOpenChange } = montarComAviso();
+    await user.type(screen.getByLabelText("Diagnóstico técnico"), "Cabeça gasta");
+    await user.click(screen.getByRole("button", { name: /Zebra ZT230 · SN/ }));
+
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(router.state.location.pathname).toBe("/equipamentos/1/verificacao");
+    expect(screen.getByLabelText("Diagnóstico técnico")).toHaveValue("Cabeça gasta");
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("preenchida: sair sem salvar descarta e navega", async () => {
+    const user = userEvent.setup();
+    const { router } = montarComAviso();
+    await user.type(screen.getByLabelText("Diagnóstico técnico"), "Cabeça gasta");
+    await user.click(screen.getByRole("button", { name: /Zebra ZT230 · SN/ }));
+    await user.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    expect(await screen.findByText("Lista de equipamentos")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/equipamentos");
+  });
+
+  it("limpa: volta sem perguntar", async () => {
+    const user = userEvent.setup();
+    const { router, onOpenChange } = montarComAviso();
+    await user.click(screen.getByRole("button", { name: /Zebra ZT230 · SN/ }));
+    expect(await screen.findByText("Lista de equipamentos")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(router.state.location.pathname).toBe("/equipamentos");
+  });
+
+  it("sem onVoltar, a seta fecha como o Cancelar", async () => {
+    const onOpenChange = vi.fn();
+    render(
+      <VerificacaoTecnica equipamento={{ id: 1, marca: "Zebra", modelo: "ZT230", serial_number: "SN" } as never} open onOpenChange={onOpenChange} onConcluir={vi.fn()} />,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: /Zebra ZT230 · SN/ }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("com onVoltar, a seta não limpa o formulário nem fecha a página", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    const onVoltar = vi.fn();
+    render(
+      <VerificacaoTecnica equipamento={{ id: 1, marca: "Zebra", modelo: "ZT230", serial_number: "SN" } as never} open onOpenChange={onOpenChange} onConcluir={vi.fn()} onVoltar={onVoltar} />,
+    );
+    await user.type(screen.getByLabelText("Diagnóstico técnico"), "Rolete");
+    await user.click(screen.getByRole("button", { name: /Zebra ZT230 · SN/ }));
+    expect(onVoltar).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Diagnóstico técnico")).toHaveValue("Rolete");
   });
 });

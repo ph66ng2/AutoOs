@@ -16,50 +16,15 @@ import {
   type DatabaseInitError,
 } from "@/lib/db-config";
 import { versaoDoApp } from "@/lib/error-utils";
+import { failureCopy as copyFor, longOutageMessage, reconnectDelaySeconds } from "@/lib/database-reconnect";
 
-/** Espera entre tentativas automáticas, em segundos; a última se repete. */
-export const RECONNECT_DELAYS_SECONDS = [5, 10, 20, 30];
-/** Com o servidor lotado, nunca tentar antes disto (igual ao backoff do backend). */
-export const CAPACITY_MIN_DELAY_SECONDS = 30;
-
-export function reconnectDelaySeconds(attempt: number, tipo: DatabaseErrorKind): number {
-  const index = Math.min(attempt, RECONNECT_DELAYS_SECONDS.length - 1);
-  const delay = RECONNECT_DELAYS_SECONDS[index];
-  return tipo === "capacidade" ? Math.max(delay, CAPACITY_MIN_DELAY_SECONDS) : delay;
-}
-
-type FailureKind = Exclude<DatabaseErrorKind, "nao_configurado">;
-
-const COPY: Record<FailureKind, { title: string; description: string }> = {
-  rede: {
-    title: "Sem conexão com o servidor",
-    description: "Confira a internet deste computador. O AutoOS tenta de novo sozinho.",
-  },
-  capacidade: {
-    title: "Servidor ocupado",
-    description: "Muitos computadores conectados agora. O AutoOS tenta de novo em instantes.",
-  },
-  desconhecido: {
-    title: "Não foi possível abrir o AutoOS",
-    description: "O servidor respondeu algo inesperado. O AutoOS tenta de novo sozinho.",
-  },
-  credencial: {
-    title: "O banco precisa de ajuste",
-    description: "A senha ou o endereço salvo foi recusado. Chame o administrador.",
-  },
-  configuracao_invalida: {
-    title: "O banco precisa de ajuste",
-    description: "A senha ou o endereço salvo foi recusado. Chame o administrador.",
-  },
-  incompativel: {
-    title: "Banco de outra versão",
-    description: "Este AutoOS e o banco estão em versões diferentes. Chame o administrador para atualizar.",
-  },
-};
-
-function copyFor(tipo: DatabaseErrorKind) {
-  return tipo === "nao_configurado" ? COPY.desconhecido : COPY[tipo];
-}
+export {
+  CAPACITY_MIN_DELAY_SECONDS,
+  LONG_OUTAGE_MINUTES,
+  RECONNECT_DELAYS_SECONDS,
+  longOutageMessage,
+  reconnectDelaySeconds,
+} from "@/lib/database-reconnect";
 
 function StateIcon({ tipo }: { tipo: DatabaseErrorKind }) {
   const tone: ConnectionTone = isTransientDatabaseError(tipo) ? "wait" : "bad";
@@ -85,12 +50,16 @@ export function supportDetailsText(error: DatabaseInitError, now: Date = new Dat
 
 interface DatabaseUnavailableScreenProps {
   initialError: DatabaseInitError;
+  /** Quando a conexão caiu (ms). Fica com quem monta a tela para sobreviver à ida à configuração avançada. */
+  downSince?: number;
   onConnected: () => void;
   onOpenAdvanced: () => void;
 }
 
-export function DatabaseUnavailableScreen({ initialError, onConnected, onOpenAdvanced }: DatabaseUnavailableScreenProps) {
+export function DatabaseUnavailableScreen({ initialError, downSince, onConnected, onOpenAdvanced }: DatabaseUnavailableScreenProps) {
   const [error, setError] = useState(initialError);
+  const [mountedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const [reconnecting, setReconnecting] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -98,6 +67,12 @@ export function DatabaseUnavailableScreen({ initialError, onConnected, onOpenAdv
   const reconnectingRef = useRef(false);
 
   const automatic = isTransientDatabaseError(error.tipo);
+  const longOutage = automatic ? longOutageMessage(downSince ?? mountedAt, now) : null;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const scheduleNext = useCallback((tipo: DatabaseErrorKind) => {
     if (!isTransientDatabaseError(tipo)) {
@@ -139,7 +114,7 @@ export function DatabaseUnavailableScreen({ initialError, onConnected, onOpenAdv
       await navigator.clipboard.writeText(supportDetailsText(error));
       toast("Detalhes copiados", {
         description: "Cole na conversa com o suporte.",
-        icon: <Check className="h-4 w-4 text-[var(--cx-ok,#3d7a55)]" aria-hidden="true" />,
+        icon: <Check className="h-4 w-4 text-status-ok" aria-hidden="true" />,
       });
     } catch {
       toast.error("Não foi possível copiar", { description: "Abra \"Detalhes para o suporte\" e copie o texto à mão." });
@@ -199,6 +174,7 @@ export function DatabaseUnavailableScreen({ initialError, onConnected, onOpenAdv
         <StateIcon tipo={error.tipo} />
         <h1 className="mt-2 text-2xl font-bold tracking-[-0.01em] [text-wrap:balance]">{copy.title}</h1>
         <p className="m-0 max-w-[40ch] text-[15px] text-[var(--cx-muted)] [text-wrap:pretty]">{copy.description}</p>
+        {longOutage && <p className="m-0 text-[13px] text-[var(--cx-muted)]">{longOutage}</p>}
 
         <div className="mt-2 flex flex-wrap justify-center gap-2">
           {automatic ? (
@@ -241,7 +217,7 @@ export function DatabaseUnavailableScreen({ initialError, onConnected, onOpenAdv
           </button>
           {detailsOpen && (
             <div id="detalhes-suporte" className="mt-2 rounded-xl bg-[var(--cx-sunken)] px-3.5 py-3">
-              <code className="block break-words font-mono text-xs leading-normal text-[var(--cx-muted)]">{error.mensagem}</code>
+              <code className="block break-words [font-family:var(--cx-mono)] text-xs leading-normal text-[var(--cx-muted)]">{error.mensagem}</code>
             </div>
           )}
         </div>
@@ -262,6 +238,7 @@ type FallbackView =
  */
 export function DatabaseFallback({ onConnected }: { onConnected: () => void }) {
   const [view, setView] = useState<FallbackView>({ kind: "loading" });
+  const [downSince] = useState(() => Date.now());
 
   useEffect(() => {
     let active = true;
@@ -281,8 +258,8 @@ export function DatabaseFallback({ onConnected }: { onConnected: () => void }) {
 
   if (view.kind === "loading") {
     return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050608]">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-cyan-400" />
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary motion-reduce:[animation-duration:1.6s]" />
       </div>
     );
   }
@@ -301,6 +278,7 @@ export function DatabaseFallback({ onConnected }: { onConnected: () => void }) {
   return (
     <DatabaseUnavailableScreen
       initialError={view.error}
+      downSince={downSince}
       onConnected={onConnected}
       onOpenAdvanced={() => setView({ kind: "advanced", error: view.error })}
     />

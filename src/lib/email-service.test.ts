@@ -29,7 +29,12 @@ vi.mock("@/lib/pdf-service", () => ({
   },
 }));
 
-import { EmailService } from "@/lib/email-service";
+import { EmailService, montarCcs } from "@/lib/email-service";
+import { definirCopiaGerencia } from "@/lib/copia-gerencia";
+import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
+import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+
+beforeEach(() => semearTecnicosPadrao());
 
 const equipamentoBase: Equipamento = {
   id: 10,
@@ -127,6 +132,25 @@ describe("EmailService", () => {
       }),
     );
     expect(mockGerarOrcamento).toHaveBeenCalledWith(equipamentoBase, verificacaoBase);
+  });
+
+  it("usa o valor vigente da OS no corpo e no PDF do orçamento", async () => {
+    const equipamento = { ...equipamentoBase, valor_orcamento: 81 };
+    await EmailService.enviarOrcamento(equipamento, verificacaoBase);
+
+    expect(mockGerarOrcamento).toHaveBeenCalledWith(equipamento, expect.objectContaining({ custo_total: 81 }));
+    expect(mockInvoke.mock.calls[0][1].input.corpo).toContain("81,00");
+    expect(mockInvoke.mock.calls[0][1].input.corpo_html).toContain("81,00");
+  });
+
+  it("registra a falha sem enviar se o PDF do orçamento não puder ser anexado", async () => {
+    mockGerarOrcamento.mockResolvedValueOnce(null);
+
+    const resultado = await EmailService.enviarOrcamento(equipamentoBase, verificacaoBase);
+
+    expect(resultado.sucesso).toBe(false);
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockRegistrarComunicacao).toHaveBeenCalledWith(expect.objectContaining({ enviado: false }));
   });
 
   it("enviarOrcamento adiciona Ivan em cópia quando ele é o técnico responsável (junto da gerência)", async () => {
@@ -260,5 +284,58 @@ describe("EmailService", () => {
     const res = await EmailService.enviarEquipamentoPronto({ ...equipamentoBase, cliente_email: undefined });
     expect(res.sucesso).toBe(false);
     expect(mockInvoke).not.toHaveBeenCalled();
+  });
+});
+
+describe("cópia da gerência e técnico por empresa", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGerarOrcamento.mockResolvedValue("/fake/path/orcamento_test.pdf");
+    mockGerarOrdemServico.mockResolvedValue("/fake/path/ordem_test.pdf");
+    mockCopiarAnexoEmailParaTemp.mockImplementation((_origem: string, nome: string) => Promise.resolve(`/tmp/autoos/${nome}`));
+    mockRemoverAnexoEmailTemp.mockResolvedValue(undefined);
+    mockInvoke.mockResolvedValue(undefined);
+  });
+
+  it("instalação de empresa única: Pronto leva a gerência e o técnico", async () => {
+    definirCopiaGerencia(true);
+    mockBuscarVerificacao.mockResolvedValueOnce({ ...verificacaoBase, tecnico_nome: "Ivan" });
+    await EmailService.enviarEquipamentoPronto(equipamentoBase);
+    expect(mockInvoke.mock.calls[0][1].input.cc).toEqual(["medeiros@bmitag.com.br", "ivan@bmitag.com.br"]);
+  });
+
+  it("multiempresa, outra empresa: Pronto sem a gerência da BMITAG e sem técnico de outra empresa", async () => {
+    // Sessão da empresa B: o backend diz que ela não leva a cópia e lista só os técnicos dela.
+    definirCopiaGerencia(false);
+    definirTecnicosDaEmpresa([{ id: 50, nome: "Joana", email_profissional: "joana@empresa-b.test" }]);
+    mockBuscarVerificacao.mockResolvedValueOnce({ ...verificacaoBase, tecnico_nome: "Ivan" });
+    await EmailService.enviarEquipamentoPronto(equipamentoBase);
+    const input = mockInvoke.mock.calls[0][1].input;
+    expect(input.cc).toEqual([]);
+    expect(JSON.stringify(input)).not.toContain("bmitag.com.br");
+  });
+
+  it("multiempresa, outra empresa: orçamento e ordem de entrada só com o técnico dela", async () => {
+    definirCopiaGerencia(false);
+    definirTecnicosDaEmpresa([{ id: 50, nome: "Ivan", email_profissional: "ivan@empresa-b.test" }]);
+    await EmailService.enviarOrcamento(equipamentoBase, { ...verificacaoBase, tecnico_nome: "Ivan" });
+    await EmailService.enviarOrdemEntrada({ ...equipamentoBase, observacoes: "Técnico inicial: Ivan (ivan@bmitag.com.br)" });
+    expect(mockInvoke.mock.calls[0][1].input.cc).toEqual(["ivan@empresa-b.test"]);
+    expect(JSON.stringify(mockInvoke.mock.calls[0][1].input)).not.toContain("bmitag.com.br");
+    expect(mockInvoke.mock.calls[1][1].input.cc).toEqual(["ivan@empresa-b.test"]);
+  });
+
+  it("empresa vinculada ao suporte numa instalação multiempresa: mantém a gerência", async () => {
+    // O backend responde true para a empresa do canal de suporte (copia_gerencia_da_empresa).
+    definirCopiaGerencia(true);
+    mockBuscarVerificacao.mockResolvedValueOnce({ ...verificacaoBase, tecnico_nome: "Isaias" });
+    await EmailService.enviarEquipamentoPronto(equipamentoBase);
+    expect(mockInvoke.mock.calls[0][1].input.cc).toEqual(["medeiros@bmitag.com.br", "isaias@bmitag.com.br"]);
+  });
+
+  it("sem resposta do backend (desconhecido), a gerência não vai", () => {
+    definirCopiaGerencia(null);
+    expect(montarCcs("ivan@bmitag.com.br")).toEqual(["ivan@bmitag.com.br"]);
+    expect(montarCcs()).toEqual([]);
   });
 });

@@ -8,15 +8,17 @@
  * - Indicador "Histórico de Ajustes" quando adjusted_at está presente
  * - Verificação dos parâmetros do audit (old_total, new_total, services counts)
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from "vitest";
 import { render, screen, act, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { distribuirMudancas } from "@/lib/ao-vivo";
 import * as equipamentoImagemUtils from "@/lib/equipamento-imagem-utils";
 
 // ─── Hoisted Mocks ──────────────────────────────────────
 
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockListen = vi.hoisted(() => vi.fn(() => Promise.resolve(vi.fn())));
+const rota = vi.hoisted(() => ({ pathname: "/equipamentos" }));
 const mockNavigate = vi.hoisted(() => vi.fn());
 
 const mockFinalizarVerificacao = vi.hoisted(() => vi.fn());
@@ -24,9 +26,13 @@ const mockMarcarPronto = vi.hoisted(() => vi.fn());
 const mockPermissions = vi.hoisted(() => ({ list: ["FINANCIAL_ACTIONS"] as string[] }));
 const mockEnsureSensitiveAccess = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 const mockAtualizarServicosVerificacao = vi.hoisted(() => vi.fn());
+const mockProrrogarPrazoOrcamento = vi.hoisted(() => vi.fn());
 const mockAnalisarAjusteOrcamento = vi.hoisted(() => vi.fn());
 const mockAprovarOrcamento = vi.hoisted(() => vi.fn());
 const mockAtualizarStatusEquipamento = vi.hoisted(() => vi.fn());
+const mockEnviarOrcamentoEmail = vi.hoisted(() => vi.fn());
+const mockBuscarEquipamento = vi.hoisted(() => vi.fn().mockResolvedValue({ atualizado_em: "2024-01-15T10:00:01Z" }));
+const mockListarPecasBaixaPendente = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 const mockBuscarVerificacao = vi.hoisted(() => vi.fn());
 const mockListarServicosCatalogoAtivos = vi.hoisted(() => vi.fn());
 const mockListarImagensEquipamento = vi.hoisted(() => vi.fn());
@@ -45,7 +51,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 vi.mock("react-router-dom", () => ({
-  useLocation: () => ({ state: {}, pathname: "/equipamentos" }),
+  useLocation: () => ({ state: {}, pathname: rota.pathname }),
   useNavigate: () => mockNavigate,
 }));
 
@@ -75,24 +81,29 @@ vi.mock("@/hooks/useStatusEquipamento", () => ({
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({
     ensureSensitiveAccess: (...args: unknown[]) => mockEnsureSensitiveAccess(...args),
-    status: { active_profile_id: 1, unlocked: true, permissions: mockPermissions.list },
+    status: { active_profile_id: 901, unlocked: true, permissions: mockPermissions.list },
     hasPermission: (permission: string) => mockPermissions.list.includes(permission),
   }),
 }));
 
+const mockNotificacao = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+}));
+
 vi.mock("@/hooks/useNotification", () => ({
-  useNotification: () => ({
-    success: vi.fn(),
-    error: vi.fn(),
-    warning: vi.fn(),
-    info: vi.fn(),
-  }),
+  useNotification: () => mockNotificacao,
 }));
 
 vi.mock("@/lib/db", () => ({
   db: {
+    prorrogarPrazoOrcamento: mockProrrogarPrazoOrcamento,
     listarProdutos: vi.fn().mockResolvedValue([]),
-    buscarEquipamento: vi.fn().mockResolvedValue({ atualizado_em: "2024-01-15T10:00:01Z" }),
+    buscarEquipamento: mockBuscarEquipamento,
+    listarPecasBaixaPendente: mockListarPecasBaixaPendente,
+    obterDestinatarioOrcamento: vi.fn().mockResolvedValue({ contatoId: null, nome: "Cliente A", email: "a@ex.com" }),
     buscarVerificacao: (...args: unknown[]) => mockBuscarVerificacao(...args),
     listarServicosCatalogoAtivos: (...args: unknown[]) => mockListarServicosCatalogoAtivos(...args),
     atualizarServicosVerificacao: (...args: unknown[]) => mockAtualizarServicosVerificacao(...args),
@@ -151,6 +162,7 @@ vi.mock("@/components/equipamentos/PdfPreviewDialog", () => ({
 vi.mock("@/lib/email-service", () => ({
   EmailService: {
     enviarOrdemEntrada: vi.fn(),
+    enviarOrcamento: mockEnviarOrcamentoEmail,
   },
 }));
 
@@ -162,7 +174,13 @@ vi.mock("@/lib/whatsapp-service", () => ({
 }));
 
 vi.mock("@/components/equipamentos/ClienteSelector", () => ({
-  ClienteSelector: () => <div data-testid="cliente-selector" />,
+  ClienteSelector: ({ onClienteSelecionado }: { onClienteSelecionado?: (cliente: unknown) => void }) => (
+    <div data-testid="cliente-selector">
+      <button type="button" onClick={() => onClienteSelecionado?.({ id: 999, nome: "Outro cliente", empresa_id: 1 })}>
+        Trocar cliente (teste)
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("@/components/equipamentos/ContatoResponsavelSelector", () => ({
@@ -187,7 +205,8 @@ vi.mock("@/components/equipamentos/PhotoUploadDialog", () => ({
 }));
 
 vi.mock("@/components/equipamentos/VerificacaoTecnica", () => ({
-  VerificacaoTecnica: () => <div data-testid="verificacao-tecnica" />,
+  VerificacaoTecnica: ({ open, equipamento }: { open: boolean; equipamento: { id: number } }) =>
+    open ? <div data-testid="verificacao-tecnica">Verificação da OS {equipamento.id}</div> : null,
 }));
 
 vi.mock("@/components/equipamentos/HistoricoComunicacoes", () => ({
@@ -326,9 +345,16 @@ function makeVerificacao(opts?: { adjusted_at?: string; servicos?: any[]; pecas?
 // ─── Import Component ───────────────────────────────────
 
 import Equipamentos from "../../Equipamentos";
+import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+
+beforeEach(() => semearTecnicosPadrao());
 
 describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {
+    rota.pathname = "/equipamentos";
+    mockNavigate.mockImplementation((destino: string) => {
+      if (destino.endsWith("/orcamento") || destino.endsWith("/verificacao")) rota.pathname = destino;
+    });
     vi.clearAllMocks();
     mockAtualizarEquipamento.mockResolvedValue({
       sucesso: true,
@@ -362,6 +388,46 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("reconsulta baixas pendentes em segundo plano ao receber mudança da OS aberta", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    mockBuscarEquipamento.mockResolvedValueOnce(equipamentoVerificado);
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" }));
+    await waitFor(() => expect(mockListarPecasBaixaPendente).toHaveBeenCalledWith(10, false));
+
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 10, referencia: null, operacao: "U" }]));
+    await waitFor(() => expect(mockListarPecasBaixaPendente).toHaveBeenLastCalledWith(10, true));
+  });
+
+  it("recarga ao vivo da OS aberta é uma de cada vez: evento durante a leitura vira uma nova leitura depois", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    mockBuscarEquipamento.mockResolvedValue(equipamentoVerificado);
+    onTestFinished(() => { mockBuscarEquipamento.mockResolvedValue({ atualizado_em: "2024-01-15T10:00:01Z" }); });
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" }));
+    await waitFor(() => expect(mockListarPecasBaixaPendente).toHaveBeenCalledWith(10, false));
+    await new Promise((r) => setTimeout(r, 50));
+
+    let liberar!: (valor: unknown) => void;
+    const chamadasAntes = mockBuscarEquipamento.mock.calls.length;
+    mockBuscarEquipamento.mockImplementationOnce(() => new Promise((resolve) => { liberar = resolve; }));
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 10, referencia: null, operacao: "U" }]));
+    await waitFor(() => expect(mockBuscarEquipamento.mock.calls.length).toBe(chamadasAntes + 1));
+
+    // Dois avisos com a leitura ainda em voo: nenhuma leitura paralela.
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 10, referencia: null, operacao: "U" }]));
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 10, referencia: null, operacao: "U" }]));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(mockBuscarEquipamento.mock.calls.length).toBe(chamadasAntes + 1);
+
+    // A leitura antiga termina; depois dela vem exatamente uma nova.
+    await act(async () => { liberar({ ...equipamentoVerificado, atualizado_em: "2026-11-24T04:00:00Z" }); });
+    await waitFor(() => expect(mockBuscarEquipamento.mock.calls.length).toBe(chamadasAntes + 2));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(mockBuscarEquipamento.mock.calls.length).toBe(chamadasAntes + 2);
   });
 
   // ─── Helpers ─────────────────────────────────────────
@@ -643,7 +709,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(input.custo_total).toBe(150);
     expect(Array.isArray(input.servicos)).toBe(true);
     expect(Array.isArray(input.pecas)).toBe(true);
-    expect(profileId).toBe(1);
+    expect(profileId).toBe(901);
   });
 
   // ─── Test 8: Divergência com peças zeradas ───────────
@@ -695,6 +761,134 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     });
     expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
     expect(equipamentoVerificado.status).toBe("EM_MANUTENCAO");
+  });
+
+  it("Alterar Orçamento abre a página do ajuste, não uma janela", async () => {
+    equipamentoVerificado.status = "EM_MANUTENCAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    });
+    expect(await screen.findByRole("heading", { name: "Ajuste de orçamento" })).toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith(`/equipamentos/${equipamentoVerificado.id}/orcamento`);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Serviços e peças" })).toBeInTheDocument();
+  });
+
+  it("troca de OS na rota de orçamento recarrega os itens e salva na nova OS", async () => {
+    rota.pathname = "/equipamentos/10/orcamento";
+    const outraOs = { ...equipamentoVerificado, id: 11 };
+    mockBuscarEquipamento
+      .mockResolvedValueOnce(equipamentoVerificado)
+      .mockResolvedValueOnce(outraOs)
+      .mockResolvedValueOnce(outraOs);
+    mockBuscarVerificacao
+      .mockResolvedValueOnce(makeVerificacao())
+      .mockResolvedValueOnce({
+        ...makeVerificacao({
+          servicos: [{ id: "s2", descricao: "Reparo da placa", valor: 100 }],
+          pecas: [{ id: "p2", nome: "Placa lógica", quantidade: 1, valorTotal: 50 }],
+        }),
+        equipamento_id: 11,
+      });
+    const view = render(<Equipamentos />);
+    expect(await screen.findByText(/Fonte 24V/)).toBeInTheDocument();
+
+    rota.pathname = "/equipamentos/11/orcamento";
+    view.rerender(<Equipamentos />);
+    expect(screen.queryByText(/Fonte 24V/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/Placa lógica/)).toBeInTheDocument();
+    expect(mockBuscarVerificacao).toHaveBeenLastCalledWith(11, equipamentoVerificado.empresa_id);
+
+    await clicarConfirmarStatus();
+    fireEvent.click(await screen.findByTestId("confirm-action"));
+    await waitFor(() => expect(mockAtualizarServicosVerificacao).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/equipamentos/11"));
+    expect(mockAtualizarServicosVerificacao.mock.calls[0][0]).toMatchObject({
+      equipamento_id: 11,
+      servicos: [expect.objectContaining({ descricao: "Reparo da placa" })],
+    });
+  });
+
+  it("não prorroga o prazo da OS anterior se a rota mudar durante a busca da versão", async () => {
+    rota.pathname = "/equipamentos/10/orcamento";
+    const os = {
+      ...equipamentoVerificado,
+      status: "AGUARDANDO_APROVACAO",
+      prazo_aprovacao: "2099-01-20",
+    };
+    let resolverVersao!: (value: typeof os) => void;
+    const versaoPendente = new Promise<typeof os>((resolve) => { resolverVersao = resolve; });
+    mockBuscarEquipamento
+      .mockResolvedValueOnce(os)
+      .mockReturnValueOnce(versaoPendente)
+      .mockResolvedValueOnce({ ...os, id: 11 });
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    const view = render(<Equipamentos />);
+    fireEvent.change(await screen.findByDisplayValue("20/01/2099"), { target: { value: "2099-01-21" } });
+    await clicarConfirmarStatus();
+    fireEvent.click(await screen.findByTestId("confirm-action"));
+    await waitFor(() => expect(mockBuscarEquipamento).toHaveBeenNthCalledWith(2, 10));
+
+    rota.pathname = "/equipamentos/11/orcamento";
+    view.rerender(<Equipamentos />);
+    await act(async () => resolverVersao(os));
+
+    expect(mockAtualizarServicosVerificacao).toHaveBeenCalledTimes(1);
+    expect(mockProrrogarPrazoOrcamento).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockNotificacao.warning).toHaveBeenCalledWith(
+      "Equipamentos", "Orçamento salvo, mas o prazo não foi prorrogado.",
+    ));
+    expect(mockNotificacao.success).toHaveBeenCalledWith("Equipamentos", "Orçamento atualizado.", "Alterar orçamento");
+  });
+
+  it("avisa o orçamento salvo e o prazo não prorrogado se a rota mudar logo após gravar", async () => {
+    rota.pathname = "/equipamentos/10/orcamento";
+    const os = {
+      ...equipamentoVerificado,
+      status: "AGUARDANDO_APROVACAO",
+      prazo_aprovacao: "2099-01-20",
+    };
+    mockBuscarEquipamento.mockResolvedValue(os);
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    let resolverGravacao!: (value: unknown) => void;
+    mockAtualizarServicosVerificacao.mockReturnValueOnce(new Promise((resolve) => { resolverGravacao = resolve; }));
+    const view = render(<Equipamentos />);
+    fireEvent.change(await screen.findByDisplayValue("20/01/2099"), { target: { value: "2099-01-21" } });
+    await clicarConfirmarStatus();
+    fireEvent.click(await screen.findByTestId("confirm-action"));
+    await waitFor(() => expect(mockAtualizarServicosVerificacao).toHaveBeenCalledTimes(1));
+
+    rota.pathname = "/equipamentos/11/orcamento";
+    view.rerender(<Equipamentos />);
+    await act(async () => resolverGravacao({
+      portal: { mensagem: "Portal atualizado.", aviso: "Avise o cliente da mudança." },
+    }));
+
+    await waitFor(() => expect(mockNotificacao.success).toHaveBeenCalledWith(
+      "Equipamentos",
+      expect.stringContaining("Orçamento atualizado. Portal atualizado."),
+      "Alterar orçamento",
+    ));
+    expect(mockNotificacao.warning).toHaveBeenCalledWith("Equipamentos", "Orçamento salvo, mas o prazo não foi prorrogado.");
+    expect(mockNotificacao.warning).toHaveBeenCalledWith("Equipamentos", "Avise o cliente da mudança.");
+    expect(mockProrrogarPrazoOrcamento).not.toHaveBeenCalled();
+  });
+
+  it("troca de OS na rota de verificação abre a verificação da nova OS", async () => {
+    rota.pathname = "/equipamentos/10/verificacao";
+    mockBuscarEquipamento
+      .mockResolvedValueOnce({ ...equipamentoVerificado, status: "EM_VERIFICACAO" })
+      .mockResolvedValueOnce({ ...equipamentoVerificado, id: 11, status: "EM_VERIFICACAO" });
+    const view = render(<Equipamentos />);
+    expect(await screen.findByText("Verificação da OS 10")).toBeInTheDocument();
+
+    rota.pathname = "/equipamentos/11/verificacao";
+    view.rerender(<Equipamentos />);
+    expect(screen.queryByText("Verificação da OS 10")).not.toBeInTheDocument();
+    expect(await screen.findByText("Verificação da OS 11")).toBeInTheDocument();
   });
 
   it("orçamento aprovado alterado: pergunta o que fazer e envia o modo escolhido", async () => {
@@ -937,6 +1131,45 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(mockPublicarPdfOficial).toHaveBeenCalledWith(artifact, expect.objectContaining({ id: equipamentoVerificado.id }));
   });
 
+  it("reenvia o orçamento por e-mail após confirmar sem alterar o status", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    const verif = makeVerificacao();
+    mockBuscarVerificacao.mockResolvedValueOnce(verif);
+    mockBuscarEquipamento
+      .mockResolvedValueOnce(equipamentoVerificado)
+      .mockResolvedValueOnce(equipamentoVerificado);
+    mockEnviarOrcamentoEmail.mockResolvedValueOnce({ sucesso: true });
+
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-reenviar_orcamento_email"));
+    const confirmar = await screen.findByRole("button", { name: "Reenviar e-mail" });
+    expect(screen.getByText(/Enviar o orçamento da OS #10 para Cliente A/)).toBeInTheDocument();
+    expect(mockEnviarOrcamentoEmail).not.toHaveBeenCalled();
+    fireEvent.click(confirmar);
+
+    await waitFor(() => expect(mockEnviarOrcamentoEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 10, cliente_email: "a@ex.com" }), verif,
+    ));
+    expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
+    expect(mockAprovarOrcamento).not.toHaveBeenCalled();
+  });
+
+  it("cancela o reenvio se a OS deixa de aguardar aprovação durante a confirmação", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarEquipamento
+      .mockResolvedValueOnce(equipamentoVerificado)
+      .mockResolvedValueOnce({ ...equipamentoVerificado, status: "APROVADO" });
+    mockBuscarVerificacao.mockResolvedValueOnce(makeVerificacao());
+
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-reenviar_orcamento_email"));
+    const confirmar = await screen.findByRole("button", { name: "Reenviar e-mail" });
+    await act(async () => fireEvent.click(confirmar));
+
+    expect(mockBuscarEquipamento).toHaveBeenCalledTimes(2);
+    expect(mockEnviarOrcamentoEmail).not.toHaveBeenCalled();
+  });
+
   it("oferece Orçamento PDF e Alterar Orçamento no menu em todas as fases após a verificação", () => {
     const fases = [
       "VERIFICADO",
@@ -979,7 +1212,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(opener.contains(screen.getByTestId("action-enviar_orcamento"))).toBe(false);
     const cells = row!.querySelectorAll("td");
     expect(cells[0].className).toContain("group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]");
-    expect(cells[0].className).toContain("after:border-[#1d4ed8]");
+    expect(cells[0].className).toContain("after:border-ring");
     expect(cells[0].className).toContain("focus-visible");
     expect(cells[0].classList.contains("relative")).toBe(true);
     expect(cells[1].className).toContain("after:border-y-[3px]");
@@ -1109,7 +1342,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
     await waitFor(() => expect(mockSubstituirImagensEquipamento).toHaveBeenCalledOnce());
     expect(mockSubstituirImagensEquipamento).toHaveBeenCalledWith(10, [], [77]);
-    expect(screen.getByRole("heading", { name: "Editar Equipamento" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Editar equipamento" })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("texto mantido no conflito");
 
     mockListarImagensEquipamento.mockResolvedValueOnce([{
@@ -1134,15 +1367,17 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     mockListarImagensEquipamento.mockResolvedValue([]);
     render(<Equipamentos />);
     fireEvent.click(screen.getByTestId("action-editar"));
-    await screen.findByRole("heading", { name: "Editar Equipamento" });
+    await screen.findByRole("heading", { name: "Editar equipamento" });
     fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "gravação antiga" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mockAtualizarEquipamento).toHaveBeenCalledOnce());
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar Equipamento" })).not.toBeInTheDocument());
+    // A gravação ainda não terminou: a seta pergunta antes de descartar a edição.
+    fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar equipamento" })).not.toBeInTheDocument());
     fireEvent.click(screen.getByTestId("action-editar"));
-    await screen.findByRole("heading", { name: "Editar Equipamento" });
+    await screen.findByRole("heading", { name: "Editar equipamento" });
 
     await act(async () => {
       concluirGravacao({
@@ -1152,7 +1387,22 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     });
 
     expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("ZT230");
-    expect(screen.getByRole("heading", { name: "Editar Equipamento" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Editar equipamento" })).toBeInTheDocument();
+  });
+
+  it("Nova entrada e Editar abrem como página, com rota própria", async () => {
+    mockListarImagensEquipamento.mockResolvedValue([]);
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByRole("button", { name: "Nova entrada" }));
+    await screen.findByRole("heading", { name: "Nova entrada" });
+    expect(mockNavigate).toHaveBeenCalledWith("/equipamentos/nova");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Nova entrada" })).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("action-editar"));
+    await screen.findByRole("heading", { name: "Editar equipamento" });
+    expect(mockNavigate).toHaveBeenCalledWith(`/equipamentos/${equipamentoVerificado.id}/editar`);
   });
 
   it("ignora uma foto de celular convertida depois que o formulário original foi fechado", async () => {
@@ -1167,10 +1417,10 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     fireEvent.click(await screen.findByTestId("emitir-foto-celular"));
     expect(equipamentoImagemUtils.bytesParaDataUrl).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar Equipamento" })).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Novo Equipamento" }));
-    await screen.findByRole("heading", { name: "Novo Equipamento" });
+    fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar equipamento" })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Nova entrada" }));
+    await screen.findByRole("heading", { name: "Nova entrada" });
 
     await act(async () => {
       concluirConversao("data:image/jpeg;base64,camera");
@@ -1620,4 +1870,113 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(mockSubstituirImagensEquipamento).not.toHaveBeenCalled();
   });
 
+
+  describe("saída da edição e do ajuste pelo aviso 'Sair sem salvar?'", () => {
+    const fotoEntrada = {
+      id: 77, equipamento_id: 10, categoria: "ENTRADA", filename: "entrada.jpg", mime_type: "image/jpeg",
+      tamanho_bytes: 123, largura: 800, altura: 600, ordem: 0, storage_path: "data:image/jpeg;base64,conteudo",
+    };
+
+    async function abrirEdicao() {
+      render(<Equipamentos />);
+      fireEvent.click(screen.getByTestId("action-editar"));
+      await screen.findByRole("heading", { name: "Editar equipamento" });
+    }
+
+    it("edição limpa: a seta volta direto, sem aviso", async () => {
+      await abrirEdicao();
+      mockNavigate.mockClear();
+      fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar equipamento" })).not.toBeInTheDocument());
+      expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ["campo", () => fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "ZT999" } })],
+      ["cliente", () => fireEvent.click(screen.getByRole("button", { name: "Trocar cliente (teste)" }))],
+    ])("edição com %s alterado: a seta pergunta; continuar mantém, sair descarta", async (_nome, alterar) => {
+      await abrirEdicao();
+      alterar();
+      mockNavigate.mockClear();
+
+      fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+      expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+      await waitFor(() => expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument());
+      expect(screen.getByRole("heading", { name: "Editar equipamento" })).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(mockAtualizarEquipamento).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar equipamento" })).not.toBeInTheDocument());
+      expect(mockAtualizarEquipamento).not.toHaveBeenCalled();
+    });
+
+    it("edição com foto removida: a seta pergunta e, ao continuar, a foto segue fora", async () => {
+      mockListarImagensEquipamento.mockResolvedValue([fotoEntrada]);
+      await abrirEdicao();
+      await screen.findByText("entrada.jpg");
+      fireEvent.click(screen.getByRole("button", { name: "Remover entrada.jpg" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+      expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+      await waitFor(() => expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument());
+      expect(screen.queryByText("entrada.jpg")).not.toBeInTheDocument();
+      expect(mockSubstituirImagensEquipamento).not.toHaveBeenCalled();
+    });
+
+    it("edição alterada: Esc e Cancelar passam pelo mesmo aviso", async () => {
+      await abrirEdicao();
+      fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "ZT999" } });
+
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+      await waitFor(() => expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole("button", { name: /^Cancelar/ }));
+      expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+      await waitFor(() => expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument());
+      expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("ZT999");
+    });
+
+    async function abrirAjuste() {
+      equipamentoVerificado.status = "EM_MANUTENCAO";
+      mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+      render(<Equipamentos />);
+      await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+      });
+      await screen.findByRole("heading", { name: "Ajuste de orçamento" });
+      await screen.findByText(/Fonte 24V/);
+    }
+    const setaDoAjuste = () => screen.getByRole("button", { name: /Zebra ZT230 ·/ });
+
+    it("ajuste limpo: a seta volta direto, sem aviso", async () => {
+      await abrirAjuste();
+      fireEvent.click(setaDoAjuste());
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "Ajuste de orçamento" })).not.toBeInTheDocument());
+      expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+    });
+
+    it("ajuste alterado: a seta pergunta; continuar mantém, sair descarta", async () => {
+      await abrirAjuste();
+      fireEvent.change(screen.getByLabelText("Observações"), { target: { value: "nova observação" } });
+
+      fireEvent.click(setaDoAjuste());
+      expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+      await waitFor(() => expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument());
+      expect(screen.getByLabelText("Observações")).toHaveValue("nova observação");
+
+      fireEvent.click(setaDoAjuste());
+      fireEvent.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "Ajuste de orçamento" })).not.toBeInTheDocument());
+      expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -17,13 +17,14 @@
  * ║  USADO POR: main.tsx (ponto de entrada)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { lazy, useCallback, useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { createContext, lazy, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createBrowserRouter, RouterProvider, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { BootSplash } from "@/components/BootSplash";
 import { DatabaseFallback } from "@/components/DatabaseUnavailableScreen";
+import { DatabaseConnectionAlert } from "@/components/DatabaseConnectionAlert";
 import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 import { Layout } from "@/components/Layout";
@@ -34,18 +35,50 @@ import { CounterLayout } from "@/components/CounterLayout";
 import { CounterSessionGate } from "@/components/CounterSessionGate";
 import { ReleaseHighlightsDialog } from "@/components/ReleaseHighlightsDialog";
 import { UpdateNotice } from "@/components/UpdateNotice";
-import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
+import { getAppMode, modoPedidoAoNavegar, setAppMode, type AppMode } from "@/lib/app-mode";
+import { ROTA_TELA_INICIAL, telaInicial } from "@/lib/preferencias-computador";
+
+/**
+ * AvisoRapido do DS: fundo de cartão, borda e sombra de menu, sem cor de fundo por tipo
+ * (sem as cores ricas do sonner). A cor da família fica só no ícone.
+ */
+/**
+ * Avisos no canto de baixo à esquerda da área de conteúdo (logo depois do menu): em cima,
+ * cobriam a ação principal das páginas; à direita, os botões da barra fixa dos formulários.
+ */
+const AVISOS_POSICAO = { bottom: 24, left: "calc(16.5rem + 24px)" };
+
+const AVISO_RAPIDO_OPCOES = {
+  classNames: {
+    toast: "!rounded-[14px] !border-border !bg-card !text-card-foreground !shadow-[0_12px_32px_rgba(0,0,0,0.18)]",
+    title: "!text-sm !font-bold",
+    description: "!text-[13px] !text-muted-foreground",
+    actionButton: "!bg-acc-soft !font-semibold !text-acc-soft-foreground",
+    cancelButton: "!bg-muted !text-muted-foreground",
+    closeButton: "!border-border !bg-card !text-muted-foreground",
+    success: "[&_[data-icon]]:!text-status-ok",
+    info: "[&_[data-icon]]:!text-status-work",
+    warning: "[&_[data-icon]]:!text-status-wait",
+    error: "[&_[data-icon]]:!text-status-bad",
+  },
+};
 
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Equipamentos = lazy(() => import("@/pages/Equipamentos"));
 const Clientes = lazy(() => import("@/pages/Clientes"));
+const ClienteEquipamentos = lazy(() => import("@/pages/ClienteEquipamentos"));
 const Insumos = lazy(() => import("@/pages/Insumos"));
+const VendasInsumos = lazy(() => import("@/pages/VendasInsumos"));
+const VendaDetalhe = lazy(() => import("@/pages/vendas/VendaDetalhe"));
+const VendaFormulario = lazy(() => import("@/pages/vendas/VendaFormulario"));
 const Servicos = lazy(() => import("@/pages/Servicos"));
 const Gastos = lazy(() => import("@/pages/Gastos"));
 const Configuracoes = lazy(() => import("@/pages/Configuracoes"));
 const Perfil = lazy(() => import("@/pages/Perfil"));
+const Equipe = lazy(() => import("@/pages/Equipe"));
 const PowerSyncPOC = lazy(() => import("@/poc/PowerSyncPOC"));
 const Balcao = lazy(() => import("@/pages/Balcao"));
+const Suporte = lazy(() => import("@/pages/Suporte"));
 
 function AppContent() {
   const { loading, bootProgress, status, pinPromptDismissed, openProfileSelector, refreshStatus, firstAccessOpen } = useSensitiveAccess();
@@ -89,12 +122,12 @@ function AppContent() {
       {showEntryGate ? (
         <SessionPinGate
           onEnter={() => void openProfileSelector({
-            title: "Quem está usando o AutoOS?",
+            title: "Quem está usando?",
             description: "Escolha o perfil e informe o PIN. Sem o PIN, o atendimento continua bloqueado.",
           })}
         />
       ) : (
-      <BrowserRouter>
+      <RoteadorDoApp>
         <AppModeChoice
           visible={!loading && sessionReady && appMode === null && !firstAccessOpen}
           onSelect={setCurrentAppMode}
@@ -109,10 +142,21 @@ function AppContent() {
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/perfil" element={<Perfil />} />
-            <Route path="/equipamentos" element={<Equipamentos />} />
+            <Route path="/equipe" element={<Equipe />} />
+            {/* Mesmo elemento com e sem :id: filtros e página da lista sobrevivem aos Detalhes da OS. */}
+            <Route path="/equipamentos/:id?" element={<Equipamentos />} />
+            <Route path="/equipamentos/:id/orcamento" element={<Equipamentos />} />
+            <Route path="/equipamentos/:id/verificacao" element={<Equipamentos />} />
+            <Route path="/equipamentos/:id/editar" element={<Equipamentos />} />
             <Route path="/clientes" element={<Clientes />} />
+            <Route path="/clientes/:id/equipamentos" element={<ClienteEquipamentos />} />
             <Route path="/insumos" element={<Insumos />} />
+            <Route path="/vendas" element={<VendasInsumos />} />
+            <Route path="/vendas/novo" element={<VendaFormulario />} />
+            <Route path="/vendas/:id" element={<VendaDetalhe />} />
+            <Route path="/vendas/:id/editar" element={<VendaFormulario />} />
             <Route path="/servicos" element={<Servicos />} />
+            <Route path="/suporte" element={<Suporte />} />
             <Route path="/poc" element={<PowerSyncPOC />} />
             <Route
               path="/gastos"
@@ -126,29 +170,15 @@ function AppContent() {
                 </SensitiveRoute>
               }
             />
-            <Route
-              path="/configuracoes"
-              element={
-                <SensitiveRoute
-                  title="Configurações protegidas"
-                  description="Desbloqueie o acesso para gerenciar integrações, banco e segurança."
-                  permission={[
-                    SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
-                    SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS,
-                    SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
-                  ]}
-                >
-                  <Configuracoes />
-                </SensitiveRoute>
-              }
-            />
+            {/* Aberta a todos: a aba Geral é deste computador; as abas da empresa checam permissão. */}
+            <Route path="/configuracoes" element={<Configuracoes />} />
           </Route>
           <Route element={<CounterSessionGate><CounterLayout onChangeMode={setCurrentAppMode} /></CounterSessionGate>}>
             <Route path="/balcao" element={<Balcao />} />
             <Route path="/balcao/painel" element={<Balcao />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </RoteadorDoApp>
       )}
       {splashVisible && (
         <BootSplash
@@ -161,12 +191,44 @@ function AppContent() {
   );
 }
 
+/**
+ * Roteador com dados (createBrowserRouter): é o que permite `useBlocker`, usado para avisar
+ * antes de sair de um formulário pela metade. Uma rota coringa entrega a árvore de <Routes>
+ * de sempre, então as rotas continuam declaradas como antes. O roteador nasce quando o
+ * conteúdo monta (como o BrowserRouter antigo), lendo o endereço atual.
+ */
+const ConteudoDoRoteador = createContext<React.ReactNode>(null);
+
+function RoteadorDoApp({ children }: { children: React.ReactNode }) {
+  const [router] = useState(() => createBrowserRouter([{ path: "*", element: <ConteudoRoteado /> }]));
+  // Descarta o roteador só quando a árvore sai de vez. No StrictMode (desenvolvimento) o React
+  // desmonta e remonta os efeitos na hora; descartar ali deixaria o voltar/avançar sem efeito.
+  const montado = useRef(false);
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+      window.setTimeout(() => { if (!montado.current) router.dispose(); }, 0);
+    };
+  }, [router]);
+  return (
+    <ConteudoDoRoteador.Provider value={children}>
+      <RouterProvider router={router} />
+    </ConteudoDoRoteador.Provider>
+  );
+}
+
+/** A rota coringa só devolve a árvore de <Routes> recebida por contexto (que se atualiza a cada render do App). */
+function ConteudoRoteado() {
+  return <>{useContext(ConteudoDoRoteador)}</>;
+}
+
 function SessionPinGate({ onEnter }: { onEnter: () => void }) {
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-[#050608] px-6 text-white">
       <div className="w-full max-w-md space-y-4 text-center">
         <h1 className="text-2xl font-semibold">Informe o PIN para entrar</h1>
-        <p className="text-sm text-slate-300">
+        <p className="text-sm text-muted-foreground">
           O AutoOS continua bloqueado. Sem o PIN do perfil, o atendimento não abre.
         </p>
         <Button type="button" onClick={onEnter}>Entrar com PIN</Button>
@@ -181,15 +243,32 @@ function AppModeChoice({ visible, onSelect }: { visible: boolean; onSelect: (mod
   return <AppModeSelector onSelect={(mode) => { setAppMode(mode); onSelect(mode); navigate(mode === "counter" ? "/balcao" : "/"); }} />;
 }
 
-function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean }) {
+export function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
+  // "Abrir o app em" (Configurações › Geral) vale só na primeira entrada desta abertura.
+  const telaInicialAplicada = useRef(false);
   useEffect(() => {
     if (!ready || !mode) return;
+    // Pedido de troca de modo que chegou com a navegação (já passou pelo aviso de saída). Sai do
+    // histórico para voltar/avançar não trocar o modo de novo.
+    const pedido = modoPedidoAoNavegar(location.state);
+    if (pedido) {
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+      if (pedido !== mode) {
+        setAppMode(pedido);
+        return;
+      }
+    }
     const isCounterRoute = location.pathname.startsWith("/balcao");
     if (mode === "counter" && !isCounterRoute) navigate("/balcao", { replace: true });
     if (mode === "standard" && isCounterRoute) navigate("/", { replace: true });
-  }, [location.pathname, mode, navigate, ready]);
+    if (!telaInicialAplicada.current) {
+      telaInicialAplicada.current = true;
+      const destino = ROTA_TELA_INICIAL[telaInicial()];
+      if (mode === "standard" && location.pathname === "/" && destino !== "/") navigate(destino, { replace: true });
+    }
+  }, [location.key, location.pathname, location.search, location.state, mode, navigate, ready]);
   return null;
 }
 
@@ -212,7 +291,7 @@ function App() {
   if (dbReady === null) {
     return (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050608]">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-cyan-400" />
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     );
   }
@@ -220,7 +299,7 @@ function App() {
   if (!dbReady) {
     return (
       <>
-        <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
+        <Toaster theme={toastTheme} position="bottom-left" offset={AVISOS_POSICAO} mobileOffset={{ bottom: 16, left: 16 }} visibleToasts={3} closeButton duration={5000} toastOptions={AVISO_RAPIDO_OPCOES} />
         <ErrorBoundary>
           <DatabaseFallback onConnected={() => setDbReady(true)} />
         </ErrorBoundary>
@@ -230,10 +309,11 @@ function App() {
 
   return (
     <>
-      <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
+      <Toaster theme={toastTheme} position="bottom-left" offset={AVISOS_POSICAO} mobileOffset={{ bottom: 16, left: 16 }} visibleToasts={3} closeButton duration={5000} toastOptions={AVISO_RAPIDO_OPCOES} />
       <ErrorBoundary>
         <AppContent />
       </ErrorBoundary>
+      <DatabaseConnectionAlert />
     </>
   );
 }

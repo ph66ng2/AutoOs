@@ -118,7 +118,7 @@ export function OrcamentoInsumosItensEditor({
               aria-label="Produtos encontrados"
             >
               {buscando && <li className="px-3 py-2 text-muted-foreground">Buscando...</li>}
-              {erroBusca && <li className="px-3 py-2 text-red-600">{erroBusca}</li>}
+              {erroBusca && <li className="px-3 py-2 text-destructive">{erroBusca}</li>}
               {!buscando && !erroBusca && resultados.length === 0 && (
                 <li className="px-3 py-2 text-muted-foreground">Nenhum produto encontrado.</li>
               )}
@@ -185,7 +185,7 @@ export function OrcamentoInsumosItensEditor({
                       "—"
                     ) : (
                       <span
-                        className={semSaldo ? "inline-flex items-center gap-1 font-semibold text-red-600" : ""}
+                        className={semSaldo ? "inline-flex items-center gap-1 font-semibold text-destructive" : ""}
                         title={semSaldo ? "Saldo menor que a quantidade pedida" : undefined}
                       >
                         {semSaldo && <AlertTriangle className="h-3 w-3" aria-hidden />}
@@ -205,10 +205,10 @@ export function OrcamentoInsumosItensEditor({
                         alterar(linha.produto_id, { quantidade: Math.floor(Number(event.target.value)) || 0 })
                       }
                       aria-invalid={quantidadeInvalida || undefined}
-                      className={quantidadeInvalida ? "h-8 px-2 text-center border-red-500" : "h-8 px-2 text-center"}
+                      className={quantidadeInvalida ? "h-8 px-2 text-center border-destructive" : "h-8 px-2 text-center"}
                     />
                     {quantidadeInvalida && (
-                      <p className="mt-0.5 text-[11px] leading-tight text-red-600" role="alert">
+                      <p className="mt-0.5 text-[11px] leading-tight text-destructive" role="alert">
                         Informe uma quantidade maior que zero
                       </p>
                     )}
@@ -232,7 +232,7 @@ export function OrcamentoInsumosItensEditor({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:bg-red-50 hover:text-red-600 active:scale-[0.96] [transition-property:scale,background-color,color]"
+                        className="h-8 w-8 text-muted-foreground hover:bg-status-bad-bg hover:text-destructive active:scale-[0.96] [transition-property:scale,background-color,color]"
                         aria-label={`Remover ${linha.descricao}`}
                         onClick={() => onChange(linhas.filter((outra) => outra.produto_id !== linha.produto_id))}
                       >

@@ -1,0 +1,408 @@
+import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, RouterProvider, createMemoryRouter, useNavigate } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const m = vi.hoisted(() => ({
+  config: { token_neste_computador: true, canal: "C0CE5M6GTRV" } as { token_neste_computador: boolean; canal: string | null },
+  chamados: [] as unknown[],
+  abrirChamado: vi.fn(),
+  responder: vi.fn(),
+  retorno: vi.fn(),
+  abrirUrl: vi.fn(),
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+  mensagens: [] as unknown[],
+  mensagensFalhou: false,
+  tentarDeNovo: vi.fn(),
+  foraDaLista: vi.fn((_id: number | null) => null as unknown),
+  admin: false,
+  status: { unlocked: true, active_profile_id: 1 } as { unlocked: boolean; active_profile_id: number | null },
+}));
+vi.mock("@/hooks/useSuporte", () => ({
+  useSuporte: () => ({ config: m.config, chamados: m.chamados, loading: false, error: null, abrirChamado: m.abrirChamado, responder: m.responder, retorno: m.retorno, recarregar: vi.fn() }),
+  useMensagensChamado: () => ({ mensagens: m.mensagensFalhou ? null : m.mensagens, falhou: m.mensagensFalhou, tentarDeNovo: m.tentarDeNovo }),
+  useChamadoForaDaLista: (id: number | null) => m.foraDaLista(id),
+}));
+// A sessão é uma loja externa: trocar `m.status` com `mudarSessao` re-renderiza até dentro do RouterProvider.
+const avisos = vi.hoisted(() => new Set<() => void>());
+function mudarSessao(status: { unlocked: boolean; active_profile_id: number | null }) {
+  m.status = status;
+  act(() => avisos.forEach((avisar) => avisar()));
+}
+vi.mock("@/hooks/useSensitiveAccess", async () => {
+  const { useSyncExternalStore } = await import("react");
+  const assinar = (avisar: () => void) => { avisos.add(avisar); return () => { avisos.delete(avisar); }; };
+  return {
+    useSensitiveAccess: () => ({ hasPermission: () => m.admin, status: useSyncExternalStore(assinar, () => m.status) }),
+    SensitiveRoute: ({ title }: { title?: string }) => <p>{title}</p>,
+  };
+});
+vi.mock("@/lib/db", () => ({ db: { abrirUrl: m.abrirUrl } }));
+vi.mock("@/lib/error-utils", () => ({ versaoDoApp: () => "0.6.4" }));
+vi.mock("sonner", () => ({ toast: m.toast }));
+
+import Suporte from "./Suporte";
+
+function EnviarErro() {
+  const navigate = useNavigate();
+  return <button type="button" onClick={() => navigate("/suporte", { state: { relatorioErro: "Relatório novo", tela: "/clientes" } })}>Simular erro do sino</button>;
+}
+
+function renderizar(state?: unknown) {
+  return render(
+    <MemoryRouter initialEntries={[{ pathname: "/suporte", state }]}>
+      <EnviarErro />
+      <Suporte />
+    </MemoryRouter>,
+  );
+}
+
+describe("Suporte", () => {
+  beforeEach(() => {
+    m.config = { token_neste_computador: true, canal: "C0CE5M6GTRV" };
+    m.chamados = [];
+    m.mensagensFalhou = false;
+    m.tentarDeNovo.mockReset();
+    m.foraDaLista.mockReset().mockReturnValue(null);
+    m.status = { unlocked: true, active_profile_id: 1 };
+    Object.values(m.toast).forEach((fn) => fn.mockReset());
+    m.abrirChamado.mockReset().mockResolvedValue({ id: 12 });
+    m.responder.mockReset().mockResolvedValue({ id: 12 });
+    m.retorno.mockReset().mockResolvedValue({ id: 12 });
+    m.mensagens = [{ id: 1, autor: "suporte", autor_nome: "Erykah", texto: "Recarregue a OS. *Não envie* ainda.", automatica: true, criado_em: "2026-11-21 10:00:00.123456+00" }];
+  });
+
+  it("envia o texto com Ctrl+Enter, levando versão, tela e o relatório do erro", async () => {
+    const user = userEvent.setup();
+    renderizar({ relatorioErro: "AutoOS — relatório de erro\nCódigo: X", tela: "/equipamentos/10" });
+    expect(screen.getByText("Relatório do erro anexado")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Não salva a OS");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(m.abrirChamado).toHaveBeenCalledWith({
+      texto: "Não salva a OS",
+      tela: "/equipamentos/10",
+      versao: "0.6.4",
+      relatorio_erro: "AutoOS — relatório de erro\nCódigo: X",
+      imagens: [],
+    });
+  });
+
+  it("sem configuração neste computador, avisa e não deixa enviar", async () => {
+    const user = userEvent.setup();
+    m.config = { token_neste_computador: false, canal: "C0CE5M6GTRV" };
+    renderizar();
+    expect(screen.getByText("O suporte ainda não foi configurado neste computador.")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Oi");
+    expect(screen.getByRole("button", { name: /Enviar/ })).toBeDisabled();
+  });
+
+  it("lista os chamados e mostra a conversa com a resposta automática", async () => {
+    const user = userEvent.setup();
+    m.chamados = [{ id: 12, texto: "Não salva a OS", situacao: "aberto", criado_em: "2026-11-21 09:00:00+00", atualizado_em: "2026-11-21 10:00:00+00", respostas: 1 }];
+    renderizar();
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    expect(screen.getByText(/Recarregue a OS\./)).toBeInTheDocument();
+    // "+00" sem minutos, como o PostgreSQL devolve TIMESTAMPTZ em texto: a data não pode sumir.
+    expect(screen.getByText(/Erykah · resposta automática · 21\/11\/2026, 07:00/)).toBeInTheDocument();
+  });
+
+  it("o rascunho continua ao olhar outro chamado e voltar para o Novo", async () => {
+    const user = userEvent.setup();
+    m.chamados = [{ id: 12, texto: "Não salva a OS", situacao: "aberto", criado_em: "2026-11-21 09:00:00+00", atualizado_em: "2026-11-21 10:00:00+00", respostas: 1 }];
+    renderizar();
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Meio escrito");
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    await user.click(screen.getByRole("button", { name: /Novo/ }));
+    expect(screen.getByLabelText("O que aconteceu?")).toHaveValue("Meio escrito");
+  });
+
+  it("erro enviado com a página já aberta troca o relatório anexado e leva a tela dele", async () => {
+    const user = userEvent.setup();
+    m.chamados = [{ id: 12, texto: "Não salva a OS", situacao: "aberto", criado_em: "2026-11-21 09:00:00+00", atualizado_em: "2026-11-21 10:00:00+00", respostas: 1 }];
+    renderizar();
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    await user.click(screen.getByRole("button", { name: "Simular erro do sino" }));
+    expect(screen.getByText("Relatório do erro anexado")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Erro na lista");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(m.abrirChamado).toHaveBeenCalledWith(expect.objectContaining({ relatorio_erro: "Relatório novo", tela: "/clientes" }));
+  });
+
+  it("envio em andamento continua travado depois de olhar outro chamado e voltar ao Novo", async () => {
+    const user = userEvent.setup();
+    m.chamados = [{ id: 12, texto: "Não salva a OS", situacao: "aberto", criado_em: "2026-11-21 09:00:00+00", atualizado_em: "2026-11-21 10:00:00+00", respostas: 1 }];
+    m.abrirChamado.mockReset().mockReturnValue(new Promise(() => undefined));
+    renderizar();
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Uma vez só");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    await user.click(screen.getByRole("button", { name: /Novo/ }));
+    expect(screen.getByRole("button", { name: /Enviando/ })).toBeDisabled();
+    await user.click(screen.getByLabelText("O que aconteceu?"));
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(m.abrirChamado).toHaveBeenCalledTimes(1);
+  });
+
+  const aberto12 = { id: 12, texto: "Não salva a OS", situacao: "aberto", criado_em: "2026-11-21 09:00:00+00", atualizado_em: "2026-11-21 10:00:00+00", respostas: 1 };
+
+  it("responde pelo app na thread do chamado e mostra o negrito do Slack", async () => {
+    const user = userEvent.setup();
+    m.chamados = [aberto12];
+    renderizar();
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    expect(screen.getByText("Não envie").tagName).toBe("STRONG");
+    await user.type(screen.getByLabelText("Responder"), "Recarreguei e voltou a salvar");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(m.responder).toHaveBeenCalledWith({ id: 12, texto: "Recarreguei e voltou a salvar", imagens: [] });
+  });
+
+  it("depois de uma resposta do suporte pergunta se resolveu; Resolveu e Não resolveu chegam ao backend", async () => {
+    const user = userEvent.setup();
+    m.chamados = [aberto12];
+    renderizar();
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    expect(screen.getByText("Isso resolveu?")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Não resolveu" }));
+    expect(m.retorno).toHaveBeenLastCalledWith(12, false);
+    await user.click(screen.getByRole("button", { name: /Resolveu/ }));
+    expect(m.retorno).toHaveBeenLastCalledWith(12, true);
+  });
+
+  it("sem resposta do suporte ainda, não pergunta; chamado resolvido não tem caixa de resposta", async () => {
+    const user = userEvent.setup();
+    m.chamados = [aberto12, { ...aberto12, id: 9, situacao: "resolvido" }];
+    m.mensagens = [{ id: 1, autor: "pessoa", autor_nome: "Ana", texto: "Não salva", automatica: false, criado_em: "2026-11-21 10:00:00+00" }];
+    renderizar();
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    expect(screen.queryByText("Isso resolveu?")).not.toBeInTheDocument();
+    expect(screen.getByText(/assim que o suporte responder/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Chamado #9/ }));
+    expect(screen.queryByLabelText("Responder")).not.toBeInTheDocument();
+    expect(screen.getByText(/Chamado resolvido/)).toBeInTheDocument();
+  });
+
+  it("'Ver' no aviso de resposta abre o chamado pelo estado da navegação", () => {
+    m.chamados = [aberto12];
+    renderizar({ chamadoId: 12 });
+    expect(screen.getByRole("heading", { name: "Chamado #12" })).toBeInTheDocument();
+  });
+
+  it("'Ver' de um chamado fora da lista (encerrado antigo) lê pelo id e mostra a conversa, não o Novo", () => {
+    m.chamados = [aberto12];
+    m.foraDaLista.mockImplementation((id: number | null) => (id === 3 ? { ...aberto12, id: 3, situacao: "resolvido" } : null));
+    renderizar({ chamadoId: 3 });
+    expect(m.foraDaLista).toHaveBeenCalledWith(3);
+    expect(screen.getByRole("heading", { name: "Chamado #3" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("O que aconteceu?")).not.toBeInTheDocument();
+  });
+
+  it("chamado que está na lista não é lido de novo pelo id", () => {
+    m.chamados = [aberto12];
+    renderizar({ chamadoId: 12 });
+    expect(m.foraDaLista).not.toHaveBeenCalledWith(12);
+  });
+
+  it("conversa que não carregou avisa e deixa tentar de novo (não vira conversa vazia)", async () => {
+    const user = userEvent.setup();
+    m.chamados = [aberto12];
+    m.mensagensFalhou = true;
+    renderizar({ chamadoId: 12 });
+    expect(screen.getByText("Não foi possível carregar a conversa.")).toBeInTheDocument();
+    expect(screen.queryByText(/assim que o suporte responder/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Tentar de novo" }));
+    expect(m.tentarDeNovo).toHaveBeenCalledTimes(1);
+  });
+
+  it("enquanto envia, o rascunho fica parado (o que vai é o que está na tela)", async () => {
+    const user = userEvent.setup();
+    m.abrirChamado.mockReset().mockReturnValue(new Promise(() => undefined));
+    renderizar();
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Primeira versão");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await user.type(screen.getByLabelText("O que aconteceu?"), " mais coisa");
+    expect(screen.getByLabelText("O que aconteceu?")).toHaveValue("Primeira versão");
+    expect(screen.getByRole("button", { name: "Anexar print" })).toBeDisabled();
+  });
+
+  describe("links nas respostas (hotfix)", () => {
+    const RELEASE = "https://github.com/ph66ng2/AutoOs/releases/download/v0.6.4/AutoOS_0.6.4_x64-setup.exe";
+    const abrirConversa = async (texto: string) => {
+      const user = userEvent.setup();
+      m.chamados = [aberto12];
+      m.mensagens = [{ id: 1, autor: "suporte", autor_nome: "Erykah", texto, automatica: true, criado_em: "2026-11-21 10:00:00+00" }];
+      m.abrirUrl.mockReset().mockResolvedValue(undefined);
+      renderizar();
+      await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+      return user;
+    };
+
+    it("<url|rótulo> do release vira o link com o rótulo e o clique abre no navegador", async () => {
+      const user = await abrirConversa(`Corrigido! <${RELEASE}|Baixar 0.6.4>`);
+      await user.click(screen.getByRole("link", { name: "Baixar 0.6.4" }));
+      await waitFor(() => expect(m.abrirUrl).toHaveBeenCalledWith(RELEASE));
+    });
+
+    it("URL solta da allowlist é clicável e o ponto final não entra", async () => {
+      const user = await abrirConversa(`Baixe em ${RELEASE}.`);
+      await user.click(screen.getByRole("link", { name: RELEASE }));
+      await waitFor(() => expect(m.abrirUrl).toHaveBeenCalledWith(RELEASE));
+    });
+
+    it("fora da allowlist e javascript: ficam só texto", async () => {
+      await abrirConversa("Baixe https://exemplo.com/x.exe ou <javascript:alert(1)|clique>");
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.getByText(/https:\/\/exemplo\.com\/x\.exe ou clique/)).toBeInTheDocument();
+    });
+
+    it("mensagem com várias linhas mantém as quebras", async () => {
+      await abrirConversa(`Linha 1\nLinha 2 <${RELEASE}|Baixar>\nLinha 3`);
+      const bolha = screen.getByRole("link", { name: "Baixar" }).parentElement!;
+      expect(bolha.textContent).toBe("Linha 1\nLinha 2 Baixar\nLinha 3");
+      expect(bolha.className).toContain("whitespace-pre-wrap");
+    });
+  });
+
+  it("sair de /suporte com rascunho pede confirmação", async () => {
+    const user = userEvent.setup();
+    const router = createMemoryRouter(
+      [{ path: "/suporte", element: <Suporte /> }, { path: "/clientes", element: <p>Tela de clientes</p> }],
+      { initialEntries: ["/suporte"] },
+    );
+    render(<RouterProvider router={router} />);
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Ainda escrevendo");
+    await act(async () => { void router.navigate("/clientes"); });
+    expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+    expect(screen.queryByText("Tela de clientes")).not.toBeInTheDocument();
+  });
+
+  it("sair de /suporte com resposta pela metade num chamado também pede confirmação", async () => {
+    const user = userEvent.setup();
+    m.chamados = [aberto12];
+    const router = createMemoryRouter(
+      [{ path: "/suporte", element: <Suporte /> }, { path: "/clientes", element: <p>Tela de clientes</p> }],
+      { initialEntries: ["/suporte"] },
+    );
+    render(<RouterProvider router={router} />);
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    await user.type(screen.getByLabelText(/Responder/), "Resposta pela metade");
+    await act(async () => { void router.navigate("/clientes"); });
+    expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+    expect(screen.queryByText("Tela de clientes")).not.toBeInTheDocument();
+  });
+
+  it("sessão bloqueada esconde lista e conversa; ao desbloquear volta com o rascunho", async () => {
+    const user = userEvent.setup();
+    m.chamados = [{ id: 12, texto: "Não salva a OS", situacao: "aberto", criado_em: "2026-11-21 09:00:00+00", atualizado_em: "2026-11-21 10:00:00+00", respostas: 1 }];
+    renderizar();
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    await user.type(screen.getByLabelText(/Responder/), "Resposta pela metade");
+    expect(screen.getByText(/Recarregue a OS\./)).toBeInTheDocument();
+
+    mudarSessao({ unlocked: false, active_profile_id: 1 });
+    expect(screen.getByText("Suporte bloqueado")).toBeInTheDocument();
+    expect(screen.queryByText(/Chamado #12/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Recarregue a OS\./)).not.toBeInTheDocument();
+    expect(screen.queryByText("Resposta pela metade")).not.toBeInTheDocument();
+
+    mudarSessao({ unlocked: true, active_profile_id: 1 });
+    await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+    expect(screen.getByLabelText(/Responder/)).toHaveValue("Resposta pela metade");
+  });
+
+  it("desbloquear com outro perfil não mostra o rascunho do anterior", async () => {
+    const user = userEvent.setup();
+    renderizar();
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Do perfil 1");
+    mudarSessao({ unlocked: false, active_profile_id: 1 });
+    mudarSessao({ unlocked: true, active_profile_id: 2 });
+    expect(screen.getByLabelText("O que aconteceu?")).toHaveValue("");
+  });
+
+  describe.each([
+    { tipo: "chamado", campo: "O que aconteceu?", escolherChamado: false },
+    { tipo: "resposta", campo: "Responder", escolherChamado: true },
+  ])("envio de $tipo", ({ campo, escolherChamado }) => {
+    async function iniciarEnvio() {
+      const user = userEvent.setup();
+      const enviar = escolherChamado ? m.responder : m.abrirChamado;
+      let concluir!: (chamado: typeof aberto12) => void;
+      enviar.mockReturnValueOnce(new Promise<typeof aberto12>((resolve) => { concluir = resolve; }));
+      m.chamados = [aberto12];
+      renderizar();
+      const abrirEditor = async () => {
+        if (escolherChamado) await user.click(screen.getByRole("button", { name: /Chamado #12/ }));
+        return screen.getByLabelText(campo);
+      };
+      await user.type(await abrirEditor(), "Do perfil 1");
+      await user.keyboard("{Control>}{Enter}{/Control}");
+      expect(enviar).toHaveBeenCalledTimes(1);
+      return { user, enviar, abrirEditor, concluir };
+    }
+
+    it("preserva texto e print do novo perfil quando o envio anterior termina", async () => {
+      const { user, abrirEditor, concluir } = await iniciarEnvio();
+      mudarSessao({ unlocked: true, active_profile_id: 2 });
+      const editor = await abrirEditor();
+      await user.type(editor, "Do perfil 2");
+      const print = new File(["x"], "tela.png", { type: "image/png" });
+      await user.upload(editor.closest("div.border-t")!.querySelector("input[type=file]") as HTMLInputElement, print);
+      await screen.findByAltText("Print 1");
+
+      await act(async () => concluir(aberto12));
+      expect(editor).toHaveValue("Do perfil 2");
+      expect(screen.getByAltText("Print 1")).toBeInTheDocument();
+    });
+
+    it("mantém a trava no desbloqueio até o envio terminar", async () => {
+      const { user, enviar, abrirEditor, concluir } = await iniciarEnvio();
+      mudarSessao({ unlocked: false, active_profile_id: 1 });
+      expect(screen.getByText("Suporte bloqueado")).toBeInTheDocument();
+      mudarSessao({ unlocked: true, active_profile_id: 1 });
+      const editor = await abrirEditor();
+      expect(editor).toHaveValue("Do perfil 1");
+      expect(screen.getByRole("button", { name: /Enviando/ })).toBeDisabled();
+      await user.click(editor);
+      await user.keyboard("{Control>}{Enter}{/Control}");
+      expect(enviar).toHaveBeenCalledTimes(1);
+
+      await act(async () => concluir(aberto12));
+      expect(editor).toHaveValue("");
+      await user.type(editor, "Novo envio");
+      await user.keyboard("{Control>}{Enter}{/Control}");
+      expect(enviar).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("com a sessão bloqueada, sair com rascunho ainda pede confirmação", async () => {
+    const user = userEvent.setup();
+    const router = createMemoryRouter(
+      [{ path: "/suporte", element: <Suporte /> }, { path: "/clientes", element: <p>Tela de clientes</p> }],
+      { initialEntries: ["/suporte"] },
+    );
+    render(<RouterProvider router={router} />);
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Ainda escrevendo");
+    mudarSessao({ unlocked: false, active_profile_id: 1 });
+    expect(screen.getByText("Suporte bloqueado")).toBeInTheDocument();
+    await act(async () => { void router.navigate("/clientes"); });
+    expect(await screen.findByText("Sair sem salvar?")).toBeInTheDocument();
+    expect(screen.queryByText("Tela de clientes")).not.toBeInTheDocument();
+  });
+
+  it("print que não chegou ao Slack volta para a caixa de resposta do chamado e avisa", async () => {
+    const user = userEvent.setup();
+    m.chamados = [aberto12];
+    m.mensagens = [];
+    m.abrirChamado.mockReset().mockResolvedValue({ ...aberto12, prints_nao_enviados: [0] });
+    renderizar();
+    const arquivo = new File(["x"], "tela.png", { type: "image/png" });
+    await user.upload(screen.getByLabelText("O que aconteceu?").closest("div.border-t")!.querySelector("input[type=file]") as HTMLInputElement, arquivo);
+    await screen.findByAltText("Print 1");
+    await user.type(screen.getByLabelText("O que aconteceu?"), "Com print");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await waitFor(() => expect(m.toast.warning).toHaveBeenCalledWith(expect.stringContaining("1 print não chegou"), expect.anything()));
+    expect(m.toast.success).not.toHaveBeenCalled();
+    // Já está no chamado #12, com o print na caixa de resposta.
+    expect(await screen.findByLabelText("Responder")).toBeInTheDocument();
+    expect(screen.getByAltText("Print 1")).toBeInTheDocument();
+  });
+});

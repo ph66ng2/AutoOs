@@ -97,6 +97,8 @@ pub struct FiltrosOrcamentosInsumos {
     pub cliente_id: Option<i32>,
     pub busca: Option<String>,
     pub page: Option<i32>,
+    /// "Minhas": só os orçamentos criados por este perfil.
+    pub criado_por_profile_id: Option<i32>,
 }
 
 /// Enviar, reprovar e entregar só precisam identificar o orçamento e a versão vista pela tela.
@@ -159,6 +161,8 @@ pub struct OrcamentoInsumosRow {
     pub decidido_em: Option<String>,
     pub entregue_em: Option<String>,
     pub total_itens: i64,
+    /// Categorias dos itens, em minúsculas e separadas por vírgula ("etiqueta, ribbon").
+    pub categorias_itens: Option<String>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -200,7 +204,8 @@ const ORCAMENTO_SELECT: &str = "
            o.criado_em::TEXT AS criado_em, o.atualizado_em::TEXT AS atualizado_em,
            o.enviado_em::TEXT AS enviado_em, o.decidido_em::TEXT AS decidido_em,
            o.entregue_em::TEXT AS entregue_em,
-           (SELECT COUNT(*) FROM orcamento_insumos_itens i WHERE i.orcamento_id = o.id)::BIGINT AS total_itens
+           (SELECT COUNT(*) FROM orcamento_insumos_itens i WHERE i.orcamento_id = o.id)::BIGINT AS total_itens,
+           (SELECT string_agg(DISTINCT LOWER(i.categoria), ', ') FROM orcamento_insumos_itens i WHERE i.orcamento_id = o.id) AS categorias_itens
     FROM orcamentos_insumos o
     JOIN clientes c ON c.id = o.cliente_id
     LEFT JOIN cliente_contatos ct ON ct.id = o.contato_id";
@@ -641,6 +646,9 @@ fn add_filtros(consulta: &mut QueryBuilder<Postgres>, empresa_id: i32, filtros: 
     if let Some(cliente_id) = filtros.cliente_id.filter(|id| *id > 0) {
         consulta.push(" AND o.cliente_id = ").push_bind(cliente_id);
     }
+    if let Some(perfil) = filtros.criado_por_profile_id.filter(|id| *id > 0) {
+        consulta.push(" AND o.criado_por_profile_id = ").push_bind(perfil);
+    }
     if let Some(busca) = filtros.busca.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
         let padrao = format!("%{busca}%");
         consulta
@@ -667,10 +675,11 @@ fn add_filtros(consulta: &mut QueryBuilder<Postgres>, empresa_id: i32, filtros: 
 #[instrument(skip_all)]
 pub async fn listar_orcamentos_insumos(
     filtros: Option<FiltrosOrcamentosInsumos>,
+    segundo_plano: Option<bool>,
 ) -> Result<PaginatedResult<OrcamentoInsumosRow>, String> {
     let filtros = filtros.unwrap_or_default();
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
 
     let mut contagem = QueryBuilder::<Postgres>::new(
         "SELECT COUNT(*) FROM orcamentos_insumos o JOIN clientes c ON c.id = o.cliente_id",
@@ -700,11 +709,35 @@ pub async fn listar_orcamentos_insumos(
     Ok(PaginatedResult { items, total, below_minimum: None })
 }
 
+/// Quantos orçamentos cada status tem, com a mesma busca e cliente da lista (para os filtros).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn contar_orcamentos_insumos_por_status(
+    filtros: Option<FiltrosOrcamentosInsumos>,
+    segundo_plano: Option<bool>,
+) -> Result<Vec<crate::commands::types::ContagemStatusRow>, String> {
+    let mut filtros = filtros.unwrap_or_default();
+    filtros.status = None;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    let mut consulta = QueryBuilder::<Postgres>::new(
+        "SELECT o.status AS status, COUNT(*) AS total FROM orcamentos_insumos o JOIN clientes c ON c.id = o.cliente_id",
+    );
+    add_filtros(&mut consulta, empresa_id, &filtros);
+    consulta.push(" GROUP BY o.status");
+    consulta
+        .build_query_as::<crate::commands::types::ContagemStatusRow>()
+        .fetch_all(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
-pub async fn obter_orcamento_insumos(id: i32) -> Result<OrcamentoInsumosDetalhe, String> {
+pub async fn obter_orcamento_insumos(id: i32, segundo_plano: Option<bool>) -> Result<OrcamentoInsumosDetalhe, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    // A recarga ao vivo da página do orçamento é leitura de fundo: exige sessão, sem renová-la.
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     carregar_detalhe(&pool, empresa_id, id).await
 }
 

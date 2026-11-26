@@ -104,6 +104,17 @@ jobs:
             throw "AUTOOS_DATABASE_URL deve exigir TLS com sslmode=require."
           }
 
+      - name: Validar token do suporte (opcional)
+        shell: pwsh
+        env:
+          AUTOOS_SLACK_BOT_TOKEN: ${{ secrets.AUTOOS_SLACK_BOT_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:AUTOOS_SLACK_BOT_TOKEN)) {
+            Write-Host "::warning::Sem AUTOOS_SLACK_BOT_TOKEN: o suporte terá de ser configurado em cada computador."
+          } elseif ($env:AUTOOS_SLACK_BOT_TOKEN.Trim() -notmatch '^xoxb-') {
+            throw "AUTOOS_SLACK_BOT_TOKEN deve ser o Bot User OAuth Token (xoxb-...)."
+          }
+
       - name: Validar estruturas reais do banco
         env:
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
@@ -129,6 +140,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_SLACK_BOT_TOKEN: ${{ secrets.AUTOOS_SLACK_BOT_TOKEN }}
         with:
           tagName: ${{ steps.version.outputs.tag }}
           releaseName: 'Release ${{ steps.version.outputs.tag }}'

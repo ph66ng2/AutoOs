@@ -224,7 +224,7 @@ export function gerarCorpoOrcamentoPortalHtml(
 }
 
 function mensagemErro(error: unknown, padrao: string): string {
-  if (typeof error === "string") return error;
+  if (typeof error === "string" && error) return error;
   if (error && typeof error === "object" && "message" in error) {
     const msg = (error as { message?: unknown }).message;
     if (typeof msg === "string" && msg) return msg;
@@ -298,6 +298,7 @@ export async function enviarEmailOrcamentoPortal(
 
   try {
     const emailCliente1: EmailSendRequest = {
+      orcamento_equipamento_id: equip.id,
       destinatario: nomeContato,
       email: emailCliente,
       cc: [],
@@ -318,10 +319,14 @@ export async function enviarEmailOrcamentoPortal(
       return resultado;
     }
 
+    // Cópia interna só para o técnico da empresa da sessão e, se for o caso, a gerência
+    // (lib/copia-gerencia); sem nenhum dos dois, não há cópia a enviar.
     const [principal, ...restoCc] = montarCcs(emailTecnicoPorNome(verificacao.tecnico_nome));
+    if (!principal) return resultado;
     try {
       const copia: EmailSendRequest = {
-        destinatario: principal,
+        equipamento_id: equip.id,
+        destinatario: "Cópia interna",
         email: principal,
         cc: restoCc,
         assunto: `[Cópia] ${assunto}`,

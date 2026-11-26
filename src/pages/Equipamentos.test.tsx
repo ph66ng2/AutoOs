@@ -1,0 +1,530 @@
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import Equipamentos from "./Equipamentos";
+
+Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => {} });
+
+const { dbMocks, status, enviarOrcamento, enviarEmailOrcamento, ensureSensitiveAccess, recarregar, toastMock } = vi.hoisted(() => ({
+  toastMock: Object.assign(vi.fn(), {
+    error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn(), message: vi.fn(),
+    loading: vi.fn(), dismiss: vi.fn(), promise: vi.fn(),
+  }),
+  dbMocks: {
+    buscarEquipamento: vi.fn(),
+    listarServicosCatalogoAtivos: vi.fn(),
+    prorrogarPrazoOrcamento: vi.fn(),
+    obterDestinatarioOrcamento: vi.fn(),
+    salvarVerificacao: vi.fn(),
+    buscarCliente: vi.fn(),
+    listarClienteContatos: vi.fn(),
+    listarEquipamentosCliente: vi.fn(),
+    buscarVerificacao: vi.fn(),
+    listarComunicacoes: vi.fn(),
+    listarImagensEquipamento: vi.fn(),
+    listarHistoricoEquipamento: vi.fn(),
+  },
+  enviarOrcamento: vi.fn(),
+  enviarEmailOrcamento: vi.fn(),
+  ensureSensitiveAccess: vi.fn(),
+  recarregar: vi.fn(),
+  status: { unlocked: true, active_profile_id: 1, active_empresa_id: 4, profiles: [] },
+}));
+vi.mock("@/lib/db", () => ({ db: dbMocks }));
+vi.mock("sonner", async (importOriginal) => ({
+  ...await importOriginal<typeof import("sonner")>(),
+  toast: toastMock,
+}));
+vi.mock("@/hooks/useSensitiveAccess", () => ({
+  useSensitiveAccess: () => ({ status, hasPermission: () => true, ensureSensitiveAccess }),
+}));
+vi.mock("@/hooks/useEquipamentos", () => {
+  const equipamentos = [];
+  return { useEquipamentos: () => ({ equipamentos, total: 0, contagens: {}, destaques: new Set(), recarregar }) };
+});
+vi.mock("@/lib/equipamento-imagem-utils", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/equipamento-imagem-utils")>(),
+  arquivoParaImagemEquipamento: async (arquivo: File, ordem: number, categoria: string) => ({
+    nome_arquivo: arquivo.name, mime_type: "image/jpeg", data_url: "data:image/jpeg;base64,AA==",
+    categoria, ordem, legenda: "",
+  }),
+}));
+vi.mock("@/pages/equipamentos/EquipamentosPageGallery", () => ({
+  GaleriaImagensEquipamento: ({ imagens }: { imagens: { nome_arquivo: string }[] }) => (
+    <ul aria-label="Fotos da entrada">{imagens.map((imagem) => <li key={imagem.nome_arquivo}>{imagem.nome_arquivo}</li>)}</ul>
+  ),
+}));
+vi.mock("@/hooks/useTecnicos", () => ({ useTecnicos: () => [], useNomesFiltroTecnico: () => [] }));
+const aoVivo = vi.hoisted(() => new Map<string, (mudancas: { tabela: string; id: number | null; referencia: number | null; operacao: string }[]) => void>());
+vi.mock("@/hooks/useAtualizacaoAoVivo", () => ({
+  useAtualizacaoAoVivo: (tabelas: string[], recarregar: (mudancas: never[]) => void) => { aoVivo.set(tabelas.join(","), recarregar); },
+}));
+
+vi.mock("@/lib/envio-orcamento", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/envio-orcamento")>(),
+  enviarOrcamentoAoCliente: enviarOrcamento,
+}));
+vi.mock("@/lib/email-service", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/email-service")>();
+  return { ...original, EmailService: { ...original.EmailService, enviarOrcamento: enviarEmailOrcamento } };
+});
+vi.mock("@/components/equipamentos/VerificacaoTecnica", () => ({
+  VerificacaoTecnica: ({ open, onConcluir }) => open && (
+    <button onClick={() => void onConcluir({ custo_total: 150 })}>Finalizar verificação</button>
+  ),
+}));
+
+function RotaDeTeste() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  return (
+    <>
+      <output>{pathname}</output>
+      <button onClick={() => navigate("/equipamentos/2")}>Abrir B</button>
+      <button onClick={() => navigate("/equipamentos/1/orcamento")}>Editar orçamento A</button>
+      <button onClick={() => navigate("/equipamentos/2/orcamento")}>Editar orçamento B</button>
+      <button onClick={() => navigate("/equipamentos/1/verificacao")}>Verificar A</button>
+      <button onClick={() => navigate("/equipamentos/2/verificacao")}>Verificar B</button>
+      <button onClick={() => navigate("/equipamentos/nova")}>Ir para entrada</button>
+      <Equipamentos />
+    </>
+  );
+}
+
+function abrir(rota = "/equipamentos/1") {
+  return render(<MemoryRouter initialEntries={[rota]}><RotaDeTeste /></MemoryRouter>);
+}
+
+function os(id: number) {
+  return { id, marca: "Marca", modelo: `Modelo ${id}`, status: "RECEBIDO", serial_number: `S-${id}` };
+}
+
+function buscaPendente() {
+  let resolver!: (eq: ReturnType<typeof os>) => void;
+  let rejeitar!: (erro: Error) => void;
+  dbMocks.buscarEquipamento.mockImplementationOnce(() => new Promise((resolve, reject) => {
+    resolver = resolve;
+    rejeitar = reject;
+  }));
+  return { resolver: (eq: ReturnType<typeof os>) => resolver(eq), rejeitar: (erro: Error) => rejeitar(erro) };
+}
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  ensureSensitiveAccess.mockResolvedValue(true);
+  Object.assign(status, { unlocked: true, active_profile_id: 1, active_empresa_id: 4 });
+  recarregar.mockResolvedValue({ status: "atualizado" });
+  dbMocks.buscarVerificacao.mockResolvedValue(null);
+  dbMocks.listarComunicacoes.mockResolvedValue([]);
+  dbMocks.listarEquipamentosCliente.mockResolvedValue([]);
+  dbMocks.listarImagensEquipamento.mockResolvedValue([]);
+  dbMocks.listarHistoricoEquipamento.mockResolvedValue([]);
+});
+
+describe("botão Atualizar da lista", () => {
+  it("busca a lista de novo a cada clique, mesmo logo após outra carga", async () => {
+    abrir("/equipamentos");
+    const botao = await screen.findByRole("button", { name: "Atualizar equipamentos" });
+    fireEvent.click(botao);
+    fireEvent.click(botao);
+    expect(recarregar).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("abertura dos detalhes pela rota", () => {
+  it("mantém a OS B quando a resposta da OS A chega depois", async () => {
+    const a = buscaPendente();
+    dbMocks.buscarEquipamento.mockResolvedValueOnce(os(2));
+    abrir();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir B" }));
+    expect(await screen.findByRole("heading", { name: "Marca Modelo 2" })).toBeInTheDocument();
+    await act(async () => { a.resolver(os(1)); });
+    expect(screen.getByText("/equipamentos/2")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Marca Modelo 2" })).toBeInTheDocument();
+    expect(dbMocks.buscarVerificacao).not.toHaveBeenCalledWith(1);
+  });
+
+  it.each(["resposta", "erro"])("mantém Nova entrada após %s tardio da OS A", async (resultado) => {
+    const a = buscaPendente();
+    abrir();
+    fireEvent.click(screen.getByRole("button", { name: "Ir para entrada" }));
+    expect(await screen.findByRole("heading", { name: "Nova entrada" })).toBeInTheDocument();
+    await act(async () => {
+      if (resultado === "resposta") a.resolver(os(1));
+      else a.rejeitar(new Error("Falha na busca de A"));
+    });
+    expect(screen.getByText("/equipamentos/nova")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Nova entrada" })).toBeInTheDocument();
+    expect(dbMocks.buscarVerificacao).not.toHaveBeenCalledWith(1);
+  });
+});
+
+describe("rascunho da Nova entrada", () => {
+  const chave = "autoos:rascunho:nova-entrada:4:1";
+  const defeito = "Anotação do rascunho";
+  const campoDefeito = () => screen.getByPlaceholderText("Defeito informado no recebimento");
+
+  function gravarRascunho(chaveLocal = chave) {
+    localStorage.setItem(chaveLocal, JSON.stringify({
+      salvoEm: new Date().toISOString(),
+      dados: { form: { defeito_relatado: defeito }, clienteId: 8, responsavelId: 9 },
+    }));
+  }
+
+  it.each([
+    { active_empresa_id: 12 },
+    { active_profile_id: 2 },
+    { unlocked: false },
+    { active_empresa_id: null },
+  ])("não recupera o rascunho com sessão %j", (sessao) => {
+    gravarRascunho();
+    Object.assign(status, sessao);
+    abrir("/equipamentos/nova");
+    expect(campoDefeito()).toHaveValue("");
+    expect(dbMocks.buscarCliente).not.toHaveBeenCalled();
+    expect(localStorage.getItem(chave)).not.toBeNull();
+  });
+
+  it("remove a chave legada e ignora seu conteúdo", () => {
+    const legada = "autoos:rascunho:nova-entrada";
+    gravarRascunho(legada);
+    abrir("/equipamentos/nova");
+    expect(campoDefeito()).toHaveValue("");
+    expect(localStorage.getItem(legada)).toBeNull();
+  });
+
+  it("recupera os vínculos atuais e persiste somente seus IDs", async () => {
+    gravarRascunho();
+    dbMocks.buscarCliente.mockResolvedValue({ id: 8, empresa_id: 4, ativo: true, nome: "Cliente atual" });
+    dbMocks.listarClienteContatos.mockResolvedValue([
+      { id: 9, cliente_id: 8, empresa_id: 4, ativo: true, nome: "Contato atual" },
+    ]);
+    abrir("/equipamentos/nova");
+    expect(campoDefeito()).toHaveValue(defeito);
+    expect(await screen.findByText("Cliente atual")).toBeInTheDocument();
+    expect(await screen.findByText("Contato atual")).toBeInTheDocument();
+    expect(dbMocks.buscarCliente).toHaveBeenCalledWith(8);
+    expect(dbMocks.listarClienteContatos).toHaveBeenCalledWith(8, 4);
+    act(() => window.dispatchEvent(new Event("pagehide")));
+    const { dados } = JSON.parse(localStorage.getItem(chave)!);
+    expect(dados).toMatchObject({ clienteId: 8, responsavelId: 9 });
+    expect(JSON.stringify(dados)).not.toMatch(/Cliente atual|Contato atual/);
+  });
+
+  it("descarta o vínculo quando o cliente consultado pertence a outra empresa", async () => {
+    gravarRascunho();
+    dbMocks.buscarCliente.mockResolvedValue({ id: 8, empresa_id: 12, ativo: true, nome: "Cliente externo" });
+    abrir("/equipamentos/nova");
+    await act(async () => {});
+    expect(campoDefeito()).toHaveValue(defeito);
+    expect(screen.queryByText("Cliente externo")).not.toBeInTheDocument();
+    expect(dbMocks.listarClienteContatos).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { caso: "com texto", form: { defeito_relatado: defeito } },
+    { caso: "só com o cliente", form: {} },
+  ])("Desfazer o Cancelar preserva o cliente e o contato ainda carregando ($caso)", async ({ form }) => {
+    localStorage.setItem(chave, JSON.stringify({
+      salvoEm: new Date().toISOString(),
+      dados: { form, clienteId: 8, responsavelId: 9 },
+    }));
+    dbMocks.buscarCliente.mockReturnValue(new Promise(() => {}));
+    abrir("/equipamentos/nova");
+    await waitFor(() => expect(dbMocks.buscarCliente).toHaveBeenCalledWith(8));
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(localStorage.getItem(chave)).toBeNull();
+    const chamada = toastMock.mock.calls.find(([titulo]) => titulo === "Entrada descartada");
+    expect(chamada).toBeDefined();
+    act(() => chamada![1].action.onClick());
+    const { dados } = JSON.parse(localStorage.getItem(chave)!);
+    expect(dados).toMatchObject({ clienteId: 8, responsavelId: 9 });
+  });
+
+  it.each([
+    { caso: "bloqueio por inatividade", sessao: { unlocked: false } },
+    { caso: "empresa indisponível por erro passageiro", sessao: { active_empresa_id: null } },
+  ])("mantém texto e fotos da Nova entrada aberta no $caso", async ({ sessao }) => {
+    const { container, rerender } = abrir("/equipamentos/nova");
+    const novaRota = () => rerender(<MemoryRouter initialEntries={["/equipamentos/nova"]}><RotaDeTeste /></MemoryRouter>);
+    fireEvent.change(campoDefeito(), { target: { value: "Não liga" } });
+    const entrada = container.querySelector<HTMLInputElement>("#equipamento-imagens-entrada")!;
+    fireEvent.change(entrada, { target: { files: [new File(["x"], "frente.jpg", { type: "image/jpeg" })] } });
+    expect(await screen.findByText("frente.jpg")).toBeInTheDocument();
+
+    Object.assign(status, sessao);
+    novaRota();
+    expect(campoDefeito()).toHaveValue("Não liga");
+    expect(screen.getByText("frente.jpg")).toBeInTheDocument();
+
+    Object.assign(status, { unlocked: true, active_profile_id: 1, active_empresa_id: 4 });
+    novaRota();
+    expect(campoDefeito()).toHaveValue("Não liga");
+    expect(screen.getByText("frente.jpg")).toBeInTheDocument();
+    await waitFor(() => expect(JSON.parse(localStorage.getItem(chave)!).dados.form.defeito_relatado).toBe("Não liga"));
+  });
+
+  it("aberta sem chave, recupera o rascunho da chave que chega com o formulário vazio", async () => {
+    gravarRascunho();
+    dbMocks.buscarCliente.mockReturnValue(new Promise(() => {}));
+    Object.assign(status, { active_empresa_id: null });
+    const { rerender } = abrir("/equipamentos/nova");
+    expect(campoDefeito()).toHaveValue("");
+
+    Object.assign(status, { active_empresa_id: 4 });
+    rerender(<MemoryRouter initialEntries={["/equipamentos/nova"]}><RotaDeTeste /></MemoryRouter>);
+    expect(campoDefeito()).toHaveValue(defeito);
+    await waitFor(() => expect(dbMocks.buscarCliente).toHaveBeenCalledWith(8));
+    act(() => window.dispatchEvent(new Event("pagehide")));
+    const { dados } = JSON.parse(localStorage.getItem(chave)!);
+    expect(dados).toMatchObject({ form: { defeito_relatado: defeito }, clienteId: 8, responsavelId: 9 });
+  });
+
+  it("aberta sem chave e já preenchida, oferece o rascunho da chave que chega", async () => {
+    gravarRascunho();
+    Object.assign(status, { active_empresa_id: null });
+    const { rerender } = abrir("/equipamentos/nova");
+    fireEvent.change(campoDefeito(), { target: { value: "Não liga" } });
+
+    Object.assign(status, { active_empresa_id: 4 });
+    rerender(<MemoryRouter initialEntries={["/equipamentos/nova"]}><RotaDeTeste /></MemoryRouter>);
+    expect(campoDefeito()).toHaveValue("Não liga");
+    const chamada = toastMock.mock.calls.find(([titulo]) => titulo === "Havia outra entrada em rascunho");
+    expect(chamada).toBeDefined();
+    act(() => chamada![1].action.onClick());
+    expect(campoDefeito()).toHaveValue(defeito);
+  });
+
+  it("limpa os dados exibidos quando o perfil muda com o formulário aberto", async () => {
+    gravarRascunho();
+    const { rerender } = abrir("/equipamentos/nova");
+    expect(campoDefeito()).toHaveValue(defeito);
+    status.active_profile_id = 2;
+    rerender(<MemoryRouter initialEntries={["/equipamentos/nova"]}><RotaDeTeste /></MemoryRouter>);
+    expect(campoDefeito()).toHaveValue("");
+    expect(localStorage.getItem("autoos:rascunho:nova-entrada:4:2")).toBeNull();
+    expect(localStorage.getItem(chave)).not.toBeNull();
+  });
+});
+
+it("volta à OS salva e permite enviar o orçamento quando a recarga falha", async () => {
+  const anterior = { ...os(1), status: "EM_VERIFICACAO" };
+  const salvo = {
+    ...anterior,
+    status: "AGUARDANDO_APROVACAO",
+    cliente_nome: "Cliente da OS",
+    cliente_telefone: "71999999999",
+    valor_orcamento: 150,
+    prazo_aprovacao: "2099-12-31",
+  };
+  const verificacao = { equipamento_id: 1, tecnico_nome: "Técnico", custo_total: 150 };
+  dbMocks.buscarEquipamento.mockResolvedValueOnce(anterior).mockRejectedValue(new Error("OS indisponível"));
+  dbMocks.buscarVerificacao.mockRejectedValue(new Error("Consulta da verificação indisponível"));
+  dbMocks.obterDestinatarioOrcamento.mockResolvedValue({ precisaContato: false });
+  dbMocks.salvarVerificacao.mockResolvedValue({ equipamento: salvo, verificacao });
+  recarregar.mockResolvedValue({ status: "falhou" });
+  enviarOrcamento.mockRejectedValueOnce(new Error("Provedor indisponível")).mockResolvedValue({
+    canais: { whatsapp: { enviado: true }, email: { enviado: false } },
+    avisos: [],
+  });
+
+  abrir("/equipamentos/1/verificacao");
+  fireEvent.click(await screen.findByRole("button", { name: "Finalizar verificação" }));
+
+  expect(await screen.findByText("/equipamentos/1")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Aprovar" })).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole("combobox", { name: "Mais ações" }), { key: "ArrowDown" });
+  fireEvent.keyDown(await screen.findByRole("option", { name: "WhatsApp" }), { key: "Enter" });
+
+  await waitFor(() => expect(enviarOrcamento).toHaveBeenNthCalledWith(
+    2, salvo, verificacao, { reenvioManual: true, enviarEmail: false },
+  ));
+  expect(dbMocks.salvarVerificacao).toHaveBeenCalledTimes(1);
+  expect(dbMocks.buscarEquipamento).toHaveBeenCalledTimes(2);
+});
+
+describe("reenvio de orçamento por e-mail", () => {
+  const destinatario = { contatoId: 9, nome: "Contato do portal", email: "portal@example.com" };
+  const equipamento = {
+    ...os(1),
+    status: "AGUARDANDO_APROVACAO",
+    cliente_nome: "Cliente da OS",
+    cliente_email: "cliente@example.com",
+    responsavel_nome: "Responsável antigo",
+    responsavel_email: "antigo@example.com",
+    atualizado_em: "2026-11-22T12:00:00Z",
+  };
+  const verificacao = { equipamento_id: 1, tecnico_nome: "Técnico", custo_total: 150 };
+
+  beforeEach(() => {
+    dbMocks.buscarEquipamento.mockResolvedValue(equipamento);
+    dbMocks.buscarVerificacao.mockResolvedValue(verificacao);
+    dbMocks.obterDestinatarioOrcamento.mockResolvedValue(destinatario);
+    enviarEmailOrcamento.mockResolvedValue({ sucesso: true });
+  });
+
+  async function abrirReenvio() {
+    abrir();
+    const menu = await screen.findByRole("combobox", { name: "Mais ações" });
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    fireEvent.keyDown(await screen.findByRole("option", { name: "Reenviar orçamento por e-mail" }), { key: "Enter" });
+  }
+
+  async function confirmarReenvio() {
+    expect(await screen.findByText("Enviar o orçamento da OS #1 para Contato do portal (portal@example.com)?")).toBeVisible();
+    expect(dbMocks.obterDestinatarioOrcamento).toHaveBeenCalledExactlyOnceWith(1);
+    expect(ensureSensitiveAccess).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Reenviar e-mail" }));
+  }
+
+  it("confirma e envia ao destinatário resolvido pelo backend", async () => {
+    await abrirReenvio();
+    await confirmarReenvio();
+
+    await waitFor(() => expect(enviarEmailOrcamento).toHaveBeenCalledExactlyOnceWith(
+      { ...equipamento, cliente_nome: destinatario.nome, cliente_email: destinatario.email },
+      verificacao,
+    ));
+    expect(dbMocks.obterDestinatarioOrcamento).toHaveBeenNthCalledWith(2, 1);
+    expect(ensureSensitiveAccess.mock.invocationCallOrder[0])
+      .toBeLessThan(dbMocks.obterDestinatarioOrcamento.mock.invocationCallOrder[1]);
+  });
+
+  it.each([
+    [null, "O contato Contato do portal não tem e-mail; cadastre em Clientes › Contatos."],
+    ["  ", "O contato Contato do portal não tem e-mail; cadastre em Clientes › Contatos."],
+    ["inválido", "O contato Contato do portal tem um e-mail inválido. Corrija em Clientes › Contatos."],
+  ])("explica por que o e-mail %j impede o reenvio", async (email, mensagem) => {
+    dbMocks.obterDestinatarioOrcamento.mockResolvedValue({ ...destinatario, email });
+    await abrirReenvio();
+
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalledWith(expect.stringContaining(mensagem), expect.any(Object)));
+    expect(screen.queryByRole("button", { name: "Reenviar e-mail" })).not.toBeInTheDocument();
+    expect(ensureSensitiveAccess).not.toHaveBeenCalled();
+    expect(enviarEmailOrcamento).not.toHaveBeenCalled();
+  });
+
+  it("avisa se a OS deixou de aguardar aprovação", async () => {
+    dbMocks.buscarEquipamento.mockResolvedValueOnce(equipamento)
+      .mockResolvedValue({ ...equipamento, status: "APROVADO" });
+    await abrirReenvio();
+
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalledWith(
+      expect.stringContaining("A OS deve estar aguardando aprovação para reenviar o orçamento."),
+      expect.any(Object),
+    ));
+    expect(enviarEmailOrcamento).not.toHaveBeenCalled();
+  });
+
+  it.each(["novo@example.com", null])("recusa reenvio se o e-mail passa a ser %s após o PIN", async (email) => {
+    dbMocks.obterDestinatarioOrcamento.mockResolvedValueOnce(destinatario).mockResolvedValue({ ...destinatario, email });
+    await abrirReenvio();
+    await confirmarReenvio();
+
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalled());
+    expect(dbMocks.obterDestinatarioOrcamento).toHaveBeenNthCalledWith(2, 1);
+    expect(enviarEmailOrcamento).not.toHaveBeenCalled();
+  });
+});
+
+describe("prorrogação de prazo ao trocar de OS", () => {
+  function osComOrcamento(id: number) {
+    return {
+      ...os(id),
+      status: "AGUARDANDO_APROVACAO",
+      valor_orcamento: 150,
+      prazo_aprovacao: "2099-12-01",
+      atualizado_em: "2026-11-22T12:00:00Z",
+    };
+  }
+
+  beforeEach(() => {
+    dbMocks.buscarEquipamento.mockImplementation(async (id: number) => osComOrcamento(id));
+    dbMocks.listarServicosCatalogoAtivos.mockResolvedValue([]);
+  });
+
+  async function confirmarNovoPrazo() {
+    const confirmar = await screen.findByRole("button", { name: "Confirmar", exact: true });
+    fireEvent.change(screen.getByPlaceholderText("dd/mm/aaaa"), { target: { value: "2099-12-31" } });
+    await act(async () => { fireEvent.click(confirmar); });
+  }
+
+  it("descarta a prorrogação de A se a versão chegar depois de navegar de A para B e voltar a A", async () => {
+    abrir("/equipamentos/1/orcamento");
+    await screen.findByRole("button", { name: /Marca Modelo 1/ });
+    const versao = buscaPendente();
+    await confirmarNovoPrazo();
+    await waitFor(() => expect(dbMocks.buscarEquipamento).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByText("Editar orçamento B"));
+    await screen.findByRole("button", { name: /Marca Modelo 2/ });
+    fireEvent.click(screen.getByText("Editar orçamento A"));
+    await screen.findByRole("button", { name: /Marca Modelo 1/ });
+
+    await act(async () => { versao.resolver(osComOrcamento(1)); });
+    expect(dbMocks.prorrogarPrazoOrcamento).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Confirmar", exact: true })).toBeEnabled();
+  });
+
+  it("cancela a decisão pendente de A e libera o botão Confirmar de B", async () => {
+    dbMocks.prorrogarPrazoOrcamento.mockResolvedValue({ prorrogado: false });
+    abrir("/equipamentos/1/orcamento");
+    await confirmarNovoPrazo();
+    await screen.findByText("Prorrogar anula a resposta pendente. Continuar?");
+
+    fireEvent.click(screen.getByText("Editar orçamento B"));
+
+    expect(await screen.findByRole("button", { name: /Marca Modelo 2/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Confirmar", exact: true })).toBeEnabled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(dbMocks.prorrogarPrazoOrcamento).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("finalização da verificação ao trocar de OS", () => {
+  it("descarta a finalização de A se o destinatário chegar depois de navegar de A para B e voltar a A", async () => {
+    dbMocks.buscarEquipamento.mockImplementation(async (id: number) => ({ ...os(id), status: "EM_VERIFICACAO" }));
+    let resolverDestinatario!: (dest: { precisaContato: boolean }) => void;
+    dbMocks.obterDestinatarioOrcamento.mockImplementationOnce(() => new Promise((resolve) => {
+      resolverDestinatario = resolve;
+    }));
+
+    abrir("/equipamentos/1/verificacao");
+    fireEvent.click(await screen.findByRole("button", { name: "Finalizar verificação" }));
+    await waitFor(() => expect(dbMocks.obterDestinatarioOrcamento).toHaveBeenCalledWith(1));
+
+    fireEvent.click(screen.getByText("Verificar B"));
+    await waitFor(() => expect(dbMocks.buscarEquipamento).toHaveBeenCalledWith(2));
+    expect(await screen.findByRole("button", { name: "Finalizar verificação" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Verificar A"));
+    await waitFor(() => expect(dbMocks.buscarEquipamento).toHaveBeenCalledTimes(3));
+    expect(await screen.findByRole("button", { name: "Finalizar verificação" })).toBeInTheDocument();
+
+    await act(async () => { resolverDestinatario({ precisaContato: false }); });
+
+    expect(dbMocks.salvarVerificacao).not.toHaveBeenCalled();
+    expect(enviarOrcamento).not.toHaveBeenCalled();
+    expect(screen.getByText("/equipamentos/1/verificacao")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Finalizar verificação" })).toBeInTheDocument();
+  });
+});
+
+describe("OS aberta ao vivo", () => {
+  const ouvinteDaOsAberta = () => [...aoVivo.entries()].find(([chave]) => chave.split(",").includes("comunicacoes"))?.[1];
+
+  it("recarrega as comunicações quando outro computador envia o orçamento desta OS", async () => {
+    dbMocks.buscarEquipamento.mockResolvedValue(os(1));
+    abrir();
+    expect(await screen.findByRole("heading", { name: "Marca Modelo 1" })).toBeInTheDocument();
+    await waitFor(() => expect(dbMocks.listarComunicacoes).toHaveBeenCalledTimes(1));
+    const ouvinte = ouvinteDaOsAberta();
+    expect(ouvinte).toBeDefined();
+
+    await act(async () => { ouvinte!([{ tabela: "comunicacoes", id: 50, referencia: 2, operacao: "I" }]); });
+    expect(dbMocks.listarComunicacoes).toHaveBeenCalledTimes(1);
+
+    await act(async () => { ouvinte!([{ tabela: "comunicacoes", id: 51, referencia: 1, operacao: "I" }]); });
+    await waitFor(() => expect(dbMocks.listarComunicacoes).toHaveBeenCalledTimes(2));
+    expect(dbMocks.listarComunicacoes).toHaveBeenLastCalledWith(1);
+  });
+});

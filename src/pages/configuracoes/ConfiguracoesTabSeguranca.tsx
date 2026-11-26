@@ -1,6 +1,7 @@
+import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { TabsContent } from "@/components/ui/tabs";
 import { ProfileDeleteDialog } from "@/components/ProfileDeleteDialog";
-import { PROFILE_PRESETS } from "@/lib/profile-presets";
+import { GarantiaServicosCard } from "@/components/configuracoes/GarantiaServicosCard";
 import { securityPermissionLabel, securityRoleLabel } from "@/lib/security-profile-labels";
 import type { SecurityProfile, SensitiveAccessStatus } from "@/types";
 
@@ -61,16 +62,14 @@ export function ConfiguracoesTabSeguranca({
   const pinMissingCount = activeProfiles.length - pinConfiguredCount;
 
   return (
-    <TabsContent value="seguranca" className="space-y-4" onChange={onClearSecurityMessage}>
+    <TabsContent value="seguranca" className="mt-0 space-y-4 p-5 md:p-6" onChange={onClearSecurityMessage}>
+      <h2 className="text-xl font-bold">Segurança</h2>
       {securityMessage && <div role={securityMessageVariant === "error" ? "alert" : "status"} aria-live={securityMessageVariant === "error" ? "assertive" : "polite"}>
         <ErrorAlert variant={securityMessageVariant} message={securityMessage} />
       </div>}
       <Card>
         <CardHeader>
           <CardTitle>Meu PIN</CardTitle>
-          <CardDescription>
-            A troca do seu PIN fica em Equipe e acessos, na aba Segurança.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex justify-end">
@@ -82,9 +81,6 @@ export function ConfiguracoesTabSeguranca({
       <Card>
         <CardHeader>
           <CardTitle>Perfil ativo</CardTitle>
-          <CardDescription>
-            O acesso sensível atual está associado ao perfil {accessStatus?.active_profile_name || "selecionado"}.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border bg-muted/40 p-4 text-sm">
@@ -97,14 +93,13 @@ export function ConfiguracoesTabSeguranca({
         </CardContent>
       </Card>
 
+      {/* Política da empresa (vale para todos os computadores): só administrador. */}
+      {canManageProfiles && <GarantiaServicosCard />}
+
       {canManageProfiles && (
         <Card>
           <CardHeader>
             <CardTitle>Equipe e acessos</CardTitle>
-            <CardDescription>
-              Cadastro, edição, PIN, desativação e reativação de pessoas ficam em Equipe e acessos.
-              Modelos prontos: {PROFILE_PRESETS.map((preset) => preset.label).join(", ")}.
-            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -114,6 +109,7 @@ export function ConfiguracoesTabSeguranca({
                   {pinConfiguredCount} com PIN configurado neste PC
                   {pinMissingCount > 0 ? `, ${pinMissingCount} com PIN não configurado neste PC` : ""}
                 </div>
+                <div className="text-muted-foreground">Modelos prontos: {PROFILE_PRESETS.map((preset) => preset.label).join(", ")}</div>
               </div>
               <Button asChild variant="outline"><Link to="/perfil">Abrir Equipe e acessos</Link></Button>
             </div>
@@ -134,7 +130,7 @@ export function ConfiguracoesTabSeguranca({
             </div>
 
             <div className="border-t pt-6 space-y-4">
-              <h3 className="text-lg font-semibold text-red-700">Excluir perfil</h3>
+              <h3 className="text-lg font-semibold text-destructive">Excluir perfil</h3>
               <p className="text-sm text-muted-foreground">
                 A exclusão é irreversível e exige verificação dupla (PIN do administrador + credenciais do banco).
                 Para apenas impedir o acesso de alguém, use Desativar em Equipe e acessos.
@@ -180,7 +176,7 @@ export function ConfiguracoesTabSeguranca({
               <Button
                 type="button"
                 variant="outline"
-                className="border-red-200 text-red-700 hover:bg-red-50"
+                className="border-destructive/30 text-destructive hover:bg-status-bad-bg"
                 onClick={() => onDeleteDialogOpenChange(true)}
                 disabled={securityBusy || !securityAdminUnlocked || !managedProfileId || !managedProfile?.ativo}
               >

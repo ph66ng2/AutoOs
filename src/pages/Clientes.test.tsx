@@ -1,27 +1,40 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import Clientes from "@/pages/Clientes";
+import { distribuirMudancas } from "@/lib/ao-vivo";
 
 const mocks = vi.hoisted(() => ({
+  status: { unlocked: true, active_profile_id: 1, permissions: [] as string[] },
   criar: vi.fn(),
   atualizar: vi.fn(),
   clientes: [] as unknown[],
+  erro: null as string | null,
+  recarregar: vi.fn(),
 }));
 
 vi.mock("@/hooks/useClientes", () => ({
   useClientes: () => ({
-    clientes: mocks.clientes, total: mocks.clientes.length, loading: false, error: null,
-    criar: mocks.criar, atualizar: mocks.atualizar, deletar: vi.fn(), recarregar: vi.fn(),
+    clientes: mocks.clientes, total: mocks.clientes.length, loading: false, error: mocks.erro,
+    criar: mocks.criar, atualizar: mocks.atualizar, deletar: vi.fn(), recarregar: mocks.recarregar,
   }),
 }));
-vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: vi.fn() }) }));
+vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({
+  ensureSensitiveAccess: vi.fn(),
+  status: mocks.status,
+  hasPermission: (permissao: string) => mocks.status.unlocked && mocks.status.permissions.includes(permissao),
+}) }));
 vi.mock("@/hooks/useNotification", () => ({
   useNotification: () => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn() }),
 }));
 const dbMocks = vi.hoisted(() => ({
+  resumoCliente: vi.fn(),
+  contarClientesPorFiltro: vi.fn().mockResolvedValue(null),
   listarEquipamentosCliente: vi.fn().mockResolvedValue([]),
   listarClienteContatos: vi.fn().mockResolvedValue([]),
+  abrirUrl: vi.fn().mockResolvedValue(undefined),
+  listarModelosMensagem: vi.fn().mockResolvedValue([{ id: 1, titulo: "Equipamento pronto", texto: "Olá, {contato}! Está pronto.", ordem: 1 }]),
 }));
 vi.mock("@/lib/db", () => ({ db: dbMocks }));
 
@@ -60,11 +73,30 @@ function renderPagina() {
 describe("Clientes: ordem de compra e preferências", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.status = { unlocked: true, active_profile_id: 1, permissions: [] };
+    dbMocks.resumoCliente.mockReset().mockResolvedValue({ osAbertas: 1, noAno: 2, faturado: null });
     mocks.clientes = [];
+    mocks.erro = null;
     mocks.criar.mockResolvedValue({ sucesso: true });
     mocks.atualizar.mockResolvedValue({ sucesso: true });
     dbMocks.listarEquipamentosCliente.mockResolvedValue([]);
     dbMocks.listarClienteContatos.mockResolvedValue([]);
+  });
+
+  it("lista que não carregou (banco fora) não mostra o convite de base vazia e oferece tentar de novo", async () => {
+    mocks.erro = "A conexão com o banco excedeu 6 segundos.";
+    renderPagina();
+    expect(screen.getByText("Não foi possível carregar os clientes")).toBeInTheDocument();
+    expect(screen.queryByText("Nenhum cliente encontrado")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Clique em "Novo cliente"/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
+    expect(mocks.recarregar).toHaveBeenCalled();
+  });
+
+  it("base vazia de verdade continua com o convite para cadastrar", () => {
+    renderPagina();
+    expect(screen.getByText("Nenhum cliente encontrado")).toBeInTheDocument();
+    expect(screen.queryByText("Não foi possível carregar os clientes")).not.toBeInTheDocument();
   });
 
   it("mostra o selo Exige OC só para quem exige", () => {
@@ -95,18 +127,139 @@ describe("Clientes: ordem de compra e preferências", () => {
     });
   });
 
-  it("o botão Contatos expande a lista de contatos do cliente na linha", async () => {
+  it("atualiza o resumo em segundo plano e pelo botão de atualizar", async () => {
+    mocks.clientes = [clienteSalvo()];
+    const resumo = { osAbertas: 41, noAno: 52, faturado: null };
+    dbMocks.resumoCliente.mockResolvedValueOnce(resumo);
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    expect(await screen.findByText("41")).toBeVisible();
+
+    let responder!: (dados: typeof resumo) => void;
+    dbMocks.resumoCliente.mockReturnValueOnce(new Promise((resolve) => { responder = resolve; }));
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 1, referencia: null, operacao: "U" }]));
+    expect(dbMocks.resumoCliente).toHaveBeenLastCalledWith(7, true);
+    expect(screen.getByText("41")).toBeVisible();
+
+    dbMocks.resumoCliente.mockResolvedValueOnce({ ...resumo, osAbertas: 43 });
+    fireEvent.click(screen.getByRole("button", { name: "Atualizar clientes" }));
+    expect(dbMocks.resumoCliente).toHaveBeenLastCalledWith(7, false);
+    expect(await screen.findByText("43")).toBeVisible();
+    await act(async () => responder({ ...resumo, osAbertas: 42 }));
+    expect(screen.queryByText("42")).not.toBeInTheDocument();
+
+    dbMocks.resumoCliente.mockResolvedValueOnce({ ...resumo, osAbertas: 44 });
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 2, referencia: null, operacao: "I" }]));
+    expect(await screen.findByText("44")).toBeVisible();
+  });
+
+  it("protege o faturado ao mudar de perfil, permissão ou bloqueio", async () => {
+    mocks.clientes = [clienteSalvo()];
+    mocks.status.permissions = ["VIEW_EXPENSES"];
+    const resumo = { osAbertas: 1, noAno: 2, faturado: 1500 };
+    dbMocks.resumoCliente.mockResolvedValue(resumo);
+    const { rerender } = renderPagina();
+    const atualizarSessao = () => rerender(<MemoryRouter><Clientes /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    expect(await screen.findByText("Faturado")).toBeVisible();
+
+    let responderAntiga!: (dados: typeof resumo) => void;
+    dbMocks.resumoCliente.mockImplementationOnce(() => new Promise((resolve) => {
+      responderAntiga = resolve;
+    }));
+    mocks.status = { ...mocks.status, active_profile_id: 2 };
+    atualizarSessao();
+    expect(screen.queryByText("Faturado")).not.toBeInTheDocument();
+
+    mocks.status = { ...mocks.status, permissions: [] };
+    atualizarSessao();
+    expect(dbMocks.resumoCliente).toHaveBeenCalledTimes(3);
+    await act(async () => responderAntiga({ ...resumo, osAbertas: 99 }));
+    expect(screen.queryByText("Faturado")).not.toBeInTheDocument();
+    expect(screen.queryByText("99")).not.toBeInTheDocument();
+
+    mocks.status = { ...mocks.status, permissions: ["VIEW_EXPENSES"] };
+    atualizarSessao();
+    expect(await screen.findByText("Faturado")).toBeVisible();
+
+    mocks.status = { ...mocks.status, unlocked: false };
+    atualizarSessao();
+    expect(screen.queryByText("Faturado")).not.toBeInTheDocument();
+    expect(dbMocks.resumoCliente).toHaveBeenCalledTimes(4);
+
+    mocks.status = { ...mocks.status, unlocked: true };
+    atualizarSessao();
+    expect(await screen.findByText("Faturado")).toBeVisible();
+    expect(dbMocks.resumoCliente).toHaveBeenCalledTimes(5);
+  });
+
+  it("painel do cliente: WhatsApp abre o wa.me do telefone e o telefone tem copiar", async () => {
+    mocks.clientes = [clienteSalvo({ email: "ana@x.com" })];
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    // "WhatsApp ▾": escolher uma mensagem pronta abre a conversa com o texto preenchido.
+    // O Select do Radix precisa destes dois no jsdom.
+    HTMLElement.prototype.hasPointerCapture = () => false;
+    HTMLElement.prototype.scrollIntoView = () => undefined;
+    const usuario = userEvent.setup();
+    await usuario.click(await screen.findByRole("combobox", { name: "Abrir WhatsApp com uma mensagem" }));
+    await usuario.click(await screen.findByRole("option", { name: /Equipamento pronto/ }));
+    expect(dbMocks.abrirUrl).toHaveBeenCalledWith(`https://wa.me/5571999990000?text=${encodeURIComponent("Olá, Ana Souza! Está pronto.")}`);
+    expect(screen.getByRole("button", { name: "Copiar telefone" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copiar e-mail" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copiar CPF/CNPJ" })).toBeInTheDocument();
+  });
+
+  it("painel do cliente: Nova entrada abre a página já com este cliente e volta para Clientes", async () => {
+    mocks.clientes = [clienteSalvo()];
+    function EstadoDaRota() {
+      const location = useLocation();
+      return <pre data-testid="estado">{JSON.stringify(location.state)}</pre>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/clientes"]}>
+        <Routes>
+          <Route path="/clientes" element={<Clientes />} />
+          <Route path="/equipamentos/nova" element={<EstadoDaRota />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Nova entrada" }));
+    expect(JSON.parse(screen.getByTestId("estado").textContent ?? "{}")).toEqual({ origem: "/clientes", clienteId: 7 });
+  });
+
+  it("Ver todos marca + quando o painel chegou ao limite de 200 OS", async () => {
+    mocks.clientes = [clienteSalvo()];
+    const os = (n: number) => Array.from({ length: n }, (_, i) => ({ id: i + 1, cliente_id: 7, marca: "Fluke", modelo: "87V", data_entrada: "2026-01-01", status: "ENTREGUE" }));
+    dbMocks.listarEquipamentosCliente.mockResolvedValue(os(200));
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    expect(await screen.findByRole("button", { name: "Ver todos (200+)" })).toBeInTheDocument();
+  });
+
+  it("Ver todos mostra o número exato abaixo do limite", async () => {
+    mocks.clientes = [clienteSalvo()];
+    dbMocks.listarEquipamentosCliente.mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => ({ id: i + 1, cliente_id: 7, marca: "Fluke", modelo: "87V", data_entrada: "2026-01-01", status: "ENTREGUE" })),
+    );
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    expect(await screen.findByRole("button", { name: "Ver todos (5)" })).toBeInTheDocument();
+  });
+
+  it("abrir o cliente pelo nome mostra os contatos no painel e clicar de novo fecha", async () => {
     mocks.clientes = [clienteSalvo({ empresa_id: 3, contato_encontrado: "Carlos Mendes" })];
     dbMocks.listarClienteContatos.mockResolvedValue([
       { id: 1, empresa_id: 3, cliente_id: 7, nome: "Carlos Mendes", telefone: "71988887777", email: "carlos@x.com", ativo: true },
       { id: 2, empresa_id: 3, cliente_id: 7, nome: "Bruno Lima", ativo: true },
     ]);
     renderPagina();
-    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     expect(await screen.findByText("carlos@x.com")).toBeInTheDocument();
     expect(screen.getByText("Bruno Lima")).toBeInTheDocument();
     expect(dbMocks.listarClienteContatos).toHaveBeenCalledWith(7, 3);
-    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     expect(screen.queryByText("carlos@x.com")).not.toBeInTheDocument();
   });
 
@@ -121,9 +274,9 @@ describe("Clientes: ordem de compra e preferências", () => {
         { id: 20, empresa_id: 3, cliente_id: 8, nome: "Contato do B", ativo: true },
       ]));
     renderPagina();
-    const botoes = screen.getAllByRole("button", { name: "Contatos" });
-    fireEvent.click(botoes[0]!);
-    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[1]!);
+    // Abrir o cliente no painel é clicar no nome dele na lista.
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bruno Lima" }));
     expect(await screen.findByText("Contato do B")).toBeInTheDocument();
     resolverA([{ id: 10, empresa_id: 3, cliente_id: 7, nome: "Contato do A", ativo: true }]);
     await new Promise(r => setTimeout(r, 0));
@@ -140,9 +293,9 @@ describe("Clientes: ordem de compra e preferências", () => {
     dbMocks.listarClienteContatos.mockImplementation((id: number) =>
       id === 7 ? new Promise(r => { resolvers.push(r); }) : new Promise(() => {}));
     renderPagina();
-    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[0]!);
-    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[1]!);
-    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bruno Lima" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     await waitFor(() => expect(resolvers).toHaveLength(2));
     resolvers[0]!([{ id: 10, empresa_id: 3, cliente_id: 7, nome: "A antigo", ativo: true }]);
     await new Promise(r => setTimeout(r, 0));
@@ -155,7 +308,7 @@ describe("Clientes: ordem de compra e preferências", () => {
   it("cliente legado sem empresa_id mostra mensagem distinta e não busca contatos", async () => {
     mocks.clientes = [clienteSalvo({ empresa_id: null })];
     renderPagina();
-    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     expect(await screen.findByText(/sem empresa vinculada/i)).toBeInTheDocument();
     expect(screen.queryByText("Nenhum contato cadastrado")).not.toBeInTheDocument();
     expect(dbMocks.listarClienteContatos).not.toHaveBeenCalled();
@@ -167,9 +320,9 @@ describe("Clientes: ordem de compra e preferências", () => {
       { id: 1, empresa_id: 3, cliente_id: 7, nome: "Nome antigo", ativo: true },
     ]);
     renderPagina();
-    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     expect(await screen.findByText("Nome antigo")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /gerenciar contatos e portal/i }));
+    fireEvent.click(screen.getByRole("button", { name: /gerenciar acesso ao portal/i }));
     dbMocks.listarClienteContatos.mockResolvedValueOnce([
       { id: 1, empresa_id: 3, cliente_id: 7, nome: "Nome novo", ativo: true },
     ]);
@@ -178,13 +331,114 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(screen.queryByText("Nome antigo")).not.toBeInTheDocument();
   });
 
+  describe("painel do cliente acompanha mudanças ao vivo", () => {
+    const contato = (nome: string, extra: Record<string, unknown> = {}) => ({ id: 1, empresa_id: 3, cliente_id: 7, nome, ativo: true, ...extra });
+    const os = (status: string, extra: Record<string, unknown> = {}) => ({ id: 1, cliente_id: 7, marca: "Fluke", modelo: "87V", serial_number: "SN1", data_entrada: "2026-01-01", status, ...extra });
+
+    it("relê contatos e equipamentos em segundo plano, sem esqueleto", async () => {
+      mocks.clientes = [clienteSalvo({ empresa_id: 3 })];
+      dbMocks.listarClienteContatos.mockResolvedValueOnce([contato("Carlos antigo")]);
+      dbMocks.listarEquipamentosCliente.mockResolvedValueOnce([os("RECEBIDO")]);
+      renderPagina();
+      fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+      expect(await screen.findByText("Carlos antigo")).toBeInTheDocument();
+      expect(await screen.findByText("Recebido")).toBeInTheDocument();
+
+      let responderContatos!: (v: unknown[]) => void;
+      let responderEquip!: (v: unknown[]) => void;
+      dbMocks.listarClienteContatos.mockReturnValueOnce(new Promise((r) => { responderContatos = r; }));
+      dbMocks.listarEquipamentosCliente.mockReturnValueOnce(new Promise((r) => { responderEquip = r; }));
+      act(() => distribuirMudancas([{ tabela: "cliente_contatos", id: 1, referencia: 7, operacao: "U" }]));
+      expect(dbMocks.listarClienteContatos).toHaveBeenLastCalledWith(7, 3, true);
+      expect(dbMocks.listarEquipamentosCliente).toHaveBeenLastCalledWith(7, ["Ana Souza", "Ana Souza"], true);
+      expect(screen.queryByText("Carregando contatos...")).not.toBeInTheDocument();
+      expect(screen.queryByText("Carregando equipamentos...")).not.toBeInTheDocument();
+      expect(screen.getByText("Carlos antigo")).toBeInTheDocument();
+
+      await act(async () => {
+        responderContatos([contato("Carlos novo")]);
+        responderEquip([os("ENTREGUE")]);
+      });
+      expect(screen.getByText("Carlos novo")).toBeInTheDocument();
+      expect(screen.queryByText("Carlos antigo")).not.toBeInTheDocument();
+      expect(screen.getByText("Entregue")).toBeInTheDocument();
+      expect(screen.queryByText("Recebido")).not.toBeInTheDocument();
+    });
+
+    it("leitura silenciosa que falha mantém o que está na tela", async () => {
+      mocks.clientes = [clienteSalvo({ empresa_id: 3 })];
+      dbMocks.listarClienteContatos.mockResolvedValueOnce([contato("Carlos")]);
+      dbMocks.listarEquipamentosCliente.mockResolvedValueOnce([os("RECEBIDO")]);
+      renderPagina();
+      fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+      expect(await screen.findByText("Carlos")).toBeInTheDocument();
+      expect(await screen.findByText("Recebido")).toBeInTheDocument();
+
+      dbMocks.listarClienteContatos.mockRejectedValueOnce(new Error("sessão bloqueada"));
+      dbMocks.listarEquipamentosCliente.mockRejectedValueOnce(new Error("sessão bloqueada"));
+      await act(async () => { distribuirMudancas([{ tabela: "equipamentos", id: 1, referencia: null, operacao: "U" }]); });
+      expect(screen.getByText("Carlos")).toBeInTheDocument();
+      expect(screen.getByText("Recebido")).toBeInTheDocument();
+      expect(screen.queryByText("Nenhum contato cadastrado")).not.toBeInTheDocument();
+    });
+
+    it("descarta a resposta silenciosa de um cliente que já não está aberto", async () => {
+      mocks.clientes = [
+        clienteSalvo({ empresa_id: 3 }),
+        clienteSalvo({ id: 8, nome: "Bruno Lima", documento: "11144477735", cpf_cnpj: "11144477735", empresa_id: 3 }),
+      ];
+      dbMocks.listarClienteContatos.mockResolvedValueOnce([contato("Contato do A")]);
+      renderPagina();
+      fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+      expect(await screen.findByText("Contato do A")).toBeInTheDocument();
+
+      let responderA!: (v: unknown[]) => void;
+      let responderEquipA!: (v: unknown[]) => void;
+      dbMocks.listarClienteContatos.mockReturnValueOnce(new Promise((r) => { responderA = r; }));
+      dbMocks.listarEquipamentosCliente.mockReturnValueOnce(new Promise((r) => { responderEquipA = r; }));
+      act(() => distribuirMudancas([{ tabela: "clientes", id: 7, referencia: null, operacao: "U" }]));
+
+      dbMocks.listarClienteContatos.mockResolvedValueOnce([{ id: 20, empresa_id: 3, cliente_id: 8, nome: "Contato do B", ativo: true }]);
+      dbMocks.listarEquipamentosCliente.mockResolvedValueOnce([]);
+      fireEvent.click(screen.getByRole("button", { name: "Bruno Lima" }));
+      expect(await screen.findByText("Contato do B")).toBeInTheDocument();
+      expect(await screen.findByText("Nenhum equipamento vinculado")).toBeInTheDocument();
+
+      await act(async () => {
+        responderA([contato("A atrasado")]);
+        responderEquipA([os("ENTREGUE")]);
+      });
+      expect(screen.queryByText("A atrasado")).not.toBeInTheDocument();
+      expect(screen.queryByText("Entregue")).not.toBeInTheDocument();
+      expect(screen.getByText("Contato do B")).toBeInTheDocument();
+    });
+
+    it("o botão Atualizar também relê contatos e equipamentos, mantendo o limite de 200 OS", async () => {
+      mocks.clientes = [clienteSalvo({ empresa_id: 3 })];
+      dbMocks.listarClienteContatos.mockResolvedValueOnce([contato("Carlos antigo")]);
+      dbMocks.listarEquipamentosCliente.mockResolvedValueOnce([os("RECEBIDO")]);
+      renderPagina();
+      fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
+      expect(await screen.findByText("Carlos antigo")).toBeInTheDocument();
+
+      dbMocks.listarClienteContatos.mockResolvedValueOnce([contato("Carlos novo")]);
+      dbMocks.listarEquipamentosCliente.mockResolvedValueOnce(
+        Array.from({ length: 200 }, (_, i) => os("ENTREGUE", { id: i + 1, serial_number: `SN${i}` })),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Atualizar clientes" }));
+      expect(await screen.findByText("Carlos novo")).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "Ver todos (200+)" })).toBeInTheDocument();
+      expect(mocks.recarregar).toHaveBeenCalled();
+    });
+  });
+
   it("clicar em um contato da lista abre o gerenciamento de contatos", async () => {
     mocks.clientes = [clienteSalvo({ empresa_id: 3 })];
     dbMocks.listarClienteContatos.mockResolvedValue([
       { id: 1, empresa_id: 3, cliente_id: 7, nome: "Carlos Mendes", email: "carlos@x.com", ativo: true },
     ]);
     renderPagina();
-    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     fireEvent.click(await screen.findByRole("button", { name: /Carlos Mendes/ }));
     expect(await screen.findByRole("button", { name: "Fechar modal de contatos" })).toBeInTheDocument();
   });

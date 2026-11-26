@@ -8,16 +8,26 @@ import { CounterLayout } from "@/components/CounterLayout";
 const db = vi.hoisted(() => ({
   buscarEquipamentosPorSerial: vi.fn(), criarEquipamento: vi.fn(), listarEquipamentos: vi.fn(),
   listarClientes: vi.fn(), listarProdutos: vi.fn(), atualizarStatusEquipamento: vi.fn(), buscarEquipamento: vi.fn(), salvarVerificacao: vi.fn(), abrirPainelImpressorasWindows: vi.fn(), listarImpressorasWindows: vi.fn(), imprimirTesteBmitag: vi.fn(),
-  listarClienteContatos: vi.fn(), criarClienteContato: vi.fn(), buscarCliente: vi.fn(), atualizarCliente: vi.fn(), publicarDocumentoPortal: vi.fn(),
+  listarClienteContatos: vi.fn(), criarClienteContato: vi.fn(), registrarMovimentacao: vi.fn(), buscarCliente: vi.fn(), atualizarCliente: vi.fn(), publicarDocumentoPortal: vi.fn(),
 }));
 const emailService = vi.hoisted(() => ({ enviarOrdemEntrada: vi.fn() }));
 const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
+const openProfileSelector = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({ db }));
 import { PdfService } from "@/lib/pdf-service";
+import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
+
+// Sessão do balcão: por padrão o técnico Ivan (id 901 da fixture), para a entrada já vir com técnico.
+const m = vi.hoisted(() => ({ sessao: { active_profile_id: 901 as number | null, active_profile_name: "Ivan", unlocked: true } }));
+beforeEach(() => {
+  semearTecnicosPadrao();
+  m.sessao = { active_profile_id: 901, active_profile_name: "Ivan", unlocked: true };
+});
 vi.mock("@/lib/email-service", () => ({ EmailService: emailService }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
-  useSensitiveAccess: () => ({ status: { active_profile_name: "Atendente", unlocked: true }, ensureSensitiveAccess, lockSensitiveAccess: vi.fn(), openProfileSelector: vi.fn() }),
+  useSensitiveAccess: () => ({ status: m.sessao, ensureSensitiveAccess, lockSensitiveAccess: vi.fn(), openProfileSelector }),
 }));
 vi.mock("@/components/equipamentos/ClienteSelector", () => ({
   ClienteSelector: ({ onClienteSelecionado }: { onClienteSelecionado: (client: unknown) => void }) => <button onClick={() => onClienteSelecionado({ id: 9, empresa_id: 7, nome: "Cliente balcão", telefone: "71999999999" })}>Selecionar cliente de teste</button>,
@@ -61,6 +71,138 @@ describe("Modo Balcão", () => {
     await user.click(screen.getByRole("button", { name: /continuar para o laudo/i }));
     await user.click(screen.getByRole("button", { name: /recapitular/i }));
   }
+
+  it("Admin que não atende, com vários técnicos: nenhum vem escolhido e salvar pede a escolha", async () => {
+    m.sessao = { active_profile_id: 1, active_profile_name: "Administrador", unlocked: true };
+    const user = userEvent.setup(); renderCounter(); await reachReview(user);
+    await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
+    expect(await screen.findByText("Escolha o técnico que está operando.")).toBeInTheDocument();
+    expect(db.criarEquipamento).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("empresa sem nenhum técnico marcado não trava: registra no nome de quem opera, sem e-mail", async () => {
+    definirTecnicosDaEmpresa([]);
+    m.sessao = { active_profile_id: 1, active_profile_name: "Administrador", unlocked: true };
+    db.salvarVerificacao.mockResolvedValue({ id: 3 });
+    const user = userEvent.setup(); renderCounter(); await reachReview(user);
+    expect(screen.getByText("Administrador — —")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
+    await waitFor(() => expect(db.criarEquipamento).toHaveBeenCalled());
+    expect(db.criarEquipamento.mock.calls[0]![0].observacoes ?? "").not.toMatch(/Técnico inicial/);
+    await waitFor(() => expect(db.salvarVerificacao).toHaveBeenCalledWith(expect.objectContaining({ tecnico_nome: "Administrador" })));
+  }, 20000);
+
+  it("Cancelar entrada sem nada preenchido volta direto ao início", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /nova entrada/i })).toBeInTheDocument();
+  });
+
+  it("Cancelar entrada com cliente escolhido pergunta; continuar mantém, sair descarta", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /continuar/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    await user.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    expect(await screen.findByRole("button", { name: /nova entrada/i })).toBeInTheDocument();
+    // Voltando, a entrada começa do zero.
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+  });
+
+  it("Esc sem nada preenchido não pergunta nem sai da entrada", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /cancelar entrada/i })).toBeInTheDocument();
+  });
+
+  it("Esc com a entrada pela metade pergunta como Cancelar entrada; continuar mantém o texto, sair descarta sem salvar", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: /continuar/i }));
+    await user.type(screen.getAllByRole("textbox")[0]!, "SN-77");
+
+    await user.keyboard("{Escape}");
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getAllByRole("textbox")[0]).toHaveValue("SN-77");
+
+    await user.keyboard("{Escape}");
+    await user.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    expect(await screen.findByRole("button", { name: /nova entrada/i })).toBeInTheDocument();
+    expect(db.criarEquipamento).not.toHaveBeenCalled();
+    // A entrada recomeça do zero: Esc limpo não pergunta.
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("Esc com uma lista aberta fecha só a lista, mesmo com a entrada pela metade", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: /continuar/i }));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    expect(await screen.findByRole("listbox")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /cancelar entrada/i })).toBeInTheDocument();
+  });
+
+  it("trocar de operador sem nada preenchido abre os perfis direto", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: "Ivan" }));
+    expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+    expect(openProfileSelector).toHaveBeenCalledOnce();
+    // Nada a perder: a tela continua onde estava.
+    expect(screen.getByRole("button", { name: /cancelar entrada/i })).toBeInTheDocument();
+  });
+
+  it("trocar de operador com a entrada pela metade pergunta; continuar mantém, sair recomeça e abre os perfis", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+
+    await user.click(screen.getByRole("button", { name: "Ivan" }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(openProfileSelector).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /continuar/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Ivan" }));
+    await user.click(await screen.findByRole("button", { name: "Sair sem salvar" }));
+    expect(openProfileSelector).toHaveBeenCalledOnce();
+    expect(await screen.findByRole("button", { name: /nova entrada/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar entrada/i }));
+    expect(screen.queryByText("Sair sem salvar?")).not.toBeInTheDocument();
+  });
+
+  it("o botão Início do balcão também pergunta com a entrada pela metade", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: "Início do balcão" }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Sair sem salvar?");
+    await user.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(screen.getByRole("button", { name: /continuar/i })).toBeInTheDocument();
+  });
 
   it("cria uma entrada recebida depois da conferência", async () => {
     const user = userEvent.setup(); renderCounter(); await reachReview(user);
@@ -141,13 +283,38 @@ describe("Modo Balcão", () => {
     expect(screen.getByRole("status")).not.toHaveTextContent("salvo no cadastro");
   }, 20000);
 
-  it("consulta o estoque e mostra o preço de venda sem permitir alteração", async () => {
+  it("consulta o estoque e mostra o preço de venda, sem editar saldo nem preço", async () => {
     const user = userEvent.setup(); renderCounter();
-    await user.click(screen.getByRole("button", { name: /consultar estoque/i }));
+    await user.click(screen.getByRole("button", { name: /preço e estoque/i }));
     expect(await screen.findByRole("heading", { name: "Ribbon Preto" })).toBeInTheDocument();
     expect(screen.getByText(/R\$\s*45,00/)).toBeInTheDocument();
     expect(db.listarProdutos).toHaveBeenCalledWith(undefined);
+    expect(screen.queryByRole("textbox", { name: /preço/i })).not.toBeInTheDocument();
+  });
+
+  it("registra a chegada de um insumo com PIN de controle de estoque", async () => {
+    ensureSensitiveAccess.mockResolvedValue(true);
+    db.registrarMovimentacao.mockResolvedValue(undefined);
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /preço e estoque/i }));
+    await user.click(await screen.findByRole("button", { name: "Chegou: Ribbon Preto" }));
+    expect(ensureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ permission: "STOCK_CONTROL" }));
+    const quantidade = await screen.findByRole("spinbutton");
+    await user.clear(quantidade); await user.type(quantidade, "5");
+    await user.type(screen.getByPlaceholderText(/compra, uso em manutenção/i), "Compra fornecedor");
+    await user.click(screen.getByRole("button", { name: /registrar movimentação/i }));
+    await waitFor(() => expect(db.registrarMovimentacao).toHaveBeenCalledWith(12, "ENTRADA", 5, "Compra fornecedor", undefined));
+    expect(await screen.findByRole("status")).toHaveTextContent("Chegada de 5 un. registrada em Ribbon Preto.");
+    expect(db.listarProdutos).toHaveBeenCalledTimes(2);
+  });
+
+  it("não abre a baixa quando o PIN é negado", async () => {
+    ensureSensitiveAccess.mockResolvedValue(false);
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /preço e estoque/i }));
+    await user.click(await screen.findByRole("button", { name: "Baixa: Ribbon Preto" }));
     expect(screen.queryByRole("button", { name: /registrar movimentação/i })).not.toBeInTheDocument();
+    expect(db.registrarMovimentacao).not.toHaveBeenCalled();
   });
 
   it("exige confirmação para serial com ciclo anterior", async () => {
@@ -163,14 +330,14 @@ describe("Modo Balcão", () => {
     const user = userEvent.setup(); renderCounter(); await reachReview(user);
     await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Banco indisponível");
-    expect(screen.getByText("Recapitulação")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recapitulação" })).toBeInTheDocument();
   });
 
   it("não entrega quando o PIN é negado e mantém o detalhe aberto", async () => {
     db.listarEquipamentos.mockResolvedValue([{ id: 8, serial_number: "SN-8", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "PRONTO", data_entrada: "2026-09-01", atualizado_em: "token" }]);
     ensureSensitiveAccess.mockResolvedValue(false);
     const user = userEvent.setup(); renderCounter();
-    await user.click(screen.getByRole("button", { name: /buscar equipamento/i }));
+    await user.click(screen.getByRole("button", { name: /entregar ao cliente/i }));
     await user.type(screen.getByRole("textbox"), "SN-8");
     await waitFor(() => expect(screen.getByText(/atendimento #8/i)).toBeInTheDocument());
     await user.click(screen.getByText(/atendimento #8/i));
@@ -183,7 +350,7 @@ describe("Modo Balcão", () => {
   it("bloqueia retirada em transição inválida", async () => {
     db.listarEquipamentos.mockResolvedValue([{ id: 7, serial_number: "SN-7", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01" }]);
     const user = userEvent.setup(); renderCounter();
-    await user.click(screen.getByRole("button", { name: /buscar equipamento/i }));
+    await user.click(screen.getByRole("button", { name: /entregar ao cliente/i }));
     await user.type(screen.getByRole("textbox"), "SN-7");
     await waitFor(() => expect(screen.getByText(/atendimento #7/i)).toBeInTheDocument());
     await user.click(screen.getByText(/atendimento #7/i));

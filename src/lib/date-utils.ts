@@ -38,7 +38,13 @@ export function formatDateTimeSalvador(value?: string | Date | null, fallback = 
  */
 export function parseDbTimestampUtc(value?: string | null): Date | null {
   if (!value) return null;
-  const iso = value.trim().replace(" ", "T").replace(/(\.\d{3})\d+/, "$1");
+  // PostgreSQL grava NOW() em coluna TEXT como "2026-11-22 11:36:00.123456+00": o deslocamento
+  // só com horas ("+00", "-03") não é ISO e vira data inválida; completa com ":00".
+  const iso = value
+    .trim()
+    .replace(" ", "T")
+    .replace(/(\.\d{3})\d+/, "$1")
+    .replace(/(T[\d:.]+[+-]\d{2})$/, "$1:00");
   const hasZone = /T.*(Z|[+-]\d{2}(:?\d{2})?)$/.test(iso);
   const parsed = new Date(hasZone ? iso : `${iso}Z`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;

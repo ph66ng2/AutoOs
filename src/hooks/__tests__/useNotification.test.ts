@@ -7,6 +7,8 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
     warning: vi.fn(),
     info: vi.fn(),
+    dismiss: vi.fn(),
+    getToasts: vi.fn(() => []),
   },
 }));
 
@@ -28,7 +30,7 @@ vi.mock('@/lib/error-utils', () => ({
   }),
 }));
 
-import { useNotification } from '../useNotification';
+import { fecharAvisosDeErro, useNotification } from '../useNotification';
 import { toast } from 'sonner';
 
 describe('useNotification', () => {
@@ -50,13 +52,13 @@ describe('useNotification', () => {
     );
   });
 
-  it('error calls toast.error with Infinity and copy action', () => {
+  it('error calls toast.error with 8s (some sozinho) and copy action', () => {
     const err = new Error('DB fail');
     error('Equipamentos', 'Save', err);
     expect(toast.error).toHaveBeenCalledWith(
       'Equipamentos — Save',
       expect.objectContaining({
-        duration: Infinity,
+        duration: 8000,
         action: expect.objectContaining({ label: 'Copiar detalhes' }),
       })
     );
@@ -84,5 +86,17 @@ describe('useNotification', () => {
     expect(result).toHaveProperty('error');
     expect(result).toHaveProperty('warning');
     expect(result).toHaveProperty('info');
+  });
+});
+
+describe('fecharAvisosDeErro', () => {
+  it('fecha só os avisos de erro do app, não os outros', () => {
+    vi.mocked(toast.getToasts).mockReturnValue([
+      { id: 'erro-app-7' }, { id: 'portal-alerta-3' }, { id: 12 },
+    ] as unknown as ReturnType<typeof toast.getToasts>);
+    vi.mocked(toast.dismiss).mockClear();
+    fecharAvisosDeErro();
+    expect(toast.dismiss).toHaveBeenCalledTimes(1);
+    expect(toast.dismiss).toHaveBeenCalledWith('erro-app-7');
   });
 });

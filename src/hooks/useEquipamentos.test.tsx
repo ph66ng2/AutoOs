@@ -7,6 +7,7 @@ const mockCriar = vi.hoisted(() => vi.fn());
 const mockAtualizar = vi.hoisted(() => vi.fn());
 const mockDeletar = vi.hoisted(() => vi.fn());
 const mockAtualizarStatus = vi.hoisted(() => vi.fn());
+const mockContarPorStatus = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -15,10 +16,12 @@ vi.mock("@/lib/db", () => ({
     atualizarEquipamento: (...args: unknown[]) => mockAtualizar(...args),
     deletarEquipamento: (...args: unknown[]) => mockDeletar(...args),
     atualizarStatusEquipamento: (...args: unknown[]) => mockAtualizarStatus(...args),
+    contarEquipamentosPorStatus: (...args: unknown[]) => mockContarPorStatus(...args),
   },
 }));
 
 import { useEquipamentos } from "@/hooks/useEquipamentos";
+import { distribuirMudancas } from "@/lib/ao-vivo";
 
 const novoEquipamento: Omit<Equipamento, "id"> = {
   serial_number: "SN-HOOK-1",
@@ -43,6 +46,28 @@ function deferred<T>() {
 }
 
 const equipamentoBase: Equipamento = { ...novoEquipamento, id: 1 };
+
+describe("useEquipamentos — botão Atualizar", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListarPaginados.mockResolvedValue({ items: [], total: 0 });
+  });
+
+  it("recarregar logo após uma carga busca de novo, em primeiro plano", async () => {
+    mockListarPaginados.mockResolvedValueOnce({ items: [equipamentoBase], total: 1 });
+    const { result } = renderHook(() => useEquipamentos({ status: "RECEBIDO" }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mockListarPaginados).toHaveBeenCalledTimes(1);
+
+    mockListarPaginados.mockResolvedValueOnce({ items: [{ ...equipamentoBase, status: "EM_VERIFICACAO" }], total: 1 });
+    await act(async () => { await result.current.recarregar(); });
+
+    expect(mockListarPaginados).toHaveBeenCalledTimes(2);
+    // Primeiro plano: sem o sinal de segundo plano (pode pedir o PIN se a sessão expirou).
+    expect(mockListarPaginados.mock.calls[1]).toHaveLength(5);
+    expect(result.current.equipamentos[0]?.status).toBe("EM_VERIFICACAO");
+  });
+});
 
 describe("useEquipamentos — registro", () => {
   beforeEach(() => {
@@ -110,12 +135,12 @@ describe("useEquipamentos — registro", () => {
     );
 
     await waitFor(() => {
-      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "ATUALIZACAO_RECENTE");
+      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "ATUALIZACAO_RECENTE", undefined);
     });
 
     rerender({ ordenacao: "CADASTRO_RECENTE" });
     await waitFor(() => {
-      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "CADASTRO_RECENTE");
+      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "CADASTRO_RECENTE", undefined);
     });
   });
 
@@ -278,5 +303,82 @@ describe("useEquipamentos — registro", () => {
       "2026-10-27T10:00:00Z",
       "Correção solicitada",
     );
+  });
+
+  it("mudança de outro computador recarrega em silêncio (sem carregando) e destaca a OS nova", async () => {
+    mockListarPaginados.mockResolvedValueOnce({ items: [equipamentoBase], total: 1 });
+    const { result } = renderHook(() => useEquipamentos());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const recarga = deferred<{ items: Equipamento[]; total: number }>();
+    mockListarPaginados.mockReturnValueOnce(recarga.promise);
+    act(() => distribuirMudancas([{ tabela: "equipamentos", id: 2, referencia: null, operacao: "I" }]));
+    expect(result.current.loading).toBe(false);
+    await act(async () => { recarga.resolve({ items: [{ ...equipamentoBase, id: 2 }, equipamentoBase], total: 2 }); });
+    await waitFor(() => expect(result.current.equipamentos).toHaveLength(2));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.destaques.get(2)).toBe("novo");
+    // Recarga ao vivo é leitura de segundo plano: não renova a sessão (estação abandonada ainda bloqueia).
+    expect(mockListarPaginados.mock.calls.at(-1)?.[5]).toBe(true);
+    expect(mockListarPaginados.mock.calls[0]).toHaveLength(5);
+  });
+
+  it("contato alterado em outro computador recarrega em silêncio a busca (lista e pílulas), sem busca não", async () => {
+    mockListarPaginados.mockResolvedValue({ items: [], total: 0 });
+    const { result, rerender } = renderHook(({ busca }) => useEquipamentos({ busca }), { initialProps: { busca: "" } });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mockListarPaginados).toHaveBeenCalledTimes(1);
+
+    // Sem busca, mudança só de contato não muda nada na lista: não relê.
+    await act(async () => {
+      distribuirMudancas([{ tabela: "cliente_contatos", id: 9, referencia: 3, operacao: "U" }]);
+    });
+    expect(mockListarPaginados).toHaveBeenCalledTimes(1);
+
+    rerender({ busca: "Maria Financeiro" });
+    await waitFor(() => expect(mockListarPaginados).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    mockContarPorStatus.mockClear();
+
+    mockListarPaginados.mockResolvedValueOnce({ items: [equipamentoBase], total: 1 });
+    await act(async () => {
+      distribuirMudancas([{ tabela: "cliente_contatos", id: 9, referencia: 3, operacao: "I" }]);
+    });
+    await waitFor(() => expect(result.current.equipamentos).toEqual([equipamentoBase]));
+    expect(result.current.loading).toBe(false);
+    const ultima = mockListarPaginados.mock.calls.at(-1);
+    expect(ultima?.[0]).toBe("Maria Financeiro");
+    expect(ultima?.[5]).toBe(true);
+    // Os números das pílulas também relidos em segundo plano, com a mesma busca.
+    expect(mockContarPorStatus).toHaveBeenCalledWith("Maria Financeiro", undefined, true);
+  });
+
+  it("falha da recarga silenciosa depois da primeira carga mantém a lista sem erro", async () => {
+    mockListarPaginados
+      .mockResolvedValueOnce({ items: [equipamentoBase], total: 1 })
+      .mockRejectedValueOnce("Acesso sensível bloqueado.");
+    const { result } = renderHook(() => useEquipamentos());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      distribuirMudancas([{ tabela: "equipamentos", id: 1, referencia: null, operacao: "U" }]);
+    });
+    await waitFor(() => expect(mockListarPaginados).toHaveBeenCalledTimes(2));
+    expect(result.current.error).toBeNull();
+    expect(result.current.equipamentos).toEqual([equipamentoBase]);
+  });
+
+  it("primeira carga com falha mostra o erro e a próxima carga bem-sucedida o limpa", async () => {
+    mockListarPaginados
+      .mockRejectedValueOnce(new Error("sem conexão"))
+      .mockResolvedValueOnce({ items: [equipamentoBase], total: 1 });
+    const { result } = renderHook(() => useEquipamentos());
+    await waitFor(() => expect(result.current.error).toBe("sem conexão"));
+
+    await act(async () => {
+      distribuirMudancas([{ tabela: "equipamentos", id: 1, referencia: null, operacao: "U" }]);
+    });
+    await waitFor(() => expect(result.current.error).toBeNull());
+    expect(result.current.equipamentos).toEqual([equipamentoBase]);
   });
 });

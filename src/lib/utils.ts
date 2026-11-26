@@ -20,7 +20,7 @@ import { twMerge } from "tailwind-merge"
  * @returns String de classes combinadas
  * 
  * @example
- * cn("px-4 py-2", isActive && "bg-blue-500", { "opacity-50": disabled })
+ * cn("px-4 py-2", isActive && "bg-primary", { "opacity-50": disabled })
  */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

@@ -9,6 +9,7 @@ import { useNotification } from "@/hooks/useNotification";
 import { db } from "@/lib/db";
 import { celularValido, clienteContatoSchema, digitosTelefoneBr, formatarTelefone, type ClienteContatoFormData } from "@/lib/validations";
 import type { Cliente, ClienteContato } from "@/types";
+import { CarregandoSkeleton, SkeletonLista } from "@/components/ui/skeleton";
 
 interface ContatoResponsavelSelectorProps {
   cliente: Cliente | null;
@@ -49,7 +50,9 @@ export function ContatoResponsavelSelector({
   useEffect(() => {
     if (clienteAnterior.current !== cliente?.id) {
       clienteAnterior.current = cliente?.id;
-      onChange(null);
+      // Troca de cliente limpa o contato do cliente anterior. Um contato que já chega junto com
+      // o novo cliente (ex.: copiado da passagem anterior da impressora) fica.
+      if (valorAtual.current && valorAtual.current.cliente_id !== cliente?.id) onChange(null);
     }
     setBusca("");
     if (!cliente?.id || !empresaId) {
@@ -155,7 +158,7 @@ export function ContatoResponsavelSelector({
               <Button type="button" variant="ghost" className="w-full justify-start text-sm" onClick={() => onChange(null)} disabled={disabled}>
                 Sem responsável específico
               </Button>
-              {carregando && <p className="text-xs text-muted-foreground">Carregando contatos ativos...</p>}
+              {carregando && <CarregandoSkeleton rotulo="Carregando contatos ativos..."><SkeletonLista itens={3} compacta /></CarregandoSkeleton>}
               {erro && <ErrorAlert variant="error" context="Equipamentos" message={erro} />}
               {!carregando && filtrados.length > 0 && (
                 <div className="max-h-40 overflow-y-auto rounded-md border bg-background">
@@ -174,17 +177,17 @@ export function ContatoResponsavelSelector({
       )}
 
       <Dialog open={novoOpen} onOpenChange={setNovoOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent tamanho="p">
           <DialogHeader>
             <DialogTitle>Novo contato do cliente</DialogTitle>
-            <DialogDescription>O contato será cadastrado como ativo e selecionado para este equipamento.</DialogDescription>
+            <DialogDescription className="sr-only">Cadastrar contato para este equipamento.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">Cadastre rapidamente um contato para {cliente ? cliente.nome || cliente.nome_fantasia || cliente.razao_social : "o cliente"}.</p>
             <div className="space-y-2"><Label htmlFor="responsavel-novo-nome">Nome *</Label><Input id="responsavel-novo-nome" value={novo.nome} onChange={(event) => atualizarNovo("nome", event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="responsavel-novo-email">E-mail</Label><Input id="responsavel-novo-email" type="email" value={novo.email} onChange={(event) => atualizarNovo("email", event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="responsavel-novo-telefone">Telefone</Label><Input id="responsavel-novo-telefone" value={novo.telefone} onChange={(event) => atualizarNovo("telefone", event.target.value)} /></div>
-            {erroNovo && <p className="text-xs text-red-600" role="alert">{erroNovo}</p>}
+            {erroNovo && <p className="text-xs text-destructive" role="alert">{erroNovo}</p>}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setNovoOpen(false)}>Cancelar</Button>

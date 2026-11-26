@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import type { AnaliseCorrecaoDecisao, Equipamento, ModoCorrecaoDecisao, PortalAjusteInfo } from "@/types";
+import { CarregandoSkeleton, SkeletonTexto } from "@/components/ui/skeleton";
 
 type Props = {
   equipamento: Equipamento | null;
@@ -95,7 +95,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent tamanho="m" className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Corrigir decisão do orçamento</DialogTitle>
           <DialogDescription>
@@ -103,7 +103,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
           </DialogDescription>
         </DialogHeader>
 
-        {loading && <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin" /></div>}
+        {loading && <CarregandoSkeleton rotulo="Carregando decisão" className="py-2"><SkeletonTexto linhas={3} /></CarregandoSkeleton>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
         {analise && (
@@ -115,7 +115,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
             </div>
 
             {analise.bloqueios.length > 0 && (
-              <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-950">
+              <div role="alert" className="rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-status-wait">
                 <p className="font-semibold">Não dá para corrigir a decisão agora</p>
                 <ul className="mt-1 list-disc pl-5">
                   {analise.bloqueios.map((bloqueio) => <li key={bloqueio}>{bloqueio}</li>)}
@@ -161,7 +161,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
                       </span>
                     </label>
                     {modo === "RESTAURAR_ORIGINAL" && (
-                      <p role="note" className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-950">
+                      <p role="note" className="rounded-md border border-status-wait/30 bg-status-wait-bg p-2 text-status-wait">
                         Atenção: a alteração feita depois da {decisao} será perdida.
                       </p>
                     )}

@@ -1,7 +1,7 @@
 /** Demonstration-only IPC for the team UI. Never used by production builds. */
 import { invoke as baseInvoke } from "./tauri-core";
 import { SENSITIVE_PERMISSIONS, type SecurityProfile, type SecurityProfileInput } from "../../src/types";
-export { Resource, Channel, isTauri } from "./tauri-core";
+export { Resource, Channel, isTauri, addPluginListener, PluginListener } from "./tauri-core";
 const all = Object.values(SENSITIVE_PERMISSIONS);
 const profiles: SecurityProfile[] = [
   { id: 1, nome: "Paulo Medeiros", role: "ADMIN", permissions: all, pin_configured: true, pin_required: true, is_default: true, ativo: true },
@@ -10,6 +10,9 @@ const profiles: SecurityProfile[] = [
   { id: 4, nome: "Recepção 2", role: "FINANCEIRO", permissions: ["FINANCIAL_ACTIONS", "VIEW_EXPENSES"], pin_configured: false, pin_required: true, is_default: false, ativo: true, onboarding_pendente: true },
 ];
 // Visual e tour já escolhidos pelos perfis ativos da demonstração.
+Object.assign(profiles[0], { email_profissional: "paulo@empresa.test" });
+Object.assign(profiles[1], { email_profissional: "ivan@empresa.test", atende_tecnico: true });
+Object.assign(profiles[2], { email_profissional: "maria@empresa.test" });
 Object.assign(profiles[0], { avatar_icone: "star", avatar_cor: "#7C3AED", tour_permissoes_vistas: all });
 Object.assign(profiles[1], { avatar_icone: "wrench", avatar_cor: "#0F766E", tour_permissoes_vistas: [] });
 Object.assign(profiles[2], { avatar_icone: "coffee", avatar_cor: "#EA580C", tour_permissoes_vistas: [] });
@@ -20,6 +23,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
   if (command === "unlock_sensitive_access") return structuredClone(status()) as T;
   if (command === "get_sensitive_access_status") return structuredClone(status()) as T;
   if (command === "list_security_profiles") return structuredClone(profiles) as T;
+  if (command === "listar_tecnicos_da_empresa") return structuredClone(profiles.filter(p => p.ativo && p.atende_tecnico)) as T;
   if (command === "list_security_audit_events") return [] as T;
   if (command === "set_active_security_profile") { const profile = profiles.find(p => p.id === args?.profileId)!; if (profile.pin_required && !profile.pin_configured) throw new Error("PIN pendente neste computador"); active = profile; return structuredClone(status()) as T; }
   if (command === "criar_perfil_com_codigo") { const input = args?.input as SecurityProfileInput; const created: SecurityProfile = { ...input, id: Math.max(...profiles.map(p => p.id)) + 1, pin_configured: false, pin_required: true, is_default: false, ativo: true, onboarding_pendente: true }; profiles.push(created); return structuredClone(demoCode(created)) as T; }

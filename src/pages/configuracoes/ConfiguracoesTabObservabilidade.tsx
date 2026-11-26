@@ -1,5 +1,7 @@
+import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
+import { EVENT_LABELS, resumirStatusAuditado } from "@/lib/eventos-auditoria";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { TabsContent } from "@/components/ui/tabs";
 import type { LocalSupportStatus, SecurityAuditEvent } from "@/types";
+import { CarregandoSkeleton, SkeletonCartoes } from "@/components/ui/skeleton";
 
 export type ConfiguracoesTabObservabilidadeProps = {
   supportLoading: boolean;
@@ -51,19 +54,15 @@ export function ConfiguracoesTabObservabilidade({
   exportarAuditoriaCsv,
 }: ConfiguracoesTabObservabilidadeProps) {
   return (
-    <TabsContent value="observabilidade" className="space-y-4">
+    <TabsContent value="observabilidade" className="mt-0 space-y-4 p-5 md:p-6">
+      <h2 className="text-xl font-bold">Suporte e logs</h2>
       <Card>
         <CardHeader>
           <CardTitle>Suporte local e observabilidade</CardTitle>
-          <CardDescription>
-            Snapshot operacional mínimo para suporte assistido: diretórios locais, logs recentes, housekeeping e prontidão do bundle Windows.
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {supportLoading && !supportStatus ? (
-            <div className="flex items-center justify-center h-24">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-            </div>
+            <CarregandoSkeleton rotulo="Carregando suporte local"><SkeletonCartoes /></CarregandoSkeleton>
           ) : supportStatus ? (
             <>
               <div className="grid gap-4 md:grid-cols-4">
@@ -155,7 +154,6 @@ export function ConfiguracoesTabObservabilidade({
       <Card>
         <CardHeader>
           <CardTitle>Auditoria recente</CardTitle>
-          <CardDescription>Eventos sensiveis recentes de desbloqueio, troca de PIN e gestao de perfis.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4 mb-4">
@@ -208,21 +206,32 @@ export function ConfiguracoesTabObservabilidade({
           <div className="space-y-3">
             {filteredAuditEvents.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhum evento de auditoria encontrado para os filtros atuais.</p>
-            ) : filteredAuditEvents.map((event) => (
-              <div key={event.id} className="rounded-lg border p-3 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-medium">{event.event_type}</div>
-                  <span className={event.success ? "text-emerald-600" : "text-red-600"}>
-                    {event.success ? "sucesso" : "falha"}
-                  </span>
+            ) : filteredAuditEvents.map((event) => {
+              const resumo = resumirStatusAuditado(event.details);
+              return (
+                <div key={event.id} className="rounded-lg border p-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-medium">{EVENT_LABELS[event.event_type] ?? event.event_type}</div>
+                    <span className={event.success ? "text-status-ok" : "text-destructive"}>
+                      {event.success ? "sucesso" : "falha"}
+                    </span>
+                  </div>
+                  <div className="text-muted-foreground">Perfil: {event.profile_name || "sistema"}</div>
+                  {resumo ? (
+                    <div className="text-muted-foreground">
+                      <p>{resumo}</p>
+                      <details>
+                        <summary className="cursor-pointer">Detalhes completos</summary>
+                        <p className="whitespace-pre-wrap break-words">{event.details}</p>
+                      </details>
+                    </div>
+                  ) : event.details && <div className="text-muted-foreground">{event.details}</div>}
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {formatDateTimeSalvador(parseDbTimestampUtc(event.created_at), "sem data")}
+                  </div>
                 </div>
-                <div className="text-muted-foreground">Perfil: {event.profile_name || "sistema"}</div>
-                {event.details && <div className="text-muted-foreground">{event.details}</div>}
-                <div className="text-xs text-muted-foreground mt-1">
-                  {event.created_at ? new Date(event.created_at).toLocaleString("pt-BR") : "sem data"}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>

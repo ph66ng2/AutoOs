@@ -48,6 +48,7 @@ Na CI, o binário `ci_migrate` aplica migrations somente ao PostgreSQL descartá
 ### Conexão do release Windows
 
 - Cadastre `AUTOOS_DATABASE_URL` nos GitHub Actions secrets com a URL **Supavisor Session**, porta `5432`, copiada do painel Supabase.
+- Opcional: cadastre `AUTOOS_SLACK_BOT_TOKEN` (Bot User OAuth Token `xoxb-…` do app "Suporte AutoOS") para o instalador já sair com o Suporte funcionando. Sem ele, cada computador configura o token em Configurações › Integrações. O token fica dentro do executável (como a URL do banco): se vazar, revogue no Slack e gere outra versão. Um token guardado no cofre do computador tem prioridade sobre o da instalação.
 - Não use o endpoint direto `db.<project-ref>.supabase.co` no release distribuído: ele depende de IPv6 e não é uniforme nas redes Windows atendidas.
 - Mantenha `sslmode=require` na URL do release.
 - O workflow interrompe o build antes de publicar quando o secret está ausente, não aponta para um Session pooler ou o histórico real de migrations diverge do build.
@@ -142,3 +143,21 @@ Checklist extra antes da tag:
 Não imprima a chave privada, a senha ou `AUTOOS_DATABASE_URL` em logs, PRs ou evidências. Authenticode (thumbprint) e assinatura do updater (minisign) são camadas distintas.
 
 A jornada N para N+1 usa o workflow `updater-homolog.yml`, a tag `updater-homolog` e o endpoint de `tauri.homolog.conf.json`. O disparo é manual (confirmação `HOMOLOG`) ou por tag `homolog-X.Y.Z` / `hotfix-X.Y.Z`; não embute banco e não pode ocupar o release latest. O build de homologação consulta primeiro o canal isolado e só cai para o endpoint de produção se o canal não responder. O `build.yml` permanece o único caminho do canal de produção.
+
+
+## Suporte pelo Slack
+
+Com uma única empresa ativa, essa empresa pode usar o canal de suporte
+existente, inclusive se ele ainda estiver sem vínculo. Com várias empresas
+ativas, somente a empresa vinculada ao canal pode usar o suporte. Ao salvar
+o canal em Configurações › Integrações, o AutoOS grava a empresa da sessão.
+
+Se uma instalação multiempresa tiver um canal legado sem vínculo, o suporte
+fica indisponível até um administrador da empresa que recebe o suporte salvar
+o canal novamente. Depois do vínculo, as outras empresas ativas ficam sem
+acesso ao canal e à sua configuração.
+
+O AutoOS consulta até dez chamados abertos por ciclo, priorizando os que
+esperam há mais tempo. Abrir uma conversa consulta a thread correspondente
+quando há orçamento disponível no Slack. Em caso de limite, as estações
+mantêm o histórico local acessível e aguardam o prazo informado pela API.

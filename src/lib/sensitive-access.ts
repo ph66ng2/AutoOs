@@ -1,5 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
+import { reportarFalhaDeComando } from "@/lib/database-health";
 import type {
   CodigoPrimeiroAcesso,
   PersonalizacaoPerfilInput,
@@ -8,6 +9,13 @@ import type {
   SecurityProfileInput,
   SensitiveAccessStatus,
 } from "@/types";
+
+/** Toda chamada deste arquivo avisa o canal de saúde do banco quando falha (useDatabaseHealth). */
+const invoke = <T>(command: string, args?: Record<string, unknown>): Promise<T> =>
+  (args === undefined ? tauriInvoke<T>(command) : tauriInvoke<T>(command, args)).catch((error: unknown) => {
+    reportarFalhaDeComando(command, error);
+    throw error;
+  });
 
 const sensitiveInvoke = <T>(command: string, args?: Record<string, unknown>): Promise<T> =>
   withSensitiveAccessRetry(() => args === undefined
@@ -115,6 +123,11 @@ export const SensitiveAccessService = {
   async savePersonalization(input: PersonalizacaoPerfilInput, options?: { askPin?: boolean }): Promise<SensitiveAccessStatus> {
     if (options?.askPin === false) return invoke<SensitiveAccessStatus>("salvar_personalizacao_perfil", { input });
     return sensitiveInvoke<SensitiveAccessStatus>("salvar_personalizacao_perfil", { input });
+  },
+
+  /** Só o tema do perfil da sessão (Configurações › Geral) → Rust: salvar_tema_perfil */
+  async saveTheme(tema: "light" | "dark" | "system"): Promise<SensitiveAccessStatus> {
+    return sensitiveInvoke<SensitiveAccessStatus>("salvar_tema_perfil", { tema });
   },
 
   /** Marca as permissões atuais como apresentadas pelo tour → Rust: registrar_tour_visto */

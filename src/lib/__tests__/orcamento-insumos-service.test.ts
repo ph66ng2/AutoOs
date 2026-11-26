@@ -16,6 +16,7 @@ vi.mock("@/lib/pdf-service", () => ({
 }));
 
 import { OrcamentoInsumosService } from "@/lib/orcamento-insumos-service";
+import { definirCopiaGerencia } from "@/lib/copia-gerencia";
 
 function orcamento(sobrescrever: Partial<OrcamentoInsumosDetalhe> = {}): OrcamentoInsumosDetalhe {
   return {
@@ -50,6 +51,13 @@ describe("OrcamentoInsumosService.enviarEmail", () => {
     vi.clearAllMocks();
     mocks.construir.mockResolvedValue(pdf);
     mocks.enviarEmail.mockResolvedValue(undefined);
+    definirCopiaGerencia(true);
+  });
+
+  it("empresa que não é a BMITAG (instalação multiempresa) não leva a cópia da gerência", async () => {
+    definirCopiaGerencia(false);
+    await OrcamentoInsumosService.enviarEmail(orcamento());
+    expect(mocks.enviarEmail.mock.calls[0][0].cc).toEqual([]);
   });
 
   it("envia o PDF em anexo com assunto e texto próprios do orçamento de insumos", async () => {

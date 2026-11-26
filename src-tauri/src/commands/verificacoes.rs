@@ -6,7 +6,7 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::types::{
-    normalize_forma_pagamento, FormaPagamentoCodigo, VerificacaoInput, VerificacaoRow,
+    normalize_forma_pagamento, FormaPagamentoCodigo, EquipamentoRow, EQUIPAMENTO_SELECT, VerificacaoInput, VerificacaoRow,
     VERIFICACAO_SELECT,
 };
 use crate::commands::auth::{
@@ -123,6 +123,58 @@ async fn gravar_aprovacao_os_garantia(
     Ok(Some(actor))
 }
 
+/// Verificação concluída → AGUARDANDO_APROVACAO na mesma transação dos itens. Antes eram três
+/// gravações (verificação, VERIFICADO, AGUARDANDO_APROVACAO); se a segunda ou a terceira falhasse,
+/// os itens ficavam gravados e `valor_orcamento` em 0.
+async fn enviar_para_aprovacao_na_transacao(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    equipamento_id: i32,
+    empresa_id: i32,
+    status_atual: &str,
+    custo_total: Option<f64>,
+    prazo: &str,
+) -> Result<SecurityProfileSummary, String> {
+    if !matches!(status_atual, "RECEBIDO" | "EM_VERIFICACAO" | "VERIFICADO") {
+        return Err("Esta OS não está em verificação; o orçamento não foi enviado para aprovação.".to_string());
+    }
+    let valor = custo_total.filter(|valor| valor_monetario_positivo(*valor))
+        .ok_or("O orçamento precisa de um total maior que zero para ir à aprovação.")?;
+    let actor = require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?;
+    let atualizados = sqlx::query(
+        "UPDATE equipamentos
+         SET status = 'AGUARDANDO_APROVACAO', data_verificacao = NOW(), valor_orcamento = $3,
+             prazo_aprovacao = $4, atualizado_em = NOW()
+         WHERE id = $1 AND empresa_id = $2",
+    )
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .bind(valor)
+    .bind(prazo)
+    .execute(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?
+    .rows_affected();
+    if atualizados == 0 {
+        return Err("Equipamento não encontrado na empresa ativa.".to_string());
+    }
+    Ok(actor)
+}
+
+async fn auditar_envio_para_aprovacao(actor: Option<SecurityProfileSummary>, equipamento_id: i32, status_anterior: &str) {
+    if let Some(actor) = actor {
+        record_security_event(
+            "EQUIPMENT_STATUS_UPDATED",
+            Some(&actor),
+            format!(
+                "equipamento_id={}; status_anterior={}; status=AGUARDANDO_APROVACAO; correcao=false; motivo=Verificação concluída e enviada para aprovação.; valor_orcamento=true; prazo_aprovacao=true; valor_final=false",
+                equipamento_id, status_anterior,
+            ),
+            true,
+        )
+        .await;
+    }
+}
+
 async fn auditar_aprovacao_os_garantia(
     actor: Option<SecurityProfileSummary>,
     empresa_id: i32,
@@ -187,11 +239,40 @@ fn check_prepare_quotes_status(
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+pub struct VerificacaoSalva {
+    pub equipamento: EquipamentoRow,
+    pub verificacao: VerificacaoRow,
+}
+
+async fn ler_verificacao_salva(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    equipamento_id: i32,
+    empresa_id: i32,
+    verificacao_id: i32,
+) -> Result<VerificacaoSalva, String> {
+    let query = format!("{EQUIPAMENTO_SELECT} WHERE id = $1 AND empresa_id = $2");
+    let equipamento = sqlx::query_as(sqlx::AssertSqlSafe(&*query))
+        .bind(equipamento_id)
+        .bind(empresa_id)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    let query = format!("{VERIFICACAO_SELECT} WHERE id = $1 AND empresa_id = $2");
+    let verificacao = sqlx::query_as(sqlx::AssertSqlSafe(&*query))
+        .bind(verificacao_id)
+        .bind(empresa_id)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(VerificacaoSalva { equipamento, verificacao })
+}
+
 /// Salvar verificação técnica (upsert: cria ou atualiza).
 /// Se já existe verificação para o equipamento, atualiza; senão, cria nova.
 #[tauri::command]
 #[instrument(skip_all, fields(equipamento_id = input.equipamento_id))]
-pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<VerificacaoRow, String> {
+pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<VerificacaoSalva, String> {
     debug!("Salvando verificação técnica para equipamento {}", input.equipamento_id);
     let (payment_code, payment_detail) = normalize_forma_pagamento(
         input.forma_pagamento_codigo.as_ref(),
@@ -207,6 +288,12 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     input.empresa_id = Some(empresa_id);
     let servicos = parse_servicos(input.servicos_necessarios.as_deref().unwrap_or("[]"))?;
     let concluida = input.concluida.unwrap_or(false);
+    if input.enviar_para_aprovacao_prazo.is_some() && !concluida {
+        return Err("Conclua a verificação antes de enviar o orçamento para aprovação.".to_string());
+    }
+    input.enviar_para_aprovacao_prazo = input.enviar_para_aprovacao_prazo.as_deref()
+        .map(super::equipamentos::prazo_de_aprovacao_valido)
+        .transpose()?;
     if concluida {
         if input.custo_total.is_none() {
             input.custo_total = Some(resolver_custo_total(None, &servicos));
@@ -297,6 +384,13 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
             concluida,
         )
         .await?;
+        let enviado_para_aprovacao = match (aprovador_garantia.is_none() && concluida, input.enviar_para_aprovacao_prazo.as_deref()) {
+            (true, Some(prazo)) => Some(
+                enviar_para_aprovacao_na_transacao(&mut tx, input.equipamento_id, empresa_id, &status, input.custo_total, prazo).await?,
+            ),
+            _ => None,
+        };
+        let salva = ler_verificacao_salva(&mut tx, input.equipamento_id, empresa_id, id).await?;
         tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
         auditar_aprovacao_os_garantia(
             aprovador_garantia,
@@ -306,6 +400,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
             &status,
         )
         .await;
+        auditar_envio_para_aprovacao(enviado_para_aprovacao, input.equipamento_id, &status).await;
         if let Some(actor) = financial_actor.as_ref() {
             record_security_event(
                 "VERIFICATION_FINANCIAL_SAVED",
@@ -317,7 +412,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         }
 
         info!("Verificação {} atualizada", id);
-        return buscar_verificacao_tecnica(input.equipamento_id, input.empresa_id).await;
+        return Ok(salva);
     }
 
     // INSERT nova verificação
@@ -369,6 +464,13 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         concluida,
     )
     .await?;
+    let enviado_para_aprovacao = match (aprovador_garantia.is_none() && concluida, input.enviar_para_aprovacao_prazo.as_deref()) {
+        (true, Some(prazo)) => Some(
+            enviar_para_aprovacao_na_transacao(&mut tx, input.equipamento_id, empresa_id, &status, input.custo_total, prazo).await?,
+        ),
+        _ => None,
+    };
+    let salva = ler_verificacao_salva(&mut tx, input.equipamento_id, empresa_id, verificacao_id).await?;
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
     auditar_aprovacao_os_garantia(
         aprovador_garantia,
@@ -378,6 +480,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         &status,
     )
     .await;
+    auditar_envio_para_aprovacao(enviado_para_aprovacao, input.equipamento_id, &status).await;
     if let Some(actor) = financial_actor.as_ref() {
         record_security_event(
             "VERIFICATION_FINANCIAL_SAVED",
@@ -389,7 +492,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     }
 
     info!("Verificação criada para equipamento {}", input.equipamento_id);
-    buscar_verificacao_tecnica(input.equipamento_id, input.empresa_id).await
+    Ok(salva)
 }
 
 /// Buscar verificação técnica por equipamento_id.
@@ -545,14 +648,14 @@ pub(crate) async fn publicar_apos_ajuste(
     }
     match publicar_versao_isolada(pool, empresa_id, equipamento_id, actor.id).await {
         Ok(versao) => {
-            record_security_event(
-                "BUDGET_PUBLISHED_TO_PORTAL",
-                Some(actor),
+            super::portal_cliente::auditar_versao_orcamento(
+                pool,
+                empresa_id,
+                actor,
                 format!(
                     "empresa_id={empresa_id}; equipamento_id={equipamento_id}; versao={}; automatica=true; nova_aprovacao={nova_aprovacao}",
                     versao.numero
                 ),
-                true,
             )
             .await;
             PortalAjusteInfo {
@@ -970,7 +1073,7 @@ mod tests {
             id: 1, nome: "Ana".into(), role: "OPERADOR".into(), permissions: vec![],
             pin_configured: true, pin_required: true, is_default: false, ativo: true,
             avatar_icone: None, avatar_cor: None, tema: None, onboarding_pendente: false,
-            tour_permissoes_vistas: None,
+            tour_permissoes_vistas: None, email_profissional: None, atende_tecnico: false, avisos_desligados: Vec::new(),
         };
         assert!(!pode_publicar_no_portal(&perfil));
         perfil.permissions.push(PERMISSION_MANAGE_STATUS_LINKS.to_string());
@@ -1007,7 +1110,7 @@ mod tests {
             permissions: vec![PERMISSION_PREPARE_QUOTES.to_string()],
             pin_configured: true, pin_required: true, is_default: false, ativo: true,
             avatar_icone: None, avatar_cor: None, tema: None, onboarding_pendente: false,
-            tour_permissoes_vistas: None,
+            tour_permissoes_vistas: None, email_profissional: None, atende_tecnico: false, avisos_desligados: Vec::new(),
         };
         assert!(check_prepare_quotes_status(Some(&perfil), "VERIFICADO").is_ok());
         assert!(check_prepare_quotes_status(Some(&perfil), "ORCAMENTO_VENCIDO").is_ok());

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DatabaseFallback,
   DatabaseUnavailableScreen,
+  longOutageMessage,
   reconnectDelaySeconds,
   supportDetailsText,
 } from "./DatabaseUnavailableScreen";
@@ -114,6 +115,43 @@ describe("DatabaseUnavailableScreen", () => {
       vi.advanceTimersByTime(60_000);
     });
     expect(reconnect).not.toHaveBeenCalled();
+  });
+});
+
+describe("longOutageMessage", () => {
+  it("só fala depois de 5 minutos e diz há quanto tempo", () => {
+    const inicio = 1_000_000;
+    expect(longOutageMessage(inicio, inicio + 4 * 60_000 + 59_000)).toBeNull();
+    expect(longOutageMessage(inicio, inicio + 6 * 60_000)).toBe("Sem conexão há 6 min. Se continuar, chame o administrador.");
+  });
+});
+
+describe("queda longa na tela", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("aparece nos estados que tentam sozinhos e não nos que pedem o administrador", () => {
+    vi.useFakeTimers();
+    const agora = Date.now();
+    vi.spyOn(DatabaseConfigService, "reconnect").mockResolvedValue(redeError);
+
+    const { rerender } = render(
+      <DatabaseUnavailableScreen initialError={redeError} downSince={agora - 6 * 60_000} onConnected={vi.fn()} onOpenAdvanced={vi.fn()} />,
+    );
+    expect(screen.getByText("Sem conexão há 6 min. Se continuar, chame o administrador.")).toBeInTheDocument();
+
+    rerender(
+      <DatabaseUnavailableScreen
+        key="credencial"
+        initialError={{ tipo: "credencial", mensagem: "Usuário ou senha do banco inválidos." }}
+        downSince={agora - 6 * 60_000}
+        onConnected={vi.fn()}
+        onOpenAdvanced={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/Sem conexão há/)).not.toBeInTheDocument();
   });
 });
 

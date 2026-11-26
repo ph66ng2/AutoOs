@@ -4,7 +4,8 @@
  * Só apoio: o backend (Rust) recalcula todos os valores e é quem decide o que é permitido.
  * Aqui ficam o cálculo da prévia do total, o saldo, as ações por status e os textos de envio.
  */
-import { todayLocalIsoDate } from "@/lib/date-utils";
+import { parseTimestampPostgres, todayLocalIsoDate } from "@/lib/date-utils";
+import type { StatusFamilia } from "@/lib/status-familia";
 import { formatCurrency } from "@/lib/utils";
 import type {
   OrcamentoInsumos,
@@ -21,15 +22,49 @@ export const STATUS_ORCAMENTO_INSUMOS_LABEL: Record<StatusOrcamentoInsumos, stri
   ENTREGUE: "Entregue",
 };
 
+/** Família de cor de cada situação (mesmas cinco famílias dos equipamentos). */
+export const STATUS_ORCAMENTO_INSUMOS_FAMILIA: Record<StatusOrcamentoInsumos, StatusFamilia> = {
+  RASCUNHO: "neutral",
+  ENVIADO: "wait",
+  APROVADO: "ok",
+  REPROVADO: "bad",
+  CANCELADO: "neutral",
+  ENTREGUE: "neutral",
+};
+
 /** Cores do selo de status (Tailwind), com par claro/escuro. */
 export const STATUS_ORCAMENTO_INSUMOS_COR: Record<StatusOrcamentoInsumos, string> = {
-  RASCUNHO: "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-200",
-  ENVIADO: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-200",
-  APROVADO: "bg-green-100 text-green-800 border-green-300 dark:bg-green-950 dark:text-green-200",
-  REPROVADO: "bg-red-100 text-red-800 border-red-300 dark:bg-red-950 dark:text-red-200",
-  CANCELADO: "bg-zinc-200 text-zinc-700 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-300",
-  ENTREGUE: "bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200",
+  RASCUNHO: "bg-status-neutral-bg text-status-neutral border-status-neutral/30",
+  ENVIADO: "bg-status-wait-bg text-status-wait border-status-wait/30",
+  APROVADO: "bg-status-ok-bg text-status-ok border-status-ok/30",
+  REPROVADO: "bg-status-bad-bg text-status-bad border-status-bad/30",
+  CANCELADO: "bg-status-neutral-bg text-status-neutral border-status-neutral/30",
+  ENTREGUE: "bg-status-neutral-bg text-status-neutral border-status-neutral/30",
 };
+
+/**
+ * Barra de etapas da lista de vendas, no mesmo desenho da lista de equipamentos:
+ * Rascunho → Enviado → Aprovado → Entregue. Reprovado para onde aconteceu (no envio);
+ * Cancelado não mostra avanço. Vencido pinta a barra de `bad` sem mudar a etapa.
+ */
+export const TOTAL_ETAPAS_VENDA = 4;
+
+const ETAPA_VENDA: Record<StatusOrcamentoInsumos, number> = {
+  RASCUNHO: 1,
+  ENVIADO: 2,
+  APROVADO: 3,
+  ENTREGUE: 4,
+  REPROVADO: 2,
+  CANCELADO: 0,
+};
+
+export function etapaVenda(status: StatusOrcamentoInsumos): number {
+  return ETAPA_VENDA[status] ?? 0;
+}
+
+export function familiaVenda(status: StatusOrcamentoInsumos, vencido: boolean): StatusFamilia {
+  return vencido ? "bad" : STATUS_ORCAMENTO_INSUMOS_FAMILIA[status] ?? "neutral";
+}
 
 /** Categorias que podem entrar num orçamento de insumos: tudo do estoque, menos impressoras. */
 export function categoriaOrcavel(categoria: string | undefined | null): boolean {
@@ -273,3 +308,75 @@ export function montarMensagemWhatsappOrcamentoInsumos(orcamento: OrcamentoInsum
     .join("\n")
     .trim();
 }
+
+export type TipoAcaoVenda = "enviar" | "aprovar" | "renovar" | "entregar" | "ver";
+
+/**
+ * Ação principal da linha em Vendas de insumos (decisão 23 do redesign).
+ * Vencido não pode ser aprovado: a ação vira "Renovar validade", que abre a edição.
+ */
+export function proximaAcaoVenda(
+  status: StatusOrcamentoInsumos,
+  vencido: boolean,
+): { rotulo: string; tipo: TipoAcaoVenda } {
+  if ((status === "RASCUNHO" || status === "ENVIADO") && vencido) return { rotulo: "Renovar validade", tipo: "renovar" };
+  if (status === "RASCUNHO") return { rotulo: "Enviar", tipo: "enviar" };
+  if (status === "ENVIADO") return { rotulo: "Aprovar", tipo: "aprovar" };
+  if (status === "APROVADO") return { rotulo: "Marcar entregue", tipo: "entregar" };
+  return { rotulo: "Ver", tipo: "ver" };
+}
+
+/** "20/11" de uma data AAAA-MM-DD ou de um instante do PostgreSQL, no fuso de Salvador. */
+function diaMesVenda(valor?: string | null): string {
+  if (!valor) return "";
+  const soData = valor.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (soData) return `${soData[3]}/${soData[2]}`;
+  const instante = parseTimestampPostgres(valor);
+  if (Number.isNaN(instante.getTime())) return "";
+  return instante.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Bahia" });
+}
+
+function comData(rotulo: string, valor?: string | null): string {
+  const data = diaMesVenda(valor);
+  return data ? `${rotulo} ${data}` : rotulo;
+}
+
+/**
+ * Coluna "Prazo ou data": a validade só importa em Rascunho e Enviado; nas outras
+ * situações mostra quando o orçamento chegou onde está. Cancelado não tem data própria
+ * no banco, então mostra quando foi criado.
+ */
+export function prazoOuData(
+  o: Pick<OrcamentoInsumos, "status" | "validade" | "decidido_em" | "entregue_em" | "criado_em" | "forma_pagamento_codigo">,
+  hoje = todayLocalIsoDate(),
+): string {
+  switch (o.status) {
+    case "RASCUNHO":
+    case "ENVIADO":
+      if (!o.validade) return "sem validade";
+      return o.validade < hoje ? comData("venceu", o.validade) : comData("vence", o.validade);
+    case "APROVADO": {
+      const texto = comData("aprovado", o.decidido_em);
+      return o.forma_pagamento_codigo ? `${texto} · ${formaPagamentoRotulo(o.forma_pagamento_codigo)}` : texto;
+    }
+    case "ENTREGUE":
+      return comData("entregue", o.entregue_em);
+    case "REPROVADO":
+      return comData("reprovado", o.decidido_em);
+    default:
+      return comData("criado", o.criado_em);
+  }
+}
+
+/** Ação pedida na lista ou na página da venda: "editar" e "renovar" são a página do formulário; as outras abrem o modal (AcaoVendaDialog). */
+export type AcaoInicialOrcamentoInsumos =
+  | "pdf"
+  | "email"
+  | "whatsapp"
+  | "aprovar"
+  | "renovar"
+  | "editar"
+  | "reprovar"
+  | "cancelar"
+  | "entregar"
+  | "excluir";

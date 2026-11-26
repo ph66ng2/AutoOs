@@ -21,7 +21,7 @@ import { useState } from "react";
 import { db } from "@/lib/db";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
-import type { Equipamento, ResultadoAutomacao } from "@/types";
+import type { Equipamento, ResultadoAutomacao, Verificacao } from "@/types";
 import type { DadosVerificacao } from "@/components/equipamentos/VerificacaoTecnica";
 import { resolveRecipient } from "@/lib/recipient-resolver";
 import { calcularPrazoAprovacao, enviarOrcamentoAoCliente } from "@/lib/envio-orcamento";
@@ -29,13 +29,14 @@ import { calcularPrazoAprovacao, enviarOrcamentoAoCliente } from "@/lib/envio-or
 /** Resultado de `finalizarVerificacao`: contrato de `ResultadoAutomacao` + avisos do envio. */
 export interface ResultadoFinalizarVerificacao extends ResultadoAutomacao {
   avisos?: string[];
+  salvo?: { equipamento: Equipamento; verificacao: Verificacao };
 }
 
 /**
  * Hook que gerencia transições de status com automação de comunicações.
  *
  * Transições automáticas:
- * 1. Finalizar Verificação  → salva verificação + muda para VERIFICADO → AGUARDANDO_APROVACAO
+ * 1. Finalizar Verificação  → salva verificação e muda para AGUARDANDO_APROVACAO (uma transação)
  *    → dispara WhatsApp
  * 2. Marcar como Pronto     → muda para PRONTO
  *    → dispara WhatsApp
@@ -45,23 +46,30 @@ export function useStatusEquipamento() {
 
   /**
    * Finaliza verificação e envia orçamento automaticamente.
-   * Fluxo: EM_VERIFICACAO → VERIFICADO → AGUARDANDO_APROVACAO + notificações
+   * Fluxo: EM_VERIFICACAO → AGUARDANDO_APROVACAO (uma transação no backend) + notificações
    */
   async function finalizarVerificacao(
-    equipamento: Equipamento,
+    _equipamento: Equipamento,
     dadosVerificacao: DadosVerificacao,
     _emailContato?: string,
     _emailDestinatario?: string,
   ): Promise<ResultadoFinalizarVerificacao> {
     setLoading(true);
     try {
-      // 1. Salvar verificação no banco (OS só de garantia já sai APROVADO na mesma transação).
-      await db.salvarVerificacao(dadosVerificacao);
-      const equipamentoAposVerificacao = await db.buscarEquipamento(equipamento.id!);
+      // 1. Uma gravação só: itens da verificação + AGUARDANDO_APROVACAO com valor e prazo (3 dias
+      //    úteis). Se algo falha, nada fica pela metade (antes, itens gravados com valor_orcamento 0).
+      //    OS só de garantia já sai APROVADO na mesma transação.
+      const salvo = await db.salvarVerificacao({
+        ...dadosVerificacao,
+        enviar_para_aprovacao_prazo: calcularPrazoAprovacao(3),
+      });
+
+      const { equipamento: equipamentoAposVerificacao, verificacao } = salvo;
 
       if (equipamentoAposVerificacao.status === "APROVADO") {
         return {
           sucesso: true,
+          salvo,
           canais: {
             whatsapp: { enviado: false },
             email: { enviado: false },
@@ -70,50 +78,12 @@ export function useStatusEquipamento() {
         };
       }
 
-      // 2. Atualizar para VERIFICADO
-      await db.atualizarStatusEquipamento(
-        equipamento.id!,
-        "VERIFICADO",
-        undefined,
-        undefined,
-        undefined,
-        equipamentoAposVerificacao.atualizado_em
-      );
-
-      const equipamentoVerificado = await db.buscarEquipamento(equipamento.id!);
-
-      // 3. Calcular prazo (3 dias úteis)
-      const prazo = calcularPrazoAprovacao(3);
-
-      // 4. Atualizar para AGUARDANDO_APROVACAO com valor e prazo
-      await db.atualizarStatusEquipamento(
-        equipamento.id!,
-        "AGUARDANDO_APROVACAO",
-        dadosVerificacao.custo_total || undefined,
-        prazo,
-        undefined,
-        equipamentoVerificado.atualizado_em
-      );
-
-      // 5. Buscar dados atualizados
-      const eqAtualizado = await db.buscarEquipamento(equipamento.id!);
-      const verificacao = await db.buscarVerificacao(equipamento.id!);
-
-      if (!verificacao) {
-        return {
-          sucesso: true,
-          canais: {
-            whatsapp: { enviado: false, erro: "Verificação não encontrada para envio de WhatsApp." },
-            email: { enviado: false, erro: "Verificação não encontrada para envio de Email." },
-          },
-        };
-      }
-
       // O status já foi salvo; falha no envio não desfaz a mudança.
       try {
-        const envio = await enviarOrcamentoAoCliente(eqAtualizado, verificacao);
+        const envio = await enviarOrcamentoAoCliente(equipamentoAposVerificacao, verificacao);
         return {
           sucesso: true,
+          salvo,
           canais: envio.canais,
           ...(envio.envioManual ? { envioManual: envio.envioManual } : {}),
           avisos: envio.avisos,
@@ -122,11 +92,12 @@ export function useStatusEquipamento() {
         const erro = error?.message || String(error);
         return {
           sucesso: true,
+          salvo,
           canais: {
             whatsapp: { enviado: false, erro },
             email: { enviado: false, erro },
           },
-          avisos: [`Não foi possível enviar o orçamento: ${erro}`],
+          avisos: [`Orçamento salvo. Use a ação de envio no detalhe da OS após conferir o resultado: ${erro}`],
         };
       }
     } catch (error: any) {
@@ -142,7 +113,7 @@ export function useStatusEquipamento() {
    */
   async function marcarComoPronto(
     equipamento: Equipamento,
-    emailContato?: string,
+    emailContato?: string | null,
     emailDestinatario?: string,
   ): Promise<ResultadoAutomacao> {
     setLoading(true);
@@ -176,8 +147,10 @@ export function useStatusEquipamento() {
       try {
         const emailContatoResolvido = emailContato === undefined
           ? (eqAtualizado.cliente_email || "").trim()
-          : emailContato.trim();
-        if (!emailContatoResolvido) {
+          : emailContato?.trim();
+        if (emailContato === null) {
+          resultadoEmail = { sucesso: false, erro: "pulado" };
+        } else if (!emailContatoResolvido) {
           resultadoEmail = { sucesso: false, erro: "Cliente sem email cadastrado" };
         } else {
           resultadoEmail = await EmailService.enviarEquipamentoPronto(

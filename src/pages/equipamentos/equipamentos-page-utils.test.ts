@@ -7,6 +7,8 @@ import {
   getStatusCorrecao,
   mensagemAjusteTotalZero,
   precisaPerguntarQuemRecebeOrcamento,
+  extrairTecnicoInicialDeObservacoes,
+  removerTecnicoInicialDasObservacoes,
   secaoAcaoOs,
   totalOrcamentoAjusteValido,
   totalOrcamentoAprovacaoValido,
@@ -111,5 +113,41 @@ describe("retirada operacional", () => {
     expect(statusExigeAcessoSensivel("ENTREGUE", undefined, undefined, 0)).toBe(true);
     expect(statusExigeAcessoSensivel("ENTREGUE", 80)).toBe(true);
     expect(statusExigeAcessoSensivel("ABANDONADO")).toBe(true);
+  });
+});
+
+describe("OPCOES_FILTRO_STATUS", () => {
+  it("começa em Todos e cobre cada status uma vez", async () => {
+    const { OPCOES_FILTRO_STATUS } = await import("./equipamentos-page-constants");
+    const { STATUS_EQUIPAMENTO } = await import("@/types");
+    expect(OPCOES_FILTRO_STATUS[0]).toEqual({ value: "TODOS", label: "Todos" });
+    expect(OPCOES_FILTRO_STATUS.slice(1).map((o) => o.value).sort()).toEqual(Object.values(STATUS_EQUIPAMENTO).sort());
+  });
+});
+
+describe("entradaTemAlgo", () => {
+  it("qualquer campo preenchido ou cliente escolhido conta; o padrão vazio não", async () => {
+    const { entradaTemAlgo } = await import("./equipamentos-page-utils");
+    const vazio = { serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO", defeito_relatado: "", acessorios: [], acessorios_outros: "", observacoes: "" };
+    expect(entradaTemAlgo(vazio, null)).toBe(false);
+    expect(entradaTemAlgo({ ...vazio, patrimonio: "PAT-1" }, null)).toBe(true);
+    expect(entradaTemAlgo({ ...vazio, tipo: "Térmica" }, null)).toBe(true);
+    expect(entradaTemAlgo({ ...vazio, acessorios: ["Fonte"] }, null)).toBe(true);
+    expect(entradaTemAlgo({ ...vazio, observacoes: "  " }, null)).toBe(false);
+    expect(entradaTemAlgo(vazio, { id: 1 })).toBe(true);
+  });
+});
+
+describe("linha interna \"Técnico inicial\" nas observações", () => {
+  const gravado = "Técnico inicial: QA Orçamentista (PREPARE_QUOTES) (orc@teste.invalid)\nArranhão na tampa";
+
+  it("some do texto mostrado, mas continua legível para o parser", () => {
+    expect(removerTecnicoInicialDasObservacoes(gravado)).toBe("Arranhão na tampa");
+    expect(extrairTecnicoInicialDeObservacoes(gravado)).toBeTruthy();
+  });
+
+  it("observação só com a linha interna fica vazia (o bloco não aparece)", () => {
+    expect(removerTecnicoInicialDasObservacoes("Técnico inicial: Ana (ana@x.invalid)")).toBe("");
+    expect(removerTecnicoInicialDasObservacoes(null)).toBe("");
   });
 });

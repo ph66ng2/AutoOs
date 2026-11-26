@@ -428,7 +428,7 @@ async fn run_equipment_edit_concurrency(
         ));
     }
 
-    equipamentos::buscar_equipamento(equipamento_id)
+    equipamentos::buscar_equipamento(equipamento_id, None)
         .await
         .map_err(|error| anyhow!(error))
 }
@@ -494,7 +494,7 @@ async fn run_equipment_status_concurrency(
         ));
     }
 
-    let equipamento_final = equipamentos::buscar_equipamento(equipamento_id)
+    let equipamento_final = equipamentos::buscar_equipamento(equipamento_id, None)
         .await
         .map_err(|error| anyhow!(error))?;
     let status_final = equipamento_final.status.unwrap_or_default();

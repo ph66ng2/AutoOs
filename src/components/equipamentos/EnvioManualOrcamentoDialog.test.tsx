@@ -89,7 +89,7 @@ describe("EnvioManualOrcamentoDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
 
-    expect(await screen.findByText("A senha não aparece de novo.")).toBeInTheDocument();
+    expect(await screen.findByText("Fechar sem enviar a senha?")).toBeInTheDocument();
     expect(onFechar).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Fechar mesmo assim" }));
@@ -103,8 +103,8 @@ describe("EnvioManualOrcamentoDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
 
-    expect(await screen.findByText("A senha não aparece de novo.")).toBeInTheDocument();
-    expect(screen.getByText("Copie ou envie antes de fechar, ou gere uma nova senha.")).toBeInTheDocument();
+    expect(await screen.findByText("Fechar sem enviar a senha?")).toBeInTheDocument();
+    expect(screen.getByText("Copie ou envie antes de fechar. Depois, a senha fica em Ver senha, no acesso ao portal do equipamento.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Voltar" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Fechar mesmo assim" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Gerar nova senha" })).toBeInTheDocument();
@@ -120,7 +120,7 @@ describe("EnvioManualOrcamentoDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
 
-    expect(await screen.findByText("Copie ou envie antes de fechar.")).toBeInTheDocument();
+    expect(await screen.findByText("Copie ou envie antes de fechar. Depois, a senha fica em Ver senha, no acesso ao portal do equipamento.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Voltar" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Fechar mesmo assim" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Gerar nova senha" })).not.toBeInTheDocument();
@@ -133,7 +133,7 @@ describe("EnvioManualOrcamentoDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
     fireEvent.click(await screen.findByRole("button", { name: "Voltar" }));
 
-    await waitFor(() => expect(screen.queryByText("A senha não aparece de novo.")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("Fechar sem enviar a senha?")).not.toBeInTheDocument());
     expect(onFechar).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Copiar" })).toBeInTheDocument();
   });
@@ -147,7 +147,7 @@ describe("EnvioManualOrcamentoDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
 
     expect(onFechar).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("A senha não aparece de novo.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fechar sem enviar a senha?")).not.toBeInTheDocument();
   });
 
   it("gerar nova senha substitui o texto", async () => {

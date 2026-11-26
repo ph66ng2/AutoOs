@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useMovimentoReduzido } from "@/hooks/useMovimentoReduzido";
 import { Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -62,7 +63,7 @@ export function TourController() {
   const { status, refreshStatus } = useSensitiveAccess();
   const navigate = useNavigate();
   const location = useLocation();
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useMovimentoReduzido();
   const [run, setRun] = useState<{ kind: TourKind; steps: TourStep[] } | null>(null);
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
@@ -221,7 +222,6 @@ export function TourController() {
               </span>
               <div className="flex-1">
                 <h2 id="tour-oferta-titulo" className="font-semibold">Conheça o AutoOS em 2 minutos</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Um tour pelas telas liberadas para o seu perfil.</p>
               </div>
               <button type="button" aria-label="Fechar" onClick={() => void finish()} className="rounded-md p-1 text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />
@@ -261,7 +261,7 @@ export function TourController() {
             transition={spring}
           >
             <div className="flex items-center justify-between">
-              <span className={run.kind === "novidades" ? "text-xs font-semibold tracking-wide text-amber-600 dark:text-amber-400" : "text-xs font-semibold tracking-wide text-primary"}>
+              <span className={run.kind === "novidades" ? "text-xs font-semibold tracking-wide text-status-wait" : "text-xs font-semibold tracking-wide text-primary"}>
                 {run.kind === "novidades" ? "NOVO NO SEU PERFIL" : `PASSO ${index + 1} DE ${run.steps.length}`}
               </span>
               <button type="button" onClick={() => void finish()} className="text-sm text-muted-foreground hover:text-foreground">
@@ -284,7 +284,7 @@ export function TourController() {
             <div className="mt-1 flex items-center justify-between">
               <div className="flex gap-1.5" aria-label={`Passo ${index + 1} de ${run.steps.length}`}>
                 {run.steps.map((item, dot) => (
-                  <span key={item.id} className={dot === index ? "h-1.5 w-[18px] rounded-full bg-primary transition-all" : "h-1.5 w-1.5 rounded-full bg-border transition-all"} />
+                  <span key={item.id} className={dot === index ? "h-1.5 w-[18px] rounded-full bg-primary transition-[width,background-color] duration-rapida ease-saida" : "h-1.5 w-1.5 rounded-full bg-border transition-[width,background-color] duration-rapida ease-saida"} />
                 ))}
               </div>
               <div className="flex gap-2">

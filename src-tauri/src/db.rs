@@ -68,7 +68,8 @@ pub struct DatabaseInitError {
 
 const DATABASE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(6);
 const DATABASE_SCHEMA_TIMEOUT: Duration = Duration::from_secs(6);
-const DATABASE_MAX_CONNECTIONS: u32 = 5;
+// 7 PCs × 4 + 2 = 30, abaixo do Pool Size 35 do Supavisor Session.
+const DATABASE_MAX_CONNECTIONS: u32 = 4;
 const DATABASE_CAPACITY_DIAGNOSTIC_TIMEOUT: Duration = Duration::from_secs(2);
 const DATABASE_CAPACITY_BACKOFF: Duration = Duration::from_secs(30);
 const STARTUP_CONNECT_ATTEMPTS: usize = 2;
@@ -141,6 +142,60 @@ pub fn database_init_error() -> Option<DatabaseInitError> {
     INIT_ERROR.lock().ok().and_then(|g| g.clone())
 }
 
+/// Maior que o `DATABASE_ACQUIRE_TIMEOUT`: o pool precisa desistir primeiro, com
+/// `PoolTimedOut`, para a lotação do servidor (53300) poder ser confirmada.
+const DATABASE_HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn init_error_from(error: &sqlx::Error) -> DatabaseInitError {
+    DatabaseInitError {
+        tipo: database_error_kind(error),
+        mensagem: database_error_message(error),
+    }
+}
+
+fn health_timeout_error() -> sqlx::Error {
+    sqlx::Error::Io(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        format!("a checagem de conexão excedeu {} segundos.", DATABASE_HEALTH_TIMEOUT.as_secs()),
+    ))
+}
+
+/// Checagem rápida com o app já aberto: um `SELECT 1` no pool atual. `None`
+/// quando o banco respondeu. Não recria o pool; o sqlx reabre conexões
+/// sozinho quando a rede volta.
+pub async fn check_database_health() -> Option<DatabaseInitError> {
+    let Some(pool) = POOL.lock().ok().and_then(|guard| guard.clone()) else {
+        return Some(database_init_error().unwrap_or(DatabaseInitError {
+            tipo: DatabaseErrorKind::Desconhecido,
+            mensagem: "Pool de conexões não inicializado.".to_string(),
+        }));
+    };
+    let result = tokio::time::timeout(DATABASE_HEALTH_TIMEOUT, sqlx::query("SELECT 1").execute(&pool)).await;
+    match result {
+        Ok(Ok(_)) => None,
+        Ok(Err(sqlx::Error::PoolTimedOut)) => Some(pool_timeout_health_error().await),
+        Ok(Err(error)) => Some(init_error_from(&error)),
+        Err(_) => Some(init_error_from(&health_timeout_error())),
+    }
+}
+
+/// O sqlx repete o 53300 até o acquire estourar e devolve `PoolTimedOut`.
+/// `database_operation_error` confirma a lotação com uma conexão de
+/// diagnóstico; sem confirmação, segue como rede.
+async fn pool_timeout_health_error() -> DatabaseInitError {
+    let mensagem = database_operation_error(sqlx::Error::PoolTimedOut).await;
+    health_error_after_pool_timeout(mensagem)
+}
+
+fn health_error_after_pool_timeout(mensagem: String) -> DatabaseInitError {
+    let tipo = if mensagem == DATABASE_ACCESS_LIMIT_ERROR {
+        DatabaseErrorKind::Capacidade
+    } else {
+        DatabaseErrorKind::Rede
+    };
+    DatabaseInitError { tipo, mensagem }
+}
+
 fn is_database_capacity_error(error: &sqlx::Error) -> bool {
     match error {
         sqlx::Error::Database(database_error) => {
@@ -190,11 +245,23 @@ pub fn clear_database_init_error() {
     }
 }
 
-fn set_database_init_error(error: &sqlx::Error) {
-    let init_error = DatabaseInitError {
-        tipo: database_error_kind(error),
-        mensagem: database_error_message(error),
+/// Grava o erro da abertura (ou do "Tentar novamente"). `PoolTimedOut` passa
+/// pela mesma confirmação de lotação da checagem de saúde, para a tela
+/// respeitar a espera de 30 s quando o servidor está cheio.
+async fn record_database_init_error(error: &sqlx::Error) {
+    let init_error = if matches!(error, sqlx::Error::PoolTimedOut) {
+        pool_timeout_health_error().await
+    } else {
+        init_error_from(error)
     };
+    if let Ok(mut guard) = INIT_ERROR.lock() {
+        *guard = Some(init_error);
+    }
+}
+
+#[cfg(test)]
+fn set_database_init_error(error: &sqlx::Error) {
+    let init_error = init_error_from(error);
     if let Ok(mut guard) = INIT_ERROR.lock() {
         *guard = Some(init_error);
     }
@@ -422,6 +489,8 @@ const REQUIRED_RUNTIME_TABLES: &[&str] = &[
     "orcamentos_insumos_contadores",
     // Perfil e primeiro acesso por código (0041): a tela de perfis lê estas colunas.
     "codigos_primeiro_acesso",
+    // Notificações lidas por perfil (0052): o sino lê e grava aqui.
+    "notificacao_leituras",
 ];
 
 const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
@@ -464,6 +533,10 @@ const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
     ("security_profiles", "tema"),
     ("security_profiles", "onboarding_concluido_em"),
     ("security_profiles", "tour_permissoes_vistas"),
+    // Técnicos e e-mail profissional por perfil (0051).
+    ("security_profiles", "email_profissional"),
+    ("security_profiles", "atende_tecnico"),
+    ("security_profiles", "avisos_desligados"),
 ];
 
 const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
@@ -750,7 +823,7 @@ pub async fn init_database() -> Result<PgPool, sqlx::Error> {
     .await;
 
     if let Err(error) = &result {
-        set_database_init_error(error);
+        record_database_init_error(error).await;
     }
     result
 }
@@ -760,7 +833,7 @@ pub async fn init_database_with_url(database_url: &str) -> Result<PgPool, sqlx::
     let _init_guard = INIT_LOCK.lock().await;
     let result = connect_and_setup_pool(database_url).await;
     if let Err(error) = &result {
-        set_database_init_error(error);
+        record_database_init_error(error).await;
     }
     result
 }
@@ -925,6 +998,27 @@ mod tests {
 
         let faltando = schema_failure_into_error(SchemaCheckFailure::Mismatch("tabela x ausente".to_string()));
         assert_eq!(database_error_kind(&faltando), DatabaseErrorKind::Incompativel);
+    }
+
+    #[test]
+    fn health_timeout_outlasts_pool_acquire() {
+        // Se a checagem desistisse antes do pool, a lotação nunca seria confirmada.
+        assert!(DATABASE_HEALTH_TIMEOUT > DATABASE_ACQUIRE_TIMEOUT);
+    }
+
+    #[test]
+    fn pool_timeout_keeps_confirmed_capacity_in_health_check() {
+        let lotado = health_error_after_pool_timeout(DATABASE_ACCESS_LIMIT_ERROR.to_string());
+        assert_eq!(lotado.tipo, DatabaseErrorKind::Capacidade);
+        let lento = health_error_after_pool_timeout(database_error_message(&sqlx::Error::PoolTimedOut));
+        assert_eq!(lento.tipo, DatabaseErrorKind::Rede);
+    }
+
+    #[test]
+    fn slow_health_check_is_transient() {
+        let lento = init_error_from(&health_timeout_error());
+        assert_eq!(lento.tipo, DatabaseErrorKind::Rede);
+        assert!(lento.mensagem.contains("demorou para responder"));
     }
 
     #[test]

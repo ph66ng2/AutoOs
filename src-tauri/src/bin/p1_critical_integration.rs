@@ -190,6 +190,207 @@ async fn main() -> Result<()> {
     .await
     .map_err(|error| anyhow!(error))?;
 
+    // A busca de equipamentos alcança os contatos: o responsável da OS (por e-mail,
+    // que não fica copiado na OS) e qualquer outro contato ativo do cliente.
+    let outro_contato = contatos::criar_cliente_contato(ClienteContatoInput {
+        empresa_id,
+        cliente_id: cliente.id,
+        nome: format!("{} Contato Financeiro", prefix),
+        email: None,
+        telefone: Some("21 97654-3210".to_string()),
+        atualizado_em: None,
+        preservar_identidade_portal: false,
+    })
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let mut busca_connection = pool.acquire().await?;
+    for busca in [
+        format!("{} Contato Financeiro", prefix),
+        format!("{}-contato@example.test", prefix.to_lowercase()),
+        "97654-3210".to_string(),
+    ] {
+        let encontrados = equipamentos::query_equipment_page_on_connection(
+            &mut busca_connection,
+            empresa_id,
+            Some(0),
+            Some(&busca),
+            None,
+            None,
+            equipamentos::UI_PAGE_SIZE,
+        )
+        .await
+        .map_err(|error| anyhow!(error))?;
+        if !encontrados.items.iter().any(|item| item.id == equipamento.id) {
+            return Err(anyhow!("busca de equipamentos por contato não encontrou a OS: {busca}"));
+        }
+    }
+    // Lista e painel de Clientes: contato principal, OS abertas, filtros com contagem e resumo.
+    let busca_cliente = cliente.nome.clone().unwrap_or_default();
+    let com_os = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("COM_OS_ABERTA".to_string()), None)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let linha = com_os
+        .items
+        .iter()
+        .find(|row| row.id == cliente.id)
+        .ok_or_else(|| anyhow!("filtro COM_OS_ABERTA não trouxe o cliente com OS recebida"))?;
+    if linha.os_abertas != Some(1) || linha.contato_principal.as_deref() != Some(format!("{} Responsável Original", prefix).as_str()) {
+        return Err(anyhow!("lista de clientes com os_abertas/contato_principal errados: {:?} {:?}", linha.os_abertas, linha.contato_principal));
+    }
+    let portal = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("PORTAL_ATIVO".to_string()), None)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if portal.items.iter().any(|row| row.id == cliente.id) {
+        return Err(anyhow!("cliente sem senha de portal apareceu em PORTAL_ATIVO"));
+    }
+    let contagem = clientes::contar_clientes_por_filtro_on_pool(&pool, empresa_id, Some(&busca_cliente))
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if contagem.todos < 1 || contagem.com_os_aberta < 1 || contagem.empresas + contagem.pessoas > contagem.todos {
+        return Err(anyhow!("contagem dos filtros de clientes inconsistente"));
+    }
+    let sem_financeiro = clientes::resumo_cliente_on_pool(&pool, empresa_id, cliente.id, false)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let com_financeiro = clientes::resumo_cliente_on_pool(&pool, empresa_id, cliente.id, true)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if sem_financeiro.faturado.is_some() || com_financeiro.faturado.is_none() || sem_financeiro.os_abertas != 1 || sem_financeiro.no_ano != 1 {
+        return Err(anyhow!("resumo do cliente errado: {:?} / {:?}", sem_financeiro, com_financeiro));
+    }
+    // OS antigas sem cliente_id entram pelo nome (como no painel e no histórico), só da mesma empresa.
+    let outra_empresa_id: i32 = sqlx::query_scalar(
+        "INSERT INTO empresas (nome, email, status) VALUES ($1, $2, 'ativo') RETURNING id",
+    )
+    .bind(format!("{} Outra Empresa", prefix))
+    .bind(format!("{}-outra@example.test", prefix.to_lowercase()))
+    .fetch_one(&pool)
+    .await
+    .context("create second synthetic company failed")?;
+    let mut legadas_por_nome: Vec<i32> = Vec::new();
+    for (empresa_da_os, nome_gravado) in [
+        (empresa_id, format!("  {}  ", busca_cliente.to_uppercase())),
+        (outra_empresa_id, busca_cliente.clone()),
+    ] {
+        let id: i32 = sqlx::query_scalar(
+            "INSERT INTO equipamentos (serial_number, marca, modelo, tipo, status, defeito_relatado,
+              data_entrada, cliente_id, cliente_nome, empresa_id)
+             VALUES ($1, 'TESTE', 'LEGADO', 'IMPRESSORA', 'RECEBIDO', 'legado por nome', $2, NULL, $3, $4)
+             RETURNING id",
+        )
+        .bind(format!("{}-LEGADO-NOME-{}", prefix, empresa_da_os))
+        .bind(Utc::now().date_naive().to_string())
+        .bind(&nome_gravado)
+        .bind(empresa_da_os)
+        .fetch_one(&pool)
+        .await
+        .context("insert legacy equipment by name failed")?;
+        legadas_por_nome.push(id);
+    }
+    let resumo_legado = clientes::resumo_cliente_on_pool(&pool, empresa_id, cliente.id, true)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let lista_legado = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("COM_OS_ABERTA".to_string()), None)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let linha_legado = lista_legado.items.iter().find(|row| row.id == cliente.id).map(|row| row.os_abertas);
+    sqlx::query("DELETE FROM equipamentos WHERE id = ANY($1)")
+        .bind(&legadas_por_nome)
+        .execute(&pool)
+        .await
+        .context("cleanup legacy equipment by name failed")?;
+    sqlx::query("DELETE FROM empresas WHERE id = $1")
+        .bind(outra_empresa_id)
+        .execute(&pool)
+        .await
+        .context("cleanup second company failed")?;
+    if resumo_legado.os_abertas != 2 || resumo_legado.no_ano != 2 || linha_legado != Some(Some(2)) {
+        return Err(anyhow!("OS legada por nome fora dos totais do cliente (ou de outra empresa contada): {:?} / {:?}", resumo_legado, linha_legado));
+    }
+    // Cliente que só tem OS antiga (sem cliente_id) aberta aparece em "Com OS aberta".
+    let cliente_legado = clientes::criar_cliente(ClienteInput {
+        empresa_id: Some(empresa_id),
+        nome: Some(format!("{} Cliente Legado", prefix)),
+        tipo_pessoa: Some("PF".to_string()),
+        documento: Some(format!(
+            "{:011}",
+            (Utc::now().timestamp_millis() + 7).rem_euclid(100_000_000_000)
+        )),
+        telefone: "11999999998".to_string(),
+        ..ClienteInput::default()
+    })
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let nome_legado = cliente_legado.nome.clone().unwrap_or_default();
+    let so_legada: i32 = sqlx::query_scalar(
+        "INSERT INTO equipamentos (serial_number, marca, modelo, tipo, status, defeito_relatado,
+          data_entrada, cliente_id, cliente_nome, empresa_id)
+         VALUES ($1, 'TESTE', 'LEGADO', 'IMPRESSORA', 'RECEBIDO', 'legado por nome', $2, NULL, $3, $4)
+         RETURNING id",
+    )
+    .bind(format!("{}-LEGADO-NOME-SO", prefix))
+    .bind(Utc::now().date_naive().to_string())
+    .bind(nome_legado.to_lowercase())
+    .bind(empresa_id)
+    .fetch_one(&pool)
+    .await
+    .context("insert lone legacy equipment failed")?;
+    let filtro_legado = clientes::listar_clientes_paginados(Some(0), Some(nome_legado.clone()), Some("COM_OS_ABERTA".to_string()), None).await;
+    let contagem_legado = clientes::contar_clientes_por_filtro_on_pool(&pool, empresa_id, Some(&nome_legado)).await;
+    sqlx::query("DELETE FROM equipamentos WHERE id = $1")
+        .bind(so_legada)
+        .execute(&pool)
+        .await
+        .context("cleanup lone legacy equipment failed")?;
+    sqlx::query("DELETE FROM cliente_contatos WHERE cliente_id = $1")
+        .bind(cliente_legado.id)
+        .execute(&pool)
+        .await
+        .context("cleanup legacy client contacts failed")?;
+    sqlx::query("DELETE FROM clientes WHERE id = $1")
+        .bind(cliente_legado.id)
+        .execute(&pool)
+        .await
+        .context("cleanup legacy client failed")?;
+    let filtro_legado = filtro_legado.map_err(|error| anyhow!(error))?;
+    if filtro_legado.items.iter().find(|row| row.id == cliente_legado.id).map(|row| row.os_abertas) != Some(Some(1))
+        || contagem_legado.map_err(|error| anyhow!(error))?.com_os_aberta != 1
+    {
+        return Err(anyhow!("cliente com só OS legada aberta sumiu do filtro Com OS aberta"));
+    }
+    let estoque_sem_valor = produtos::resumo_estoque_on_pool(&pool, empresa_id, false)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let estoque_com_valor = produtos::resumo_estoque_on_pool(&pool, empresa_id, true)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if estoque_sem_valor.valor_estoque.is_some()
+        || estoque_com_valor.valor_estoque.is_none()
+        || estoque_sem_valor.total_itens != estoque_sem_valor.por_categoria.iter().map(|c| c.total).sum::<i64>()
+        || estoque_sem_valor.saidas_mes_os > estoque_sem_valor.saidas_mes
+    {
+        return Err(anyhow!("resumo do estoque errado: {:?}", estoque_sem_valor));
+    }
+
+    contatos::inativar_cliente_contato(outro_contato.id, empresa_id)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let sem_inativo = equipamentos::query_equipment_page_on_connection(
+        &mut busca_connection,
+        empresa_id,
+        Some(0),
+        Some(&format!("{} Contato Financeiro", prefix)),
+        None,
+        None,
+        equipamentos::UI_PAGE_SIZE,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    if sem_inativo.items.iter().any(|item| item.id == equipamento.id) {
+        return Err(anyhow!("contato inativo que não é o responsável não deveria achar a OS"));
+    }
+    drop(busca_connection);
+
     // A substituição usa os IDs carregados como compare-and-swap: uma edição
     // desatualizada não deve apagar as fotos gravadas desde o snapshot.
     let seed_image = equipamento_imagens::adicionar_imagem_equipamento_raw(
@@ -342,6 +543,27 @@ async fn main() -> Result<()> {
         }
     }
 
+    // A listagem simples (busca do Balcão e "Entregar ao cliente") usa o mesmo filtro da lista
+    // paginada: acha a OS pelo CPF/CNPJ do cliente cadastrado e pelo nome do contato responsável.
+    let documento_cliente = cliente.documento.clone().unwrap_or_default();
+    let nome_contato = format!("{} Responsável Original", prefix);
+    for (label, busca) in [("documento do cliente", documento_cliente.as_str()), ("nome do contato", nome_contato.as_str())] {
+        let achados = equipamentos::listar_equipamentos_on_connection(
+            &mut legacy_first_connection,
+            empresa_id,
+            Some(0),
+            Some(busca),
+            None,
+        )
+        .await
+        .map_err(|error| anyhow!(error))?;
+        if !achados.iter().any(|item| item.id == equipamento.id) {
+            return Err(anyhow!("simple equipment listing did not find the equipment by {}", label));
+        }
+    }
+    // Marcador de resultado (não é debug): writeln por causa do filtro do pre-qa-check.
+    std::io::Write::write_all(&mut std::io::stdout(), b"P1_INTEGRATION_SIMPLE_LISTING_SEARCH=ok\n")?;
+
     verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
         equipamento_id: equipamento.id,
         empresa_id: Some(empresa_id),
@@ -373,7 +595,8 @@ async fn main() -> Result<()> {
         .bind(equipamento.id).fetch_one(&pool).await?;
 
     let recent_page = equipamentos::listar_equipamentos_paginados(
-        Some(0), None, Some("AGUARDANDO_APROVACAO".to_string()), Some("CADASTRO_RECENTE".to_string()),
+        Some(0), None, Some("AGUARDANDO_APROVACAO".to_string()), Some("CADASTRO_RECENTE".to_string()), None,
+        None,
     ).await.map_err(|error| anyhow!(error))?;
     if !recent_page.items.iter().any(|item| item.id == equipamento.id) {
         return Err(anyhow!("recent equipment order omitted the expected record"));
@@ -718,7 +941,7 @@ async fn main() -> Result<()> {
     if adopted_company != Some(empresa_id) {
         return Err(anyhow!("successful approval did not adopt the legacy verification tenant"));
     }
-    let historico = equipamentos::listar_historico_equipamento(equipamento.id)
+    let historico = equipamentos::listar_historico_equipamento(equipamento.id, None)
         .await
         .map_err(|error| anyhow!(error))?;
     if !historico.iter().any(|evento| {
@@ -803,7 +1026,7 @@ async fn main() -> Result<()> {
         .await
         .map_err(|error| anyhow!(error))?;
 
-    let equipamento_com_snapshot = equipamentos::buscar_equipamento(equipamento.id)
+    let equipamento_com_snapshot = equipamentos::buscar_equipamento(equipamento.id, None)
         .await
         .map_err(|error| anyhow!(error))?;
     if equipamento_com_snapshot.responsavel_nome.as_deref()
@@ -842,7 +1065,7 @@ async fn main() -> Result<()> {
     .execute(&pool)
     .await
     .context("create legacy verification failed")?;
-    let legacy = equipamentos::buscar_equipamento(legacy_equipment_id)
+    let legacy = equipamentos::buscar_equipamento(legacy_equipment_id, None)
         .await
         .map_err(|error| anyhow!(error))?;
     let legacy_verification =
@@ -1126,14 +1349,14 @@ async fn assert_lista_tolera_telefone_nulo(
             return Err(anyhow!("search did not return the client with NULL telefone"));
         }
 
-        let pagina = clientes::listar_clientes_paginados(Some(0), Some(nome))
+        let pagina = clientes::listar_clientes_paginados(Some(0), Some(nome), None, None)
             .await
             .map_err(|error| anyhow!("paginated search failed with a NULL telefone row: {error}"))?;
         if !pagina.items.iter().any(|row| row.id == id) {
             return Err(anyhow!("paginated search did not return the client with NULL telefone"));
         }
 
-        let buscado = clientes::buscar_cliente(id)
+        let buscado = clientes::buscar_cliente(id, None)
             .await
             .map_err(|error| anyhow!("buscar_cliente failed with NULL telefone: {error}"))?;
         if buscado.id != id || buscado.telefone.is_some() || buscado.email.is_some() {

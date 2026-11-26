@@ -50,13 +50,12 @@ export function PagamentoOrcamentoDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle>Forma de pagamento da aprovação</DialogTitle>
-          <DialogDescription>Escolha a forma que será registrada junto com a aprovação do orçamento.</DialogDescription>
+          <DialogDescription className="sr-only">Escolha como o cliente vai pagar.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">Escolha obrigatória para aprovar o orçamento.</p>
           <FormaPagamentoFields
             codigo={codigo}
             detalhe={detalhe}
@@ -65,7 +64,7 @@ export function PagamentoOrcamentoDialog({
             required
             disabled={loading}
           />
-          {(validationError || error) && <p className="whitespace-pre-line text-sm text-red-600" role="alert">{validationError || error}</p>}
+          {(validationError || error) && <p className="whitespace-pre-line text-sm text-destructive" role="alert">{validationError || error}</p>}
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancelar</Button>

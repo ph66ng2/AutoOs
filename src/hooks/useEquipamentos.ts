@@ -10,6 +10,8 @@
  * @usedBy pages/Equipamentos.tsx - página principal de equipamentos
  */
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { argSegundoPlano } from "@/lib/ao-vivo";
+import { useAtualizacaoAoVivo, useDestaquesAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { db } from "@/lib/db";
 import type { Equipamento } from "@/types";
 
@@ -21,6 +23,8 @@ import type { Equipamento } from "@/types";
 interface UseEquipamentosParams {
   busca?: string;
   status?: string;
+  /** Técnico da verificação mais recente. */
+  tecnico?: string;
   ordenacao?: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE";
   /** Página apresentada pela interface, iniciando em 1. */
   page?: number;
@@ -48,7 +52,14 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [avisoAtualizacao, setAvisoAtualizacao] = useState<string | null>(null);
+  /** Total por status (pílulas do filtro); null enquanto não chega ou se a contagem falhar. */
+  const [contagens, setContagens] = useState<Record<string, number> | null>(null);
   const requestIdRef = useRef(0);
+  const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
+  // Depois da primeira carga, falha de recarga silenciosa (ex.: sessão bloqueada) mantém a lista sem faixa de erro.
+  const carregouUmaVez = useRef(false);
   const mountedRef = useRef(false);
   const paramsRef = useRef(params);
 
@@ -65,7 +76,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     // Invalidate the previous filter request as soon as the new params commit,
     // before a resolved promise can publish its stale result.
     requestIdRef.current += 1;
-  }, [params?.busca, params?.status, params?.page, params?.ordenacao]);
+  }, [params?.busca, params?.status, params?.page, params?.ordenacao, params?.tecnico]);
 
   /**
    * Carrega a lista de equipamentos do banco de dados.
@@ -75,35 +86,60 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean; aposGravacao?: boolean }): Promise<ResultadoCarregamento> => {
     if (!mountedRef.current) return { status: "obsoleto" };
 
-    const requestId = ++requestIdRef.current;
-    const atual = () => mountedRef.current && requestIdRef.current === requestId;
     // Silencioso: atualização em segundo plano (ex.: cliente respondeu no portal) sem trocar a
     // lista pelo indicador de carregamento.
     const silencioso = opcoes?.silencioso === true;
-    if (!silencioso) setLoading(true);
-    setError(null);
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return { status: "obsoleto" };
+    }
+    const requestId = ++requestIdRef.current;
+    const atual = () => mountedRef.current && requestIdRef.current === requestId;
+    if (!silencioso) {
+      cargaVisivelPendente.current = true;
+      setLoading(true);
+      setError(null);
+    }
     setAvisoAtualizacao(null);
     try {
       const params = paramsRef.current;
+      const tecnico = params?.tecnico || undefined;
+      // A contagem é só enfeite das pílulas: se falhar, a lista continua.
+      const contagem = Promise.resolve().then(() => db.contarEquipamentosPorStatus(params?.busca, tecnico, ...argSegundoPlano(silencioso))).catch(() => null);
       const data = await db.listarEquipamentosPaginados(
         params?.busca,
         params?.status === "TODOS" ? undefined : params?.status,
         Math.max((params?.page ?? 1) - 1, 0),
         params?.ordenacao ?? "ATUALIZACAO_RECENTE",
+        tecnico,
+        // Recarga silenciosa (ao vivo, foco) não renova a sessão: estação abandonada ainda bloqueia.
+        ...argSegundoPlano(silencioso),
       );
+      const numeros = await contagem;
       if (!atual()) return { status: "obsoleto" };
+      carregouUmaVez.current = true;
+      setError(null);
+      setContagens(numeros);
       setEquipamentos(data.items);
       setTotal(data.total);
       return { status: "atualizado" };
     } catch (err: any) {
       if (!atual()) return { status: "obsoleto" };
       const erro = mensagemErro(err, "Erro ao carregar equipamentos");
-      setError(erro);
+      // Recarga após gravação continua mostrando a falha (o aviso acompanha a gravação).
+      if (!silencioso || !carregouUmaVez.current || opcoes?.aposGravacao) setError(erro);
       setAvisoAtualizacao(opcoes?.aposGravacao ? erro : null);
       console.error("Erro ao carregar equipamentos:", err);
       return { status: "falhou", erro };
     } finally {
-      if (atual()) setLoading(false);
+      if (atual()) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar({ silencioso: true });
+        }
+      }
     }
   }, []);
 
@@ -111,11 +147,28 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     void carregar();
     return () => {
       requestIdRef.current += 1;
+      cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
     };
-  }, [carregar, params?.busca, params?.status, params?.page, params?.ordenacao]);
+  }, [carregar, params?.busca, params?.status, params?.page, params?.ordenacao, params?.tecnico]);
 
   const recarregar = useCallback(() => carregar(), [carregar]);
   const atualizarEmSegundoPlano = useCallback(() => carregar({ silencioso: true }), [carregar]);
+
+  // Outro computador mudou uma OS, a verificação dela ou um contato de cliente (a busca também
+  // acha a OS pelo nome, telefone ou e-mail dos contatos): recarrega em silêncio e destaca o que mudou.
+  const { destaques, lembrar } = useDestaquesAoVivo(equipamentos, (eq) => eq.id, (eq) => eq.atualizado_em);
+  useAtualizacaoAoVivo(["equipamentos", "verificacoes", "cliente_contatos"], (mudancas) => {
+    // Contato mudou e não há busca: nem a lista nem as pílulas dependem dos contatos.
+    const soContatos = mudancas.length > 0 && mudancas.every((m) => m.tabela === "cliente_contatos");
+    if (soContatos && !paramsRef.current?.busca?.trim()) return;
+    if (cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
+    }
+    lembrar();
+    void carregar({ silencioso: true });
+  });
 
   const recarregarAposGravacao = async () => {
     const resultado = await carregar({ silencioso: true, aposGravacao: true });
@@ -213,6 +266,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   return {
     equipamentos,
     total,
+    contagens,
     loading,
     error,
     avisoAtualizacao,
@@ -222,5 +276,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     atualizarStatus,
     recarregar,
     atualizarEmSegundoPlano,
+    /** Itens novos ou alterados por outro computador, destacados por alguns segundos. */
+    destaques,
   };
 }

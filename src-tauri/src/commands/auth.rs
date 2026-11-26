@@ -121,6 +121,15 @@ pub struct SecurityProfileSummary {
     /// Permissões que o tour já apresentou. `None` = o tour nunca foi visto.
     #[serde(default)]
     pub tour_permissoes_vistas: Option<Vec<String>>,
+    /// E-mail profissional; vazio em perfis antigos até alguém preencher.
+    #[serde(default)]
+    pub email_profissional: Option<String>,
+    /// Aparece na lista de técnicos da OS.
+    #[serde(default)]
+    pub atende_tecnico: bool,
+    /// Tipos de aviso que o perfil não quer no sino (0054). Vazio = todos.
+    #[serde(default)]
+    pub avisos_desligados: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,6 +144,7 @@ pub struct SensitiveAccessStatus {
     pub unlocked: bool,
     pub expires_at: Option<String>,
     pub active_profile_id: Option<i32>,
+    pub active_empresa_id: Option<i32>,
     pub active_profile_name: Option<String>,
     pub active_role: Option<String>,
     pub permissions: Vec<String>,
@@ -163,6 +173,28 @@ pub struct SecurityProfileInput {
     pub nome: String,
     pub role: String,
     pub permissions: Vec<String>,
+    /// E-mail profissional (obrigatório ao criar ou editar pela Equipe).
+    pub email_profissional: Option<String>,
+    /// Aparece como técnico nas OS (entrada e verificação).
+    pub atende_tecnico: bool,
+}
+
+/// E-mail profissional do perfil: obrigatório, minúsculo, formato simples nome@dominio.tld.
+pub(crate) fn validar_email_profissional(valor: Option<&str>) -> Result<String, String> {
+    let email = valor.unwrap_or("").trim().to_lowercase();
+    if email.is_empty() {
+        return Err("Informe o e-mail profissional do perfil.".to_string());
+    }
+    let valido = email.len() <= 254
+        && !email.chars().any(char::is_whitespace)
+        && email.matches('@').count() == 1
+        && email.split_once('@').is_some_and(|(local, dominio)| {
+            !local.is_empty() && dominio.contains('.') && !dominio.starts_with('.') && !dominio.ends_with('.')
+        });
+    if !valido {
+        return Err("E-mail profissional inválido.".to_string());
+    }
+    Ok(email)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,13 +218,17 @@ struct SecurityProfileRecord {
     tema: Option<String>,
     onboarding_concluido_em: Option<DateTime<Utc>>,
     tour_permissoes_vistas: Option<String>,
+    email_profissional: Option<String>,
+    atende_tecnico: bool,
+    avisos_desligados: Vec<String>,
 }
 
 /// Colunas de `SecurityProfileRecord`. Macro para compor SQL estático com `concat!`.
 macro_rules! profile_columns {
     () => {
         "id, nome, role, permissions, pin_required, ativo, is_default, criado_em, \
-         avatar_icone, avatar_cor, tema, onboarding_concluido_em, tour_permissoes_vistas"
+         avatar_icone, avatar_cor, tema, onboarding_concluido_em, tour_permissoes_vistas, \
+         email_profissional, atende_tecnico, avisos_desligados"
     };
 }
 
@@ -428,14 +464,24 @@ fn load_profile_pin_for_record(profile: &SecurityProfileRecord) -> Result<Option
     if pin_record_is_older_than_profile(&stored, profile) {
         warn!(profile_id = profile.id, "PIN órfão removido do keyring");
         let entry = get_keyring_entry(&profile_keyring_user(profile.id))?;
-        entry.delete_password().map_err(|error| {
-            error!("Erro ao remover PIN órfão do keyring: {}", error);
-            "Não foi possível remover o PIN local antigo. Use a recuperação de PIN.".to_string()
-        })?;
+        interpretar_remocao_de_pin_orfao(entry.delete_password())?;
         return Ok(None);
     }
 
     Ok(Some(stored))
+}
+
+/// Remoção do PIN órfão: "não existe mais" é sucesso. Duas leituras de status simultâneas (a
+/// abertura do app faz isso) acham o mesmo órfão; a segunda encontraria a entrada já apagada e,
+/// tratando isso como falha, mostraria "cofre bloqueado" e ninguém entraria naquele computador.
+fn interpretar_remocao_de_pin_orfao(resultado: Result<(), keyring::Error>) -> Result<(), String> {
+    match resultado {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => {
+            error!("Erro ao remover PIN órfão do keyring: {}", error);
+            Err("Não foi possível remover o PIN local antigo. Use a recuperação de PIN.".to_string())
+        }
+    }
 }
 
 fn pin_record_is_older_than_profile(stored: &StoredSensitivePin, profile: &SecurityProfileRecord) -> bool {
@@ -756,6 +802,44 @@ pub async fn salvar_config_inatividade(enabled: bool) -> Result<bool, String> {
     Ok(enabled)
 }
 
+/// Prazo de garantia dos serviços, em dias contados de quando ficou pronta (0057). Não é sensível: a Nova
+/// entrada de qualquer perfil usa para avisar retorno dentro da garantia.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn obter_garantia_servicos_dias() -> Result<i32, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let dias: Option<i32> = sqlx::query_scalar("SELECT garantia_servicos_dias FROM configuracoes_sistema WHERE id = 1")
+        .fetch_optional(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(dias.unwrap_or(GARANTIA_SERVICOS_DIAS_PADRAO))
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn salvar_garantia_servicos_dias(dias: i32) -> Result<i32, String> {
+    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+    validar_garantia_dias(dias)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE configuracoes_sistema SET garantia_servicos_dias = $1, updated_at = NOW() WHERE id = 1")
+        .bind(dias)
+        .execute(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    record_security_event("GARANTIA_SERVICOS_ALTERADA", Some(&actor), format!("garantia_servicos_dias={}", dias), true).await;
+    Ok(dias)
+}
+
+const GARANTIA_SERVICOS_DIAS_PADRAO: i32 = 90;
+
+fn validar_garantia_dias(dias: i32) -> Result<(), String> {
+    if (0..=3650).contains(&dias) {
+        Ok(())
+    } else {
+        Err("Informe um prazo de garantia entre 0 e 3650 dias.".to_string())
+    }
+}
+
 pub(crate) fn current_session_profile() -> Result<Option<(DateTime<Utc>, SecurityProfileSummary)>, String> {
     let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
     match (session.unlocked_until, session.profile_obfuscated.clone(), session.profile_key.clone()) {
@@ -836,6 +920,14 @@ pub fn require_sensitive_access() -> Result<SecurityProfileSummary, String> {
 /// Confere a sessão sem renová-la e sem registrar tentativa negada na auditoria. É para leituras
 /// de segundo plano (o sino do portal consulta a cada 30 s): só a ação do usuário prorroga os
 /// 15 minutos, senão o bloqueio por inatividade nunca dispara.
+/// Checagem silenciosa (sem evento de auditoria nem renovar a sessão), para dados opcionais
+/// que só aparecem a quem tem a permissão, como o faturado do resumo do cliente.
+pub fn session_has_permission(permission: &str) -> bool {
+    require_sensitive_access_without_touch()
+        .map(|profile| has_permission(&profile, permission))
+        .unwrap_or(false)
+}
+
 pub fn require_sensitive_access_without_touch() -> Result<SecurityProfileSummary, String> {
     current_session_profile()?
         .map(|(_, profile)| profile)
@@ -844,9 +936,32 @@ pub fn require_sensitive_access_without_touch() -> Result<SecurityProfileSummary
 
 /// Resolve a empresa exclusivamente a partir do perfil atualmente autenticado.
 /// Valores recebidos da interface nunca devem escolher o tenant de uma escrita.
+/// Nome da empresa da sessão, para o topo do menu lateral.
+#[tauri::command]
+pub async fn obter_empresa_ativa() -> Result<String, String> {
+    let pool = crate::db::get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    sqlx::query_scalar::<_, String>("SELECT nome FROM empresas WHERE id = $1")
+        .bind(empresa_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 pub async fn require_active_session_company_id(pool: &PgPool) -> Result<i32, String> {
     let profile = require_sensitive_access()?;
     company_id_for_profile(pool, &profile).await
+}
+
+/// Empresa da sessão para uma leitura. `segundo_plano` = Some(true) é a recarga automática
+/// (atualização ao vivo, foco da janela): exige a sessão desbloqueada, mas não a renova, senão
+/// mudanças de outro computador manteriam aberta uma estação abandonada.
+pub async fn empresa_da_sessao(pool: &PgPool, segundo_plano: Option<bool>) -> Result<i32, String> {
+    if segundo_plano == Some(true) {
+        require_active_session_company_id_without_touch(pool).await
+    } else {
+        require_active_session_company_id(pool).await
+    }
 }
 
 /// Igual a `require_active_session_company_id`, para consultas de segundo plano: não renova a sessão.
@@ -883,8 +998,30 @@ async fn active_session_company_query_error(error: sqlx::Error) -> String {
 }
 
 pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, String> {
-    let profile = evaluate_permission_gate(Some(require_sensitive_access()?), permission)
+    require_permission_para_leitura(permission, None)
+}
+
+pub fn require_permission_para_leitura(
+    permission: &str,
+    segundo_plano: Option<bool>,
+) -> Result<SecurityProfileSummary, String> {
+    let segundo_plano = segundo_plano == Some(true);
+    let sessao = if segundo_plano {
+        require_sensitive_access_without_touch()?
+    } else {
+        require_sensitive_access()?
+    };
+    let profile = evaluate_permission_gate(Some(sessao), permission)
     .map_err(|failure| match failure {
+        // Leitura em segundo plano (ao vivo, foco) nega sem auditar: cada aviso de outro
+        // computador geraria um registro de negação.
+        PermissionGateFailure::SessionLocked if segundo_plano => {
+            "Acesso sensível bloqueado. Informe o PIN para continuar.".to_string()
+        }
+        PermissionGateFailure::MissingPermission(profile) if segundo_plano => format!(
+            "Perfil {} não possui permissão necessária para esta ação.",
+            profile.nome
+        ),
         PermissionGateFailure::SessionLocked => {
             spawn_security_event(
                 "SENSITIVE_ACCESS_DENIED",
@@ -909,7 +1046,9 @@ pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, St
         }
     })?;
 
-    touch_sensitive_access()?;
+    if !segundo_plano {
+        touch_sensitive_access()?;
+    }
     Ok(profile)
 }
 
@@ -1006,6 +1145,35 @@ async fn mark_profile_pin_required(profile_id: i32) -> Result<(), String> {
         .bind(profile_id).execute(&pool).await
         .map_err(super::operator_errors::mapear_erro_sql)?;
     Ok(())
+}
+
+/// Técnicos da OS: perfis ativos com "faz atendimento técnico" da empresa da sessão. O e-mail
+/// profissional deles vai em cópia nos e-mails automáticos com PDF do cliente, então nunca entra
+/// perfil de outra empresa nem perfil desativado ou que não atende.
+pub(crate) const TECNICOS_DA_EMPRESA_SQL: &str = "SELECT id, nome, email_profissional
+     FROM security_profiles
+     WHERE empresa_id = $1 AND ativo = true AND atende_tecnico = true
+     ORDER BY nome ASC, id ASC";
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct TecnicoDaEmpresa {
+    pub id: i32,
+    pub nome: String,
+    pub email_profissional: Option<String>,
+}
+
+/// Lista os técnicos da empresa da sessão. Chamado sozinho quando a sessão muda: exige a sessão
+/// desbloqueada, mas não a renova.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn listar_tecnicos_da_empresa() -> Result<Vec<TecnicoDaEmpresa>, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id_without_touch(&pool).await?;
+    sqlx::query_as::<_, TecnicoDaEmpresa>(TECNICOS_DA_EMPRESA_SQL)
+        .bind(empresa_id)
+        .fetch_all(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
 }
 
 async fn fetch_profile_records_with_scope(include_inactive: bool) -> Result<Vec<SecurityProfileRecord>, String> {
@@ -1140,6 +1308,9 @@ fn profile_summary(record: SecurityProfileRecord, pin_configured: bool) -> Resul
             Some(raw) => Some(parse_permissions(raw)?),
             None => None,
         },
+        email_profissional: record.email_profissional,
+        atende_tecnico: record.atende_tecnico,
+        avisos_desligados: record.avisos_desligados,
     })
 }
 
@@ -1263,6 +1434,16 @@ async fn status_snapshot_attempt(last_attempt: bool) -> Result<Option<SensitiveA
         .cloned()
         .ok_or_else(|| "Perfil ativo indisponível".to_string())?;
 
+    let active_empresa_id = match current_session_profile()? {
+        Some((_, profile)) if profile.id == active_summary.id => {
+            match get_pool().await {
+                Ok(pool) => company_id_for_profile(&pool, &profile).await.ok(),
+                Err(_) => None,
+            }
+        }
+        _ => None,
+    };
+
     let (unlocked, expires_at) = match current_session_profile()? {
         Some((until, profile)) if profile.id == active_summary.id => {
             let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
@@ -1304,6 +1485,7 @@ async fn status_snapshot_attempt(last_attempt: bool) -> Result<Option<SensitiveA
         unlocked,
         expires_at,
         active_profile_id: Some(active_summary.id),
+        active_empresa_id: active_empresa_id.filter(|_| unlocked),
         active_profile_name: Some(active_summary.nome.clone()),
         active_role: if unlocked {
             Some(active_summary.role.clone())
@@ -1516,6 +1698,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
         return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
     }
     validate_new_pin(&pin)?;
+    let email = validar_email_profissional(input.email_profissional.as_deref())?;
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
@@ -1528,13 +1711,15 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let row = sqlx::query(
-        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, atualizado_em)
-         VALUES ($1, $2, $3, true, false, $4, NOW()) RETURNING id"
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, email_profissional, atende_tecnico, atualizado_em)
+         VALUES ($1, $2, $3, true, false, $4, $5, $6, NOW()) RETURNING id"
     )
     .bind(nome)
     .bind(&role)
     .bind(&permissions_json)
     .bind(!pin.trim().is_empty())
+    .bind(&email)
+    .bind(input.atende_tecnico)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
@@ -1583,6 +1768,7 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
     if nome.len() < 3 {
         return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
     }
+    let email = validar_email_profissional(input.email_profissional.as_deref())?;
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
@@ -1601,13 +1787,15 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     sqlx::query(
         "UPDATE security_profiles
-         SET nome = $1, role = $2, permissions = $3, atualizado_em = NOW()
+         SET nome = $1, role = $2, permissions = $3, email_profissional = $5, atende_tecnico = $6, atualizado_em = NOW()
          WHERE id = $4"
     )
     .bind(nome)
     .bind(&role)
     .bind(&permissions_json)
     .bind(profile_id)
+    .bind(&email)
+    .bind(input.atende_tecnico)
     .execute(&pool)
     .await
     .map_err(|e| {
@@ -2287,6 +2475,8 @@ pub struct CodigoPrimeiroAcesso {
 #[serde(default)]
 pub struct PersonalizacaoPerfilInput {
     pub nome: String,
+    /// O próprio dono pode preencher ou trocar o e-mail profissional. `None` mantém o atual.
+    pub email_profissional: Option<String>,
     pub avatar_icone: Option<String>,
     pub avatar_cor: Option<String>,
     pub tema: Option<String>,
@@ -2329,11 +2519,36 @@ fn validar_personalizacao(input: &PersonalizacaoPerfilInput) -> Result<(), Strin
         }
     }
     if let Some(tema) = input.tema.as_deref() {
-        if tema != "light" && tema != "dark" {
-            return Err("Tema inválido.".to_string());
-        }
+        validar_tema(tema)?;
     }
     Ok(())
+}
+
+fn validar_tema(tema: &str) -> Result<(), String> {
+    if TEMAS_PERFIL.contains(&tema) {
+        Ok(())
+    } else {
+        Err("Tema inválido.".to_string())
+    }
+}
+
+/// Valores aceitos em `security_profiles.tema` (0056): claro, escuro ou o do sistema operacional.
+const TEMAS_PERFIL: [&str; 3] = ["light", "dark", "system"];
+
+/// Troca só o tema do perfil da sessão (Configurações › Geral). Não mexe em nome, e-mail nem visual.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn salvar_tema_perfil(tema: String) -> Result<SensitiveAccessStatus, String> {
+    let perfil = require_sensitive_access()?;
+    validar_tema(&tema)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE security_profiles SET tema = $1, atualizado_em = NOW() WHERE id = $2 AND ativo = true")
+        .bind(&tema)
+        .bind(perfil.id)
+        .execute(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    status_snapshot().await
 }
 
 /// Revoga os códigos abertos do perfil e emite um novo dentro da transação recebida.
@@ -2390,6 +2605,7 @@ pub async fn criar_perfil_com_codigo(input: SecurityProfileInput, admin_pin: Str
     if nome.chars().count() < 3 {
         return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
     }
+    let email = validar_email_profissional(input.email_profissional.as_deref())?;
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
     validar_perfil_ativo_056(&role, &permissions)?;
@@ -2399,14 +2615,16 @@ pub async fn criar_perfil_com_codigo(input: SecurityProfileInput, admin_pin: Str
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     // O novo membro herda a empresa de quem o cadastrou.
     let profile_id: i32 = sqlx::query_scalar(
-        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, empresa_id, atualizado_em)
-         VALUES ($1, $2, $3, true, false, true, (SELECT empresa_id FROM security_profiles WHERE id = $4), NOW())
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, empresa_id, email_profissional, atende_tecnico, atualizado_em)
+         VALUES ($1, $2, $3, true, false, true, (SELECT empresa_id FROM security_profiles WHERE id = $4), $5, $6, NOW())
          RETURNING id",
     )
     .bind(nome)
     .bind(&role)
     .bind(&permissions_json)
     .bind(actor.id)
+    .bind(&email)
+    .bind(input.atende_tecnico)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
@@ -2682,12 +2900,17 @@ pub async fn ativar_perfil_com_codigo(
 pub async fn salvar_personalizacao_perfil(input: PersonalizacaoPerfilInput) -> Result<SensitiveAccessStatus, String> {
     let profile = require_sensitive_access()?;
     validar_personalizacao(&input)?;
+    let email = match input.email_profissional.as_deref() {
+        Some(valor) => Some(validar_email_profissional(Some(valor))?),
+        None => None,
+    };
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let nome = input.nome.trim();
     sqlx::query(
         "UPDATE security_profiles
          SET nome = $1, avatar_icone = $2, avatar_cor = $3, tema = $4,
+             email_profissional = COALESCE($7, email_profissional),
              onboarding_concluido_em = CASE WHEN $5 THEN COALESCE(onboarding_concluido_em, NOW()) ELSE onboarding_concluido_em END,
              atualizado_em = NOW()
          WHERE id = $6 AND ativo = true",
@@ -2698,6 +2921,7 @@ pub async fn salvar_personalizacao_perfil(input: PersonalizacaoPerfilInput) -> R
     .bind(input.tema.as_deref())
     .bind(input.concluir_onboarding)
     .bind(profile.id)
+    .bind(email.as_deref())
     .execute(&pool)
     .await
     .map_err(|e| {
@@ -2767,6 +2991,15 @@ pub async fn listar_minhas_acoes(limit: Option<i32>) -> Result<Vec<SecurityAudit
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tecnicos_da_empresa_so_da_empresa_ativos_e_que_atendem() {
+        let sql = TECNICOS_DA_EMPRESA_SQL;
+        assert!(sql.contains("empresa_id = $1"));
+        assert!(sql.contains("ativo = true"));
+        assert!(sql.contains("atende_tecnico = true"));
+        assert!(sql.contains("ORDER BY nome ASC, id ASC"));
+    }
 
     /// Os testes de sessão mexem em estáticos do processo (sessão e flag de inatividade).
     static SESSION_TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -2902,6 +3135,15 @@ mod tests {
         assert!(interpretar_leitura_do_cofre(Ok("não é json".to_string())).is_err());
     }
 
+    #[test]
+    fn removing_an_orphan_pin_that_is_already_gone_is_not_a_vault_failure() {
+        // Duas leituras de status simultâneas acham o mesmo PIN órfão; a segunda não encontra mais nada.
+        assert!(interpretar_remocao_de_pin_orfao(Ok(())).is_ok());
+        assert!(interpretar_remocao_de_pin_orfao(Err(keyring::Error::NoEntry)).is_ok());
+        let travado = keyring::Error::PlatformFailure("zbus error: IsLocked".into());
+        assert!(interpretar_remocao_de_pin_orfao(Err(travado)).is_err());
+    }
+
     #[tokio::test]
     async fn write_that_finishes_after_the_timeout_is_undone_while_the_lock_is_still_held() {
         let lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
@@ -3020,6 +3262,9 @@ mod tests {
             tema: None,
             onboarding_concluido_em: None,
             tour_permissoes_vistas: None,
+            email_profissional: None,
+            atende_tecnico: false,
+            avisos_desligados: Vec::new(),
         };
         let stale = StoredSensitivePin {
             pin_hash: "$argon2id$placeholder".to_string(),
@@ -3077,9 +3322,20 @@ mod tests {
     }
 
     #[test]
+    fn email_profissional_obrigatorio_e_com_formato() {
+        assert!(validar_email_profissional(None).is_err());
+        assert!(validar_email_profissional(Some("  ")).is_err());
+        assert!(validar_email_profissional(Some("ana")).is_err());
+        assert!(validar_email_profissional(Some("ana@empresa")).is_err());
+        assert!(validar_email_profissional(Some("ana @empresa.com")).is_err());
+        assert_eq!(validar_email_profissional(Some(" Ana@Empresa.com.br ")).unwrap(), "ana@empresa.com.br");
+    }
+
+    #[test]
     fn personalizacao_aceita_apenas_opcoes_da_interface() {
         let valida = PersonalizacaoPerfilInput {
             nome: "Juliana".to_string(),
+            email_profissional: None,
             avatar_icone: Some("shape-orb".to_string()),
             avatar_cor: Some("#0F766E".to_string()),
             tema: Some("dark".to_string()),
@@ -3091,12 +3347,26 @@ mod tests {
         assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_icone: Some("shape-orb".to_string()), ..valida_clone(&valida) }).is_ok());
         assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_icone: Some("shape-block".to_string()), ..valida_clone(&valida) }).is_ok());
         assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_cor: Some("#123456".to_string()), ..valida_clone(&valida) }).is_err());
-        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { tema: Some("system".to_string()), ..valida_clone(&valida) }).is_err());
+        // "system" segue o tema do sistema operacional (0056); valor fora da lista continua recusado.
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { tema: Some("system".to_string()), ..valida_clone(&valida) }).is_ok());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { tema: Some("sepia".to_string()), ..valida_clone(&valida) }).is_err());
+        assert!(validar_tema("light").is_ok() && validar_tema("dark").is_ok() && validar_tema("system").is_ok());
+        assert!(validar_tema("auto").is_err());
+    }
+
+    #[test]
+    fn garantia_aceita_de_zero_a_dez_anos() {
+        assert!(validar_garantia_dias(0).is_ok());
+        assert!(validar_garantia_dias(90).is_ok());
+        assert!(validar_garantia_dias(3650).is_ok());
+        assert!(validar_garantia_dias(-1).is_err());
+        assert!(validar_garantia_dias(3651).is_err());
     }
 
     fn valida_clone(input: &PersonalizacaoPerfilInput) -> PersonalizacaoPerfilInput {
         PersonalizacaoPerfilInput {
             nome: input.nome.clone(),
+            email_profissional: input.email_profissional.clone(),
             avatar_icone: input.avatar_icone.clone(),
             avatar_cor: input.avatar_cor.clone(),
             tema: input.tema.clone(),

@@ -141,7 +141,7 @@ export function AcessoPortalDialog({ open, onOpenChange, clienteId, empresaId, t
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn("max-h-[88vh] overflow-y-auto", tela === "contatos" ? "sm:max-w-2xl" : "sm:max-w-lg")}>
+      <DialogContent tamanho={tela === "contatos" ? "g" : "m"} className="max-h-[88vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" /> Acesso ao Portal do Cliente</DialogTitle>
           <DialogDescription>
@@ -186,7 +186,7 @@ export function AcessoPortalDialog({ open, onOpenChange, clienteId, empresaId, t
                       <span className="block text-xs text-muted-foreground">
                         {[item.telefone, item.email].filter(Boolean).join(" · ") || "sem telefone e email"}
                       </span>
-                      <span className={cn("block text-xs", respondeNoPortal(item) ? "text-emerald-700" : "text-muted-foreground")}>
+                      <span className={cn("block text-xs", respondeNoPortal(item) ? "text-status-ok" : "text-muted-foreground")}>
                         {situacaoPortal(item)}
                       </span>
                     </span>

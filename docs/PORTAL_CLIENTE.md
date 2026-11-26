@@ -8,7 +8,7 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 
 ## Jornada
 
-0. **Senha criada pelo operador (padrão, migration 0036).** Nos detalhes do equipamento (**Dar acesso a um contato**) ou em Clientes → Contatos e Portal, o operador libera o portal para o contato e cria a senha (o AutoOS sugere uma senha forte; ele pode digitar outra com 8+ caracteres, letras e números). Os dados de acesso aparecem uma única vez para entregar ao contato; o banco guarda só o hash bcrypt (`pgcrypto`). O cliente entra com **CPF/CNPJ + senha**. A senha é **por contato**, não por CNPJ: é ela que diz quem entrou, se pode decidir e a quem a resposta é atribuída (senhas repetidas no mesmo CPF/CNPJ são recusadas). A senha vale por tempo indeterminado: para trocar ou se esquecer, o contato fala com a equipe, que cria outra. Trocar a senha desconecta o contato; retirar o acesso apaga a senha. Antes de aceitar/recusar, se a última conferência tiver mais de 10 minutos, o portal pede a senha de novo. Limite: 8 tentativas por CPF/CNPJ a cada 15 minutos.
+0. **Senha criada pelo operador (padrão, migration 0036).** Nos detalhes do equipamento (**Dar acesso a um contato**) ou em Clientes → Contatos e Portal, o operador libera o portal para o contato e cria a senha (o AutoOS sugere uma senha forte; ele pode digitar outra com 8+ caracteres, letras e números). Os dados de acesso aparecem para entregar ao contato. O login confere só o hash bcrypt (`pgcrypto`); desde a 0064, a senha definida pela equipe também fica guardada em `portal_senhas_visiveis` para a equipe consultar depois (ver "Senha visível para a equipe"). O cliente entra com **CPF/CNPJ + senha**. A senha é **por contato**, não por CNPJ: é ela que diz quem entrou, se pode decidir e a quem a resposta é atribuída (senhas repetidas no mesmo CPF/CNPJ são recusadas). A senha vale por tempo indeterminado: para trocar ou se esquecer, o contato fala com a equipe, que cria outra. Trocar a senha desconecta o contato; retirar o acesso apaga a senha. Antes de aceitar/recusar, se a última conferência tiver mais de 10 minutos, o portal pede a senha de novo. Limite: 8 tentativas por CPF/CNPJ a cada 15 minutos.
 1. **Sem login por código.** A entrada por código enviado por WhatsApp/email existiu na 0035 e foi removida na 0038: só há senha. O CPF/CNPJ sozinho nunca dá acesso, e senha errada e CPF/CNPJ inexistente têm a mesma resposta.
 2. **Lista.** Todos os atendimentos com `empresa_id` + `cliente_id` do cadastro, separados em **Atuais** e **Histórico** (entregues e encerrados). Ordenação por atividade recente (padrão) ou data de entrada. O cartão mostra equipamento, série, patrimônio, entrada e etapa colorida. O selo “Aguarda sua resposta” saiu do cartão; o resumo do topo continua contando os orçamentos que aguardam resposta. Ver “Orçamento em preparação” abaixo.
 3. **Detalhe.** A tela pública de status (`StatusView`: logo, etapa com pulso, linha do tempo, data) + orçamento publicado (versão, itens, total, validade) + pedidos enviados + cartão de contato.
@@ -20,9 +20,9 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 
 ## Fluxo de trabalho da equipe
 
-**Uma vez (ativação):** aplicar as migrations, publicar `portal-cliente`, agendar a efetivação e ligar `portal_enabled` + `online_enabled` (ver Ativação). Em Configurações → Integrações, preencher o cartão “Fale com a equipe”.
+**Uma vez (ativação):** aplicar as migrations, publicar `portal-cliente`, agendar a efetivação e ligar `portal_enabled` + `online_enabled` (ver Ativação). Em Configurações → Portal do Cliente, preencher o cartão “Fale com a equipe”.
 
-**Uma vez por contato do cliente (direto do equipamento):** o quadro do orçamento mostra “Quem responde no portal”. Nos detalhes do equipamento, a aba do portal tem o bloco **Acesso ao portal**: o login (CPF/CNPJ do cliente, com **Copiar**), os contatos com nível (“Aprovar e recusar” ou “Só acompanhar”) e se têm senha (“Senha criada” ou “Sem senha”). Nenhuma senha é exibida ali; **Gerenciar em Contatos** abre a janela já na tela de contatos. Sem ninguém, **Dar acesso a um contato** abre uma janela: escolher o contato (o responsável vem marcado), “pode responder orçamentos”, **Liberar acesso e criar senha**. Falta o contato? **Cadastrar ou editar contatos** abre os contatos na mesma janela e volta com o novo já marcado. A senha sai com **Enviar por WhatsApp** (link `wa.me` aberto no navegador; não passa pelo servidor nem fica no histórico) ou **Copiar**. O mesmo continua em Clientes → Contatos e Portal.
+**Uma vez por contato do cliente (direto do equipamento):** o quadro do orçamento mostra “Quem responde no portal”. Nos detalhes do equipamento, a aba do portal tem o bloco **Acesso ao portal**: o login (CPF/CNPJ do cliente, com **Copiar**), os contatos com nível (“Aprovar e recusar” ou “Só acompanhar”) e se têm senha (“Senha criada” ou “Sem senha”). Cada contato com senha tem **Ver senha** (PIN com a mesma permissão de criar a senha, auditado como `PORTAL_PASSWORD_VIEWED`), com **Copiar senha** e **Copiar login e senha**; **Gerenciar em Contatos** abre a janela já na tela de contatos. Sem ninguém, **Dar acesso a um contato** abre uma janela: escolher o contato (o responsável vem marcado), “pode responder orçamentos”, **Liberar acesso e criar senha**. Falta o contato? **Cadastrar ou editar contatos** abre os contatos na mesma janela e volta com o novo já marcado. A senha sai com **Enviar por WhatsApp** (link `wa.me` aberto no navegador; não passa pelo servidor nem fica no histórico) ou **Copiar**. O mesmo continua em Clientes → Contatos e Portal.
 
 **WhatsApp do orçamento:** se o destinatário (responsável ou cliente) é um contato que responde pelo portal, a mensagem automática diz para aceitar/recusar em status.bmitag.com.br; para os outros continua “responda APROVADO”. Na Cloud API isso usa o modelo já aprovado `orcamento_portal` (quem decide) ou `orcamento_informativo` (só acompanha) quando o contato já tem senha; os modelos `_v2` só entram quando há senha nova a enviar.
 
@@ -57,6 +57,8 @@ Entre os contatos ativos da OS com celular válido, nesta ordem:
 
 Sem contato com celular, o sistema pergunta **"Quem recebe o orçamento?"** e grava o contato escolhido no cadastro do cliente antes do envio. Cliente PJ novo exige um contato com celular. Cliente PF ganha um contato criado a partir do próprio cadastro. Não há constraint no banco: a regra fica no aplicativo.
 
+No reenvio por e-mail do menu da OS, o sistema mostra o destinatário retornado pelo mesmo resolvedor e o consulta novamente após o PIN. Se o endereço estiver ausente ou se o destinatário mudar durante a confirmação, o e-mail não é enviado.
+
 ### Acesso ao portal antes do envio
 
 Antes de cada envio, `preparar_acesso_portal` garante que o destinatário consiga entrar no portal:
@@ -77,7 +79,7 @@ Quem tem só "Acessos do portal" (`MANAGE_STATUS_LINKS`, ex.: Recepção) també
 
 ### Senha gerada e mascaramento
 
-- A senha é gerada pelo sistema, em três blocos separados por hífen, e guardada só como hash (`portal_definir_senha_contato`). Se ela repetir a de outro contato do mesmo CPF/CNPJ, o sistema tenta outra, até 5 vezes.
+- A senha é gerada pelo sistema, em três blocos separados por hífen. O login usa o hash (`portal_definir_senha_contato`); a cópia legível vai para `portal_senhas_visiveis` na mesma transação (0064). Se ela repetir a de outro contato do mesmo CPF/CNPJ, o sistema tenta outra, até 5 vezes.
 - Ela aparece uma única vez, no diálogo de envio.
 - Não vai para log. A auditoria (`PORTAL_ACCESS_PREPARED`) registra só que uma senha foi criada, nunca o valor.
 - Não vai para comunicações: o histórico grava a senha mascarada, `••••-••••-••••`.
@@ -112,7 +114,7 @@ Se o envio falha por qualquer motivo (WhatsApp ou e-mail), abre **Enviar manualm
 
 ### Orçamentos pendentes de publicação
 
-OS em `AGUARDANDO_APROVACAO` sem versão aberta no portal (casos antigos, de antes do envio publicar sozinho) aparecem em Configurações → Integrações, no card do Portal, como **Enviar orçamentos pendentes ao portal (N)**. O botão some com N = 0, pede PIN (`MANAGE_STATUS_LINKS` ou `PREPARE_QUOTES`) e publica uma OS por vez pelo mesmo caminho de "Publicar no Portal do Cliente" (um `BUDGET_PUBLISHED_TO_PORTAL` por OS). Uma falha, como prazo vencido, não interrompe as outras: entra no resumo exibido no fim e no evento `BUDGET_PORTAL_BULK_PUBLISH`. O card do portal continua visível só para quem tem `MANAGE_STATUS_LINKS`.
+OS em `AGUARDANDO_APROVACAO` sem versão aberta no portal (casos antigos, de antes do envio publicar sozinho) aparecem em Configurações → Portal do Cliente, no card do Portal, como **Enviar orçamentos pendentes ao portal (N)**. O botão some com N = 0, pede PIN (`MANAGE_STATUS_LINKS` ou `PREPARE_QUOTES`) e publica uma OS por vez pelo mesmo caminho de "Publicar no Portal do Cliente" (um evento de versão por OS). Uma falha, como prazo vencido, não interrompe as outras: entra no resumo exibido no fim e no evento `BUDGET_PORTAL_BULK_PUBLISH`. O card do portal continua visível só para quem tem `MANAGE_STATUS_LINKS`.
 
 ### Prazo e prorrogação
 
@@ -170,7 +172,7 @@ Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em 
 | `cliente_contatos.portal_acesso` + trigger | Acesso por contato; inativar ou mudar de cliente zera o acesso |
 | `portal_config_empresa` (0038) | Chaves por empresa: `portal_enabled` (login e consulta) e `respostas_enabled` (aceitar/recusar; exige o portal ligado). Sem linha = desligado |
 | `portal_cliente_config` | Reverificação e duração da sessão (globais do produto). `portal_enabled` daqui não é mais lido |
-| `portal_contato_empresa` | Cartão “Fale com a equipe” (Configurações → Integrações); `endereco` (até 300) e `maps_url` (só https, até 500) vieram na 0039 |
+| `portal_contato_empresa` | Cartão “Fale com a equipe” (Configurações → Portal do Cliente); `endereco` (até 300) e `maps_url` (só https, até 500) vieram na 0039 |
 | `portal_codigos` | Histórico do login por código (removido na 0038) |
 | `portal_sessoes` | Hash do token de sessão, `verificada_em`, expiração; só sessões `metodo = SENHA` valem |
 | `orcamento_respostas` (+colunas) | `PORTAL_CLIENTE`, contato, sessão, efetivação automática e falha; `ordem_compra` (1 a 60 caracteres, 0039) |
@@ -230,8 +232,8 @@ select cron.schedule('portal-efetivar-respostas', '* * * * *',
 4. Publicar a página pelo workflow `deploy-portal-site.yml` (aprovação em `production-portal-site`), que envia `dist-public-status/` com o `.htaccess`. A URL da função pode ser trocada com `VITE_PORTAL_CLIENTE_API_URL`.
 
 As Edge Functions são publicadas pelo workflow `deploy-edge-functions.yml`, após aprovação em `production-edge-functions`. Aplique primeiro as migrations necessárias pelo `production-sqlx-migrations.yml` e só então aprove o deploy das funções. No disparo manual, o input `funcoes` aceita nomes separados por vírgula (`portal-cliente`, `public-status`, `envio-whatsapp`); `todas` ou vazio publicam `portal-cliente` e `public-status`. Num push, o workflow também publica as duas, mesmo que só uma tenha mudado: um deploy pendente pode ser cancelado por um push seguinte, e republicar código igual não tem efeito. A `envio-whatsapp` (fila central, ainda não ativada em produção) fica fora da seleção automática e de `todas`: só sobe quando o nome dela é digitado. O workflow usa o secret `SUPABASE_ACCESS_TOKEN` e não aplica migrations.
-5. No AutoOS: Configurações → Integrações → cartão “Fale com a equipe”; nos detalhes do equipamento, dar acesso ao contato e **Publicar no Portal do Cliente**.
-6. Ligar para um piloto em Configurações → Integrações → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0038): ligar numa empresa não liga nas outras. Ligar/desligar exige **Comunicação externa** (`COMMUNICATION_SETTINGS`); alterar respostas também exige `FINANCIAL_ACTIONS`. Não exige Gerenciar perfis.
+5. No AutoOS: Configurações → Portal do Cliente → cartão “Fale com a equipe”; nos detalhes do equipamento, dar acesso ao contato e **Publicar no Portal do Cliente**.
+6. Ligar para um piloto em Configurações → Portal do Cliente → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0038): ligar numa empresa não liga nas outras. Ligar/desligar exige **Comunicação externa** (`COMMUNICATION_SETTINGS`); alterar respostas também exige `FINANCIAL_ACTIONS`. Não exige Gerenciar perfis.
 
 Pausar: desligar “Portal ligado” derruba login e sessões na hora; nada é apagado. Desligar só as respostas mantém o acompanhamento. O cartão avisa quando respostas vencidas não estão sendo aplicadas (agendamento do passo 3 parado).
 
@@ -248,7 +250,7 @@ Pré-requisitos: passos 1–4 da Ativação concluídos; build do AutoOS a parti
 
 3. No equipamento de teste em **Aguardando aprovação** com orçamento: **Portal do Cliente** → **Dar acesso** → escolher um contato → “pode responder orçamentos” → criar a senha (anotar; aparece uma vez).
 4. Entrar no portal com o CPF/CNPJ + essa senha → “O portal está temporariamente indisponível” (`PORTAL_PAUSADO`). A pausa só é conferida depois de uma senha válida; com senha errada a resposta é `SENHA_INVALIDA`.
-5. Configurações → Integrações → **Portal do Cliente: funcionamento**: ligar “Portal ligado” e “Clientes podem responder orçamentos” (pede PIN). Conferir na auditoria o evento `PORTAL_CONFIG_CHANGED`.
+5. Configurações → Portal do Cliente → **Portal do Cliente: funcionamento**: ligar “Portal ligado” e “Clientes podem responder orçamentos” (pede PIN). Conferir na auditoria o evento `PORTAL_CONFIG_CHANGED`.
 6. **Publicar no Portal do Cliente**. A faixa do orçamento passa a “Aguardando resposta do cliente”.
 
 **Portal (status.bmitag.com.br, celular e computador)**
@@ -292,6 +294,8 @@ Pré-requisitos: passos 1–4 da Ativação concluídos; build do AutoOS a parti
 
 A OS e o orçamento não são mais desenhados pelo navegador do portal. O `PdfService` emite o documento oficial e manda seus bytes ao comando `publicar_documento_portal`. A prévia não publica: a publicação acontece só ao salvar/imprimir ou enviar, com o artefato final (inclusive o prazo escolhido no diálogo); o arquivo local e o anexo do e-mail usam esse mesmo artefato. Imprimir sem baixar também publica, em todas as prévias de OS/orçamento (Balcão, Equipamentos e Documentos do equipamento), inclusive depois de mudar o prazo no diálogo: a impressão aguarda a publicação e imprime os bytes canônicos. Imprimir e baixar o mesmo artefato publica uma vez só. Verificação com `adjusted_at` nunca é publicada como orçamento original. A OS é a ficha de recebimento do sistema, sem serviços nem valores. O e-mail e Documentos usam o construtor de orçamento ajustado quando existe `adjusted_at`.
 
+O envio do orçamento original por e-mail fica registrado como `BUDGET_EMAIL_SENT`, mesmo com o portal desligado. `BUDGET_PUBLISHED_TO_PORTAL` registra a publicação de uma versão com o portal ligado, inclusive no modo de consulta. Com o portal desligado, a versão ainda é congelada e gera `BUDGET_VERSION_FROZEN`. Se a cópia interna falhar, o operador recebe um aviso e a auditoria registra `EMAIL_SEND_FAILED`.
+
 O comando reutiliza a configuração Supabase Storage existente no keyring (`autoos/storage_config`); URL e chave de serviço não vão para o portal. A empresa vem da sessão ativa, nunca de um caminho enviado pelo frontend. Os arquivos ficam em `portal-documentos/<empresa>/<atendimento>/<tipo>/<versaoId ou 0>/<sha256>.pdf`, bucket **privado**, limite 15 MiB e MIME `application/pdf`. A referência fica em `portal_documentos_oficiais`, com FK por empresa, RLS e sem acesso de `anon`/`authenticated`.
 
 A primeira OS publicada e o orçamento original de cada versão são canônicos: reemissões usam os bytes já publicados, inclusive no arquivo local e e-mail. O ajustado tem referência separada (`ORCAMENTO_AJUSTADO`) e pode avançar com uma nova revisão do atendimento. V1, V2 e ajustado aparecem com rótulos próprios; o original não é substituído pelo ajustado. A versão e o token `atualizado_em` são capturados antes de desenhar; registro desatualizado ou de outra empresa é recusado. Isso não cria versão de orçamento só por abrir uma prévia: um orçamento ainda não publicado fica sem referência; o envio por e-mail tenta publicar a versão antes de gerar seu anexo.
@@ -325,3 +329,16 @@ Testes adicionais: `supabase/tests/portal_documentos_contract.sql` (incluído no
 - **Comunicação externa** (`COMMUNICATION_SETTINGS`) unifica configuração SMTP/WhatsApp e ligar/desligar o Portal do Cliente. Alterar respostas pelo portal ainda exige também `FINANCIAL_ACTIONS`. `PREPARE_QUOTES` continua suficiente para os fluxos de envio/publicação de orçamento já permitidos, sem dar acesso às configurações.
 - A migration de dados `0049` substitui `CONFIG_SMTP`/`CONFIG_WHATSAPP` pela nova chave, mantendo as demais permissões e `MANAGE_STATUS_LINKS`. É idempotente. Os modelos Recepção, Técnico e Financeiro passam a incluir Acessos do portal; não recebem Comunicação externa. Administrador tem tudo.
 - Clientes desktop 0.6.2 não reconhecem a chave nova em perfis operacionais. O build novo exige as chaves mapeadas. Coordenar com Paulo uma **janela de manutenção para distribuir o build e executar a 0049**, mantendo os PCs fechados até concluir ambos; não integrar/aplicar em frota mista. Nenhuma migration de produção é executada por este PR.
+
+## Senha visível para a equipe (0064, decisão de 24/11/2026)
+
+O responsável do produto decidiu que a equipe pode consultar a senha do portal de um contato para repassá-la sem trocá-la, aceitando o risco: quem lê `portal_senhas_visiveis` ou um backup do banco lê as senhas.
+
+- **O que é guardado:** só senhas definidas pelo app (criar ou trocar em `definir_senha_portal_contato`, ou geradas no envio em `preparar_acesso_portal`), por `portal_guardar_senha_visivel`, na mesma transação do hash. A função confere a senha com o hash atual antes de gravar.
+- **Quando aparece:** `portal_ler_senha_visivel` só devolve a senha se o hash guardado junto ainda é o hash atual e o contato está ativo. Senhas criadas antes da 0064 não têm cópia: a tela pede para criar uma nova.
+- **Quando é apagada:** o gatilho `trg_portal_limpar_senha_visivel` (AFTER UPDATE em `cliente_contatos`) apaga a cópia assim que o hash deixa de ser o guardado ou o contato é desativado: senha trocada ou removida, acesso retirado (`NENHUM`), contato ou cliente desativado, troca de cliente ou empresa e promoção a `DECIDIR` (o gatilho da 0038 zera o hash nesses casos). Senha que não vale mais não fica no banco nem nos backups seguintes. Excluir o contato apaga a cópia pela FK.
+- **Quem vê:** `ver_senha_portal_contato` pede as mesmas permissões de criar a senha (`permissoes_senha_portal`) e grava `PORTAL_PASSWORD_VIEWED` (sem a senha) na mesma transação da leitura: se a auditoria falhar, a senha não é devolvida.
+- **Na tela:** a senha mostrada fica ligada ao perfil que a consultou e some ao trocar de perfil, bloquear a sessão, editar os contatos ou quando outro computador altera aquele contato (ao vivo, `cliente_contatos`).
+- **Fora do portal:** RLS ligado sem política e acesso revogado de `anon`, `authenticated` e `service_role`. A edge function e a API do Supabase não leem a tabela.
+- **Se o cliente passar a criar a própria senha pelo portal** (ideia de primeiro acesso pelo link), essa senha não deve entrar aqui: o cliente costuma repetir senha de outros serviços.
+

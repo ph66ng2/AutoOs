@@ -39,8 +39,10 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
  * acompanhamento sem login e o registro de mensagens e respostas (com rolagem própria).
  */
 export function PortalClientePanel({ open, onOpenChange }: Props) {
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
   const portal = usePortalCliente();
+  // Só quem pode ligar/desligar as respostas (Comunicação externa) vê o atalho.
+  const podeConfigurarPortal = Boolean(portal.configurarPortal) && hasPermission(SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS);
   const { equipamento, info, busy, error, respostaFinal } = portal;
   const [linkAberto, setLinkAberto] = useState(false);
   const aguardando = equipamento.status === "AGUARDANDO_APROVACAO";
@@ -57,7 +59,7 @@ export function PortalClientePanel({ open, onOpenChange }: Props) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-xl max-h-[88vh] overflow-y-auto">
+        <DialogContent tamanho="m" className="max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Globe className="h-5 w-5" /> Portal do Cliente</DialogTitle>
             <DialogDescription>
@@ -85,6 +87,21 @@ export function PortalClientePanel({ open, onOpenChange }: Props) {
               {info && !info.aceiteOnlineAtivo && (
                 <p className="text-xs text-muted-foreground">
                   As respostas pelo Portal do Cliente estão desligadas: o cliente vê o orçamento, mas não aceita nem recusa por lá.
+                  {podeConfigurarPortal && (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        className="font-semibold text-primary underline-offset-2 hover:underline"
+                        onClick={() => {
+                          onOpenChange(false);
+                          portal.configurarPortal?.();
+                        }}
+                      >
+                        Configurar portal
+                      </button>
+                    </>
+                  )}
                 </p>
               )}
               {aguardando && !respostaFinal && (

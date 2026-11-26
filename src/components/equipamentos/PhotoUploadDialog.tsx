@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { db } from "@/lib/db";
 
@@ -285,9 +286,9 @@ export function PhotoUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[min(calc(100vw-1.5rem),22.5rem)] max-w-[min(calc(100vw-1.5rem),22.5rem)] flex-col gap-2 overflow-hidden p-4">
-        <DialogHeader className="shrink-0 space-y-1 pr-6">
-          <DialogTitle className="flex items-center gap-2 text-base">
+      <DialogContent tamanho="m" className="flex max-h-[calc(100dvh-1rem)] flex-col gap-4 overflow-hidden">
+        <DialogHeader className="shrink-0 space-y-1">
+          <DialogTitle className="flex items-center gap-2">
             <Smartphone className="h-5 w-5" />
             Foto pelo celular
           </DialogTitle>
@@ -300,10 +301,10 @@ export function PhotoUploadDialog({
 
         {success && (
           <div className="flex flex-col items-center justify-center py-8 gap-4">
-            <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
-              <CheckCircle2 className="h-10 w-10 text-green-600" />
+            <div className="h-16 w-16 rounded-full bg-status-ok-bg flex items-center justify-center">
+              <CheckCircle2 className="h-10 w-10 text-status-ok" />
             </div>
-            <p className="text-lg font-semibold text-green-800">Fotos recebidas</p>
+            <p className="text-lg font-semibold text-status-ok">Fotos recebidas</p>
             <p className="text-sm text-muted-foreground">
               {successCount} {successCount === 1 ? "foto" : "fotos"} no equipamento
             </p>
@@ -312,15 +313,15 @@ export function PhotoUploadDialog({
 
         {loading && !success && (
           <div className="flex flex-col items-center justify-center py-8 gap-3">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             <p className="text-sm text-muted-foreground">Preparando o endereço do celular...</p>
           </div>
         )}
 
         {!success && error && !qrData && (
           <div className="flex flex-col items-center justify-center py-6 gap-3">
-            <AlertCircle className="h-10 w-10 text-red-500" />
-            <p className="text-sm text-red-600 text-center">{error}</p>
+            <AlertCircle className="h-10 w-10 text-destructive" />
+            <p className="text-sm text-destructive text-center">{error}</p>
             <Button variant="outline" size="sm" onClick={handleRegenerate}>
               <RefreshCw className="h-4 w-4 mr-1" />
               Tentar novamente
@@ -330,8 +331,8 @@ export function PhotoUploadDialog({
 
         {!success && error && qrData && (
           <div className="flex flex-col items-center justify-center py-6 gap-3">
-            <AlertCircle className="h-10 w-10 text-red-500" />
-            <p className="text-sm text-red-600 text-center">{error}</p>
+            <AlertCircle className="h-10 w-10 text-destructive" />
+            <p className="text-sm text-destructive text-center">{error}</p>
             <Button variant="outline" size="sm" onClick={handleRegenerate}>
               <RefreshCw className="h-4 w-4 mr-1" />
               Gerar novo QR code
@@ -373,9 +374,9 @@ export function PhotoUploadDialog({
               <span>Expira em {formatTime(timer)}</span>
             </div>
 
-            <div className="flex min-w-0 shrink-0 items-start gap-2 overflow-hidden rounded-md border border-amber-200 bg-amber-50 p-2.5">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <p className="min-w-0 break-words text-xs text-amber-800">
+            <div className="flex min-w-0 shrink-0 items-start gap-2 overflow-hidden rounded-md border border-status-wait/30 bg-status-wait-bg p-2.5">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-status-wait" />
+              <p className="min-w-0 break-words text-xs text-status-wait">
                 {viaTunnel
                   ? namedHost
                     ? "Este PC responde por fotos.bmitag.com.br enquanto o QR estiver aberto. Um computador por vez."
@@ -386,12 +387,12 @@ export function PhotoUploadDialog({
           </div>
         )}
 
-        <div className="flex shrink-0 justify-end">
-          <Button variant="outline" size="sm" onClick={() => handleOpenChange(false)}>
+        <DialogFooter className="shrink-0">
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             <X className="h-4 w-4 mr-1" />
             Fechar
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

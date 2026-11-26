@@ -78,7 +78,7 @@ export function DatabaseConfigDialog({ onConfigured, onCancel }: DatabaseConfigD
             autoComplete="off"
             spellCheck={false}
             autoFocus
-            className={`h-11 w-full rounded-lg border bg-[var(--cx-surface)] px-3 font-mono text-[13px] font-medium text-[var(--cx-ink)] placeholder:text-[var(--cx-muted)] ${cxButton.focus} ${
+            className={`h-11 w-full rounded-lg border bg-[var(--cx-surface)] px-3 [font-family:var(--cx-mono)] text-[13px] font-medium text-[var(--cx-ink)] placeholder:text-[var(--cx-muted)] ${cxButton.focus} ${
               error ? "border-2 border-[var(--cx-danger)]" : "border-[var(--cx-field-border)]"
             }`}
           />

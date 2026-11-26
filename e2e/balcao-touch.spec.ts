@@ -14,7 +14,7 @@ for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 76
     await page.goto("/balcao");
     await expect(page.getByRole("heading", { name: /como deseja trabalhar/i })).toBeVisible();
     await page.getByRole("button", { name: /modo balcão/i }).tap();
-    await expect(page.getByRole("heading", { name: /atendimento de balcão/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /quem está no balcão/i })).toBeVisible();
     const newEntryBounds = await page.getByRole("button", { name: /nova entrada/i }).boundingBox();
     expect(newEntryBounds?.height).toBeGreaterThanOrEqual(48);
     await page.getByRole("button", { name: "Painel operacional", exact: true }).tap();

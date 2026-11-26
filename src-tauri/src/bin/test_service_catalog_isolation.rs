@@ -200,6 +200,29 @@ async fn assert_company_isolation(pool: &PgPool, fixture: &Fixture) -> Result<()
     .await
     .map_err(|error| anyhow!(error))?;
 
+    // Desativar e reativar: só a própria empresa reativa, e o filtro de inativos enxerga o serviço.
+    if !servicos::deletar_servico(service_a.id).await.map_err(|error| anyhow!(error))? {
+        bail!("empresa A não conseguiu desativar o próprio serviço");
+    }
+    let inativos = servicos::listar_servicos_paginados(None, Some(fixture.prefix.clone()), Some(false), Some(true), None)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if inativos.items.iter().map(|s| s.id).collect::<Vec<_>>() != vec![service_a.id] {
+        bail!("filtro de inativos deveria trazer só o serviço desativado da empresa A");
+    }
+    activate_profile(fixture.profiles[1]).await?;
+    if servicos::reativar_servico(service_a.id).await.is_ok() {
+        bail!("empresa B conseguiu reativar o serviço da empresa A");
+    }
+    activate_profile(fixture.profiles[0]).await?;
+    let reativado = servicos::reativar_servico(service_a.id).await.map_err(|error| anyhow!(error))?;
+    if reativado.ativo != Some(true) {
+        bail!("serviço reativado deveria voltar como ativo");
+    }
+    if servicos::reativar_servico(service_a.id).await.is_ok() {
+        bail!("reativar um serviço já ativo deveria avisar");
+    }
+
     // Adiciona 61 serviços para confirmar que a sétima página vai além do limite legado de 50.
     sqlx::query(
         "INSERT INTO servicos_catalogo (empresa_id, nome, preco_padrao, pecas_sugeridas, ativo)
@@ -212,7 +235,7 @@ async fn assert_company_isolation(pool: &PgPool, fixture: &Fixture) -> Result<()
     .await
     .context("seed service pagination records")?;
 
-    let page_seven = servicos::listar_servicos_paginados(Some(6), None, Some(true))
+    let page_seven = servicos::listar_servicos_paginados(Some(6), None, Some(true), None, None)
         .await
         .map_err(|error| anyhow!(error))?;
     if page_seven.total != 62 || page_seven.items.len() != 2 {

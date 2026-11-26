@@ -1,4 +1,3 @@
-import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
 import {
   STATUS_LABELS,
   type EquipamentoImagemCategoria,
@@ -9,6 +8,7 @@ export const STATUS_OPTIONS = [
   { value: "TODOS", label: "Todos os Status" },
   ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
 ];
+
 
 export const TIPO_OPTIONS = [
   "Impressora de Código de Barra",
@@ -64,9 +64,34 @@ export const STATUS_BADGE_LABELS_PADRAO: Partial<Record<StatusEquipamento, strin
   ABANDONADO: "Abandonado",
 };
 
-export const EMAIL_POR_TECNICO: Record<string, string> = {
-  Ivan: "ivan@bmitag.com.br",
-  Isaias: "isaias@bmitag.com.br",
-};
+/** Chips do filtro da lista: "Todos" e os status na ordem do fluxo (desvios logo depois de onde acontecem). */
+const ORDEM_FILTRO_STATUS: StatusEquipamento[] = [
+  "RECEBIDO",
+  "EM_VERIFICACAO",
+  "VERIFICADO",
+  "AGUARDANDO_APROVACAO",
+  "APROVADO",
+  "EM_MANUTENCAO",
+  "AGUARDANDO_PECA",
+  "PRONTO",
+  "ENTREGUE",
+  "ORCAMENTO_VENCIDO",
+  "REPROVADO",
+  "ABANDONADO",
+];
 
-export const TECNICOS_DISPONIVEIS: TecnicoDisponivel[] = ["Ivan", "Isaias"];
+export const OPCOES_FILTRO_STATUS = [
+  { value: "TODOS", label: "Todos" },
+  ...ORDEM_FILTRO_STATUS.map((value) => ({ value, label: STATUS_LABELS[value] })),
+];
+
+/** Encerrados que quase ninguém filtra: ficam no menu "Outros"; o resto vira pílula, como no canvas. */
+const STATUS_FILTRO_OUTROS = new Set<string>(["ENTREGUE", "ABANDONADO"]);
+/** Rótulo da pílula: o nome da etapa (o "Orçam." do selo não precisa caber aqui). */
+const ROTULO_PILULA: Partial<Record<string, string>> = { ORCAMENTO_VENCIDO: "Vencido" };
+export const FILTRO_STATUS_PRINCIPAIS = OPCOES_FILTRO_STATUS
+  .filter((opcao) => !STATUS_FILTRO_OUTROS.has(opcao.value))
+  .map((opcao) => ({ ...opcao, titulo: opcao.label, label: ROTULO_PILULA[opcao.value] ?? opcao.label }));
+export const FILTRO_STATUS_OUTROS = OPCOES_FILTRO_STATUS.filter((opcao) => STATUS_FILTRO_OUTROS.has(opcao.value));
+
+

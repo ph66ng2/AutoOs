@@ -46,6 +46,8 @@ async fn main() -> Result<()> {
         nome: "Test Optional PIN".to_string(),
         role: "CUSTOM".to_string(),
         permissions: vec![auth::PERMISSION_STOCK_CONTROL.to_string()],
+        email_profissional: Some("optional-pin@teste.local".to_string()),
+        ..Default::default()
     };
     let _status = tauri_result(
         auth::create_security_profile(input, "".to_string()).await,

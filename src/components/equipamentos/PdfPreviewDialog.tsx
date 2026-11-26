@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { PRAZO_EXECUCAO_PADRAO, type PdfArtifact } from "@/lib/pdf-service";
 
@@ -130,28 +130,10 @@ export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, onBeforeP
 
   return (
     <Dialog open={Boolean(artifact)} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[96vh] max-w-[96vw] p-4">
-        <DialogHeader>
-          <DialogTitle className="text-xl">Prévia A4 — {artifact?.filename}</DialogTitle>
-        </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-hidden border bg-slate-200">
-          <iframe
-            ref={frameRef}
-            title="Prévia do PDF"
-            src={url || undefined}
-            className="h-full min-h-[75vh] w-full bg-white"
-            onLoad={() => setPreviewReady(true)}
-          />
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          {onDownload && (
-            <Button variant="outline" className="min-h-12 gap-2 text-base" disabled={ocupado} onClick={() => void download()}>
-              {downloading ? <Loader2 className="animate-spin" /> : <Download />} Baixar
-            </Button>
-          )}
-          <Button className="min-h-12 gap-2 text-base" disabled={!previewReady || ocupado} onClick={() => void print()}>
-            {prazoExecucao?.updating || preparingPrint ? <Loader2 className="animate-spin" /> : <Printer />} Imprimir
-          </Button>
+      <DialogContent tamanho="visualizador" className="h-[calc(100dvh-2rem)]">
+        {/* Visualizador do DS: título, prazo e ações no cabeçalho; o PDF ocupa o corpo. O PDF em si não muda. */}
+        <DialogHeader className="flex-row flex-wrap items-center gap-3 space-y-0">
+          <DialogTitle className="mr-auto min-w-0 truncate text-base">Prévia A4 — {artifact?.filename}</DialogTitle>
           {prazoExecucao && (
             <div className="flex items-center gap-2 text-sm">
               <span className="whitespace-nowrap text-muted-foreground">Prazo</span>
@@ -161,7 +143,7 @@ export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, onBeforeP
                 max={90}
                 inputMode="numeric"
                 aria-label="Prazo mínimo em dias úteis"
-                className="h-12 w-16 tabular-nums text-center"
+                className="h-9 w-14 tabular-nums text-center"
                 value={prazoMin}
                 disabled={ocupado}
                 onChange={(event) => setPrazoMin(event.target.value)}
@@ -174,7 +156,7 @@ export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, onBeforeP
                 max={90}
                 inputMode="numeric"
                 aria-label="Prazo máximo em dias úteis"
-                className="h-12 w-16 tabular-nums text-center"
+                className="h-9 w-14 tabular-nums text-center"
                 value={prazoMax}
                 disabled={ocupado}
                 onChange={(event) => setPrazoMax(event.target.value)}
@@ -183,7 +165,24 @@ export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, onBeforeP
               <span className="whitespace-nowrap text-muted-foreground">dias úteis</span>
             </div>
           )}
-        </div>
+          {onDownload && (
+            <Button variant="outline" className="h-9 gap-2" disabled={ocupado} onClick={() => void download()}>
+              {downloading ? <Loader2 className="animate-spin" /> : <Download />} Baixar
+            </Button>
+          )}
+          <Button variant="outline" className="h-9 gap-2 text-foreground" disabled={!previewReady || ocupado} onClick={() => void print()}>
+            {prazoExecucao?.updating || preparingPrint ? <Loader2 className="animate-spin" /> : <Printer />} Imprimir
+          </Button>
+        </DialogHeader>
+        <DialogBody className="-mb-6 bg-muted p-4">
+          <iframe
+            ref={frameRef}
+            title="Prévia do PDF"
+            src={url || undefined}
+            className="h-full min-h-[70vh] w-full rounded-lg bg-white shadow-sm"
+            onLoad={() => setPreviewReady(true)}
+          />
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

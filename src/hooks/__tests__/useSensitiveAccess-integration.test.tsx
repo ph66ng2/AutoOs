@@ -64,7 +64,7 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     });
     render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
     await user.type(await screen.findByLabelText("PIN do perfil"), "2580");
-    await user.click(screen.getByRole("button", { name: "Entrar com este perfil" }));
+    await user.click(screen.getByRole("button", { name: "Entrar" }));
     await waitFor(() => expect(document.querySelector(".pin-entry__lock")).not.toBeNull());
 
     // Fecha durante o cadeadinho: o PIN já foi aceito, então a entrada conclui.
@@ -134,7 +134,7 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     });
     render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
     await user.type(await screen.findByLabelText("PIN do perfil"), "1234");
-    await user.click(screen.getByRole("button", { name: "Entrar com este perfil" }));
+    await user.click(screen.getByRole("button", { name: "Entrar" }));
     await screen.findByText(/ainda não tem PIN neste computador. Use o código que o administrador te passou/);
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Validando..." })).not.toBeInTheDocument();
@@ -153,7 +153,7 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
       return Promise.resolve(null);
     });
     render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
-    await user.click(await screen.findByRole("button", { name: "Entrar com este perfil" }));
+    await user.click(await screen.findByRole("button", { name: "Entrar" }));
 
     expect((await screen.findAllByText(/cofre de senhas do sistema está bloqueado/)).length).toBeGreaterThan(0);
     const comandos = mockInvoke.mock.calls.map(([cmd]) => cmd);
@@ -166,10 +166,13 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     const intervalSpy = vi.spyOn(window, "setTimeout");
     const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
     const available = { ...EMPTY_STATUS, unlocked: true, active_profile_id: 1, active_profile_name: "Admin", pin_configured: true, profiles: [profile] };
-    mockInvoke
-      .mockResolvedValueOnce(available)
-      .mockRejectedValueOnce("MaxClientsInSessionMode: max clients reached")
-      .mockResolvedValueOnce(available);
+    // Técnicos, cópia da gerência e eventos ao vivo são outras chamadas: não entram na fila do status.
+    const fila: Array<() => Promise<unknown>> = [
+      () => Promise.resolve(available),
+      () => Promise.reject("MaxClientsInSessionMode: max clients reached"),
+      () => Promise.resolve(available),
+    ];
+    mockInvoke.mockImplementation((cmd: string) => (cmd !== "get_sensitive_access_status" ? Promise.resolve(undefined) : (fila.shift() ?? (() => Promise.resolve(undefined)))()));
 
     render(<TestHarness><HookInspector capture={captureHook} /><SensitiveAccessBadge /></TestHarness>);
     await waitFor(() => expect(hookRef?.status?.profiles).toHaveLength(1));
@@ -188,10 +191,13 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
   it("remove o aviso quando a primeira consulta ao perfil volta a funcionar", async () => {
     const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
     const available = { ...EMPTY_STATUS, unlocked: true, active_profile_id: 1, active_profile_name: "Admin", pin_configured: true, profiles: [profile] };
-    mockInvoke
-      .mockResolvedValueOnce(available)
-      .mockRejectedValueOnce("MaxClientsInSessionMode: max clients reached")
-      .mockResolvedValueOnce(available);
+    // Técnicos, cópia da gerência e eventos ao vivo são outras chamadas: não entram na fila do status.
+    const fila: Array<() => Promise<unknown>> = [
+      () => Promise.resolve(available),
+      () => Promise.reject("MaxClientsInSessionMode: max clients reached"),
+      () => Promise.resolve(available),
+    ];
+    mockInvoke.mockImplementation((cmd: string) => (cmd !== "get_sensitive_access_status" ? Promise.resolve(undefined) : (fila.shift() ?? (() => Promise.resolve(undefined)))()));
 
     render(<TestHarness><HookInspector capture={captureHook} /><SensitiveAccessBadge /></TestHarness>);
     await waitFor(() => expect(hookRef?.status?.profiles).toHaveLength(1));

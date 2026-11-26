@@ -12,7 +12,7 @@ use crate::commands::auth::{
     record_security_event, require_permission, require_active_session_company_id, PERMISSION_DELETE_RECORDS, PERMISSION_STOCK_CONTROL,
 };
 use crate::commands::types::{
-    MovimentacaoEstoqueInput, PaginatedResult, ProdutoInput, ProdutoRow, PRODUTO_SELECT,
+    ContagemCategoriaEstoque, ContagemStatusOrcamento, MovimentacaoEstoqueInput, PaginatedResult, ProdutoInput, ProdutoRow, ResumoEstoque, PRODUTO_SELECT,
 };
 use crate::db::get_pool;
 use serde::Serialize;
@@ -122,16 +122,127 @@ async fn query_product_page(
         .push(" OFFSET ")
         .push_bind(safe_page * page_limit);
 
-    let items = items_query
+    let mut items = items_query
         .build_query_as::<ProdutoRow>()
         .fetch_all(pool)
         .await
         .map_err(super::operator_errors::mapear_erro_sql)?;
+    preencher_ultima_movimentacao(pool, empresa_id, &mut items).await?;
 
     Ok(PaginatedResult {
         items,
         total,
         below_minimum: Some(below_minimum),
+    })
+}
+
+/// Busca, só para os itens da página, a movimentação mais recente de cada um.
+async fn preencher_ultima_movimentacao(pool: &PgPool, empresa_id: i32, items: &mut [ProdutoRow]) -> Result<(), String> {
+    if items.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<i32> = items.iter().map(|item| item.id).collect();
+    let rows = sqlx::query(
+        // A baixa da manutenção grava "verificacao:<id>;servico:<id>"; para a tela vira "OS #<equipamento>".
+        "SELECT DISTINCT ON (m.produto_id) m.produto_id, m.tipo, m.origem,
+                CASE WHEN m.origem = 'MANUTENCAO' THEN
+                       (SELECT 'OS #' || v.equipamento_id FROM verificacoes v
+                        WHERE v.id = NULLIF(substring(m.referencia from 'verificacao:([0-9]+)'), '')::INTEGER)
+                     ELSE m.referencia END AS referencia,
+                m.data_hora::TEXT AS data_hora
+         FROM movimentacoes_estoque m
+         WHERE m.empresa_id = $1 AND m.produto_id = ANY($2)
+         ORDER BY m.produto_id, m.data_hora DESC NULLS LAST, m.id DESC",
+    )
+    .bind(empresa_id)
+    .bind(&ids)
+    .fetch_all(pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    for row in rows {
+        let produto_id: i32 = row.try_get("produto_id").map_err(|e| e.to_string())?;
+        if let Some(item) = items.iter_mut().find(|item| item.id == produto_id) {
+            item.ultima_mov_tipo = row.try_get("tipo").map_err(|e| e.to_string())?;
+            item.ultima_mov_origem = row.try_get("origem").map_err(|e| e.to_string())?;
+            item.ultima_mov_referencia = row.try_get("referencia").map_err(|e| e.to_string())?;
+            item.ultima_mov_data = row.try_get("data_hora").map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// Números do topo de Insumos e peças. O valor em estoque usa o preço de custo e só
+/// volta para quem pode consultar despesas. `segundo_plano` (atualização ao vivo) não renova a sessão.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn resumo_estoque(segundo_plano: Option<bool>) -> Result<ResumoEstoque, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = crate::commands::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    let ver_valor = crate::commands::auth::session_has_permission(crate::commands::auth::PERMISSION_VIEW_EXPENSES);
+    resumo_estoque_on_pool(&pool, empresa_id, ver_valor).await
+}
+
+pub async fn resumo_estoque_on_pool(pool: &PgPool, empresa_id: i32, ver_valor: bool) -> Result<ResumoEstoque, String> {
+    let map = super::operator_errors::mapear_erro_sql;
+    let por_categoria = sqlx::query_as::<_, ContagemCategoriaEstoque>(
+        "SELECT categoria, COUNT(*) AS total FROM produtos
+         WHERE empresa_id = $1 AND ativo = true
+         GROUP BY categoria ORDER BY categoria",
+    )
+    .bind(empresa_id)
+    .fetch_all(pool)
+    .await
+    .map_err(map)?;
+    let estoque = sqlx::query(
+        "SELECT COUNT(*) FILTER (WHERE quantidade_estoque < quantidade_minima) AS abaixo_minimo,
+                COALESCE(SUM(GREATEST(COALESCE(quantidade_estoque, 0), 0) * COALESCE(preco_custo, 0)), 0)::FLOAT8 AS valor_estoque
+         FROM produtos WHERE empresa_id = $1 AND ativo = true",
+    )
+    .bind(empresa_id)
+    .fetch_one(pool)
+    .await
+    .map_err(map)?;
+    let saidas = sqlx::query(
+        "SELECT COUNT(*) AS saidas_mes, COUNT(*) FILTER (WHERE origem = 'MANUTENCAO') AS saidas_mes_os
+         FROM movimentacoes_estoque
+         WHERE empresa_id = $1 AND tipo = 'SAIDA' AND data_hora >= date_trunc('month', CURRENT_TIMESTAMP)",
+    )
+    .bind(empresa_id)
+    .fetch_one(pool)
+    .await
+    .map_err(map)?;
+    let aguardando_peca = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM equipamentos WHERE empresa_id = $1 AND status = 'AGUARDANDO_PECA'",
+    )
+    .bind(empresa_id)
+    .fetch_one(pool)
+    .await
+    .map_err(map)?;
+    let orcamentos_por_status = sqlx::query_as::<_, ContagemStatusOrcamento>(
+        "SELECT status, COUNT(*) AS total FROM orcamentos_insumos WHERE empresa_id = $1 GROUP BY status",
+    )
+    .bind(empresa_id)
+    .fetch_all(pool)
+    .await
+    .map_err(map)?;
+    let orcamentos_abertos = orcamentos_por_status
+        .iter()
+        .filter(|c| matches!(c.status.as_str(), "RASCUNHO" | "ENVIADO" | "APROVADO"))
+        .map(|c| c.total)
+        .sum();
+    let campo = |nome: &str| -> Result<i64, String> { estoque.try_get::<i64, _>(nome).map_err(|e| e.to_string()) };
+    let abaixo_minimo = campo("abaixo_minimo")?;
+    let valor_estoque: f64 = estoque.try_get("valor_estoque").map_err(|e| e.to_string())?;
+    Ok(ResumoEstoque {
+        total_itens: por_categoria.iter().map(|c| c.total).sum(),
+        por_categoria,
+        abaixo_minimo,
+        aguardando_peca,
+        valor_estoque: ver_valor.then_some(valor_estoque),
+        saidas_mes: saidas.try_get("saidas_mes").map_err(|e| e.to_string())?,
+        saidas_mes_os: saidas.try_get("saidas_mes_os").map_err(|e| e.to_string())?,
+        orcamentos_abertos,
+        orcamentos_por_status,
     })
 }
 
@@ -204,6 +315,7 @@ pub async fn listar_produtos(
     busca: Option<String>,
     categoria: Option<String>,
     apenas_estoque_baixo: Option<bool>,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<ProdutoRow>, String> {
     debug!("Listando produtos");
     let pool = get_pool().await.map_err(|e| {
@@ -211,7 +323,7 @@ pub async fn listar_produtos(
         e.to_string()
     })?;
 
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     query_product_rows(
         &pool,
         empresa_id,
@@ -287,9 +399,10 @@ pub async fn listar_produtos_paginados(
     busca: Option<String>,
     categoria: Option<String>,
     apenas_estoque_baixo: Option<bool>,
+    segundo_plano: Option<bool>,
 ) -> Result<PaginatedResult<ProdutoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     query_product_page(
         &pool,
         empresa_id,

@@ -1,4 +1,5 @@
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
+import { extrairTecnicoInicial } from "@/lib/tecnicos";
 import type { EquipamentoFormData } from "@/lib/validations";
 import { db } from "@/lib/db";
 import type { EquipamentoImagemDraft } from "@/lib/equipamento-imagem-utils";
@@ -11,10 +12,9 @@ import { MENSAGEM_AGUARDANDO_TOTAL_ZERO, MENSAGEM_TOTAL_ZERO_SEM_GARANTIA, MENSA
 import { STATUS_SENSIVEIS } from "./equipamentos-page-constants";
 import { getCorrectionStates, getNextStates, normalizeStatusKey } from "@/lib/status-fsm";
 
+/** Técnico gravado na entrada ("Técnico inicial: <nome>"); null se não houver. */
 export function extrairTecnicoInicialDeObservacoes(observacoes?: string | null): TecnicoDisponivel | null {
-  if (!observacoes) return null;
-  const match = observacoes.match(/^Técnico inicial:\s*(Ivan|Isaias)\b/m);
-  return (match?.[1] as TecnicoDisponivel | undefined) || null;
+  return extrairTecnicoInicial(observacoes) || null;
 }
 
 export function removerTecnicoInicialDasObservacoes(observacoes?: string | null) {
@@ -195,7 +195,7 @@ export function getStatusCorrecao(statusAtual: string): string[] {
   return correcoes;
 }
 
-const SECOES_ACOES_OS = ["Orçamento", "Corrigir um engano", "Equipamento"] as const;
+const SECOES_ACOES_OS = ["Neste status", "Orçamento", "Corrigir um engano", "Equipamento"] as const;
 
 const SECAO_POR_ACAO_OS: Record<string, (typeof SECOES_ACOES_OS)[number]> = {
   orcamento_pdf: "Orçamento",
@@ -212,9 +212,15 @@ export function secaoAcaoOs(id: string): string {
   return SECAO_POR_ACAO_OS[id] ?? "Equipamento";
 }
 
-/** Marca cada ação com a seção dela e ordena por seção, mantendo a ordem original dentro de cada uma. */
+/**
+ * Marca cada ação com a seção dela e ordena por seção, mantendo a ordem original dentro de cada uma.
+ * Ação que já chega com `group: "Neste status"` mantém essa seção (vem de acoesPorStatus).
+ */
 export function agruparAcoesOs<T extends { id: string; group?: string }>(acoes: T[]): T[] {
-  const comSecao = acoes.map((acao, indice) => ({ acao: { ...acao, group: secaoAcaoOs(acao.id) } as T, indice }));
+  const comSecao = acoes.map((acao, indice) => ({
+    acao: { ...acao, group: acao.group === "Neste status" ? acao.group : secaoAcaoOs(acao.id) } as T,
+    indice,
+  }));
   const ordemSecao = (secao: string) => SECOES_ACOES_OS.indexOf(secao as (typeof SECOES_ACOES_OS)[number]);
   return comSecao
     .sort((a, b) => ordemSecao(a.acao.group ?? "") - ordemSecao(b.acao.group ?? "") || a.indice - b.indice)
@@ -224,4 +230,20 @@ export function agruparAcoesOs<T extends { id: string; group?: string }>(acoes: 
 /** OS só de garantia (R$ 0) não envia orçamento ao cliente: não pede contato. */
 export function precisaPerguntarQuemRecebeOrcamento(precisaContato: boolean, osSoDeGarantia: boolean) {
   return precisaContato && !osSoDeGarantia;
+}
+
+/** Algo digitado na Nova entrada (qualquer campo fora do padrão, ou cliente escolhido): vale rascunho. */
+export function entradaTemAlgo(valores: Partial<EquipamentoFormData>, cliente: unknown): boolean {
+  if (cliente) return true;
+  const texto = (valor: unknown) => typeof valor === "string" && valor.trim() !== "";
+  return texto(valores.serial_number) || texto(valores.patrimonio) || texto(valores.marca) || texto(valores.modelo)
+    || texto(valores.tipo) || texto(valores.defeito_relatado) || texto(valores.acessorios_outros) || texto(valores.observacoes)
+    || (Array.isArray(valores.acessorios) && valores.acessorios.length > 0);
+}
+
+/** Os atalhos no cadastro do cliente voltam ao contexto em que a entrada começou. */
+export function destinoNovaEntrada(id: number, origem: string): string {
+  return /^\/clientes(?:\/\d+\/equipamentos)?(?:[?#]|$)/.test(origem)
+    ? origem
+    : `/equipamentos/${id}`;
 }

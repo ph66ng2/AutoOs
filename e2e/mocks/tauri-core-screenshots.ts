@@ -4,6 +4,15 @@
  * O PIN 1234 existe só neste mock: o desktop guarda PIN no keyring do SO.
  */
 export class Resource {}
+
+/** Stub exigido por @tauri-apps/plugin-notification (sem plugins no navegador de teste). */
+export class PluginListener {
+  async unregister(): Promise<void> {}
+}
+export async function addPluginListener(): Promise<PluginListener> {
+  return new PluginListener();
+}
+
 export class Channel<T> {
   onmessage: ((message: T) => void) | null = null;
 }
@@ -25,6 +34,8 @@ interface Profile {
   ativo: boolean;
   onboarding_pendente?: boolean;
   tour_permissoes_vistas?: string[] | null;
+  atende_tecnico?: boolean;
+  email_profissional?: string | null;
 }
 
 interface Seed {
@@ -143,6 +154,16 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return structuredClone(seed.clientes.find((cliente) => cliente.id === args?.id) ?? seed.clientes[0]) as T;
     case "listar_equipamentos_cliente":
       return structuredClone(seed.equipamentos.filter((equipamento) => equipamento.cliente_id === args?.clienteId)) as T;
+    case "listar_tecnicos_da_empresa":
+      return structuredClone(seed.profiles.filter((p) => p.ativo && p.atende_tecnico)) as T;
+    case "listar_receita_aprovada":
+    case "listar_movimento_bancada":
+      return structuredClone(seed.equipamentos) as T;
+    case "contar_equipamentos_por_status": {
+      const totais = new Map<string, number>();
+      for (const equipamento of seed.equipamentos) totais.set(equipamento.status, (totais.get(equipamento.status) ?? 0) + 1);
+      return [...totais].map(([status, total]) => ({ status, total })) as T;
+    }
     case "listar_equipamentos": {
       const statusFiltro = args?.status as string | undefined;
       const items = seed.equipamentos.filter((equipamento) =>

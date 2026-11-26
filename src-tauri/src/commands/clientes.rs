@@ -9,7 +9,8 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::types::{
-    ClienteInput, ClienteRow, ContatoInicialInput, PaginatedResult, CLIENTE_COLUNAS, CLIENTE_SELECT,
+    ClienteInput, ClienteRow, ContagemClientes, ContatoInicialInput, PaginatedResult, ResumoCliente,
+    CLIENTE_COLUNAS, CLIENTE_SELECT,
 };
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_permission,
@@ -266,7 +267,8 @@ fn push_busca_no_cliente(query: &mut QueryBuilder<Postgres>, busca: &str) {
 }
 
 /// Grupo `( … )` com os campos de um contato (`ct`) que a busca alcança.
-fn push_busca_no_contato(query: &mut QueryBuilder<Postgres>, busca: &str) {
+/// Também usado pela busca de equipamentos.
+pub(crate) fn push_busca_no_contato(query: &mut QueryBuilder<Postgres>, busca: &str) {
     let pattern = format!("%{}%", busca);
     query
         .push("(ct.nome ILIKE ")
@@ -283,8 +285,58 @@ fn push_busca_no_contato(query: &mut QueryBuilder<Postgres>, busca: &str) {
     query.push(")");
 }
 
+/// A OS `e` é do cliente `c` (alias da tabela `clientes` na consulta externa), sempre na mesma
+/// empresa: pelo `cliente_id` ou, nas OS antigas sem `cliente_id`, pelo `cliente_nome` gravado igual
+/// (sem diferenciar maiúsculas nem espaços nas pontas) ao nome de exibição ou ao `nome` do cliente.
+/// É o mesmo critério que o painel e o histórico usam em `listar_equipamentos_cliente` (a tela manda
+/// `nomeExibicaoCliente` e `nome`), para os totais baterem com as OS que a tela mostra.
+fn os_do_cliente(c: &str) -> String {
+    format!(
+        "e.empresa_id = {c}.empresa_id AND (e.cliente_id = {c}.id OR (e.cliente_id IS NULL
+           AND BTRIM(COALESCE(e.cliente_nome, '')) <> ''
+           AND LOWER(BTRIM(e.cliente_nome)) IN (
+             LOWER(BTRIM(COALESCE({c}.nome, ''))),
+             LOWER(BTRIM(CASE WHEN {c}.tipo_pessoa = 'PJ'
+               THEN COALESCE(NULLIF({c}.nome_fantasia, ''), NULLIF({c}.razao_social, ''), {c}.nome, '')
+               ELSE '' END)))))"
+    )
+}
+
+/// OS do cliente ainda em atendimento (não entregue nem abandonada). `clientes` é a tabela externa.
+fn existe_os_aberta() -> String {
+    format!(
+        " EXISTS (SELECT 1 FROM equipamentos e WHERE {} AND e.status NOT IN ('ENTREGUE', 'ABANDONADO'))",
+        os_do_cliente("clientes")
+    )
+}
+
+/// Algum contato ativo entra no portal (tem acesso e senha definida).
+const EXISTE_PORTAL_ATIVO: &str = " EXISTS (SELECT 1 FROM cliente_contatos ct
+   WHERE ct.cliente_id = clientes.id AND ct.empresa_id = clientes.empresa_id AND ct.ativo = true
+     AND ct.portal_acesso <> 'NENHUM' AND ct.portal_senha_hash IS NOT NULL)";
+
 fn add_client_filters(query: &mut QueryBuilder<Postgres>, empresa_id: i32, busca: Option<&str>) {
+    add_client_filters_com(query, empresa_id, busca, None);
+}
+
+/// Filtros da lista: busca e, opcionalmente, um recorte (EMPRESAS, PESSOAS, COM_OS_ABERTA, PORTAL_ATIVO).
+fn add_client_filters_com(query: &mut QueryBuilder<Postgres>, empresa_id: i32, busca: Option<&str>, filtro: Option<&str>) {
     query.push(" WHERE ativo = true AND empresa_id = ").push_bind(empresa_id);
+    match filtro.map(str::trim) {
+        Some("EMPRESAS") => {
+            query.push(" AND tipo_pessoa = 'PJ'");
+        }
+        Some("PESSOAS") => {
+            query.push(" AND tipo_pessoa = 'PF'");
+        }
+        Some("COM_OS_ABERTA") => {
+            query.push(" AND").push(existe_os_aberta());
+        }
+        Some("PORTAL_ATIVO") => {
+            query.push(" AND").push(EXISTE_PORTAL_ATIVO);
+        }
+        _ => {}
+    }
 
     if let Some(busca) = busca_util(busca) {
         query.push(" AND (");
@@ -322,15 +374,58 @@ fn push_client_select(query: &mut QueryBuilder<Postgres>, busca: Option<&str>) {
     query.push(" FROM clientes");
 }
 
+/// Contato principal, OS abertas e último atendimento dos clientes da página, numa consulta só
+/// pelos ids (a listagem em si continua sem ler contatos nem equipamentos).
+async fn preencher_resumo_da_pagina(pool: &PgPool, empresa_id: i32, items: &mut [ClienteRow]) -> Result<(), String> {
+    if items.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<i32> = items.iter().map(|row| row.id).collect();
+    let consulta = format!(
+        "SELECT c.id,
+                COALESCE(
+                  (SELECT ct.nome FROM equipamentos e
+                     JOIN cliente_contatos ct ON ct.id = e.responsavel_contato_id AND ct.empresa_id = c.empresa_id
+                    WHERE e.cliente_id = c.id AND e.empresa_id IS NOT DISTINCT FROM c.empresa_id
+                    ORDER BY e.data_entrada DESC, e.id DESC LIMIT 1),
+                  (SELECT ct.nome FROM cliente_contatos ct
+                    WHERE ct.cliente_id = c.id AND ct.empresa_id = c.empresa_id AND ct.ativo = true
+                    ORDER BY ct.id LIMIT 1)
+                ) AS contato_principal,
+                (SELECT COUNT(*) FROM equipamentos e
+                  WHERE {os} AND e.status NOT IN ('ENTREGUE', 'ABANDONADO')) AS os_abertas,
+                (SELECT MAX(e.data_entrada) FROM equipamentos e WHERE {os}) AS ultimo_atendimento
+           FROM clientes c
+          WHERE c.empresa_id = $1 AND c.id = ANY($2)",
+        os = os_do_cliente("c")
+    );
+    let linhas = sqlx::query(sqlx::AssertSqlSafe(&*consulta))
+        .bind(empresa_id)
+        .bind(&ids)
+        .fetch_all(pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    for linha in linhas {
+        let id: i32 = linha.try_get("id").map_err(|e| e.to_string())?;
+        if let Some(item) = items.iter_mut().find(|row| row.id == id) {
+            item.contato_principal = linha.try_get("contato_principal").map_err(|e| e.to_string())?;
+            item.os_abertas = linha.try_get("os_abertas").map_err(|e| e.to_string())?;
+            item.ultimo_atendimento = linha.try_get("ultimo_atendimento").map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 async fn query_client_page(
     pool: &PgPool,
     empresa_id: i32,
     page: Option<i32>,
     busca: Option<&str>,
+    filtro: Option<&str>,
     page_size: i32,
 ) -> Result<PaginatedResult<ClienteRow>, String> {
     let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM clientes");
-    add_client_filters(&mut count_query, empresa_id, busca);
+    add_client_filters_com(&mut count_query, empresa_id, busca, filtro);
     let total = count_query
         .build_query_scalar::<i64>()
         .fetch_one(pool)
@@ -341,18 +436,19 @@ async fn query_client_page(
     let page_limit = i64::from(page_size);
     let mut items_query = QueryBuilder::<Postgres>::new("");
     push_client_select(&mut items_query, busca);
-    add_client_filters(&mut items_query, empresa_id, busca);
+    add_client_filters_com(&mut items_query, empresa_id, busca, filtro);
     items_query
         .push(" ORDER BY id DESC LIMIT ")
         .push_bind(page_limit)
         .push(" OFFSET ")
         .push_bind(safe_page * page_limit);
 
-    let items = items_query
+    let mut items = items_query
         .build_query_as::<ClienteRow>()
         .fetch_all(pool)
         .await
         .map_err(super::operator_errors::mapear_erro_sql)?;
+    preencher_resumo_da_pagina(pool, empresa_id, &mut items).await?;
 
     Ok(PaginatedResult {
         items,
@@ -404,26 +500,112 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
 pub async fn listar_clientes_paginados(
     page: Option<i32>,
     busca: Option<String>,
+    filtro: Option<String>,
+    segundo_plano: Option<bool>,
 ) -> Result<PaginatedResult<ClienteRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     query_client_page(
         &pool,
         empresa_id,
         page,
         busca.as_deref(),
+        filtro.as_deref(),
         super::equipamentos::UI_PAGE_SIZE,
     )
     .await
 }
 
+/// Contagem de cada filtro da lista de clientes, com a busca aplicada.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn contar_clientes_por_filtro(
+    busca: Option<String>,
+    segundo_plano: Option<bool>,
+) -> Result<ContagemClientes, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    contar_clientes_por_filtro_on_pool(&pool, empresa_id, busca.as_deref()).await
+}
+
+pub(crate) async fn contar_clientes_por_filtro_on_pool(
+    pool: &PgPool,
+    empresa_id: i32,
+    busca: Option<&str>,
+) -> Result<ContagemClientes, String> {
+    let mut query = QueryBuilder::<Postgres>::new(
+        "SELECT COUNT(*) AS todos,
+                COUNT(*) FILTER (WHERE tipo_pessoa = 'PJ') AS empresas,
+                COUNT(*) FILTER (WHERE tipo_pessoa = 'PF') AS pessoas,
+                COUNT(*) FILTER (WHERE",
+    );
+    query
+        .push(existe_os_aberta())
+        .push(") AS com_os_aberta, COUNT(*) FILTER (WHERE")
+        .push(EXISTE_PORTAL_ATIVO)
+        .push(") AS portal_ativo FROM clientes");
+    add_client_filters(&mut query, empresa_id, busca);
+    query
+        .build_query_as::<ContagemClientes>()
+        .fetch_one(pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+/// Números do painel do cliente: OS abertas, OS que entraram no ano e o faturado no ano
+/// (entregues no ano, valor final ou orçado). O faturado só vai para quem tem VIEW_EXPENSES.
+#[tauri::command]
+#[instrument(skip_all, fields(cliente_id = cliente_id))]
+pub async fn resumo_cliente(cliente_id: i32, segundo_plano: Option<bool>) -> Result<ResumoCliente, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    let ver_faturado = crate::commands::auth::session_has_permission(crate::commands::auth::PERMISSION_VIEW_EXPENSES);
+    resumo_cliente_on_pool(&pool, empresa_id, cliente_id, ver_faturado).await
+}
+
+pub(crate) async fn resumo_cliente_on_pool(
+    pool: &PgPool,
+    empresa_id: i32,
+    cliente_id: i32,
+    ver_faturado: bool,
+) -> Result<ResumoCliente, String> {
+    let ano = chrono::Local::now().format("%Y").to_string();
+    let consulta = format!(
+        "SELECT
+           COUNT(e.id) FILTER (WHERE e.status NOT IN ('ENTREGUE', 'ABANDONADO')) AS os_abertas,
+           COUNT(e.id) FILTER (WHERE LEFT(e.data_entrada, 4) = $3) AS no_ano,
+           COALESCE(SUM(COALESCE(e.valor_final, e.valor_orcamento, 0))
+             FILTER (WHERE e.status = 'ENTREGUE' AND LEFT(COALESCE(e.data_saida, ''), 4) = $3), 0)::FLOAT8 AS faturado
+         FROM clientes c
+         JOIN equipamentos e ON {}
+         WHERE c.id = $1 AND c.empresa_id = $2",
+        os_do_cliente("c")
+    );
+    let row = sqlx::query(sqlx::AssertSqlSafe(&*consulta))
+        .bind(cliente_id)
+        .bind(empresa_id)
+        .bind(&ano)
+        .fetch_one(pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(ResumoCliente {
+        os_abertas: row.try_get("os_abertas").map_err(|e| e.to_string())?,
+        no_ano: row.try_get("no_ano").map_err(|e| e.to_string())?,
+        faturado: if ver_faturado {
+            Some(row.try_get::<f64, _>("faturado").map_err(|e| e.to_string())?)
+        } else {
+            None
+        },
+    })
+}
+
 /// Buscar cliente por ID.
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
-pub async fn buscar_cliente(id: i32) -> Result<ClienteRow, String> {
+pub async fn buscar_cliente(id: i32, segundo_plano: Option<bool>) -> Result<ClienteRow, String> {
     debug!("Buscando cliente {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
 
     let query = format!("{} WHERE id = $1 AND empresa_id = $2", CLIENTE_SELECT);
     let row = sqlx::query_as::<_, ClienteRow>(sqlx::AssertSqlSafe(&*query))
@@ -562,7 +744,7 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     tx.commit().await.map_err(|e| e.to_string())?;
 
     info!("Cliente criado: id={}", id);
-    buscar_cliente(id).await
+    buscar_cliente(id, None).await
 }
 
 /// Atualizar cliente por ID.
@@ -714,7 +896,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     tx.commit().await.map_err(|e| e.to_string())?;
 
     info!("Cliente {} atualizado", id);
-    buscar_cliente(id).await
+    buscar_cliente(id, None).await
 }
 
 /// Deletar cliente por ID (soft delete - marca como inativo).
@@ -776,6 +958,21 @@ mod tests {
         let sql = query.sql().as_str().to_string();
         assert!(!sql.contains("cliente_contatos"));
         assert!(sql.contains("NULL::TEXT AS contato_encontrado"));
+    }
+
+    #[test]
+    fn totais_do_cliente_contam_os_legadas_pelo_nome_na_mesma_empresa() {
+        let criterio = os_do_cliente("c");
+        assert!(criterio.starts_with("e.empresa_id = c.empresa_id AND ("));
+        assert!(criterio.contains("e.cliente_id = c.id OR (e.cliente_id IS NULL"));
+        assert!(criterio.contains("BTRIM(COALESCE(e.cliente_nome, '')) <> ''"));
+        assert!(criterio.contains("NULLIF(c.nome_fantasia, '')"));
+        let aberta = existe_os_aberta();
+        assert!(aberta.contains("e.empresa_id = clientes.empresa_id"));
+        assert!(aberta.contains("e.cliente_id IS NULL"));
+        let mut contagem = QueryBuilder::<Postgres>::new("");
+        add_client_filters_com(&mut contagem, 1, None, Some("COM_OS_ABERTA"));
+        assert!(contagem.sql().as_str().contains("LOWER(BTRIM(e.cliente_nome))"));
     }
 
     #[test]

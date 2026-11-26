@@ -60,3 +60,55 @@ export async function usarEquipamentoAnteriorNoCadastro(
   // O aviso de série repetida aparece de propósito: quem reaproveita os dados abre um novo ciclo.
   return { tipo: "preenchido", registros, confirmarNovoCiclo: registros.length > 0 };
 }
+
+/**
+ * "Sim, nova manutenção" no aviso de série repetida: copia da última entrada só os campos do
+ * aparelho que ainda estão vazios. O que a pessoa já digitou nunca é trocado.
+ */
+export function preencherVaziosComAnterior(
+  form: Pick<UseFormReturn<EquipamentoFormData>, "setValue" | "getValues">,
+  anterior: Pick<Equipamento, (typeof CAMPOS_DADOS_EQUIPAMENTO)[number]>,
+): void {
+  const opcoes = { shouldDirty: true, shouldValidate: true } as const;
+  for (const campo of CAMPOS_DADOS_EQUIPAMENTO) {
+    if (campo === "serial_number") continue;
+    const atual = String(form.getValues(campo) ?? "").trim();
+    const valor = anterior[campo];
+    if (!atual && valor) form.setValue(campo, valor, opcoes);
+  }
+}
+
+/** A passagem mais recente desta série (entrada mais nova; empate pelo número da OS). */
+export function ultimaPassagem(registros: Equipamento[]): Equipamento | null {
+  const ordenados = [...registros].sort(
+    (a, b) => (b.data_entrada ?? "").localeCompare(a.data_entrada ?? "") || (b.id ?? 0) - (a.id ?? 0),
+  );
+  return ordenados[0] ?? null;
+}
+
+/**
+ * Retorno dentro da garantia dos serviços: a última passagem foi consertada e entregue, e o
+ * prazo conta de quando ficou pronta para retirada (`data_pronto`, como promete o orçamento).
+ * Sem `data_pronto` (cadastro antigo), vale a saída só se o orçamento foi aprovado. Reprovado e
+ * devolvido nunca passa por Pronto nem é aprovado: não tem garantia de serviço. Só avisa; quem
+ * decide cobrar ou não é o técnico, na verificação.
+ */
+export function retornoNaGarantia(
+  ultima: Pick<Equipamento, "status" | "data_saida" | "data_pronto" | "data_aprovacao"> | null,
+  prazoDias: number | null,
+  hojeIso: string,
+): { diasDesdePronto: number } | null {
+  if (!ultima || ultima.status !== "ENTREGUE" || prazoDias == null || prazoDias <= 0) return null;
+  const inicio = ultima.data_pronto || (ultima.data_aprovacao ? ultima.data_saida : null);
+  if (!inicio) return null;
+  const desde = Date.parse(`${inicio.slice(0, 10)}T00:00:00Z`);
+  const hoje = Date.parse(`${hojeIso.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(desde) || Number.isNaN(hoje)) return null;
+  const dias = Math.round((hoje - desde) / 86_400_000);
+  return dias >= 0 && dias <= prazoDias ? { diasDesdePronto: dias } : null;
+}
+
+/** Linha que a OS nova ganha nas observações quando volta dentro da garantia. */
+export function linhaRetornoGarantia(ultima: Pick<Equipamento, "id">, prazoDias: number): string {
+  return `Retorno da OS #${ultima.id} dentro da garantia de ${prazoDias} dias dos serviços.`;
+}

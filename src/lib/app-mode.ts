@@ -19,3 +19,17 @@ export function setAppMode(mode: AppMode): void {
   }
   window.dispatchEvent(new CustomEvent<AppMode>("autoos:app-mode", { detail: mode }));
 }
+
+/**
+ * Estado de navegação que pede a troca de modo. Trocar o modo antes de navegar deixaria o modo
+ * novo gravado quando a pessoa cancela a saída ("Continuar editando"): o `AppModeRedirect`
+ * aplica o pedido só quando a navegação chega de fato.
+ */
+export function pedirModoAoNavegar(mode: AppMode): { trocarModo: AppMode } {
+  return { trocarModo: mode };
+}
+
+export function modoPedidoAoNavegar(state: unknown): AppMode | null {
+  const pedido = state && typeof state === "object" ? (state as { trocarModo?: unknown }).trocarModo : undefined;
+  return pedido === "standard" || pedido === "counter" ? pedido : null;
+}

@@ -21,6 +21,10 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+vi.mock("@/lib/whatsapp-service", () => ({
+  WhatsAppService: { solicitarEnvio: vi.fn().mockResolvedValue({ sucesso: true, estado: "ENVIADA" }) },
+}));
+
 vi.mock("@/lib/pdf-service", () => ({
   PdfService: { gerarOrcamentoAjustado: (...args: unknown[]) => mockGerarOrcamentoAjustado(...args), gerarOrcamento: (...args: unknown[]) => mockGerarOrcamento(...args) },
 }));
@@ -35,6 +39,12 @@ import {
   gerarCorpoOrcamentoPortalTexto,
   SENHA_MASCARADA,
 } from "@/lib/email-orcamento-portal";
+import { enviarOrcamentoAoCliente } from "@/lib/envio-orcamento";
+import { semearTecnicosPadrao } from "@/test/tecnicos-fixture";
+import { definirCopiaGerencia } from "@/lib/copia-gerencia";
+import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
+
+beforeEach(() => semearTecnicosPadrao());
 
 const equip: Equipamento = {
   id: 10,
@@ -112,11 +122,26 @@ describe("email-orcamento-portal", () => {
 
     const copia = mockEnviarEmail.mock.calls[1][0];
     expect(copia.assunto.startsWith("[Cópia] ")).toBe(true);
+    expect(copia.equipamento_id).toBe(equip.id);
     expect(copia.email).toBe("medeiros@bmitag.com.br");
     expect(copia.cc).toContain("ivan@bmitag.com.br");
     expect(copia.corpo_texto).not.toContain("ABCD-1234-WXYZ");
     expect(copia.corpo_html).not.toContain("ABCD-1234-WXYZ");
     expect(copia.corpo_texto).toContain(SENHA_MASCARADA);
+  });
+
+  it.each([false, true])("congela uma versão no envio por e-mail com preparo de acesso=%s", async (portalAtivo) => {
+    const r = await enviarEmailOrcamentoPortal(equip, verificacao, preparoBase({
+      portalAtivo, credenciais: null,
+    }));
+
+    expect(r.cliente.enviado).toBe(true);
+    expect(mockPublicarOrcamento).toHaveBeenCalledExactlyOnceWith(equip.id);
+    expect(mockPublicarOrcamento.mock.invocationCallOrder[0]).toBeLessThan(mockEnviarEmail.mock.invocationCallOrder[0]);
+    expect(mockEnviarEmail).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      orcamento_equipamento_id: equip.id,
+    }));
+    expect(mockEnviarEmail.mock.calls[1][0]).not.toHaveProperty("orcamento_equipamento_id");
   });
 
   it("registra uma única comunicação sem a senha", async () => {
@@ -129,11 +154,37 @@ describe("email-orcamento-portal", () => {
     expect(reg.enviado).toBe(true);
   });
 
-  it("falha da cópia não invalida o envio ao cliente", async () => {
-    mockEnviarEmail.mockResolvedValueOnce(undefined).mockRejectedValueOnce("smtp caiu");
+  it("outra empresa (multiempresa): cópia só para o técnico dela, sem a gerência da BMITAG", async () => {
+    definirCopiaGerencia(false);
+    definirTecnicosDaEmpresa([{ id: 50, nome: "Ivan", email_profissional: "ivan@empresa-b.test" }]);
     const r = await enviarEmailOrcamentoPortal(equip, verificacao, preparoBase());
-    expect(r.cliente.enviado).toBe(true);
-    expect(r.copia).toEqual({ enviado: false, erro: "smtp caiu" });
+    expect(r.copia).toEqual({ enviado: true });
+    const copia = mockEnviarEmail.mock.calls[1][0];
+    expect(copia.email).toBe("ivan@empresa-b.test");
+    expect(copia.cc).toEqual([]);
+    expect(JSON.stringify(mockEnviarEmail.mock.calls)).not.toContain("bmitag.com.br");
+  });
+
+  it("sem técnico da empresa e sem cópia da gerência, não envia cópia interna", async () => {
+    definirCopiaGerencia(false);
+    definirTecnicosDaEmpresa([]);
+    const r = await enviarEmailOrcamentoPortal(equip, verificacao, preparoBase());
+    expect(r).toEqual({ cliente: { enviado: true }, copia: { enviado: false } });
+    expect(mockEnviarEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("avisa sobre a falha da cópia para o e-mail profissional do técnico", async () => {
+    definirCopiaGerencia(false);
+    definirTecnicosDaEmpresa([{ id: 50, nome: "Ivan", email_profissional: "ivan@empresa-b.test" }]);
+    mockEnviarEmail.mockResolvedValueOnce(undefined).mockRejectedValueOnce("smtp caiu");
+    const r = await enviarOrcamentoAoCliente(equip, verificacao, { preparo: preparoBase() });
+    expect(r.canais.email.enviado).toBe(true);
+    expect(r.avisos).toEqual(["Não foi possível enviar a cópia interna do orçamento."]);
+    expect(mockEnviarEmail).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      equipamento_id: equip.id,
+      destinatario: "Cópia interna",
+      email: "ivan@empresa-b.test",
+    }));
   });
 
   it("sem e-mail do contato não envia", async () => {

@@ -1,0 +1,233 @@
+/* Portal do Cliente no layout das pranchetas 09-portal (barra no topo, selo de situação, cartões).
+   Carregado depois de public-status.css: aqui só ficam as regras que mudam a disposição. Cores só por token. */
+
+/* ─── Barra do topo ─── */
+.portal-shell { padding-top: 0; }
+.portal-topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  margin: 0 calc(50% - 50vw) 2rem; padding: 0.6rem max(1.5rem, calc(50vw - 50% + 0rem));
+  border-bottom: 1px solid hsl(var(--line)); background: hsl(var(--surface));
+}
+.portal-topbar .status-brand { align-self: center; margin: 0; }
+.portal-topbar .status-brand img { height: 2.75rem; max-width: 9rem; }
+.portal-topbar .portal-userbar { margin: 0; justify-content: flex-end; gap: 0.75rem; font-size: 0.92rem; }
+.portal-sair { min-height: 2.25rem; padding: 0.35rem 0.9rem; }
+.portal-shell .eyebrow { display: none; }
+
+/* ─── Lista ─── */
+.status-card.portal-pagina { padding: 0; border: 0; background: none; box-shadow: none; }
+.portal-pill { padding: 0.25rem 0.7rem; border-radius: 999px; background: var(--stage-bg); font-size: 0.82rem; }
+
+/* ─── Detalhe: cada bloco vira cartão ─── */
+.status-card.is-detalhe { padding: 0; border: 0; background: none; box-shadow: none; }
+.status-card.is-detalhe.is-concluido { border-top: 0; }
+.portal-detail-main { display: grid; gap: 1.25rem; align-content: start; }
+.portal-cartao,
+.portal-detail-side > :not(.notice-box):not(.portal-valor-linha) {
+  min-width: 0; margin: 0; padding: 1.5rem 1.6rem;
+  border: 1px solid hsl(var(--line)); border-radius: 1rem;
+  background: hsl(var(--surface)); box-shadow: 0 0.25rem 1rem hsl(var(--shadow) / 0.05);
+}
+.portal-detail-side { display: grid; gap: 1.25rem; align-content: start; }
+.portal-detail-side > .portal-quote { border-top: 1px solid hsl(var(--line)); }
+.portal-detail-side > .contact-card { background: hsl(var(--surface)); }
+.portal-detail-side > .notice-box { margin: 0; }
+.portal-cartao .portal-historico { margin: 0; padding: 0; border: 0; }
+.checked-at { color: hsl(var(--ink-soft)); font-size: 0.82rem; }
+
+/* ─── Situação: selo pequeno no topo, nome do equipamento grande logo abaixo ─── */
+.current-status {
+  display: inline-flex; align-items: center; gap: 0.45rem; max-width: 100%;
+  padding: 0.3rem 0.8rem; border-radius: 999px; background: var(--stage-bg);
+}
+.current-status h1,
+.portal-shell .current-status h1 { margin: 0; font-size: 0.85rem; font-weight: 700; line-height: 1.3; letter-spacing: 0; }
+.current-status .status-pulse,
+.portal-shell .status-pulse { flex: 0 0 auto; width: 0.45rem; height: 0.45rem; margin: 0; }
+.current-status .status-pulse::after { display: none; }
+.concluido-sub { margin: 0.5rem 0 0; color: hsl(var(--ink-soft)); font-size: 0.88rem; }
+.equipment-name,
+.portal-shell .equipment-name {
+  margin: 0.9rem 0 0.3rem; color: hsl(var(--ink)); font-size: clamp(1.45rem, 3vw, 1.9rem);
+  font-weight: 800; line-height: 1.2; letter-spacing: -0.01em;
+}
+.orientation { color: hsl(var(--ink)); }
+
+/* ─── Etapas: seis barras com o nome embaixo ─── */
+.timeline { margin-top: 1.25rem; padding-top: 0; border-top: 0; }
+.timeline-heading {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.timeline ol { gap: 0.4rem; }
+.timeline li { align-items: stretch; gap: 0.5rem; text-align: left; font-size: 0.75rem; color: hsl(var(--ink-soft)); }
+.timeline li::before { content: ""; display: block; height: 5px; border-radius: 999px; background: hsl(var(--track)); }
+.timeline li:not(:nth-child(6)):not(.is-deviation)::after { display: none; }
+.timeline-marker { display: none; }
+.timeline-step { align-items: stretch; gap: 0.5rem; text-align: left; }
+.timeline li.is-complete { color: hsl(var(--ink)); font-weight: 600; }
+.timeline li.is-complete::before { background: hsl(var(--st-ok)); }
+.timeline li.is-current { color: hsl(var(--ink)); font-weight: 700; }
+.timeline li.is-current::before { background: var(--stage-color); }
+.timeline li.is-deviation { grid-column: 1 / -1; margin-top: 0.5rem; color: hsl(var(--st-bad)); }
+.timeline li.is-deviation::before { background: hsl(var(--st-bad)); }
+.timeline li .timeline-when { left: 0; transform: none; }
+/* Mesmo layout em qualquer largura e preferência de movimento (sobrepõe as regras antigas de lista vertical). */
+.timeline ol { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.timeline li, .timeline-step { flex-direction: column; min-height: 0; }
+.timeline-step { width: 100%; }
+@media (max-width: 480px) {
+  /* Prancheta do celular: seis barras e só o nome da etapa atual embaixo. Os outros nomes saem da tela,
+     mas continuam no leitor de tela (são o nome dos botões de data). */
+  .timeline ol { gap: 0.25rem; }
+  .timeline li { font-size: 0.72rem; overflow: visible; overflow-wrap: normal; }
+  .timeline li:not(.is-current) .timeline-step > span:not(.timeline-marker),
+  .timeline li:not(.is-current) > span:not(.timeline-marker):not(.timeline-when) {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  /* Atendimento concluído não tem etapa atual: mostra o nome da última. */
+  .timeline.is-concluido li:nth-child(6) .timeline-step > span:not(.timeline-marker),
+  .timeline.is-concluido li:nth-child(6) > span:not(.timeline-marker):not(.timeline-when) {
+    position: static; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal;
+  }
+  .timeline li.is-current { z-index: 1; }
+  .timeline li.is-current > span, .timeline li.is-current .timeline-step > span { min-width: 6rem; }
+}
+
+/* "Etapa registrada em": uma linha discreta, sem caixa. */
+.date-panel { margin-top: 1rem; padding: 0; border: 0; background: none; color: hsl(var(--ink-soft)); font-size: 0.85rem; }
+.date-panel .date-label { display: inline; margin: 0 0.25rem 0 0; font-size: inherit; font-weight: 400; }
+.date-panel time { font-weight: 400; }
+
+@media (min-width: 1000px) {
+  .portal-shell { width: min(100% - 4rem, 68rem); }
+  .portal-detail-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1.25rem; }
+  .portal-detail-side { position: static; padding-left: 0; border-left: 0; }
+}
+
+/* ─── Celular: respostas ao orçamento sobem do rodapé como painel ─── */
+@media (max-width: 640px) {
+  .portal-topbar { margin-bottom: 1rem; padding: 0.5rem 1rem; }
+  .portal-topbar .status-brand img { height: 2.25rem; }
+  .portal-topbar .portal-userbar span { display: none; }
+  .portal-cartao,
+  .portal-detail-side > :not(.notice-box):not(.portal-valor-linha) { padding: 1.1rem 1.1rem 1.25rem; }
+  .portal-detail-grid { display: grid; gap: 1rem; }
+  .portal-detail-main { gap: 1rem; }
+
+  .portal-quote .confirm-box,
+  .portal-quote .portal-request-box,
+  .portal-quote .sent-box.portal-receipt,
+  .portal-quote .sent-box.portal-request-done {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    max-height: 85vh; overflow-y: auto; margin: 0;
+    padding: 1.4rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom));
+    border: 0; border-radius: 1.25rem 1.25rem 0 0;
+    color: hsl(var(--ink)); background: hsl(var(--surface));
+    box-shadow: 0 0 0 100vmax hsl(var(--scrim) / 0.55);
+    animation: portal-folha var(--dur-padrao) var(--ease-saida) both;
+  }
+  .portal-quote :is(.confirm-box, .portal-request-box, .sent-box) .action-row { display: grid; grid-template-columns: 1fr 1fr; }
+  .portal-quote :is(.confirm-box, .portal-request-box, .sent-box) .action-row > * { flex: none; }
+  /* Com um painel aberto, a barra fixa de decisão sai de cena. */
+  .portal-shell:has(.portal-quote :is(.confirm-box, .portal-request-box, .portal-receipt, .portal-request-done)) .portal-decision-bar { display: none; }
+}
+@keyframes portal-folha { from { transform: translateY(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .portal-quote .confirm-box, .portal-quote .portal-request-box, .portal-quote .sent-box { animation: none; }
+}
+.portal-title { font-weight: 800; letter-spacing: -0.01em; }
+
+/* ─── Ajustes para seguir as pranchetas 09-portal ─── */
+.portal-topbar { padding: 0.6rem 1.5rem; }
+.portal-topbar .status-brand img { height: 3.5rem; max-width: 11rem; }
+.portal-shell .eyebrow, .portal-publico .eyebrow {
+  display: block; margin: 0 0 0.6rem; color: hsl(var(--primary)); font-size: 0.75rem; letter-spacing: 0.1em;
+}
+.portal-shell .status-card.is-detalhe .eyebrow { display: none; }
+.portal-title { margin: 0 0 1rem; font-size: clamp(1.6rem, 3.2vw, 2rem); line-height: 1.15; }
+
+/* Entrar: cartão estreito, aviso alinhado com ele, "Mostrar" dentro do campo. */
+.portal-shell > .status-card.portal-login-card { width: min(100%, 27.5rem); align-self: center; padding: 2.25rem 2.25rem 2rem; box-shadow: none; }
+.portal-shell:has(.portal-login-card) .portal-beta { width: min(100%, 27.5rem); align-self: center; text-align: left; color: hsl(var(--ink)); }
+.portal-password { position: relative; }
+.portal-password .portal-input { padding-right: 5.5rem; }
+.portal-password .link-button { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); text-decoration: none; font-weight: 700; }
+
+/* Lista: abas como controle segmentado. */
+.portal-tabs { padding: 0.2rem; border: 1px solid hsl(var(--line)); background: hsl(var(--surface)); }
+.portal-tabs button { min-height: 2.25rem; font-size: 0.92rem; }
+.portal-tabs button.is-active { color: hsl(var(--primary)); background: hsl(var(--acc-soft)); box-shadow: none; }
+.portal-item-name { font-weight: 600; font-size: 1.08rem; }
+.portal-badge.is-muted { justify-self: start; padding: 0.25rem 0.7rem; border-radius: 999px; background: hsl(var(--soft)); color: hsl(var(--ink-soft)); font-weight: 700; font-size: 0.82rem; }
+
+/* Etapas concluídas na cor da marca; a atual na cor da situação. */
+.timeline li.is-complete::before { background: hsl(var(--primary)); }
+
+/* Orçamento: itens em destaque, total forte, Aceitar e Recusar lado a lado, correção como link. */
+.portal-quote .quote-line > span:first-child { font-weight: 600; color: hsl(var(--ink)); }
+.portal-quote .quote-total span, .portal-quote .quote-total strong { font-size: 1.3rem; font-weight: 800; color: hsl(var(--ink)); }
+.portal-inline-decision { grid-template-columns: 1fr 1fr; }
+.portal-solicitar { justify-self: center; font-weight: 700; text-decoration: none; }
+.action-stack { display: grid; gap: 0.75rem; }
+
+/* Documentos: linhas com "PDF ↓" à direita. */
+.portal-documentos { margin-top: 0; }
+.portal-documentos h3 { margin-bottom: 0.75rem; font-size: 1.15rem; }
+.portal-documentos ul { display: grid; gap: 0.6rem; }
+.portal-doc-linha {
+  display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 1rem;
+  border: 0; background: hsl(var(--soft)); text-align: left;
+}
+.portal-doc-baixar { flex: 0 0 auto; color: hsl(var(--primary)); font-weight: 700; }
+
+/* Contato: WhatsApp em destaque suave, e-mail e telefone contornados. */
+.contact-card ul { gap: 0.6rem; }
+.contact-card a.secondary-button { min-height: 2.5rem; padding: 0.45rem 1rem; color: hsl(var(--ink)); text-decoration: none; overflow-wrap: anywhere; }
+.contact-card a.portal-contato-whats { border-color: transparent; color: hsl(var(--primary)); background: hsl(var(--acc-soft)); }
+
+/* Respostas: recusar em vermelho, WhatsApp suave na retenção, comprovante com o sinal de concluído. */
+.primary-button.portal-perigo { background: hsl(var(--st-bad)); }
+.portal-whats-suave { display: flex; width: 100%; margin: 0.75rem 0; border-color: transparent; color: hsl(var(--primary)); background: hsl(var(--acc-soft)); }
+.portal-retention .action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+.portal-receipt-ok {
+  display: grid; place-items: center; width: 2.5rem; height: 2.5rem; margin-bottom: 0.75rem;
+  border-radius: 0.6rem; color: hsl(var(--st-ok)); background: hsl(var(--st-ok-bg)); font-weight: 800;
+}
+.portal-quote .sent-box.portal-receipt strong { display: block; color: hsl(var(--ink)); font-size: 1.15rem; }
+.portal-quote .sent-box.portal-receipt { color: hsl(var(--ink)); }
+
+/* Link de acompanhamento sem login: cartão estreito, botão fora dele. */
+.portal-publico { width: min(100% - 2rem, 34rem); padding-top: 0; }
+.status-card.is-publico { padding: 0; border: 0; background: none; box-shadow: none; }
+.portal-atualizar { width: 100%; margin-top: 1rem; }
+.portal-publico .status-footer { text-align: left; }
+
+@media (max-width: 640px) {
+  .portal-shell > .status-card.portal-login-card { padding: 1.4rem 1.25rem; }
+  .portal-quote .sent-box.portal-receipt > .portal-full { margin-top: 0.75rem; }
+}
+.portal-pagina .notice-box { font-weight: 600; }
+.portal-detail-side > .portal-destaque.is-pronto { border: 2px solid hsl(var(--primary)); }
+.portal-destaque.is-pronto h2 { margin: 0 0 0.75rem; color: hsl(var(--ink)); font-size: 1.25rem; }
+.contact-card .answer-hint { margin-top: 0.6rem; }
+
+/* A barra fica dentro do botão da etapa quando há data: tocar na barra mostra a data, inclusive no celular. */
+.timeline li:has(> .timeline-step)::before { display: none; }
+.timeline-step::before { content: ""; display: block; height: 5px; border-radius: 999px; background: hsl(var(--track)); }
+.timeline li.is-complete .timeline-step::before { background: hsl(var(--primary)); }
+.timeline li.is-current .timeline-step::before { background: var(--stage-color); }
+@media (max-width: 480px) {
+  .timeline-step { min-height: 1.75rem; }
+}
+@media (max-width: 480px) {
+  /* Data da etapa: balão escuro logo abaixo das barras, sem espremer na coluna. */
+  .timeline li .timeline-when,
+  .timeline li:has(.timeline-when) .timeline-when {
+    position: absolute; z-index: 5; top: auto; bottom: calc(100% + 0.35rem); left: 0; right: auto; transform: none;
+    display: block; width: max-content; max-width: 14rem; margin: 0; padding: 0.4rem 0.55rem;
+    border-radius: 0.45rem; color: hsl(var(--surface)); background: hsl(var(--ink));
+    font-weight: 600; white-space: nowrap; opacity: 0; visibility: hidden;
+  }
+  .timeline li:nth-child(n+4) .timeline-when { left: auto; right: 0; }
+  .timeline li.is-open > .timeline-when { opacity: 1; visibility: visible; }
+}

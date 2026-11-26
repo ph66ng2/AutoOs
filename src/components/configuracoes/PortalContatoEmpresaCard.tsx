@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { db } from "@/lib/db";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import type { ContatoPortalEmpresa } from "@/types";
 
 const VAZIO: ContatoPortalEmpresa = { nomeExibicao: "BMI TAG", whatsapp: "", email: "", telefone: "", horario: "", endereco: "", mapsUrl: "" };
@@ -38,12 +39,20 @@ export function urlDoMapa(endereco?: string | null, mapsUrl?: string | null): st
  */
 export function PortalContatoEmpresaCard() {
   const [form, setForm] = useState<ContatoPortalEmpresa>(VAZIO);
+  const [salvo, setSalvo] = useState<ContatoPortalEmpresa>(VAZIO);
+  // Algum canal mudado e não salvo: sair da tela ou da aba pergunta antes.
+  useAvisoAoSair((Object.keys({ ...VAZIO, ...form, ...salvo }) as (keyof ContatoPortalEmpresa)[])
+    .some((chave) => (form[chave] ?? "").trim() !== (salvo[chave] ?? "").trim()));
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     db.obterContatoPortalEmpresa()
-      .then((atual) => { if (atual) setForm({ ...VAZIO, ...atual }); })
+      .then((atual) => {
+        if (!atual) return;
+        setForm({ ...VAZIO, ...atual });
+        setSalvo({ ...VAZIO, ...atual });
+      })
       .catch(() => setStatus("Não foi possível carregar o contato do portal (confira se o banco tem a migration 0035)."));
   }, []);
 
@@ -72,7 +81,9 @@ export function PortalContatoEmpresaCard() {
     setSaving(true);
     setStatus(null);
     try {
-      setForm({ ...VAZIO, ...(await db.salvarContatoPortalEmpresa(form)) });
+      const gravado = { ...VAZIO, ...(await db.salvarContatoPortalEmpresa(form)) };
+      setForm(gravado);
+      setSalvo(gravado);
       setStatus("Contato do portal salvo.");
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : String(cause));
@@ -85,9 +96,6 @@ export function PortalContatoEmpresaCard() {
     <Card>
       <CardHeader>
         <CardTitle>Portal das Impressoras do Cliente</CardTitle>
-        <CardDescription>
-          Canais exibidos no cartão “Fale com a equipe” e usados na mensagem pronta de WhatsApp após o cliente responder.
-        </CardDescription>
       </CardHeader>
       <CardContent>
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => void salvar(event)}>

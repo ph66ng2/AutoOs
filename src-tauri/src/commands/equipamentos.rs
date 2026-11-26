@@ -11,7 +11,7 @@
 
 use crate::commands::types::{
     normalize_forma_pagamento, AprovarOrcamentoInput, EquipamentoHistoricoEvento,
-    EquipamentoInput, EquipamentoRow, PaginatedResult, EQUIPAMENTO_SELECT,
+    ContagemStatusRow, EquipamentoInput, EquipamentoRow, PaginatedResult, EQUIPAMENTO_SELECT,
 };
 use crate::commands::auth::{
     current_session_profile, record_security_event, require_active_session_company_id,
@@ -106,11 +106,26 @@ fn normalize_status_key(status: &str) -> String {
     .to_string()
 }
 
+/// Status do filtro: aceita um só ou uma lista separada por vírgula; "TODOS" e vazios somem.
+fn status_filtrados(status: Option<&str>) -> Vec<String> {
+    let mut lista: Vec<String> = status
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "TODOS")
+        .map(normalize_status_key)
+        .collect();
+    lista.sort_unstable();
+    lista.dedup();
+    lista
+}
+
 fn add_equipment_filters(
     query: &mut QueryBuilder<Postgres>,
     empresa_id: i32,
     busca: Option<&str>,
     status: Option<&str>,
+    tecnico: Option<&str>,
 ) {
     query.push(" WHERE empresa_id = ").push_bind(empresa_id);
 
@@ -151,14 +166,34 @@ fn add_equipment_filters(
                 .push_bind(format!("%{}%", document_digits));
         }
         query.push("))");
+        // Contato: o responsável da OS (mesmo inativo, porque continua ligado a ela) e
+        // qualquer contato ativo do cliente, como na busca de clientes.
+        query.push(
+            " OR EXISTS (SELECT 1 FROM cliente_contatos ct
+               WHERE ct.empresa_id = equipamentos.empresa_id
+                 AND (ct.id = equipamentos.responsavel_contato_id
+                      OR (ct.cliente_id = equipamentos.cliente_id AND ct.ativo = true))
+                 AND ",
+        );
+        super::clientes::push_busca_no_contato(query, busca);
+        query.push(")");
         query.push(")");
     }
 
-    if let Some(status) = status
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "TODOS")
-    {
-        query.push(" AND status = ").push_bind(normalize_status_key(status));
+    // Um status ou vários separados por vírgula ("RECEBIDO,EM_VERIFICACAO"), vindos das pílulas combinadas.
+    let status_lista = status_filtrados(status);
+    if !status_lista.is_empty() {
+        query.push(" AND status = ANY(").push_bind(status_lista).push(")");
+    }
+
+    // Técnico = quem assinou a verificação mais recente (o mesmo que a lista mostra).
+    if let Some(tecnico) = tecnico.map(str::trim).filter(|value| !value.is_empty()) {
+        query
+            .push(
+                " AND (SELECT NULLIF(TRIM(v.tecnico_nome), '') FROM verificacoes v
+                        WHERE v.equipamento_id = equipamentos.id ORDER BY v.id DESC LIMIT 1) = ",
+            )
+            .push_bind(tecnico.to_string());
     }
 }
 
@@ -180,8 +215,22 @@ pub(crate) async fn query_equipment_page_on_connection(
     ordenacao: Option<&str>,
     page_size: i32,
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
+    query_equipment_page_filtered(connection, empresa_id, page, busca, status, None, ordenacao, page_size).await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn query_equipment_page_filtered(
+    connection: &mut PgConnection,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    status: Option<&str>,
+    tecnico: Option<&str>,
+    ordenacao: Option<&str>,
+    page_size: i32,
+) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM equipamentos");
-    add_equipment_filters(&mut count_query, empresa_id, busca, status);
+    add_equipment_filters(&mut count_query, empresa_id, busca, status, tecnico);
     let total = count_query
         .build_query_scalar::<i64>()
         .fetch_one(&mut *connection)
@@ -190,7 +239,7 @@ pub(crate) async fn query_equipment_page_on_connection(
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
     let mut items_query = QueryBuilder::<Postgres>::new(EQUIPAMENTO_SELECT);
-    add_equipment_filters(&mut items_query, empresa_id, busca, status);
+    add_equipment_filters(&mut items_query, empresa_id, busca, status, tecnico);
     items_query
         .push(equipment_order_clause(ordenacao))
         .push(" LIMIT ")
@@ -512,13 +561,14 @@ pub async fn listar_equipamentos(
     page: Option<i32>,
     busca: Option<String>,
     status: Option<String>,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<EquipamentoRow>, String> {
     debug!("Listando equipamentos");
     let pool = get_pool().await.map_err(|e| {
         error!("Erro ao obter pool: {}", e);
         e.to_string()
     })?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
 
     let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
     listar_equipamentos_on_connection(
@@ -543,35 +593,10 @@ pub(crate) async fn listar_equipamentos_on_connection(
 ) -> Result<Vec<EquipamentoRow>, String> {
     let offset = i64::from(page.unwrap_or(0).max(0)) * i64::from(PAGE_SIZE);
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(EQUIPAMENTO_SELECT);
-    query_builder.push(" WHERE empresa_id = ");
-    query_builder.push_bind(empresa_id);
-
-    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
-        let pattern = format!("%{}%", busca);
-        query_builder.push(" AND (");
-        query_builder.push("serial_number ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(patrimonio, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR marca ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR modelo ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(defeito_relatado, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(cliente_nome, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(cliente_email, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(cliente_telefone, '') ILIKE ");
-        query_builder.push_bind(pattern);
-        query_builder.push(")");
-    }
-
-    if let Some(status) = status.map(str::trim).filter(|value| !value.is_empty() && *value != "TODOS") {
-        query_builder.push(" AND status = ");
-        query_builder.push_bind(normalize_status_key(status));
-    }
+    // Mesmo filtro da lista de Equipamentos: série, patrimônio, aparelho, cliente cadastrado (nome,
+    // razão social, nome fantasia, CPF/CNPJ), responsável e contatos. A busca do Balcão ("Série,
+    // nome do cliente, CPF/CNPJ ou telefone") e "Entregar ao cliente" usam esta consulta.
+    add_equipment_filters(&mut query_builder, empresa_id, busca, status, None);
 
     query_builder.push(" ORDER BY id DESC LIMIT ");
     query_builder.push_bind(i64::from(PAGE_SIZE));
@@ -591,33 +616,139 @@ pub(crate) async fn listar_equipamentos_on_connection(
     Ok(rows)
 }
 
+/// Aprovação de uma OS para o faturado de Finanças: só os campos que o cálculo usa.
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct ReceitaAprovadaRow {
+    pub data_aprovacao: Option<String>,
+    pub valor_orcamento: Option<f64>,
+    pub valor_final: Option<f64>,
+}
+
+/// Faixa de anos (texto de 4 dígitos) para filtrar `data_aprovacao`, que é TEXT em formatos
+/// variados: a comparação por prefixo não converte nada, então um valor legado estranho não
+/// derruba a consulta (o frontend descarta o que não for data).
+pub(crate) fn faixa_de_anos_receita(ano_inicio: i32, ano_fim: i32) -> Result<(String, String), String> {
+    if !(1900..=9999).contains(&ano_inicio) || !(1900..=9999).contains(&ano_fim) || ano_inicio > ano_fim {
+        return Err("Período inválido para o faturado.".to_string());
+    }
+    Ok((format!("{ano_inicio:04}"), format!("{ano_fim:04}")))
+}
+
+/// Todas as OS aprovadas da empresa da sessão com aprovação entre `ano_inicio` e `ano_fim`
+/// (inclusive), sem paginação: o saldo de Finanças não pode depender das últimas 50 OS.
+/// O valor segue o de `EQUIPAMENTO_SELECT` (orçamento, ou o custo da última verificação).
+#[tauri::command]
+#[instrument(skip_all, fields(ano_inicio = ano_inicio, ano_fim = ano_fim))]
+pub async fn listar_receita_aprovada(
+    ano_inicio: i32,
+    ano_fim: i32,
+    segundo_plano: Option<bool>,
+) -> Result<Vec<ReceitaAprovadaRow>, String> {
+    super::auth::require_permission_para_leitura(super::auth::PERMISSION_VIEW_EXPENSES, segundo_plano)?;
+    let (inicio, fim) = faixa_de_anos_receita(ano_inicio, ano_fim)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    sqlx::query_as::<_, ReceitaAprovadaRow>(
+        "SELECT data_aprovacao,
+                COALESCE(
+                    valor_orcamento,
+                    (SELECT v.custo_total FROM verificacoes v
+                      WHERE v.equipamento_id = equipamentos.id
+                      ORDER BY v.id DESC LIMIT 1)
+                )::FLOAT8 AS valor_orcamento,
+                valor_final::FLOAT8 AS valor_final
+           FROM equipamentos
+          WHERE empresa_id = $1
+            AND data_aprovacao IS NOT NULL
+            AND LEFT(BTRIM(data_aprovacao), 4) BETWEEN $2 AND $3",
+    )
+    .bind(empresa_id)
+    .bind(inicio)
+    .bind(fim)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao listar o faturado: {}", e);
+        super::operator_errors::mapear_erro_sql(e)
+    })
+}
+
+/// Datas de uma OS para o "Movimento da bancada" do Início: só o que a contagem usa.
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct MovimentoBancadaRow {
+    pub status: String,
+    pub data_entrada: Option<String>,
+    pub data_saida: Option<String>,
+    pub data_reprovacao: Option<String>,
+}
+
+/// Entradas, entregas e reprovações da empresa da sessão com alguma dessas datas entre
+/// `ano_inicio` e `ano_fim` (inclusive), sem paginação: o Início não pode contar só as
+/// últimas 50 OS. O mês no fuso da operação é calculado no frontend (`movimentoDaBancada`).
+#[tauri::command]
+#[instrument(skip_all, fields(ano_inicio = ano_inicio, ano_fim = ano_fim))]
+pub async fn listar_movimento_bancada(
+    ano_inicio: i32,
+    ano_fim: i32,
+    segundo_plano: Option<bool>,
+) -> Result<Vec<MovimentoBancadaRow>, String> {
+    let (inicio, fim) = faixa_de_anos_receita(ano_inicio, ano_fim)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    sqlx::query_as::<_, MovimentoBancadaRow>(
+        "SELECT COALESCE(status, '') AS status, data_entrada, data_saida, data_reprovacao
+           FROM equipamentos
+          WHERE empresa_id = $1
+            AND (LEFT(BTRIM(COALESCE(data_entrada, '')), 4) BETWEEN $2 AND $3
+              OR LEFT(BTRIM(COALESCE(data_saida, '')), 4) BETWEEN $2 AND $3
+              OR LEFT(BTRIM(COALESCE(data_reprovacao, '')), 4) BETWEEN $2 AND $3)",
+    )
+    .bind(empresa_id)
+    .bind(inicio)
+    .bind(fim)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao listar o movimento da bancada: {}", e);
+        super::operator_errors::mapear_erro_sql(e)
+    })
+}
+
+/// Quantas OS (as mais recentes) a lista resumida do cliente traz.
+const LIMITE_EQUIPAMENTOS_CLIENTE: i64 = 200;
+
 /// Lista os equipamentos de um cliente pelo `cliente_id`. Equipamentos antigos sem
 /// `cliente_id` entram apenas se o `cliente_nome` gravado for igual (sem diferenciar
-/// maiúsculas) a um dos `nomes` informados.
+/// maiúsculas) a um dos `nomes` informados. Sem `completo`, traz só as 200 OS mais
+/// recentes (painel de Clientes, seletor da Nova entrada); com `completo = true`, traz o
+/// histórico inteiro, para a tela que soma passagens e serviços por aparelho.
 #[tauri::command]
 #[instrument(skip_all, fields(cliente_id = cliente_id))]
 pub async fn listar_equipamentos_cliente(
     cliente_id: i32,
     nomes: Option<Vec<String>>,
+    completo: Option<bool>,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
-    listar_equipamentos_cliente_on_connection(&mut connection, empresa_id, cliente_id, nomes.unwrap_or_default()).await
+    let limite = if completo.unwrap_or(false) { None } else { Some(LIMITE_EQUIPAMENTOS_CLIENTE) };
+    listar_equipamentos_cliente_on_connection(&mut connection, empresa_id, cliente_id, nomes.unwrap_or_default(), limite).await
 }
 
-pub(crate) async fn listar_equipamentos_cliente_on_connection(
-    connection: &mut PgConnection,
+fn consulta_equipamentos_cliente(
     empresa_id: i32,
     cliente_id: i32,
     nomes: Vec<String>,
-) -> Result<Vec<EquipamentoRow>, String> {
+    limite: Option<i64>,
+) -> QueryBuilder<Postgres> {
     let nomes: Vec<String> = nomes
         .into_iter()
         .map(|nome| nome.trim().to_lowercase())
         .filter(|nome| !nome.is_empty())
         .collect();
-    let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(EQUIPAMENTO_SELECT);
+    let mut query_builder = QueryBuilder::<Postgres>::new(EQUIPAMENTO_SELECT);
     query_builder.push(" WHERE empresa_id = ");
     query_builder.push_bind(empresa_id);
     query_builder.push(" AND (cliente_id = ");
@@ -625,8 +756,22 @@ pub(crate) async fn listar_equipamentos_cliente_on_connection(
     query_builder.push(" OR (cliente_id IS NULL AND LOWER(BTRIM(COALESCE(cliente_nome, ''))) = ANY(");
     query_builder.push_bind(nomes);
     query_builder.push(")))");
-    query_builder.push(" ORDER BY id DESC LIMIT 200");
+    query_builder.push(" ORDER BY id DESC");
+    if let Some(limite) = limite {
+        query_builder.push(" LIMIT ");
+        query_builder.push_bind(limite);
+    }
+    query_builder
+}
 
+pub(crate) async fn listar_equipamentos_cliente_on_connection(
+    connection: &mut PgConnection,
+    empresa_id: i32,
+    cliente_id: i32,
+    nomes: Vec<String>,
+    limite: Option<i64>,
+) -> Result<Vec<EquipamentoRow>, String> {
+    let mut query_builder = consulta_equipamentos_cliente(empresa_id, cliente_id, nomes, limite);
     query_builder
         .build_query_as::<EquipamentoRow>()
         .fetch_all(&mut *connection)
@@ -645,29 +790,72 @@ pub async fn listar_equipamentos_paginados(
     busca: Option<String>,
     status: Option<String>,
     ordenacao: Option<String>,
+    tecnico: Option<String>,
+    segundo_plano: Option<bool>,
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
     let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
-    query_equipment_page_on_connection(
+    query_equipment_page_filtered(
         &mut connection,
         empresa_id,
         page,
         busca.as_deref(),
         status.as_deref(),
+        tecnico.as_deref(),
         ordenacao.as_deref(),
         UI_PAGE_SIZE,
     )
     .await
 }
 
+/// Quantos equipamentos cada status tem, com a mesma busca e técnico da lista (para os filtros).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn contar_equipamentos_por_status(
+    busca: Option<String>,
+    tecnico: Option<String>,
+    segundo_plano: Option<bool>,
+) -> Result<Vec<ContagemStatusRow>, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    let mut query = QueryBuilder::<Postgres>::new("SELECT COALESCE(status, '') AS status, COUNT(*) AS total FROM equipamentos");
+    add_equipment_filters(&mut query, empresa_id, busca.as_deref(), None, tecnico.as_deref());
+    query.push(" GROUP BY status");
+    query
+        .build_query_as::<ContagemStatusRow>()
+        .fetch_all(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+/// Nomes de técnico já gravados nas verificações (o filtro inclui quem não é mais perfil técnico).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn listar_nomes_tecnicos_verificacoes(
+    segundo_plano: Option<bool>,
+) -> Result<Vec<String>, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
+    sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT TRIM(v.tecnico_nome) FROM verificacoes v
+         JOIN equipamentos e ON e.id = v.equipamento_id
+         WHERE e.empresa_id = $1 AND NULLIF(TRIM(v.tecnico_nome), '') IS NOT NULL
+         ORDER BY 1",
+    )
+    .bind(empresa_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)
+}
+
 /// Buscar equipamento por ID.
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
-pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
+pub async fn buscar_equipamento(id: i32, segundo_plano: Option<bool>) -> Result<EquipamentoRow, String> {
     debug!("Buscando equipamento {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
 
     let query = format!("{} WHERE id = $1 AND empresa_id = $2", EQUIPAMENTO_SELECT);
     let row = sqlx::query_as::<_, EquipamentoRow>(sqlx::AssertSqlSafe(&*query))
@@ -690,9 +878,10 @@ pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
 #[instrument(skip_all, fields(equipamento_id = equipamento_id))]
 pub async fn listar_historico_equipamento(
     equipamento_id: i32,
+    segundo_plano: Option<bool>,
 ) -> Result<Vec<EquipamentoHistoricoEvento>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    let empresa_id = super::auth::empresa_da_sessao(&pool, segundo_plano).await?;
 
     let equipamento: Option<(
         Option<String>, String, Option<String>, Option<String>, Option<String>, Option<String>,
@@ -824,6 +1013,17 @@ pub async fn buscar_equipamentos_por_serial(serial: String) -> Result<Vec<Equipa
 }
 
 /// Criar novo equipamento.
+pub(super) fn prazo_de_aprovacao_valido(prazo: &str) -> Result<String, String> {
+    let prazo = prazo.trim();
+    let data = chrono::NaiveDate::parse_from_str(prazo, "%Y-%m-%d").ok();
+    if prazo.len() == 10 && !prazo.starts_with("0000")
+        && data.is_some_and(|data| data.format("%Y-%m-%d").to_string() == prazo)
+    {
+        return Ok(prazo.to_string());
+    }
+    Err("Prazo de aprovação inválido. Use AAAA-MM-DD.".to_string())
+}
+
 #[tauri::command]
 #[instrument(skip_all, fields(serial = %input.serial_number))]
 pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow, String> {
@@ -839,6 +1039,8 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     let status = required_text(&normalize_status_key(&input.status), "Status")?;
     reject_direct_approval(&status)?;
     let data_entrada = required_text(&input.data_entrada, "Data de entrada")?;
+    let prazo_aprovacao = optional_text(input.prazo_aprovacao.as_deref()).as_deref()
+        .map(prazo_de_aprovacao_valido).transpose()?;
 
     validate_non_negative_i32(input.paginas_impressas, "Páginas impressas")?;
     validate_non_negative_f64(input.preco_compra, "Preço de compra")?;
@@ -885,7 +1087,7 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     .bind(optional_text(input.cliente_nome.as_deref()))
     .bind(optional_text(input.cliente_telefone.as_deref()))
     .bind(optional_text(input.cliente_email.as_deref()))
-    .bind(optional_text(input.prazo_aprovacao.as_deref()))
+    .bind(prazo_aprovacao)
     .bind(input.valor_orcamento)
     .bind(empresa_id)
     .bind(responsavel.0)
@@ -911,7 +1113,7 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
         .await;
     }
     info!("Equipamento criado: id={}", id);
-    buscar_equipamento(id).await
+    buscar_equipamento(id, None).await
 }
 
 /// Atualizar equipamento por ID.
@@ -931,6 +1133,8 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     let status = required_text(&normalize_status_key(&input.status), "Status")?;
     reject_direct_approval(&status)?;
     let data_entrada = required_text(&input.data_entrada, "Data de entrada")?;
+    let prazo_aprovacao = optional_text(input.prazo_aprovacao.as_deref()).as_deref()
+        .map(prazo_de_aprovacao_valido).transpose()?;
 
     validate_non_negative_i32(input.paginas_impressas, "Páginas impressas")?;
     validate_non_negative_f64(input.preco_compra, "Preço de compra")?;
@@ -976,7 +1180,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     .bind(optional_text(input.cliente_nome.as_deref()))
     .bind(optional_text(input.cliente_telefone.as_deref()))
     .bind(optional_text(input.cliente_email.as_deref()))
-    .bind(optional_text(input.prazo_aprovacao.as_deref()))
+    .bind(prazo_aprovacao)
     .bind(input.valor_orcamento)
     .bind(responsavel.0)
     .bind(responsavel.1)
@@ -1009,7 +1213,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     }
 
     info!("Equipamento {} atualizado", id);
-    buscar_equipamento(id).await
+    buscar_equipamento(id, None).await
 }
 
 /// Define o responsável de um equipamento a partir de um contato ativo do cliente da OS.
@@ -1083,7 +1287,7 @@ pub async fn definir_responsavel_equipamento(
     .await;
 
     info!("Responsável do equipamento {} definido", equipamento_id);
-    buscar_equipamento(equipamento_id).await
+    buscar_equipamento(equipamento_id, None).await
 }
 
 /// Deletar equipamento por ID.
@@ -1139,11 +1343,8 @@ pub async fn atualizar_status_equipamento(
     let concurrency_token = required_concurrency_token(expected_updated_em.as_deref(), "equipamento")?;
     let normalized_status = normalize_status_key(&novo_status);
     reject_direct_approval(&normalized_status)?;
-    let prazo_aprovacao_value = prazo_aprovacao
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_string());
+    let prazo_aprovacao_value = optional_text(prazo_aprovacao.as_deref()).as_deref()
+        .map(prazo_de_aprovacao_valido).transpose()?;
     let motivo_correcao_value = optional_text(motivo_correcao.as_deref());
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
@@ -1249,7 +1450,7 @@ pub async fn atualizar_status_equipamento(
     .await;
 
     info!("Status do equipamento {} atualizado para {}", id, normalized_status);
-    buscar_equipamento(id).await
+    buscar_equipamento(id, None).await
 }
 
 /// Aprova um orçamento atualizando pagamento, status e data de aprovação na
@@ -1499,6 +1700,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn faixa_de_anos_do_faturado_e_texto_de_quatro_digitos() {
+        assert_eq!(faixa_de_anos_receita(2024, 2027), Ok(("2024".to_string(), "2027".to_string())));
+        assert!(faixa_de_anos_receita(2027, 2024).is_err());
+        assert!(faixa_de_anos_receita(99, 2024).is_err());
+        assert!(faixa_de_anos_receita(2024, 10_000).is_err());
+    }
+
+    #[test]
+    fn historico_completo_do_cliente_nao_tem_limite() {
+        let resumida = consulta_equipamentos_cliente(1, 7, vec!["Oficina".into()], Some(LIMITE_EQUIPAMENTOS_CLIENTE));
+        let sql = resumida.sql().as_str().to_string();
+        assert!(sql.contains("WHERE empresa_id = $1"), "{sql}");
+        assert!(sql.trim_end().ends_with("ORDER BY id DESC LIMIT $4"), "{sql}");
+
+        let completa = consulta_equipamentos_cliente(1, 7, vec!["Oficina".into()], None);
+        let sql = completa.sql().as_str().to_string();
+        assert!(sql.contains("WHERE empresa_id = $1"), "{sql}");
+        assert!(sql.trim_end().ends_with("ORDER BY id DESC"), "{sql}");
+    }
+
+    #[test]
+    fn filtro_aceita_um_ou_varios_status() {
+        assert!(status_filtrados(None).is_empty());
+        assert!(status_filtrados(Some("TODOS")).is_empty());
+        assert_eq!(status_filtrados(Some("Recebido")), vec!["RECEBIDO"]);
+        assert_eq!(
+            status_filtrados(Some("EM_VERIFICACAO, RECEBIDO,,RECEBIDO")),
+            vec!["EM_VERIFICACAO", "RECEBIDO"]
+        );
+    }
+
+    #[test]
     fn motivo_divergencia_vai_para_auditoria_sem_quebrar_os_detalhes() {
         let detalhes = format!("status=APROVADO; motivo_divergencia_cliente={}", motivo_divergencia_auditoria(Some("  Cliente ligou;\n confirmou  ")));
         assert_eq!(audit_detail(&detalhes, "motivo_divergencia_cliente").as_deref(), Some("Cliente ligou confirmou"));
@@ -1650,5 +1883,14 @@ mod tests {
         assert!(equipment_order_clause(None).contains("ultima_atividade_cliente_em"));
         assert_eq!(equipment_order_clause(Some("CADASTRO_RECENTE")), " ORDER BY criado_em DESC NULLS LAST, id DESC");
         assert_eq!(equipment_order_clause(Some("id; DROP TABLE equipamentos")), equipment_order_clause(None));
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn prazo_exige_data_real_no_formato_iso() {
+    assert_eq!(prazo_de_aprovacao_valido(" 2028-02-29 ").unwrap(), "2028-02-29");
+    for invalido in ["2026-13-45", "2026-02-29", "2026-2-09", "0000-01-01", "2026-11-22T00:00:00"] {
+        assert!(prazo_de_aprovacao_valido(invalido).is_err(), "{invalido}");
     }
 }

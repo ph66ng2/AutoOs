@@ -283,7 +283,7 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<R
     } else {
         super::verificacoes::PortalAjusteInfo::nenhuma()
     };
-    let equipamento = super::equipamentos::buscar_equipamento(input.equipamento_id).await?;
+    let equipamento = super::equipamentos::buscar_equipamento(input.equipamento_id, None).await?;
     Ok(ResultadoCorrecaoDecisao { equipamento, portal })
 }
 

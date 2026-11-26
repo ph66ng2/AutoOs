@@ -1,14 +1,12 @@
+import { Selo } from "@/components/detalhe/Selo";
 import { STATUS_LABELS, STATUS_COLORS, type StatusEquipamento } from "@/types";
 import { STATUS_BADGE_LABELS_PADRAO } from "./equipamentos-page-constants";
 
-/** Badge colorido com o label do status do equipamento */
-export function StatusBadge({ status }: { status: string }) {
+/** Selo do status do equipamento: o mesmo Selo do DS da página da venda (decisão 25). */
+export function StatusBadge({ status, completo = false }: { status: string; completo?: boolean }) {
   const statusKey = status as StatusEquipamento;
-  const label = STATUS_BADGE_LABELS_PADRAO[statusKey] || STATUS_LABELS[statusKey] || status;
-  const color = STATUS_COLORS[status as StatusEquipamento] || "bg-gray-100 text-gray-800";
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
-      {label}
-    </span>
-  );
+  // `completo`: nome inteiro (onde há espaço, como o título de Detalhes da OS); senão o curto dos selos.
+  const label = (completo ? STATUS_LABELS[statusKey] : STATUS_BADGE_LABELS_PADRAO[statusKey]) || STATUS_LABELS[statusKey] || status;
+  const color = STATUS_COLORS[statusKey] || STATUS_COLORS.RECEBIDO;
+  return <Selo rotulo={label} classes={color} />;
 }

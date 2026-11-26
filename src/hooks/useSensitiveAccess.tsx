@@ -16,6 +16,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useBootUi } from "@/components/BootUi";
 import { erroPinNovo } from "@/lib/pin-rules";
 import { ProfileSessionDialog, type FirstAccessOrigin } from "@/components/ProfileSessionDialog";
+import { definirTecnicosDaEmpresa } from "@/lib/tecnicos";
+import { definirCopiaGerencia } from "@/lib/copia-gerencia";
+import { assinarMudancas } from "@/lib/ao-vivo";
+import { db } from "@/lib/db";
 import { FirstAccessBridge } from "@/components/perfil/FirstAccessBridge";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { PrimeiroAcessoWizard } from "@/components/perfil/PrimeiroAcessoWizard";
@@ -23,7 +27,10 @@ import { toast } from "sonner";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { isTemporaryDatabaseAccessMessage, sensitiveAccessErrorMessage } from "@/lib/sensitive-access-error";
 import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
+import { useRecarregarAoDesbloquear } from "@/hooks/useRecarregarAoDesbloquear";
 import { requestTour } from "@/lib/tour-request";
+import { movimentoReduzido } from "@/lib/preferencias-computador";
+import { CarregandoSkeleton, SkeletonPagina } from "@/components/ui/skeleton";
 import {
   SENSITIVE_PERMISSION_LABELS,
   type SensitiveAccessStatus,
@@ -137,6 +144,36 @@ const KEYRING_BLOCKED_MESSAGE = "O cofre de senhas do sistema está bloqueado ou
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const { bootAnimationComplete } = useBootUi();
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
+  // Avisos ao vivo de quando a sessão estava bloqueada se perderam: desbloqueou, todas recarregam.
+  useRecarregarAoDesbloquear(status);
+  // Técnicos e e-mails profissionais (lib/tecnicos), que e-mail e PDF consultam por nome, e a
+  // cópia da gerência (lib/copia-gerencia): só da empresa da sessão, pelo backend, nunca da lista
+  // geral de perfis (outras empresas, desativados). Ao trocar de perfil (e de empresa), bloquear
+  // ou desbloquear, o registro anterior é apagado antes de qualquer envio; desbloqueada, recarrega
+  // também quando a equipe muda aqui, ao voltar o foco da janela ou ao reconectar (ao-vivo), para
+  // a marcação "faz atendimento técnico" feita em outro computador chegar sem sair da tela.
+  const versaoDaEquipe = (status?.profiles ?? [])
+    .map((p) => [p.id, p.nome, p.ativo, p.atende_tecnico, p.email_profissional].join("|"))
+    .join(";");
+  const [pedidoDaEquipe, setPedidoDaEquipe] = useState(0);
+  useEffect(() => assinarMudancas(["security_profiles"], () => setPedidoDaEquipe((n) => n + 1)), []);
+  useEffect(() => {
+    definirTecnicosDaEmpresa([]);
+    definirCopiaGerencia(null);
+  }, [status?.active_profile_id, status?.unlocked]);
+  useEffect(() => {
+    if (!status?.active_profile_id || !status.unlocked) return;
+    let vivo = true;
+    Promise.resolve()
+      .then(() => db.listarTecnicosDaEmpresa())
+      .then((lista) => { if (vivo) definirTecnicosDaEmpresa(lista); })
+      .catch(() => { if (vivo) definirTecnicosDaEmpresa([]); });
+    Promise.resolve()
+      .then(() => db.copiaGerenciaDaEmpresa())
+      .then((valor) => { if (vivo) definirCopiaGerencia(valor); })
+      .catch(() => { if (vivo) definirCopiaGerencia(null); });
+    return () => { vivo = false; };
+  }, [status?.active_profile_id, status?.unlocked, versaoDaEquipe, pedidoDaEquipe]);
   const [loading, setLoading] = useState(true);
   const [connectionUnavailable, setConnectionUnavailable] = useState(false);
   const refreshFailuresRef = useRef(0);
@@ -215,7 +252,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         startupPromptedRef.current = true;
         setDialogMode("startup");
         setPromptOptions({
-          title: "Quem está usando o AutoOS?",
+          title: "Quem está usando?",
           description: "Escolha seu perfil e informe o PIN para entrar.",
         });
         setDialogMandatory(true);
@@ -268,7 +305,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       startupPromptedRef.current = true;
       setDialogMode("startup");
       setPromptOptions({
-        title: "Quem está usando o AutoOS?",
+        title: "Quem está usando?",
         description: "Escolha seu perfil e informe o PIN para entrar.",
       });
       setDialogMandatory(true);
@@ -284,8 +321,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const activeProfileForTheme = status?.unlocked
     ? status.profiles.find((profile) => profile.id === status.active_profile_id)
     : undefined;
-  const profileTheme: "light" | "dark" | null = activeProfileForTheme
-    ? (activeProfileForTheme.tema === "dark" ? "dark" : "light")
+  const profileTheme: "light" | "dark" | "system" | null = activeProfileForTheme
+    ? (activeProfileForTheme.tema === "dark" || activeProfileForTheme.tema === "system" ? activeProfileForTheme.tema : "light")
     : null;
   useEffect(() => {
     if (profileTheme) setTheme(profileTheme);
@@ -351,7 +388,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const closeDialogRef = useRef(closeDialog);
   closeDialogRef.current = closeDialog;
   const acceptPinAndClose = useCallback(() => {
-    const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduced = movimentoReduzido();
     if (reduced) {
       closeDialogRef.current(true);
       return;
@@ -768,9 +805,7 @@ export function SensitiveRoute({
 
   if (loading || !status) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
+      <CarregandoSkeleton rotulo="Carregando página"><SkeletonPagina /></CarregandoSkeleton>
     );
   }
 
@@ -783,7 +818,7 @@ export function SensitiveRoute({
         <Card className="max-w-lg w-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Icon className="h-5 w-5 text-amber-600" />
+              <Icon className="h-5 w-5 text-status-wait" />
               {title || "Configurações protegidas"}
             </CardTitle>
             <CardDescription>
@@ -791,7 +826,7 @@ export function SensitiveRoute({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="rounded-lg border border-status-wait/30 bg-status-wait-bg p-4 text-sm text-status-wait">
               SMTP, exclusões e alterações críticas ficam disponíveis apenas durante a sessão sensível desbloqueada.
             </div>
             <Button
@@ -818,7 +853,7 @@ export function SensitiveRoute({
         <Card className="max-w-lg w-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ShieldAlert className="h-5 w-5 text-amber-600" />
+              <ShieldAlert className="h-5 w-5 text-status-wait" />
               Acesso restrito
             </CardTitle>
             <CardDescription>
@@ -838,7 +873,7 @@ export function SensitiveAccessBadge() {
 
   if (connectionUnavailable) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
+      <span className="inline-flex items-center gap-1 rounded-md border border-status-wait/30 bg-status-wait-bg px-2.5 py-1 text-xs font-medium text-status-wait">
         <ShieldAlert className="h-3.5 w-3.5" />
         Banco temporariamente indisponível
       </span>
@@ -847,7 +882,7 @@ export function SensitiveAccessBadge() {
 
   if (!status || !status.active_profile_id) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+      <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
         <ShieldAlert className="h-3.5 w-3.5" />
         {loading ? "Carregando perfis..." : status ? "Nenhum perfil configurado" : "Não foi possível verificar os perfis"}
       </span>
@@ -858,7 +893,7 @@ export function SensitiveAccessBadge() {
 
   if (!status.pin_configured) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
+      <span className="inline-flex items-center gap-1 rounded-md border border-status-wait/30 bg-status-wait-bg px-2.5 py-1 text-xs font-medium text-status-wait">
         <ShieldOff className="h-3.5 w-3.5" />
         {profileName}: PIN não configurado neste PC
       </span>
@@ -866,12 +901,12 @@ export function SensitiveAccessBadge() {
   }
 
   return status.unlocked ? (
-    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+    <span className="inline-flex items-center gap-1 rounded-md border border-status-ok/30 bg-status-ok-bg px-2.5 py-1 text-xs font-medium text-status-ok">
       <ShieldCheck className="h-3.5 w-3.5" />
       {profileName}: acesso ativo
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+    <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
       <ShieldAlert className="h-3.5 w-3.5" />
       {profileName}: bloqueado
     </span>

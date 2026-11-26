@@ -20,7 +20,10 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { useCallback, useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useLocation } from "react-router-dom";
+import { useForm, useWatch } from "react-hook-form";
+import { EscopoAvisoAoSair, useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+import { useEscSai } from "@/hooks/useEscSai";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { db } from "@/lib/db";
@@ -29,15 +32,22 @@ import { WhatsappConfigService } from "@/lib/whatsapp-config";
 import { PhotoTunnelConfigService } from "@/lib/photo-tunnel-config";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { ConfiguracoesTabGeral } from "@/pages/configuracoes/ConfiguracoesTabGeral";
 import { ConfiguracoesTabInfra } from "@/pages/configuracoes/ConfiguracoesTabInfra";
 import { ConfiguracoesTabIntegracoes } from "@/pages/configuracoes/ConfiguracoesTabIntegracoes";
 import { ConfiguracoesTabObservabilidade } from "@/pages/configuracoes/ConfiguracoesTabObservabilidade";
+import { ConfiguracoesTabPortal } from "@/pages/configuracoes/ConfiguracoesTabPortal";
 import { ConfiguracoesTabSeguranca } from "@/pages/configuracoes/ConfiguracoesTabSeguranca";
 import { SMTP_DEFAULTS, type SmtpFormValues, type WhatsappFormValues } from "@/pages/configuracoes/configuracoes-shared";
 import { detectRestoreMode } from "@/pages/configuracoes/detect-restore-mode";
-import { abasConfiguracoes } from "@/pages/configuracoes/abas";
+import { ABAS_CONFIGURACOES, abasConfiguracoes, type AbaConfiguracoesId } from "@/pages/configuracoes/abas";
+import { PageHeader } from "@/components/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Lock } from "lucide-react";
+import { CarregandoSkeleton, SkeletonFormulario, SkeletonPagina } from "@/components/ui/skeleton";
 import {
   SENSITIVE_PERMISSIONS,
+  type SensitivePermission,
   type DatabaseSchemaStatus,
   type LocalSupportBundleResult,
   type LocalSupportStatus,
@@ -49,10 +59,11 @@ import {
 } from "@/types";
 
 export default function Configuracoes() {
-  const { status: accessStatus, refreshStatus, hasPermission, ensureSensitiveAccess } = useSensitiveAccess();
+  const { status: accessStatus, refreshStatus, hasPermission, ensureSensitiveAccess, connectionUnavailable } = useSensitiveAccess();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasPassword, setHasPassword] = useState(false);
+  const [smtpSalvo, setSmtpSalvo] = useState(SMTP_DEFAULTS);
   const [status, setStatus] = useState<string | null>(null);
   const [smtpEditUnlocked, setSmtpEditUnlocked] = useState(false);
   const [whatsappLoading, setWhatsappLoading] = useState(true);
@@ -84,6 +95,9 @@ export default function Configuracoes() {
     admin: canManageProfiles,
   });
   const [tab, setTab] = useState<string>(abas.inicial);
+  // Sessão bloqueada: o backend devolve permissões vazias, então quem tem acesso às abas da
+  // empresa precisa de um jeito de pedir o PIN daqui (a rota não pede mais, a Geral é de todos).
+  const podeDesbloquear = Boolean(accessStatus?.pin_configured && !accessStatus.unlocked);
   const [auditEvents, setAuditEvents] = useState<SecurityAuditEvent[]>([]);
   const [profilesCatalog, setProfilesCatalog] = useState<SecurityProfile[]>([]);
   const [securityBusy, setSecurityBusy] = useState(false);
@@ -140,7 +154,7 @@ export default function Configuracoes() {
     return matchesSearch && matchesOutcome && matchesProfile;
   });
 
-  const { register, handleSubmit, setValue, control } = useForm<SmtpFormValues>({
+  const { register, handleSubmit, reset: resetSmtp, control } = useForm<SmtpFormValues>({
     defaultValues: {
       ...SMTP_DEFAULTS,
       password: "",
@@ -151,6 +165,8 @@ export default function Configuracoes() {
     register: registerWhatsapp,
     handleSubmit: handleSubmitWhatsapp,
     setValue: setWhatsappValue,
+    watch: watchWhatsapp,
+    reset: resetWhatsapp,
   } = useForm<WhatsappFormValues>({
     defaultValues: {
       provider: "EVOLUTION",
@@ -158,6 +174,40 @@ export default function Configuracoes() {
       token: "",
     },
   });
+  const [whatsappSalvo, setWhatsappSalvo] = useState({ provider: "EVOLUTION", api_url: "" });
+
+  // O que foi digitado nos cartões de Integrações e ainda não foi salvo. SMTP só conta com a
+  // edição liberada (Editar recarrega o salvo); WhatsApp e túnel ficam guardados até salvar.
+  const smtpAtual = useWatch({ control });
+  const smtpSujo = smtpEditUnlocked && (
+    (["host", "username", "from_name", "from_email"] as const).some((campo) => (smtpAtual[campo] ?? "").trim() !== smtpSalvo[campo].trim())
+    || Number(smtpAtual.port) !== Number(smtpSalvo.port)
+    || Boolean(smtpAtual.use_tls) !== smtpSalvo.use_tls
+    || (smtpAtual.password ?? "").trim() !== ""
+  );
+  const whatsappSujo = (watchWhatsapp("api_url") ?? "").trim() !== whatsappSalvo.api_url.trim()
+    || (watchWhatsapp("token") ?? "").trim() !== "";
+  const fotosSujo = photoTunnelToken.trim() !== "";
+  // Um só aviso para a página: os cartões com "Salvar" próprio (mensagens prontas, Slack, contato
+  // do portal, garantia) informam o seu pelo escopo. Menu, Ctrl+K, voltar e trocar de aba perguntam.
+  const avisoAoSair = useAvisoAoSair(smtpSujo || whatsappSujo || fotosSujo);
+  // Sair da aba descarta o que não foi salvo nas Integrações (os cartões de dentro desmontam e
+  // perdem o seu; a aba recomeça com as edições fechadas): ao voltar, tudo mostra o que está salvo.
+  const [integracoesDescartadas, setIntegracoesDescartadas] = useState(0);
+  function trocarDeAba(proxima: string) {
+    avisoAoSair.sairComAviso(() => {
+      setIntegracoesDescartadas((vezes) => vezes + 1);
+      resetSmtp({ ...smtpSalvo, password: "" });
+      setSmtpEditUnlocked(false);
+      resetWhatsapp({ ...whatsappSalvo, token: "" });
+      setPhotoTunnelToken("");
+      setTab(proxima);
+      setSecurityMessage(null);
+    });
+  }
+  // Esc com algum cartão pela metade sai dele como trocar de aba: pergunta e, em "Sair sem
+  // salvar", descarta tudo e volta à aba inicial. Sem nada pela metade, o Esc não faz nada.
+  useEscSai(avisoAoSair.algoNaoSalvo, () => trocarDeAba(abas.inicial));
 
   async function loadAuditEvents() {
     if (!canManageProfiles) {
@@ -260,31 +310,14 @@ export default function Configuracoes() {
 
       try {
         const config = await SmtpConfigService.buscar();
-        if (config) {
-          setValue("host", config.host);
-          setValue("port", config.port);
-          setValue("username", config.username);
-          setValue("from_name", config.from_name);
-          setValue("from_email", config.from_email);
-          setValue("use_tls", config.use_tls);
-          setHasPassword(!!config.has_password);
-        } else {
-          setValue("host", SMTP_DEFAULTS.host);
-          setValue("port", SMTP_DEFAULTS.port);
-          setValue("username", SMTP_DEFAULTS.username);
-          setValue("from_name", SMTP_DEFAULTS.from_name);
-          setValue("from_email", SMTP_DEFAULTS.from_email);
-          setValue("use_tls", SMTP_DEFAULTS.use_tls);
-          setHasPassword(false);
-        }
+        const valores = config ?? SMTP_DEFAULTS;
+        setSmtpSalvo(valores);
+        resetSmtp({ ...valores, password: "" });
+        setHasPassword(!!config?.has_password);
       } catch (error) {
         console.error("Erro ao carregar config SMTP:", error);
-        setValue("host", SMTP_DEFAULTS.host);
-        setValue("port", SMTP_DEFAULTS.port);
-        setValue("username", SMTP_DEFAULTS.username);
-        setValue("from_name", SMTP_DEFAULTS.from_name);
-        setValue("from_email", SMTP_DEFAULTS.from_email);
-        setValue("use_tls", SMTP_DEFAULTS.use_tls);
+        setSmtpSalvo(SMTP_DEFAULTS);
+        resetSmtp({ ...SMTP_DEFAULTS, password: "" });
         setHasPassword(false);
       } finally {
         setLoading(false);
@@ -292,7 +325,7 @@ export default function Configuracoes() {
     }
 
     void loadConfig();
-  }, [canConfigureSmtp, setValue, accessStatus?.active_profile_id]);
+  }, [canConfigureSmtp, resetSmtp, accessStatus?.active_profile_id]);
 
   useEffect(() => {
     async function loadWhatsappConfig() {
@@ -308,6 +341,7 @@ export default function Configuracoes() {
         if (config) {
           setWhatsappValue("provider", config.provider);
           setWhatsappValue("api_url", config.api_url);
+          setWhatsappSalvo({ provider: config.provider, api_url: config.api_url });
           setWhatsappHasToken(!!config.has_token);
         }
       } catch (error) {
@@ -347,13 +381,21 @@ export default function Configuracoes() {
     void loadPhotoTunnelConfig();
   }, [canConfigurePhotoTunnel, accessStatus?.active_profile_id]);
 
+  // Aba pedida no endereço (/configuracoes?aba=portal), se o perfil puder vê-la.
+  const location = useLocation();
+  const abaPedida = new URLSearchParams(location.search).get("aba") as AbaConfiguracoesId | null;
+  const abaPermitida = (aba: AbaConfiguracoesId | null) =>
+    aba !== null && ABAS_CONFIGURACOES.includes(aba) &&
+    (aba === "geral" || (aba === "smtp" ? abas.integracoes : aba === "portal" ? abas.portal : canManageProfiles));
+
   useEffect(() => {
-    if (!abas.integracoes) {
-      setTab("infra");
-    } else if (!canManageProfiles) {
-      setTab("smtp");
+    if (abaPermitida(abaPedida)) {
+      setTab(abaPedida!);
+      return;
     }
-  }, [abas.integracoes, canManageProfiles]);
+    setTab((atual) => (abaPermitida(atual as AbaConfiguracoesId) ? atual : abas.inicial));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abaPedida, abas.integracoes, abas.portal, abas.inicial, canManageProfiles]);
 
   useEffect(() => {
     if (!accessStatus?.profiles.length) {
@@ -419,19 +461,22 @@ export default function Configuracoes() {
     setSaving(true);
     setStatus(null);
     try {
-      const payload: SmtpConfigInput = {
+      const valores = {
         host: values.host.trim(),
         port: Number(values.port),
         username: values.username.trim(),
         from_name: values.from_name.trim(),
         from_email: values.from_email.trim(),
         use_tls: values.use_tls,
-        password: values.password.trim() || undefined,
       };
+      const payload: SmtpConfigInput = { ...valores, password: values.password.trim() || undefined };
 
       await SmtpConfigService.salvar(payload);
       setHasPassword(!!payload.password || hasPassword);
+      setSmtpSalvo(valores);
+      resetSmtp({ ...valores, password: "" });
       setStatus("Configuração SMTP salva com sucesso.");
+      return true;
     } catch (error: any) {
       const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar configuração SMTP.");
       setStatus(msg);
@@ -458,6 +503,7 @@ export default function Configuracoes() {
       return;
     }
 
+    resetSmtp({ ...smtpSalvo, password: "" });
     setSmtpEditUnlocked(true);
     setStatus("Edição SMTP liberada para esta sessão.");
   }
@@ -485,6 +531,8 @@ export default function Configuracoes() {
 
       await WhatsappConfigService.salvar(payload);
       setWhatsappHasToken(!!payload.token || whatsappHasToken);
+      setWhatsappSalvo({ provider: payload.provider, api_url: payload.api_url });
+      resetWhatsapp({ provider: payload.provider, api_url: payload.api_url, token: "" });
       setWhatsappStatus("Configuração do WhatsApp salva com sucesso.");
     } catch (error: any) {
       const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar configuração do WhatsApp.");
@@ -707,28 +755,65 @@ export default function Configuracoes() {
 
   if ((canConfigureSmtp && loading) || (canConfigureWhatsapp && whatsappLoading) || (canConfigurePhotoTunnel && photoTunnelLoading)) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
+      <CarregandoSkeleton rotulo="Carregando configurações">
+        <SkeletonPagina><div className="space-y-4 rounded-xl border p-5"><SkeletonFormulario campos={6} /></div></SkeletonPagina>
+      </CarregandoSkeleton>
     );
   }
 
   return (
+    <EscopoAvisoAoSair aviso={avisoAoSair}>
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
-        <p className="text-muted-foreground">Defina parâmetros do sistema e integrações.</p>
-      </div>
+      <PageHeader titulo="Configurações" />
+      {avisoAoSair.dialogo}
 
-      <Tabs value={tab} onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }} className="space-y-4">
-        <TabsList>
-          {abas.integracoes && <TabsTrigger value="smtp">Integrações</TabsTrigger>}
-          {canManageProfiles && <TabsTrigger value="infra">Banco</TabsTrigger>}
-          {canManageProfiles && <TabsTrigger value="seguranca">Segurança</TabsTrigger>}
-          {canManageProfiles && <TabsTrigger value="observabilidade">Suporte e Logs</TabsTrigger>}
+      <Tabs
+        value={tab}
+        onValueChange={trocarDeAba}
+        orientation="vertical"
+        className="grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-2xl border bg-card lg:grid-cols-[260px_minmax(0,1fr)]"
+      >
+        <TabsList className="flex h-auto flex-row items-stretch justify-start gap-1 overflow-x-auto rounded-none border-b bg-muted/40 p-3 lg:flex-col lg:border-b-0 lg:border-r">
+          {([
+            ["geral", true],
+            ["smtp", abas.integracoes],
+            ["portal", abas.portal],
+            ["infra", canManageProfiles],
+            ["seguranca", canManageProfiles],
+            ["observabilidade", canManageProfiles],
+          ] as const)
+            .filter(([, visivel]) => visivel)
+            .map(([valor]) => (
+              <TabsTrigger
+                key={valor}
+                value={valor}
+                className="flex min-h-11 shrink-0 items-center justify-start whitespace-nowrap rounded-xl border border-transparent px-3 py-2 text-left font-semibold text-foreground shadow-none data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:shadow-sm lg:w-full lg:data-[state=active]:border-l-2 lg:data-[state=active]:border-l-primary"
+              >
+                <span className="text-sm">{ROTULO_ABA[valor]}</span>
+              </TabsTrigger>
+            ))}
+          {podeDesbloquear && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 lg:mt-2 lg:w-full"
+              onClick={() => void ensureSensitiveAccess({
+                title: "Configurações da empresa",
+                description: "Informe o PIN para ver integrações, banco e segurança.",
+                anyPermission: CONFIGURACOES_DA_EMPRESA,
+              })}
+            >
+              <Lock className="mr-2 h-4 w-4" aria-hidden="true" />
+              Desbloquear as da empresa
+            </Button>
+          )}
         </TabsList>
 
+        <ConfiguracoesTabGeral conectado={!connectionUnavailable} />
+
         <ConfiguracoesTabIntegracoes
+          key={integracoesDescartadas}
           canConfigureSmtp={canConfigureSmtp}
           canConfigureWhatsapp={canConfigureWhatsapp}
           register={register}
@@ -747,7 +832,6 @@ export default function Configuracoes() {
           whatsappStatus={whatsappStatus}
           whatsappHasToken={whatsappHasToken}
           canConfigurePhotoTunnel={canConfigurePhotoTunnel}
-          canManagePortal={canManagePortal}
           photoTunnelToken={photoTunnelToken}
           onPhotoTunnelTokenChange={setPhotoTunnelToken}
           onSubmitPhotoTunnel={onSubmitPhotoTunnel}
@@ -756,7 +840,11 @@ export default function Configuracoes() {
           photoTunnelHasToken={photoTunnelHasToken}
           photoTunnelEnvOverride={photoTunnelEnvOverride}
           photoTunnelPublicHost={photoTunnelPublicHost}
+          resumoSmtp={smtpSalvo}
+          whatsappUrl={watchWhatsapp("api_url")}
         />
+
+        {abas.portal && <ConfiguracoesTabPortal />}
 
         {canManageProfiles && (
           <ConfiguracoesTabInfra
@@ -830,5 +918,23 @@ export default function Configuracoes() {
 
       </Tabs>
     </div>
+    </EscopoAvisoAoSair>
   );
 }
+
+/** Itens da navegação lateral de Configurações: nome e o que tem dentro. */
+/** Mesmas permissões que abriam a rota antes da aba Geral. */
+const CONFIGURACOES_DA_EMPRESA: SensitivePermission[] = [
+  SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+  SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS,
+  SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+];
+
+const ROTULO_ABA: Record<AbaConfiguracoesId, string> = {
+  geral: "Geral",
+  smtp: "Integrações",
+  portal: "Portal do Cliente",
+  infra: "Banco de dados",
+  seguranca: "Segurança",
+  observabilidade: "Suporte e logs",
+};

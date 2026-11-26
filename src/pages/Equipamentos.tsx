@@ -24,7 +24,7 @@
  * ║  USADO POR: App.tsx (rota /equipamentos)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -36,12 +36,11 @@ import {
   X,
   Edit,
   Trash2,
-  Filter,
   RefreshCw,
   RotateCcw,
+  Mail,
   MessageSquare,
   ClipboardCheck,
-  Users,
   Play,
   CheckCircle,
   XCircle,
@@ -49,13 +48,13 @@ import {
   PackageCheck,
   History,
   Send,
-  FileText,
   FileDown,
   ImagePlus,
   Eye,
   Download,
   Smartphone,
   DollarSign,
+  ChevronLeft,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -63,7 +62,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +71,7 @@ import {
   DialogTitle,
   DialogFooter,
   DialogClose,
+  DialogBody,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -91,14 +91,14 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { equipamentoSchema, type EquipamentoFormData } from "@/lib/validations";
 import { useEquipamentos } from "@/hooks/useEquipamentos";
-import { useStatusEquipamento } from "@/hooks/useStatusEquipamento";
+import { useStatusEquipamento, type ResultadoFinalizarVerificacao } from "@/hooks/useStatusEquipamento";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
 import { PdfService, PRAZO_EXECUCAO_PADRAO, type PdfArtifact } from "@/lib/pdf-service";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { db } from "@/lib/db";
-import { formatDatePtBr, formatDateTimeSalvador, todayLocalIsoDate } from "@/lib/date-utils";
+import { formatDatePtBr, todayLocalIsoDate } from "@/lib/date-utils";
 import {
   STATUS_LABELS,
   SENSITIVE_PERMISSIONS,
@@ -129,6 +129,7 @@ import {
 } from "@/components/equipamentos/VerificacaoTecnica";
 import { HistoricoComunicacoes } from "@/components/equipamentos/HistoricoComunicacoes";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
+import { ChecklistVerificacao } from "@/components/equipamentos/ChecklistVerificacao";
 import { ContatoResponsavelSelector } from "@/components/equipamentos/ContatoResponsavelSelector";
 import { EnvioManualOrcamentoDialog } from "@/components/equipamentos/EnvioManualOrcamentoDialog";
 import { QuemRecebeOrcamentoDialog } from "@/components/equipamentos/QuemRecebeOrcamentoDialog";
@@ -144,6 +145,7 @@ import { carregarProdutosOrcamento, LABEL_CONFIRMAR_OS_GARANTIA, MENSAGEM_CONFIR
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
+  imagensDaAreaDeTransferencia,
   bytesParaDataUrl,
   imagemPersistidaParaDraft,
   imagensPersistidasIguais,
@@ -152,18 +154,27 @@ import {
   type EquipamentoImagemDraft,
 } from "@/lib/equipamento-imagem-utils";
 import {
-  EMAIL_POR_TECNICO,
   MARCA_EQUIPAMENTO_OPTIONS,
   STATUS_COM_ORCAMENTO,
-  STATUS_OPTIONS,
-  TECNICOS_DISPONIVEIS,
+  FILTRO_STATUS_OUTROS,
+  FILTRO_STATUS_PRINCIPAIS,
   TIPO_OPTIONS,
 } from "@/pages/equipamentos/equipamentos-page-constants";
 import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
 import { AnteriorEmAtendimentoAviso } from "@/components/equipamentos/AnteriorEmAtendimentoAviso";
+import { AvisoSerieRepetida } from "@/components/equipamentos/AvisoSerieRepetida";
+import { WhatsappComMensagem } from "@/components/whatsapp/WhatsappComMensagem";
+import { telefoneParaWhatsapp } from "@/lib/contato-cliente";
+import { useGarantiaServicos } from "@/hooks/useGarantiaServicos";
 import {
+  atendimentoEncerrado,
+  linhaRetornoGarantia,
   MENSAGEM_DADOS_PREENCHIDOS,
+  preencherVaziosComAnterior,
+  retornoNaGarantia,
+  rotuloStatusEquipamento,
+  ultimaPassagem,
   usarEquipamentoAnteriorNoCadastro,
 } from "@/pages/equipamentos/equipamento-anterior";
 import {
@@ -181,6 +192,9 @@ import {
   totalOrcamentoAjusteValido,
   totalOrcamentoAprovacaoValido,
   whatsappNaoConfigurado,
+  entradaTemAlgo,
+  destinoNovaEntrada,
+  emailValido,
 } from "@/pages/equipamentos/equipamentos-page-utils";
 import { DateIsoInput } from "@/components/ui/date-iso-input";
 import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
@@ -189,6 +203,7 @@ import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { ListaIndisponivel } from "@/components/ui/lista-indisponivel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
 import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
@@ -206,6 +221,32 @@ import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFi
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
 import { totalPages } from "@/lib/pagination";
+import { acoesPorStatus, type AcaoStatus } from "@/lib/acoes-por-status";
+import { PageHeader } from "@/components/PageHeader";
+import { useLarguraMinima } from "@/hooks/useLarguraMinima";
+import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
+import { FiltroDeStatus, PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
+import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
+import { useNomesFiltroTecnico, useTecnicos } from "@/hooks/useTecnicos";
+import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
+import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
+import { useEscSai } from "@/hooks/useEscSai";
+import { TeclaNoBotao } from "@/components/ui/tecla-no-botao";
+import { classeDestaque } from "@/lib/ao-vivo";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
+import { cn } from "@/lib/utils";
+import { quandoRascunho, useRascunho, type Rascunho } from "@/hooks/useRascunho";
+import { BotaoCopiar } from "@/components/ui/botao-copiar";
+import { AcoesEmLote, type RelatorioLote } from "@/components/equipamentos/AcoesEmLote";
+import { Checkbox } from "@/components/ui/checkbox";
+import { AVISO_ENTRADA_SEM_TECNICOS, emailDoTecnico, erroTecnicoDaEntrada, linhaTecnicoInicial, tecnicoPadrao } from "@/lib/tecnicos";
+import { usePecasBaixaPendente } from "@/hooks/usePecasBaixaPendente";
+import { ResumoComunicacoes } from "@/components/equipamentos/ResumoComunicacoes";
+import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGrande";
+import { OrcamentoDaOs } from "@/components/equipamentos/OrcamentoDaOs";
+import { CartaoCliente } from "@/components/detalhe/CartaoCliente";
+import { HistoricoOs } from "@/components/equipamentos/HistoricoOs";
+import { CarregandoSkeleton, Skeleton, SkeletonFormulario, SkeletonLista, SkeletonPagina, SkeletonTabela, SkeletonTexto } from "@/components/ui/skeleton";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
 // do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
@@ -213,19 +254,23 @@ import { totalPages } from "@/lib/pagination";
 // :focus-visible do botão .equipment-row-open, então o clique do mouse não
 // acende e os botões de Ações continuam fora de um role=button.
 const EQUIPMENT_ROW_FOCUS_RING =
-  "border-b group-has-[.equipment-row-open:focus-visible]:z-[30] group-has-[.equipment-row-open:focus-visible]:bg-sky-100 group-has-[.equipment-row-open:focus-visible]:after:pointer-events-none group-has-[.equipment-row-open:focus-visible]:after:absolute group-has-[.equipment-row-open:focus-visible]:after:inset-0 group-has-[.equipment-row-open:focus-visible]:after:z-[1] group-has-[.equipment-row-open:focus-visible]:after:border-y-[3px] group-has-[.equipment-row-open:focus-visible]:after:border-[#1d4ed8] group-has-[.equipment-row-open:focus-visible]:after:content-['']";
+  "border-b group-has-[.equipment-row-open:focus-visible]:z-[30] group-has-[.equipment-row-open:focus-visible]:bg-status-work-bg group-has-[.equipment-row-open:focus-visible]:after:pointer-events-none group-has-[.equipment-row-open:focus-visible]:after:absolute group-has-[.equipment-row-open:focus-visible]:after:inset-0 group-has-[.equipment-row-open:focus-visible]:after:z-[1] group-has-[.equipment-row-open:focus-visible]:after:border-y-[3px] group-has-[.equipment-row-open:focus-visible]:after:border-ring group-has-[.equipment-row-open:focus-visible]:after:content-['']";
 const EQUIPMENT_ROW_FOCUS_EDGE = `relative ${EQUIPMENT_ROW_FOCUS_RING}`;
 const EQUIPMENT_ROW_FOCUS_FIRST = `relative ${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]`;
 const EQUIPMENT_ROW_FOCUS_LAST = `${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-r-[3px]`;
 
 export default function Equipamentos() {
-  const [busca, setBusca] = useState("");
-  const [statusFiltro, setStatusFiltro] = useState("TODOS");
-  const [ordenacao, setOrdenacao] = useState<"ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE">("ATUALIZACAO_RECENTE");
-  const [paginaEquipamentos, setPaginaEquipamentos] = useState(1);
+  // Filtro, busca, ordenação e página voltam como estavam ao reabrir a lista (na mesma sessão).
+  const [busca, setBusca] = useEstadoLembrado("equipamentos:busca", "");
+  const [statusFiltro, setStatusFiltro] = useEstadoLembrado("equipamentos:status", "TODOS");
+  const [ordenacao, setOrdenacao] = useEstadoLembrado<"ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE">("equipamentos:ordenacao", "ATUALIZACAO_RECENTE");
+  const [paginaEquipamentos, setPaginaEquipamentos] = useEstadoLembrado("equipamentos:pagina", 1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
+  // Detalhes da OS: a rota /equipamentos/:id manda, e o estado local acompanha
+  // (o mesmo componente atende a lista e os detalhes; ver idDetalhesRota abaixo).
+  const [idDetalhesAberto, setIdDetalhesAberto] = useState<number | null>(null);
+  const detalhesDialogOpen = idDetalhesAberto != null;
   const detalhesAbertoRef = useRef(false);
   const [sinalPortal, setSinalPortal] = useState(0);
   detalhesAbertoRef.current = detalhesDialogOpen;
@@ -270,6 +315,10 @@ export default function Equipamentos() {
   } | null>(null);
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
+  const [abaDetalhe, setAbaDetalhe] = useState("orcamento");
+  useEffect(() => { setAbaDetalhe("orcamento"); }, [selecionado?.id]);
+  /** Recarrega o selo "baixa pendente" ao fechar Peças da OS (a baixa pode ter sido confirmada lá). */
+  const { pendentes: pecasPendentes, recarregar: recarregarPecasPendentes } = usePecasBaixaPendente(selecionado?.id);
   const selecionadoIdRef = useRef<number | undefined>();
   selecionadoIdRef.current = selecionado?.id;
   const [salvando, setSalvando] = useState(false);
@@ -294,6 +343,12 @@ export default function Equipamentos() {
   // Dados do drawer de detalhes
   const [verificacaoDetalhes, setVerificacaoDetalhes] = useState<Verificacao | null>(null);
   const [comunicacoes, setComunicacoes] = useState<Comunicacao[]>([]);
+  /** Última vez que o orçamento saiu para o cliente (cabeçalho da aba Orçamento). */
+  const orcamentoEnviadoEm = useMemo(() => {
+    const enviados = comunicacoes.filter((c) => c.tipo === "ORCAMENTO" && c.enviado !== false);
+    const datas = enviados.map((c) => c.data_envio || c.criado_em).filter((d): d is string => Boolean(d)).sort();
+    return datas.at(-1) ?? null;
+  }, [comunicacoes]);
   const [imagensDetalhes, setImagensDetalhes] = useState<EquipamentoImagemDraft[]>([]);
   const [historicoDetalhes, setHistoricoDetalhes] = useState<EquipamentoHistoricoEvento[]>([]);
   const [historicoDetalhesError, setHistoricoDetalhesError] = useState<string | null>(null);
@@ -319,7 +374,27 @@ export default function Equipamentos() {
   const [valorFinal, setValorFinal] = useState<number>(0);
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
-  const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("Ivan");
+  const tecnicos = useTecnicos();
+  const primeiroTecnico = tecnicos[0]?.nome ?? "";
+  const nomesFiltroTecnico = useNomesFiltroTecnico();
+  const { status: sessaoAtual } = useSensitiveAccess();
+  // Técnico já escolhido na Nova entrada: o próprio perfil (se atende) ou o único técnico.
+  const tecnicoPadraoDaEntrada = tecnicoPadrao(tecnicos, sessaoAtual?.unlocked ? sessaoAtual.active_profile_id : null);
+  // O técnico das OS é gravado com o nome do perfil: "Minhas" existe se esse nome já aparece.
+  const nomePerfilSessao = sessaoAtual?.unlocked ? sessaoAtual.active_profile_name?.trim() ?? "" : "";
+  const meuNomeTecnico = nomePerfilSessao && nomesFiltroTecnico.includes(nomePerfilSessao) ? nomePerfilSessao : null;
+  // Seleção para ações em lote: guarda a OS inteira, então sobrevive à troca de página.
+  // As ações releem cada OS antes de agir; aqui a seleção só acompanha a lista recarregada.
+  const [selecaoLote, setSelecaoLote] = useState<Map<number, Equipamento>>(() => new Map());
+  const [loteOcupado, setLoteOcupado] = useState(false);
+  const [relatorioLote, setRelatorioLote] = useState<RelatorioLote | null>(null);
+  const alternarSelecao = (eq: Equipamento, marcar: boolean) => setSelecaoLote((atual) => {
+    const proxima = new Map(atual);
+    if (marcar && eq.id != null) proxima.set(eq.id, eq);
+    else if (eq.id != null) proxima.delete(eq.id);
+    return proxima;
+  });
+  const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("");
   const [marcaOutroOpen, setMarcaOutroOpen] = useState(false);
   const [tipoOutroOpen, setTipoOutroOpen] = useState(false);
   const [imagensSaidaEntrega, setImagensSaidaEntrega] = useState<EquipamentoImagemDraft[]>([]);
@@ -345,6 +420,12 @@ export default function Equipamentos() {
   const { success, error: showError, warning } = useNotification();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const cancelarConfirmacaoRef = useRef<(() => void) | null>(null);
+  const geracaoAjusteRef = useRef(0);
+  const invalidarAjuste = useCallback(() => {
+    geracaoAjusteRef.current += 1;
+    cancelarConfirmacaoRef.current?.();
+  }, []);
   const [confirmProps, setConfirmProps] = useState<{
     title: string;
     description?: string;
@@ -363,19 +444,47 @@ export default function Equipamentos() {
   } | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const { equipamentos, total: totalEquipamentos, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
-    useEquipamentos({ busca: busca || undefined, status: statusFiltro, ordenacao, page: paginaEquipamentos });
+  const [tecnicoFiltro, setTecnicoFiltro] = useEstadoLembrado("equipamentos:tecnico", "TODOS");
+  const [exportando, setExportando] = useState(false);
+  const exportarEquipamentos = useExportarEquipamentos();
+  async function baixarCsv() {
+    setExportando(true);
+    try {
+      const nome = await exportarEquipamentos({ busca: busca || undefined, status: statusFiltro, tecnico: tecnicoFiltro === "TODOS" ? undefined : tecnicoFiltro, ordenacao });
+      success("Equipamentos", `Lista salva em ${nome}.`);
+    } catch (err) {
+      showError("Equipamentos", "Exportar lista", err);
+    } finally {
+      setExportando(false);
+    }
+  }
+  const { equipamentos, total: totalEquipamentos, contagens: contagensStatus, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano, destaques: destaquesAoVivo } =
+    useEquipamentos({ busca: busca || undefined, status: statusFiltro, tecnico: tecnicoFiltro === "TODOS" ? undefined : tecnicoFiltro, ordenacao, page: paginaEquipamentos });
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
   const equipamentosExibidos = equipamentos;
-
   useEffect(() => {
-    setPaginaEquipamentos(1);
-  }, [busca, statusFiltro, ordenacao]);
+    setSelecaoLote((atual) => {
+      if (atual.size === 0) return atual;
+      let mudou = false;
+      const proxima = new Map(atual);
+      for (const eq of equipamentos) {
+        if (eq.id != null && proxima.has(eq.id) && proxima.get(eq.id) !== eq) {
+          proxima.set(eq.id, eq);
+          mudou = true;
+        }
+      }
+      return mudou ? proxima : atual;
+    });
+  }, [equipamentos]);
 
+  usePrimeiraPaginaAoFiltrar([busca, statusFiltro, ordenacao, tecnicoFiltro], () => setPaginaEquipamentos(1));
+
+  // Só limita a página depois de o total chegar: antes dele, a página lembrada valeria 1.
   useEffect(() => {
+    if (loading) return;
     setPaginaEquipamentos((pagina) => Math.min(pagina, totalPaginasEquipamentos));
-  }, [totalPaginasEquipamentos]);
+  }, [totalPaginasEquipamentos, loading, setPaginaEquipamentos]);
 
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
@@ -383,6 +492,55 @@ export default function Equipamentos() {
   const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess();
   const location = useLocation();
   const navigate = useNavigate();
+  const telaLarga = useLarguraMinima(768);
+  const irParaConfiguracoesPortal = useCallback(() => navigate("/configuracoes?aba=portal"), [navigate]);
+  const pathnameAtualRef = useRef(location.pathname);
+  pathnameAtualRef.current = location.pathname;
+  const idDetalhesRota = (() => {
+    const encontrado = /^\/equipamentos\/(\d+)\/?$/.exec(location.pathname);
+    return encontrado ? Number(encontrado[1]) : null;
+  })();
+  // Voltar/avançar do navegador ou link direto: o endereço abre ou fecha os detalhes.
+  useEffect(() => {
+    setIdDetalhesAberto(idDetalhesRota);
+  }, [idDetalhesRota]);
+  // Ajuste de orçamento em página (decisão 24): /equipamentos/:id/orcamento.
+  const idAjusteRota = (() => {
+    const encontrado = /^\/equipamentos\/(\d+)\/orcamento\/?$/.exec(location.pathname);
+    return encontrado ? Number(encontrado[1]) : null;
+  })();
+  // Verificação técnica em página (decisão 24): /equipamentos/:id/verificacao.
+  const idVerificacaoRota = (() => {
+    const encontrado = /^\/equipamentos\/(\d+)\/verificacao\/?$/.exec(location.pathname);
+    return encontrado ? Number(encontrado[1]) : null;
+  })();
+  // Nova entrada e edição em página (decisão 27): /equipamentos/nova e /equipamentos/:id/editar.
+  const rotaNovaEntrada = /^\/equipamentos\/nova\/?$/.test(location.pathname);
+  const idEdicaoRota = (() => {
+    const encontrado = /^\/equipamentos\/(\d+)\/editar\/?$/.exec(location.pathname);
+    return encontrado ? Number(encontrado[1]) : null;
+  })();
+  const idEquipamentoRota = idAjusteRota ?? idDetalhesRota ?? idVerificacaoRota ?? idEdicaoRota;
+  // Invalida na troca da rota, antes que uma resposta assíncrona retome o ajuste anterior.
+  useLayoutEffect(() => invalidarAjuste, [idEquipamentoRota, idAjusteRota, idVerificacaoRota, invalidarAjuste]);
+  /** De onde a pessoa abriu a Nova entrada ou a edição: Cancelar e salvar voltam para lá. */
+  const origemEntradaRef = useRef<string>("/equipamentos");
+  /** Origem fora de Equipamentos guardada até o diálogo da ordem de entrada fechar. */
+  const origemAposEmailRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (emailDialogOpen || !origemAposEmailRef.current) return;
+    const origem = origemAposEmailRef.current;
+    origemAposEmailRef.current = null;
+    navigate(origem);
+  }, [emailDialogOpen, navigate]);
+  const rotaNovaEntradaRef = useRef(rotaNovaEntrada);
+  rotaNovaEntradaRef.current = rotaNovaEntrada;
+  /** Página de cadastro/edição aberta (o estado `dialogOpen` chega um render depois). */
+  const formularioAbertoRef = useRef(false);
+  /** De onde a pessoa abriu a verificação: Cancelar e finalizar voltam para lá. */
+  const origemVerificacaoRef = useRef<string>("/equipamentos");
+  /** De onde a pessoa abriu o ajuste: Cancelar e salvar voltam para lá. */
+  const origemAjusteRef = useRef<string>("/equipamentos");
 
   // Diálogo com algo sendo preenchido: abrir outro atendimento por cima perderia o que foi digitado.
   const edicaoEmAndamento =
@@ -402,7 +560,22 @@ export default function Equipamentos() {
   // Vindo de um alerta/atalho: abre o atendimento pedido. Se outra janela de detalhes estiver
   // aberta, troca na hora; só espera quando há um formulário em preenchimento.
   useEffect(() => {
-    const state = location.state as { equipamentoId?: number } | null;
+    const state = location.state as { equipamentoId?: number; novaEntrada?: boolean; statusFiltro?: string } | null;
+    // Cartão ou etapa do Início: abre a lista já filtrada por aquele status.
+    if (state?.statusFiltro) {
+      navigate(location.pathname, { replace: true, state: {} });
+      // Pedido explícito: a lista mostra a etapa inteira, sem a busca ou o técnico lembrados.
+      setStatusFiltro(state.statusFiltro);
+      setBusca("");
+      setTecnicoFiltro("TODOS");
+      return;
+    }
+    // "+ Nova entrada" do Início: abre o cadastro direto.
+    if (state?.novaEntrada) {
+      navigate(location.pathname, { replace: true, state: {} });
+      abrirNovo();
+      return;
+    }
     if (!state?.equipamentoId) return;
     if (edicaoEmAndamento) {
       if (avisoEdicaoPendente.current !== state) {
@@ -423,6 +596,108 @@ export default function Equipamentos() {
         console.error("Erro ao buscar equipamento do estado de navegação:", err);
       });
   }, [location.state, edicaoEmAndamento]);
+
+  // Outro computador mudou a OS aberta. Só olhando: a OS, a verificação e o histórico recarregam
+  // em silêncio. Editando: nada é trocado (o formulário e o token de concorrência da edição
+  // continuam os de quando ela abriu, então salvar por cima é barrado como conflito); a OS
+  // recarrega quando a edição fecha. Mudança desta própria tela chega com o mesmo atualizado_em.
+  const edicaoEmAndamentoRef = useRef(edicaoEmAndamento);
+  edicaoEmAndamentoRef.current = edicaoEmAndamento;
+  const selecionadoAtualizadoEmRef = useRef<string | undefined>();
+  selecionadoAtualizadoEmRef.current = selecionado?.atualizado_em;
+  const recargaPendenteRef = useRef<number | null>(null);
+  /**
+   * Recarga ao vivo da OS aberta, uma de cada vez: eventos que chegam com uma leitura em voo
+   * viram UMA nova leitura depois dela (guardando se precisa forçar), então uma resposta antiga
+   * nunca chega depois da nova e nenhuma mudança fica sem leitura posterior.
+   */
+  const recargaOsEmVooRef = useRef(false);
+  const recargaOsDeNovoRef = useRef<{ id: number; forcar: boolean } | null>(null);
+  const recarregarOsAbertaRef = useRef<(id: number, mesmoSemMudar: boolean) => Promise<void>>(async () => undefined);
+  // Abrir, fechar ou trocar a OS invalida a leitura em voo. Layout effect: roda no mesmo commit
+  // em que selecionadoIdRef muda, antes de qualquer aviso ao vivo poder começar outra leitura.
+  const aberturaOsRef = useRef(0);
+  useLayoutEffect(() => {
+    aberturaOsRef.current += 1;
+    recargaOsDeNovoRef.current = null;
+  }, [detalhesDialogOpen, selecionado?.id]);
+  const recarregarOsAberta = useCallback(async (id: number, mesmoSemMudar: boolean) => {
+    if (recargaOsEmVooRef.current) {
+      const anterior = recargaOsDeNovoRef.current;
+      recargaOsDeNovoRef.current = { id, forcar: mesmoSemMudar || (anterior?.id === id && anterior.forcar) };
+      return;
+    }
+    recargaOsEmVooRef.current = true;
+    const abertura = aberturaOsRef.current;
+    try {
+      const [eq, verif, historico, comms] = await Promise.allSettled([
+        db.buscarEquipamento(id, true),
+        db.buscarVerificacao(id),
+        db.listarHistoricoEquipamento(id, true),
+        Promise.resolve().then(() => db.listarComunicacoes(id)),
+      ]);
+      if (abertura !== aberturaOsRef.current) return;
+      if (eq.status !== "fulfilled" || selecionadoIdRef.current !== id || !detalhesAbertoRef.current) return;
+      // Comunicações só são exibidas (não entram no formulário nem no token de concorrência) e
+      // mudam sem alterar o atualizado_em da OS: atualizam em toda recarga, mesmo sem a OS mudar.
+      // Com a edição aberta, o aviso só marca a recarga pendente, que roda ao fechar a edição.
+      if (comms.status === "fulfilled") setComunicacoes(comms.value);
+      // A edição pode ter aberto enquanto a recarga estava a caminho: não troca a OS por baixo
+      // dela (o token de concorrência da edição tem de continuar o de quando ela abriu).
+      if (edicaoEmAndamentoRef.current) {
+        recargaPendenteRef.current = id;
+        return;
+      }
+      // A baixa de uma peça pode mudar sem alterar o atualizado_em da OS.
+      void recarregarPecasPendentes(true);
+      if (!mesmoSemMudar && eq.value.atualizado_em === selecionadoAtualizadoEmRef.current) return;
+      setSelecionado(eq.value);
+      if (verif.status === "fulfilled") setVerificacaoDetalhes(verif.value);
+      if (historico.status === "fulfilled") setHistoricoDetalhes(historico.value);
+      setSinalPortal((valor) => valor + 1);
+    } finally {
+      recargaOsEmVooRef.current = false;
+      const proxima = recargaOsDeNovoRef.current;
+      recargaOsDeNovoRef.current = null;
+      if (proxima && selecionadoIdRef.current === proxima.id && detalhesAbertoRef.current) {
+        void recarregarOsAbertaRef.current(proxima.id, proxima.forcar);
+      }
+    }
+  }, [recarregarPecasPendentes]);
+  recarregarOsAbertaRef.current = recarregarOsAberta;
+  useAtualizacaoAoVivo(["equipamentos", "verificacoes", "comunicacoes"], (mudancas) => {
+    const abertoId = selecionadoIdRef.current;
+    if (!detalhesAbertoRef.current || !abertoId) return;
+    const mudouVerificacao = mudancas.some((m) => m.tabela === "verificacoes" && m.referencia === abertoId);
+    // Orçamento/aviso enviado em outro computador: grava em `comunicacoes` sem mexer na OS.
+    const mudouComunicacao = mudancas.some((m) => m.tabela === "comunicacoes" && m.referencia === abertoId);
+    const tocaAberta = mudancas.length === 0 || mudouVerificacao || mudouComunicacao
+      || mudancas.some((m) => m.tabela === "equipamentos" && m.id === abertoId);
+    if (!tocaAberta) return;
+    if (edicaoEmAndamentoRef.current) {
+      recargaPendenteRef.current = abertoId;
+      // Só avisa se mudou de fato (a própria gravação desta tela volta com o mesmo atualizado_em).
+      db.buscarEquipamento(abertoId, true)
+        .then((eq) => {
+          if (eq.atualizado_em === selecionadoAtualizadoEmRef.current && !mudouVerificacao) return;
+          toast.warning("Esta OS foi alterada em outro computador", {
+            id: `os-alterada-${abertoId}`,
+            description: "O que você está preenchendo continua aqui. Ao fechar, a OS mostra a versão nova; se salvar por cima, o app avisa do conflito.",
+            duration: 15_000,
+          });
+        })
+        .catch(() => undefined);
+      return;
+    }
+    void recarregarOsAberta(abertoId, mudouVerificacao || mudancas.length === 0);
+  });
+  // Terminou a edição com uma mudança de outro computador pendente: mostra a versão nova.
+  useEffect(() => {
+    const pendente = recargaPendenteRef.current;
+    if (edicaoEmAndamento || pendente == null) return;
+    recargaPendenteRef.current = null;
+    if (selecionadoIdRef.current === pendente) void recarregarOsAberta(pendente, true);
+  }, [edicaoEmAndamento, recarregarOsAberta]);
 
   // Cliente respondeu/pediu algo no portal: a lista reordena sem o operador recarregar, e o
   // atendimento aberto mostra o estado novo.
@@ -499,10 +774,166 @@ export default function Equipamentos() {
       },
   });
 
+  // Rascunho da Nova entrada: fechar a janela, trocar de tela ou fechar o app não perde o que foi digitado.
+  interface RascunhoEntrada {
+    form: EquipamentoFormData;
+    clienteId: number | null;
+    responsavelId: number | null;
+    tecnico: string;
+    /** Formulário que gravou (sobrevive a sair e voltar da tela): salvar só apaga o próprio rascunho. */
+    dono?: string;
+  }
+  const empresaRascunho = sensitiveStatus?.active_empresa_id;
+  const perfilRascunho = sensitiveStatus?.active_profile_id;
+  const chaveRascunho = sensitiveStatus?.unlocked && empresaRascunho && perfilRascunho
+    ? `nova-entrada:${empresaRascunho}:${perfilRascunho}`
+    : null;
+  const rascunhoEntrada = useRascunho<RascunhoEntrada>(chaveRascunho);
+  const chaveRascunhoAtualRef = useRef(chaveRascunho);
+  chaveRascunhoAtualRef.current = chaveRascunho;
+  const [chaveFormularioEntrada, setChaveFormularioEntrada] = useState(chaveRascunho);
+  /**
+   * Chave nula (sessão bloqueada por inatividade, empresa indisponível por erro passageiro) só
+   * suspende o salvamento automático: o formulário aberto continua na tela com textos e fotos.
+   * Só a troca real de perfil/empresa (uma chave para outra) reabre a Nova entrada.
+   */
+  const entradaDaChaveAtual = chaveRascunho === null
+    || chaveFormularioEntrada === null
+    || chaveFormularioEntrada === chaveRascunho;
+  const adotouChaveRef = useRef(false);
+  const vinculoPendenteRef = useRef<Pick<RascunhoEntrada, "clienteId" | "responsavelId"> | null>(null);
+  const [restaurandoVinculo, setRestaurandoVinculo] = useState(false);
+  const entradaMontadaRef = useRef(false);
+  useEffect(() => {
+    entradaMontadaRef.current = true;
+    try { localStorage.removeItem("autoos:rascunho:nova-entrada"); } catch { /* sem armazenamento */ }
+    return () => { entradaMontadaRef.current = false; };
+  }, []);
+  /** Cada Nova entrada aberta ganha uma identidade gravada junto com o rascunho. */
+  const donoRascunhoEntrada = useRef("");
+  const [rascunhoRecuperadoEm, setRascunhoRecuperadoEm] = useState<string | null>(null);
+  const [conferindoSerie, setConferindoSerie] = useState(false);
+  /**
+   * Toda consulta de histórico da série (digitada, do rascunho ou de um equipamento anterior)
+   * ganha um número; só a mais recente, e só se a série ainda for a mesma, aplica o resultado.
+   */
+  const consultaSerieSeq = useRef(0);
+  const novaEntradaAberta = dialogOpen && !editando;
+  const garantiaServicos = useGarantiaServicos();
+  // Nova entrada não pergunta ao sair: o rascunho guarda. A edição pela metade pergunta
+  // (pelo mesmo aviso da verificação: o roteador só confere o último bloqueio registrado).
+  // Cliente, contato, técnico e fotos ficam fora do react-hook-form: entram na conta à parte.
+  const tecnicoBaseEdicaoRef = useRef<string>("");
+  const edicaoSuja = dialogOpen && Boolean(editando) && (
+    form.formState.isDirty
+    || (clienteVinculado?.id ?? null) !== (editando?.cliente_id ?? null)
+    || (responsavelVinculado?.id ?? null) !== (editando?.responsavel_contato_id ?? null)
+    || tecnicoNovoEquipamento !== tecnicoBaseEdicaoRef.current
+    || (baselineFotosRef.current != null && !imagensPersistidasIguais(imagensFormulario, baselineFotosRef.current.fotos))
+  );
+  // Ajuste de orçamento: o que a pessoa pode mudar na página, comparado com o que abriu.
+  const baseAjusteRef = useRef<string | null>(null);
+  const instantaneoAjuste = (valores: {
+    valor: number; prazo: string; observacoes: string; forma: string; detalhe: string;
+    servicos: ServicoNecessario[]; pecasLegadas: PecaNecessaria[];
+  }) => JSON.stringify(valores);
+  const ajusteSujo = statusDialogOpen && ajusteOrcamentoSemMudancaStatus && baseAjusteRef.current != null
+    && baseAjusteRef.current !== instantaneoAjuste({
+      valor: valorOrcamento, prazo: prazoAprovacao, observacoes: observacoesAjuste, forma: formaPagamentoAjuste,
+      detalhe: detalhePagamentoAjuste, servicos: servicosAjuste, pecasLegadas: pecasLegadasAjuste,
+    });
+  useEffect(() => {
+    if (!novaEntradaAberta || chaveFormularioEntrada !== chaveRascunho || chaveRascunho === null) return;
+    const dono = donoRascunhoEntrada.current;
+    // Logo após adotar a chave, o formulário vazio não apaga o rascunho que já estava nela.
+    const preservarGravado = adotouChaveRef.current;
+    adotouChaveRef.current = false;
+    let primeira = true;
+    const guardar = () => {
+      if (dono !== donoRascunhoEntrada.current || chaveRascunhoAtualRef.current !== chaveRascunho) return;
+      const valores = form.getValues();
+      const vinculo = vinculoPendenteRef.current ?? {
+        clienteId: clienteVinculado?.id ?? null,
+        responsavelId: responsavelVinculado?.id ?? null,
+      };
+      const temAlgo = entradaTemAlgo(valores, vinculo.clienteId);
+      // Formulário vazio não tem rascunho (e cancela um salvamento antigo pendente, como o
+      // que o reset de "Começar do zero" agenda com o cliente anterior).
+      const inicial = primeira;
+      primeira = false;
+      if (temAlgo) rascunhoEntrada.salvar({ form: valores, ...vinculo, tecnico: tecnicoNovoEquipamento, dono });
+      else if (!(inicial && preservarGravado)) rascunhoEntrada.limpar();
+    };
+    guardar();
+    const assinatura = form.watch(guardar);
+    return () => assinatura.unsubscribe();
+  }, [novaEntradaAberta, form, clienteVinculado, responsavelVinculado, tecnicoNovoEquipamento, rascunhoEntrada, chaveFormularioEntrada, chaveRascunho, restaurandoVinculo]);
+
+  /**
+   * Cancelar a Nova entrada descarta o rascunho (Esc, o X e trocar de tela guardam).
+   * Com algo preenchido, o aviso oferece desfazer por alguns segundos.
+   */
+  function descartarEntrada() {
+    const valores = form.getValues();
+    // Com o cliente/contato do rascunho ainda carregando, os vínculos vêm do pendente (como no
+    // salvamento automático), para o "Desfazer" não perder o cliente.
+    const vinculo = vinculoPendenteRef.current ?? {
+      clienteId: clienteVinculado?.id ?? null,
+      responsavelId: responsavelVinculado?.id ?? null,
+    };
+    const temAlgo = entradaTemAlgo(valores, vinculo.clienteId);
+    const copia: RascunhoEntrada = { form: valores, ...vinculo, tecnico: tecnicoNovoEquipamento, dono: donoRascunhoEntrada.current };
+    const origemDescartada = origemEntradaRef.current;
+    rascunhoEntrada.limpar();
+    setRascunhoRecuperadoEm(null);
+    if (!temAlgo || chaveRascunho === null) return;
+    toast("Entrada descartada", {
+      action: {
+        label: "Desfazer",
+        onClick: () => {
+          if (chaveRascunhoAtualRef.current !== chaveRascunho) return;
+          rascunhoEntrada.salvarAgora(copia);
+          // Cancelar pode ter voltado para outra tela (Início, Clientes): esta instância já
+          // saiu; a página de Nova entrada que abrir lê o rascunho restaurado.
+          navigate("/equipamentos/nova", { state: { origem: origemDescartada } });
+        },
+      },
+    });
+  }
+
+  function cancelarRestauracaoVinculo() {
+    vinculoPendenteRef.current = null;
+    setRestaurandoVinculo(false);
+  }
+
+  function comecarEntradaDoZero() {
+    cancelarRestauracaoVinculo();
+    rascunhoEntrada.limpar();
+    setRascunhoRecuperadoEm(null);
+    setClienteVinculado(null);
+    setResponsavelVinculado(null);
+    setTecnicoNovoEquipamento(tecnicoPadraoDaEntrada);
+    form.reset({
+      serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
+      defeito_relatado: "", acessorios: [], acessorios_outros: "",
+      observacoes: "",
+    });
+  }
+
   // ─── Handlers ─────────────────────────────────────────
 
-  /** Abre dialog para criar novo equipamento. Reseta form e limpa cliente */
-  function abrirNovo() {
+  /**
+   * Abre a página de Nova entrada (/equipamentos/nova). `origem` é para onde Cancelar
+   * volta. `cliente` ou `base` (OS encerrada do mesmo aparelho) chegam já preenchidos; nesse
+   * caso o rascunho guardado não é carregado, mas pode ser recuperado pelo aviso.
+   */
+  function abrirNovo(opcoes: { origem?: string; cliente?: Cliente | null; base?: Equipamento } = {}) {
+    origemEntradaRef.current = opcoes.origem ?? (rotaNovaEntradaRef.current ? origemEntradaRef.current : pathnameAtualRef.current);
+    const preenchido = Boolean(opcoes.cliente || opcoes.base);
+    cancelarRestauracaoVinculo();
+    setChaveFormularioEntrada(chaveRascunho);
+    donoRascunhoEntrada.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const rascunhoGuardado = rascunhoEntrada.ler();
     fotoEdicaoSeq.current += 1;
     fotoEdicaoEquipamentoId.current = null;
     baselineFotosRef.current = null;
@@ -513,7 +944,7 @@ export default function Equipamentos() {
     setErroImagens(null);
     setImagensFormulario([]);
     setCarregandoImagensFormulario(false);
-    setTecnicoNovoEquipamento("Ivan");
+    setTecnicoNovoEquipamento(tecnicoPadraoDaEntrada);
     setRegistrosAnteriores([]);
     setConfirmouNovoCiclo(false);
     setAnteriorEmAtendimento(null);
@@ -522,8 +953,228 @@ export default function Equipamentos() {
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
       observacoes: "",
     });
+    consultaSerieSeq.current += 1; // consulta de um formulário anterior não vale para este
+    setConferindoSerie(false);
+    const rascunho = preenchido ? null : rascunhoGuardado;
+    setRascunhoRecuperadoEm(rascunho?.salvoEm ?? null);
+    if (preenchido && rascunhoGuardado && entradaTemAlgo(rascunhoGuardado.dados.form, rascunhoGuardado.dados.clienteId)) {
+      // A entrada preenchida grava por cima do rascunho: a cópia fica oferecida por alguns segundos.
+      oferecerRascunhoAnterior(rascunhoGuardado.dados);
+    }
+    if (opcoes.cliente) setClienteVinculado(opcoes.cliente);
+    if (opcoes.base) aplicarBaseNaEntrada(opcoes.base);
+    if (rascunho) aplicarRascunhoNaEntrada(rascunho);
     setDialogOpen(true);
+    formularioAbertoRef.current = true;
+    if (!rotaNovaEntradaRef.current) navigate("/equipamentos/nova");
   }
+
+  function oferecerRascunhoAnterior(copia: RascunhoEntrada) {
+    toast("Havia outra entrada em rascunho", {
+      action: {
+        label: "Recuperar",
+        onClick: () => {
+          if (chaveRascunhoAtualRef.current !== chaveRascunho) return;
+          rascunhoEntrada.salvarAgora(copia);
+          abrirNovo({ origem: origemEntradaRef.current });
+        },
+      },
+    });
+  }
+
+  function aplicarRascunhoNaEntrada(rascunho: Rascunho<RascunhoEntrada>) {
+    form.reset({ ...form.getValues(), ...rascunho.dados.form, status: "RECEBIDO" });
+    void restaurarVinculoDoRascunho(rascunho.dados);
+    if (rascunho.dados.tecnico) setTecnicoNovoEquipamento(rascunho.dados.tecnico);
+    // A série do rascunho passa pela mesma conferência de histórico que a digitada:
+    // sem isso, dava para cadastrar outro ciclo sem a confirmação obrigatória.
+    const serieRascunho = rascunho.dados.form.serial_number?.trim() ?? "";
+    if (serieRascunho.length >= 3) {
+      const seq = ++consultaSerieSeq.current;
+      const vale = () => seq === consultaSerieSeq.current && form.getValues("serial_number")?.trim() === serieRascunho;
+      setConferindoSerie(true);
+      db.buscarEquipamentosPorSerial(serieRascunho)
+        .then((registros) => { if (vale()) setRegistrosAnteriores(registros); })
+        .catch((err) => console.error("Erro ao buscar registros anteriores:", err))
+        .finally(() => { if (seq === consultaSerieSeq.current) setConferindoSerie(false); });
+    }
+  }
+
+  /**
+   * A Nova entrada aberta sem chave (sessão bloqueada, empresa ainda indisponível) recebe a chave
+   * real: o rascunho dela é lido antes de o salvamento automático voltar. Formulário vazio
+   * recupera o rascunho; preenchido mantém o que está na tela e oferece o rascunho pelo aviso.
+   */
+  function adotarChaveDaEntrada() {
+    const guardado = rascunhoEntrada.ler();
+    const vinculo = vinculoPendenteRef.current ?? {
+      clienteId: clienteVinculado?.id ?? null,
+      responsavelId: responsavelVinculado?.id ?? null,
+    };
+    const temAlgo = entradaTemAlgo(form.getValues(), vinculo.clienteId);
+    if (guardado && entradaTemAlgo(guardado.dados.form, guardado.dados.clienteId)) {
+      if (temAlgo) {
+        oferecerRascunhoAnterior(guardado.dados);
+      } else {
+        setRascunhoRecuperadoEm(guardado.salvoEm);
+        aplicarRascunhoNaEntrada(guardado);
+      }
+    }
+    adotouChaveRef.current = true;
+    setChaveFormularioEntrada(chaveRascunho);
+  }
+
+  async function restaurarVinculoDoRascunho({ clienteId, responsavelId }: RascunhoEntrada) {
+    if (!clienteId || !empresaRascunho || chaveRascunho === null) return;
+    const pendente = { clienteId, responsavelId };
+    vinculoPendenteRef.current = pendente;
+    const vigente = () => entradaMontadaRef.current
+      && vinculoPendenteRef.current === pendente
+      && chaveRascunhoAtualRef.current === chaveRascunho
+      && rotaNovaEntradaRef.current;
+    setRestaurandoVinculo(true);
+    try {
+      const cliente = await db.buscarCliente(clienteId);
+      if (!vigente() || cliente.id !== clienteId || cliente.empresa_id !== empresaRascunho || !cliente.ativo) return;
+      const contatos = responsavelId
+        ? await db.listarClienteContatos(clienteId, empresaRascunho).catch(() => [])
+        : [];
+      if (!vigente()) return;
+      setClienteVinculado(cliente);
+      setResponsavelVinculado(contatos.find((contato) =>
+        contato.id === responsavelId && contato.ativo
+        && contato.cliente_id === clienteId && contato.empresa_id === empresaRascunho
+      ) ?? null);
+    } catch {
+      // Um vínculo indisponível pode ser selecionado novamente no cadastro.
+    } finally {
+      if (vigente()) cancelarRestauracaoVinculo();
+    }
+  }
+
+  /**
+   * "Nova entrada deste equipamento" (detalhes de uma OS encerrada): aparelho, cliente e contato
+   * vêm da OS anterior e o novo ciclo já sai confirmado. Defeito, técnico e fotos são da entrada nova.
+   */
+  function aplicarBaseNaEntrada(base: Equipamento) {
+    const seq = ++consultaSerieSeq.current;
+    setConferindoSerie(true);
+    void usarEquipamentoAnteriorNoCadastro(form, base, (serial) => db.buscarEquipamentosPorSerial(serial))
+      .then((resultado) => {
+        if (seq !== consultaSerieSeq.current) return;
+        if (resultado.tipo === "em_atendimento") {
+          setAnteriorEmAtendimento(base);
+          return;
+        }
+        setRegistrosAnteriores(resultado.registros);
+        setConfirmouNovoCiclo(resultado.confirmarNovoCiclo);
+      })
+      .finally(() => { if (seq === consultaSerieSeq.current) setConferindoSerie(false); });
+    if (base.cliente_id) {
+      setClienteVinculado({ id: base.cliente_id, empresa_id: base.empresa_id, nome: base.cliente_nome, telefone: base.cliente_telefone || "", email: base.cliente_email || undefined } as Cliente);
+      const clienteId = base.cliente_id;
+      // Só completa o cadastro se ninguém trocou o cliente enquanto a consulta corria.
+      db.buscarCliente(clienteId)
+        .then((c) => { if (c && seq === consultaSerieSeq.current) setClienteVinculado((atual) => (atual?.id === clienteId ? c : atual)); })
+        .catch(() => undefined);
+    }
+    if (base.responsavel_contato_id) {
+      setResponsavelVinculado({
+        id: base.responsavel_contato_id,
+        empresa_id: base.empresa_id || 0,
+        cliente_id: base.cliente_id || 0,
+        nome: base.responsavel_nome || "Responsável pelo equipamento",
+        email: base.responsavel_email,
+        telefone: base.responsavel_telefone,
+        ativo: true,
+      });
+    }
+  }
+
+  /**
+   * Fecha a página de cadastro/edição sem salvar e volta para onde a pessoa estava. Só depois de
+   * salvar, de "Sair sem salvar" ou com nada a perder: a navegação de volta não pergunta de novo.
+   * Os botões de saída da edição passam antes por `sairDoFormulario`.
+   */
+  function fecharFormulario(navegar = true) {
+    if (!formularioAbertoRef.current) return;
+    formularioAbertoRef.current = false;
+    cancelarRestauracaoVinculo();
+    // Consultas da entrada (série, cliente da passagem anterior) não valem para o próximo formulário.
+    consultaSerieSeq.current += 1;
+    setConferindoSerie(false);
+    fotoEdicaoSeq.current += 1;
+    fotoEdicaoEquipamentoId.current = null;
+    baselineFotosRef.current = null;
+    setRegistrosAnteriores([]);
+    setConfirmouNovoCiclo(false);
+    setAnteriorEmAtendimento(null);
+    setDialogOpen(false);
+    if (!navegar) return;
+    const origem = origemEntradaRef.current;
+    avisoEdicao.liberarProximaSaida();
+    // Voltando aos detalhes, eles são carregados de novo (a edição pode ter mudado a OS).
+    const idOrigem = /^\/equipamentos\/(\d+)\/?$/.exec(origem);
+    if (idOrigem) {
+      db.buscarEquipamento(Number(idOrigem[1])).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
+      return;
+    }
+    if (pathnameAtualRef.current !== origem) navigate(origem);
+  }
+
+  // Link direto, voltar ou avançar até /equipamentos/nova ou /equipamentos/:id/editar.
+  const rotaFormularioAnterior = useRef<string | null>(null);
+  const chaveRotaFormulario = rotaNovaEntrada ? "nova" : idEdicaoRota != null ? `editar-${idEdicaoRota}` : null;
+  useEffect(() => {
+    const anterior = rotaFormularioAnterior.current;
+    rotaFormularioAnterior.current = chaveRotaFormulario;
+    let ativo = true;
+    // De um formulário para outro (ex.: Alt+N com a edição aberta): o anterior fecha antes.
+    if (anterior != null && chaveRotaFormulario != null && anterior !== chaveRotaFormulario && formularioAbertoRef.current) {
+      fecharFormulario(false);
+    }
+    if (chaveRotaFormulario === "nova" && !formularioAbertoRef.current) {
+      const pedido = (location.state ?? {}) as { origem?: string; clienteId?: number; baseId?: number };
+      if (pedido.clienteId || pedido.baseId) navigate(location.pathname, { replace: true, state: {} });
+      const origem = pedido.origem ?? "/equipamentos";
+      const vigente = () => ativo && rotaNovaEntradaRef.current && chaveRascunhoAtualRef.current === chaveRascunho;
+      if (pedido.baseId) {
+        db.buscarEquipamento(pedido.baseId)
+          .then((base) => { if (vigente()) abrirNovo({ origem, base }); })
+          .catch(() => { if (vigente()) abrirNovo({ origem }); });
+      } else if (pedido.clienteId) {
+        db.buscarCliente(pedido.clienteId)
+          .then((cliente) => { if (vigente()) abrirNovo({ origem, cliente }); })
+          .catch(() => { if (vigente()) abrirNovo({ origem }); });
+      } else {
+        abrirNovo({ origem });
+      }
+    } else if (idEdicaoRota != null && !formularioAbertoRef.current) {
+      const origem = ((location.state ?? {}) as { origem?: string }).origem ?? `/equipamentos/${idEdicaoRota}`;
+      db.buscarEquipamento(idEdicaoRota)
+        .then((eq) => { if (ativo) abrirEditar(eq, origem); })
+        .catch((err) => {
+          if (!ativo) return;
+          showError("Equipamentos", "Abrir edição", err, { manterAoTrocarDeTela: true });
+          navigate("/equipamentos", { replace: true });
+        });
+    } else if (chaveRotaFormulario == null && anterior != null && formularioAbertoRef.current) {
+      // Saiu da página pelo menu ou pelo navegador: a Nova entrada fica no rascunho.
+      fecharFormulario(false);
+    }
+    return () => {
+      ativo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveRotaFormulario, chaveRascunho]);
+
+  useEffect(() => {
+    if (!rotaNovaEntrada || !novaEntradaAberta || chaveRascunho === null || chaveFormularioEntrada === chaveRascunho) return;
+    // Aberta sem chave (sessão ainda bloqueada): adota a chave sem apagar o que já foi preenchido.
+    if (chaveFormularioEntrada === null) adotarChaveDaEntrada();
+    else abrirNovo({ origem: origemEntradaRef.current });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rotaNovaEntrada, novaEntradaAberta, chaveFormularioEntrada, chaveRascunho]);
 
   async function carregarFotosDaEdicao(equipamentoId: number, sequencia: number) {
     baselineFotosRef.current = null;
@@ -557,8 +1208,10 @@ export default function Equipamentos() {
     void carregarFotosDaEdicao(editando.id, sequencia);
   }
 
-  /** Abre dialog para editar equipamento existente. Carrega cliente vinculado do banco */
-  function abrirEditar(eq: Equipamento) {
+  /** Abre a página de edição (/equipamentos/:id/editar). Carrega cliente vinculado do banco */
+  function abrirEditar(eq: Equipamento, origem?: string) {
+    origemEntradaRef.current = origem ?? pathnameAtualRef.current;
+    consultaSerieSeq.current += 1;
     const sequencia = ++fotoEdicaoSeq.current;
     fotoEdicaoEquipamentoId.current = eq.id ?? null;
     baselineFotosRef.current = null;
@@ -576,7 +1229,9 @@ export default function Equipamentos() {
     setErroImagens(null);
     setImagensFormulario([]);
     setCarregandoImagensFormulario(true);
-    setTecnicoNovoEquipamento(extrairTecnicoInicialDeObservacoes(eq.observacoes) || "Ivan");
+    const tecnicoDaEdicao = extrairTecnicoInicialDeObservacoes(eq.observacoes) || tecnicoPadraoDaEntrada;
+    tecnicoBaseEdicaoRef.current = tecnicoDaEdicao;
+    setTecnicoNovoEquipamento(tecnicoDaEdicao);
     if (eq.id) void carregarFotosDaEdicao(eq.id, sequencia);
     else setCarregandoImagensFormulario(false);
     // Se o equipamento tem cliente_id, carregar do banco; senão, montar objeto parcial
@@ -623,15 +1278,31 @@ export default function Equipamentos() {
       acessorios: eq.acessorios ? eq.acessorios.split(", ").filter(Boolean) : [], acessorios_outros: eq.acessorios_outros || "", observacoes: removerTecnicoInicialDasObservacoes(eq.observacoes || ""),
     });
     setDialogOpen(true);
+    formularioAbertoRef.current = true;
+    const destino = `/equipamentos/${eq.id}/editar`;
+    if (eq.id && pathnameAtualRef.current !== destino) navigate(destino);
   }
 
   async function handleSelecionarImagens(
     event: React.ChangeEvent<HTMLInputElement>,
     categoria: EquipamentoImagemCategoria,
   ) {
-    const sequenciaEdicao = fotoEdicaoSeq.current;
     const arquivos = Array.from(event.target.files || []);
     event.target.value = "";
+    await adicionarImagensFormulario(arquivos, categoria);
+  }
+
+  /** Ctrl+V na Nova entrada ou na edição: imagem colada entra nas fotos da entrada. */
+  function colarNoFormulario(evento: React.ClipboardEvent) {
+    const arquivos = imagensDaAreaDeTransferencia(evento.clipboardData);
+    if (arquivos.length === 0) return;
+    evento.preventDefault();
+    if (salvando || carregandoImagensFormulario) return;
+    void adicionarImagensFormulario(arquivos, "ENTRADA");
+  }
+
+  async function adicionarImagensFormulario(arquivos: File[], categoria: EquipamentoImagemCategoria) {
+    const sequenciaEdicao = fotoEdicaoSeq.current;
     if (arquivos.length === 0) return;
 
     const vagasRestantes = LIMITE_IMAGENS_POR_EQUIPAMENTO - imagensFormulario.length;
@@ -690,15 +1361,21 @@ export default function Equipamentos() {
   /** Ao perder foco no campo serial, busca registros existentes com mesmo número de série */
   async function handleSerialBlur() {
     const serial = form.getValues("serial_number");
+    // Consulta nova: a do rascunho (se ainda estiver no ar) deixa de valer.
+    const seq = ++consultaSerieSeq.current;
     // Esconde sugestões após blur (delay pra permitir clique)
     setTimeout(() => setMostrarSugestoes(false), 200);
     if (!serial || serial.trim().length < 3) {
+      setConferindoSerie(false);
       setRegistrosAnteriores([]);
       setConfirmouNovoCiclo(false);
       return;
     }
+    // Cadastrar fica travado até a resposta: série repetida exige confirmar o novo ciclo.
+    setConferindoSerie(true);
     try {
       const registros = await db.buscarEquipamentosPorSerial(serial);
+      if (seq !== consultaSerieSeq.current || form.getValues("serial_number") !== serial) return;
       const anteriores = editando
         ? registros.filter((r) => r.id !== editando.id)
         : registros;
@@ -706,6 +1383,8 @@ export default function Equipamentos() {
       setConfirmouNovoCiclo(false);
     } catch (err) {
       console.error("Erro ao buscar registros anteriores:", err);
+    } finally {
+      if (seq === consultaSerieSeq.current) setConferindoSerie(false);
     }
   }
 
@@ -714,7 +1393,15 @@ export default function Equipamentos() {
    * quando o atendimento já foi encerrado; se ainda está em atendimento, avisa e não preenche.
    */
   async function usarEquipamentoAnterior(anterior: Equipamento) {
-    const resultado = await usarEquipamentoAnteriorNoCadastro(form, anterior, (serial) => db.buscarEquipamentosPorSerial(serial));
+    const seq = ++consultaSerieSeq.current;
+    setConferindoSerie(true);
+    let resultado: Awaited<ReturnType<typeof usarEquipamentoAnteriorNoCadastro>>;
+    try {
+      resultado = await usarEquipamentoAnteriorNoCadastro(form, anterior, (serial) => db.buscarEquipamentosPorSerial(serial));
+    } finally {
+      if (seq === consultaSerieSeq.current) setConferindoSerie(false);
+    }
+    if (seq !== consultaSerieSeq.current) return;
     if (resultado.tipo === "em_atendimento") {
       setAnteriorEmAtendimento(anterior);
       return;
@@ -724,6 +1411,38 @@ export default function Equipamentos() {
     setRegistrosAnteriores(resultado.registros);
     setConfirmouNovoCiclo(resultado.confirmarNovoCiclo);
     toast.success(MENSAGEM_DADOS_PREENCHIDOS, { duration: 3000 });
+  }
+
+  /**
+   * "Sim, nova manutenção" (ou "Começar outra mesmo assim") no aviso de série repetida: confirma
+   * o novo ciclo e completa o que está vazio com a última passagem. Cliente e contato só entram
+   * se ainda não foram escolhidos.
+   */
+  function usarUltimaPassagem(ultima: Equipamento) {
+    preencherVaziosComAnterior(form, ultima);
+    if (!clienteVinculado && (ultima.cliente_id || ultima.cliente_nome)) {
+      const seq = consultaSerieSeq.current;
+      setClienteVinculado({ id: ultima.cliente_id, empresa_id: ultima.empresa_id, nome: ultima.cliente_nome, telefone: ultima.cliente_telefone || "", email: ultima.cliente_email || undefined } as Cliente);
+      if (ultima.responsavel_contato_id) {
+        setResponsavelVinculado({
+          id: ultima.responsavel_contato_id,
+          empresa_id: ultima.empresa_id || 0,
+          cliente_id: ultima.cliente_id || 0,
+          nome: ultima.responsavel_nome || "Responsável pelo equipamento",
+          email: ultima.responsavel_email,
+          telefone: ultima.responsavel_telefone,
+          ativo: true,
+        });
+      }
+      if (ultima.cliente_id) {
+        const clienteId = ultima.cliente_id;
+        // Só completa o cadastro se ninguém trocou o cliente enquanto a consulta corria.
+        db.buscarCliente(clienteId)
+          .then((c) => { if (c && seq === consultaSerieSeq.current) setClienteVinculado((atual) => (atual?.id === clienteId ? c : atual)); })
+          .catch(() => undefined);
+      }
+    }
+    setConfirmouNovoCiclo(true);
   }
 
   async function handleSerialInput(value: string) {
@@ -759,6 +1478,45 @@ export default function Equipamentos() {
     );
   }
 
+  /**
+   * Ctrl+V num bloco da aba Fotos dos detalhes: a imagem colada entra naquela categoria. Grava
+   * pelo mesmo caminho da entrega (fotos atuais + novas, conferindo que ninguém mexeu antes).
+   */
+  const [colandoFotos, setColandoFotos] = useState(false);
+  async function colarNosDetalhes(evento: React.ClipboardEvent, categoria: EquipamentoImagemCategoria) {
+    const arquivos = imagensDaAreaDeTransferencia(evento.clipboardData);
+    if (arquivos.length === 0 || !selecionado?.id) return;
+    evento.preventDefault();
+    if (colandoFotos) return;
+    const equipamentoId = selecionado.id;
+    setColandoFotos(true);
+    try {
+      const atuais = await carregarImagensComPreview(equipamentoId);
+      const vagas = LIMITE_IMAGENS_POR_EQUIPAMENTO - atuais.length;
+      if (vagas <= 0) {
+        showError("Equipamentos", "Colar foto", new Error(`Limite de ${LIMITE_IMAGENS_POR_EQUIPAMENTO} fotos por equipamento já atingido.`));
+        return;
+      }
+      const novas = await Promise.all(arquivos.slice(0, vagas).map((arquivo, indice) =>
+        arquivoParaImagemEquipamento(arquivo, filtrarImagensPorCategoria(atuais, categoria).length + indice, categoria)));
+      const payload: EquipamentoImagemInput[] = normalizarOrdemPorCategoria([...atuais, ...novas])
+        .map(({ local_id, preview_url, ...imagem }) => imagem);
+      await db.substituirImagensEquipamento(
+        equipamentoId,
+        payload,
+        atuais.flatMap((foto) => typeof foto.id === "number" ? [foto.id] : []),
+      );
+      // A OS aberta pode ter mudado durante a gravação ou a recarga: só a mesma recebe as fotos.
+      const recarregadas = await carregarImagensComPreview(equipamentoId);
+      if (selecionadoIdRef.current === equipamentoId) setImagensDetalhes(recarregadas);
+      success("Equipamentos", novas.length === 1 ? "Foto colada." : `${novas.length} fotos coladas.`, "Colar foto");
+    } catch (err) {
+      showError("Equipamentos", "Colar foto", err);
+    } finally {
+      setColandoFotos(false);
+    }
+  }
+
   async function removerImagemDetalhes(imagem: EquipamentoImagemDraft) {
     if (!imagem.id || !selecionado?.id) return;
     try {
@@ -777,26 +1535,35 @@ export default function Equipamentos() {
    * Conecta-se a: db.buscarVerificacao, db.listarComunicacoes
    */
   const detalhesSeq = useRef(0);
-  const abrirDetalhes = useCallback(async (eq: Equipamento) => {
+  const abrirDetalhes = useCallback(async (
+    eq: Equipamento,
+    rota = `/equipamentos/${eq.id}`,
+    verificacaoSalva?: Verificacao,
+  ) => {
     // Trocar de atendimento com a janela aberta: só a última abertura grava os dados.
     const seq = ++detalhesSeq.current;
     setSelecionado(eq);
-    setDetalhesDialogOpen(true);
+    setIdDetalhesAberto(eq.id ?? null);
+    if (pathnameAtualRef.current !== rota) navigate(rota);
     setCarregandoDetalhes(true);
-    setVerificacaoDetalhes(null);
+    setVerificacaoDetalhes(verificacaoSalva ?? null);
     setComunicacoes([]);
     setImagensDetalhes([]);
     setHistoricoDetalhes([]);
     setHistoricoDetalhesError(null);
     try {
-      const [verif, comms, imagens, historico] = await Promise.allSettled([
+      const [verif, comms, imagens, historico, osAtualizada] = await Promise.allSettled([
         db.buscarVerificacao(eq.id!),
         db.listarComunicacoes(eq.id!),
         carregarImagensComPreview(eq.id!),
         db.listarHistoricoEquipamento(eq.id!),
+        verificacaoSalva ? db.buscarEquipamento(eq.id!) : undefined,
       ]);
       if (seq !== detalhesSeq.current) return;
-      setVerificacaoDetalhes(verif.status === "fulfilled" ? verif.value : null);
+      if (pathnameAtualRef.current === rota && osAtualizada.status === "fulfilled" && osAtualizada.value) {
+        setSelecionado(osAtualizada.value);
+      }
+      setVerificacaoDetalhes((verif.status === "fulfilled" ? verif.value : null) ?? verificacaoSalva ?? null);
       setComunicacoes(comms.status === "fulfilled" ? comms.value : []);
       setImagensDetalhes(imagens.status === "fulfilled" ? imagens.value : []);
       setHistoricoDetalhes(historico.status === "fulfilled" ? historico.value : []);
@@ -810,13 +1577,125 @@ export default function Equipamentos() {
     } finally {
       if (seq === detalhesSeq.current) setCarregandoDetalhes(false);
     }
-  }, [carregarImagensComPreview]);
+  }, [carregarImagensComPreview, navigate]);
 
-  /** Abre dialog de verificação técnica (VerificacaoTecnica.tsx) */
-  function abrirVerificacao(eq: Equipamento) {
+  // Rota aberta direto (voltar/avançar do navegador, link): carrega a OS do endereço.
+  const buscaDetalhesSeq = useRef(0);
+  useEffect(() => {
+    if (idDetalhesRota == null || selecionadoIdRef.current === idDetalhesRota) return;
+    const seq = ++buscaDetalhesSeq.current;
+    const pathname = location.pathname;
+    const vigente = () => seq === buscaDetalhesSeq.current && pathnameAtualRef.current === pathname;
+    db.buscarEquipamento(idDetalhesRota)
+      .then((eq) => { if (vigente()) return abrirDetalhes(eq, pathname); })
+      .catch((err) => {
+        if (!vigente()) return;
+        showError("Equipamentos", "Abrir atendimento", err, { manterAoTrocarDeTela: true });
+        navigate("/equipamentos", { replace: true });
+      });
+    return () => { buscaDetalhesSeq.current += 1; };
+  }, [idDetalhesRota, location.pathname, abrirDetalhes, navigate]);
+
+  // Verificação pela metade: menu, Ctrl+K ou voltar perguntam antes. Só Cancelar e
+  // Finalizar (fecharPaginaVerificacao) passam direto.
+  const [verificacaoSuja, setVerificacaoSuja] = useState(false);
+  // Um bloqueio só para a tela inteira: verificação pela metade ou edição de equipamento suja.
+  // O ajuste de orçamento pela metade entra no mesmo bloqueio.
+  const avisoVerificacao = useAvisoAoSair((verificacaoDialogOpen && verificacaoSuja) || edicaoSuja || ajusteSujo);
+  const avisoEdicao = avisoVerificacao;
+
+  // Esc sai das páginas de formulário (como o botão marcado "(Esc)"). Com algo pela metade que
+  // não tem rascunho, a saída passa pelo aviso "Sair sem salvar?" em vez de descartar direto.
+  // Nova entrada: Esc e a seta voltam guardando o rascunho (só o Cancelar descarta). Edição:
+  // Esc, a seta e o Cancelar passam pelo aviso "Sair sem salvar?" e só fecham depois dele.
+  function sairDoFormulario() {
+    if (editando) avisoEdicao.sairComAviso(() => fecharFormulario());
+    else fecharFormulario();
+  }
+  useEscSai(dialogOpen, sairDoFormulario);
+  // Esc e a seta de voltar do cabeçalho: com algo preenchido, a saída passa pelo aviso e a
+  // página só é fechada (e limpa) depois de "Sair sem salvar"; limpa, fecha direto.
+  function voltarDaVerificacao() {
+    if (verificacaoSuja) navigate(origemVerificacaoRef.current);
+    else fecharPaginaVerificacao();
+  }
+  useEscSai(verificacaoDialogOpen, voltarDaVerificacao);
+
+  const paginaVerificacaoAbertaRef = useRef(false);
+  paginaVerificacaoAbertaRef.current = verificacaoDialogOpen;
+  /** Abre a página de verificação técnica (VerificacaoTecnica.tsx, /equipamentos/:id/verificacao). */
+  function abrirVerificacao(eq: Equipamento, origem?: string) {
     setSelecionado(eq);
     setVerificacaoDialogOpen(true);
+    paginaVerificacaoAbertaRef.current = true;
+    origemVerificacaoRef.current = origem ?? pathnameAtualRef.current;
+    const destino = `/equipamentos/${eq.id}/verificacao`;
+    if (pathnameAtualRef.current !== destino) navigate(destino);
   }
+
+  /**
+   * Sai da página da verificação e volta para onde a pessoa estava. Voltando aos detalhes, eles
+   * são carregados de novo: depois de finalizar mudaram, e num link direto nunca foram carregados.
+   */
+  function fecharPaginaVerificacao(salvo?: ResultadoFinalizarVerificacao["salvo"]) {
+    // Finalizar já fecha; o "fechar" que a página manda logo depois não navega de novo.
+    if (!paginaVerificacaoAbertaRef.current) return;
+    paginaVerificacaoAbertaRef.current = false;
+    const alvo = selecionado;
+    setVerificacaoDialogOpen(false);
+    const origem = origemVerificacaoRef.current;
+    if (alvo?.id && origem === `/equipamentos/${alvo.id}`) {
+      if (salvo?.equipamento.id === alvo.id) {
+        avisoVerificacao.liberarProximaSaida();
+        void abrirDetalhes(salvo.equipamento, origem, salvo.verificacao);
+      } else {
+        db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
+      }
+      return;
+    }
+    if (pathnameAtualRef.current !== origem) {
+      avisoVerificacao.liberarProximaSaida();
+      navigate(origem);
+    }
+  }
+
+  // Link direto, voltar ou avançar até a verificação: abre a página se a OS está em verificação.
+  const idVerificacaoRotaAnterior = useRef<number | null>(null);
+  useEffect(() => {
+    const anterior = idVerificacaoRotaAnterior.current;
+    idVerificacaoRotaAnterior.current = idVerificacaoRota;
+    // A resposta só vale enquanto a pessoa continua nesta rota.
+    let ativo = true;
+    if (idVerificacaoRota != null && (!paginaVerificacaoAbertaRef.current || selecionado?.id !== idVerificacaoRota)) {
+      setVerificacaoDialogOpen(false);
+      setVerificacaoSuja(false);
+      if (anterior != null) setQuemRecebe(null);
+      const origem = `/equipamentos/${idVerificacaoRota}`;
+      db.buscarEquipamento(idVerificacaoRota)
+        .then((eq) => {
+          if (!ativo) return;
+          if (eq.status === "EM_VERIFICACAO") abrirVerificacao(eq, origem);
+          else navigate(origem, { replace: true });
+        })
+        .catch((err) => {
+          if (!ativo) return;
+          showError("Equipamentos", "Abrir verificação", err, { manterAoTrocarDeTela: true });
+          navigate("/equipamentos", { replace: true });
+        });
+    } else if (idVerificacaoRota == null && anterior != null && paginaVerificacaoAbertaRef.current) {
+      // Saiu da página pelo navegador (ou Esc + "Sair sem salvar"): a verificação não finalizada
+      // é descartada. Voltando aos detalhes da mesma OS, eles são carregados de novo.
+      setVerificacaoDialogOpen(false);
+      paginaVerificacaoAbertaRef.current = false;
+      if (idDetalhesRota === anterior) {
+        db.buscarEquipamento(anterior).then((eq) => { if (ativo) void abrirDetalhes(eq); }).catch(() => undefined);
+      }
+    }
+    return () => {
+      ativo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idVerificacaoRota]);
 
   /** Abre dialog de mudança manual de status com opção de pré-selecionar o status */
   async function prepararValorEntregaPadrao(eq: Equipamento) {
@@ -827,8 +1706,9 @@ export default function Equipamentos() {
     setAcordoExcecaoEntrega(false);
   }
 
-  async function prepararAjusteOrcamentoPadrao(eq: Equipamento) {
+  async function prepararAjusteOrcamentoPadrao(eq: Equipamento, aindaValido = () => true) {
     const verificacao = await db.buscarVerificacao(eq.id!, eq.empresa_id);
+    if (!aindaValido()) return;
     const valorOriginal = verificacao?.custo_total ?? null;
     const valorAnterior = eq.valor_orcamento ?? null;
     const valorBase = eq.valor_orcamento ?? verificacao?.custo_total ?? 0;
@@ -853,21 +1733,31 @@ export default function Equipamentos() {
     } catch {
       servicosIniciais = [];
     }
-    setServicosAjuste(normalizarServicosOrcamento(servicosIniciais));
+    const servicosNormalizados = normalizarServicosOrcamento(servicosIniciais);
+    setServicosAjuste(servicosNormalizados);
+    let pecasLegadas: PecaNecessaria[] = [];
     try {
       const todas = JSON.parse(verificacao?.pecas_necessarias || "[]") as PecaNecessaria[];
-      const vinculadas = new Set(pecasParaOrcamento(normalizarServicosOrcamento(servicosIniciais)).map((p) => p.id));
-      setPecasLegadasAjuste(todas.filter((p) => !vinculadas.has(p.id)));
-    } catch { setPecasLegadasAjuste([]); }
+      const vinculadas = new Set(pecasParaOrcamento(servicosNormalizados).map((p) => p.id));
+      pecasLegadas = todas.filter((p) => !vinculadas.has(p.id));
+    } catch { pecasLegadas = []; }
+    setPecasLegadasAjuste(pecasLegadas);
+    const pagamentoAprovado = orcamentoJaAprovado(eq.status) && verificacao?.forma_pagamento_codigo;
+    baseAjusteRef.current = instantaneoAjuste({
+      valor: valorBase, prazo: eq.prazo_aprovacao || "", observacoes: verificacao?.observacoes || "",
+      forma: pagamentoAprovado ? verificacao.forma_pagamento_codigo ?? "" : "",
+      detalhe: pagamentoAprovado ? verificacao.forma_pagamento_detalhe || "" : "",
+      servicos: servicosNormalizados, pecasLegadas,
+    });
 
     setCarregandoCatalogoAjuste(true);
     try {
       const catalogo = await db.listarServicosCatalogoAtivos();
-      setCatalogoServicosAjuste(catalogo);
+      if (aindaValido()) setCatalogoServicosAjuste(catalogo);
     } catch (err) {
       console.error("Erro ao carregar catálogo de serviços:", err);
     } finally {
-      setCarregandoCatalogoAjuste(false);
+      if (aindaValido()) setCarregandoCatalogoAjuste(false);
     }
   }
 
@@ -961,7 +1851,12 @@ export default function Equipamentos() {
     setStatusDialogOpen(true);
   }
 
-  async function abrirAlterarOrcamento(eq: Equipamento) {
+  /** `aindaValido`: num link direto, para de abrir se a pessoa saiu da rota enquanto o PIN ou a carga esperavam. */
+  async function abrirAlterarOrcamento(
+    eq: Equipamento,
+    origem?: string,
+    aindaValido = () => pathnameAtualRef.current === location.pathname,
+  ): Promise<boolean> {
     const liberado = await ensureSensitiveAccess({
       title: "Alterar orçamento",
       description: "Informe o PIN para editar serviços e valor sem alterar o status do equipamento.",
@@ -969,20 +1864,91 @@ export default function Equipamentos() {
         ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
         : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
     });
-    if (!liberado) return;
+    if (!liberado || !aindaValido()) return false;
 
+    await prepararAjusteOrcamentoPadrao(eq, aindaValido);
+    if (!aindaValido()) return false;
+    invalidarAjuste();
     setSelecionado(eq);
     setNovoStatus("");
     setAjusteOrcamentoSemMudancaStatus(true);
     setCorrecaoStatus(false);
     setMotivoCorrecaoStatus("");
-    setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorFinal(0);
     setValorFinalSugerido(null);
     setAcordoExcecaoEntrega(false);
-    await prepararAjusteOrcamentoPadrao(eq);
     setStatusDialogOpen(true);
+    origemAjusteRef.current = origem ?? pathnameAtualRef.current;
+    const destino = `/equipamentos/${eq.id}/orcamento`;
+    if (pathnameAtualRef.current !== destino) navigate(destino);
+    return true;
   }
+
+  /**
+   * Fecha a página do ajuste e volta para onde a pessoa estava. Voltando aos detalhes, eles são
+   * carregados de novo: depois de salvar mudaram, e num link direto nunca foram carregados.
+   */
+  function fecharPaginaAjuste() {
+    invalidarAjuste();
+    baseAjusteRef.current = null;
+    const alvo = selecionado;
+    setStatusDialogOpen(false);
+    setAjusteOrcamentoSemMudancaStatus(false);
+    const origem = origemAjusteRef.current;
+    if (alvo?.id && origem === `/equipamentos/${alvo.id}`) {
+      db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
+      return;
+    }
+    // Só é chamada depois de salvar ou de "Sair sem salvar": a navegação não pergunta de novo.
+    avisoVerificacao.liberarProximaSaida();
+    if (pathnameAtualRef.current !== origem) navigate(origem);
+  }
+
+  // Link direto, voltar ou avançar até a página do ajuste: abre o ajuste dessa OS (com o PIN de sempre).
+  const paginaAjusteAberta = statusDialogOpen && ajusteOrcamentoSemMudancaStatus;
+  const paginaAjusteAbertaRef = useRef(false);
+  paginaAjusteAbertaRef.current = paginaAjusteAberta;
+  /** Seta, Esc e Cancelar do ajuste: com algo alterado, passam pelo aviso "Sair sem salvar?". */
+  function sairDoAjuste() {
+    avisoVerificacao.sairComAviso(() => fecharPaginaAjuste());
+  }
+  useEscSai(paginaAjusteAberta, sairDoAjuste);
+  const idAjusteRotaAnterior = useRef<number | null>(null);
+  useEffect(() => {
+    const anterior = idAjusteRotaAnterior.current;
+    idAjusteRotaAnterior.current = idAjusteRota;
+    // A resposta (e o PIN pedido no meio) só vale enquanto a pessoa continua nesta rota.
+    let ativo = true;
+    if (idAjusteRota != null && (!paginaAjusteAbertaRef.current || selecionado?.id !== idAjusteRota)) {
+      setStatusDialogOpen(false);
+      setAjusteOrcamentoSemMudancaStatus(false);
+      setCarregandoCatalogoAjuste(false);
+      setConfirmOpen(false);
+      responderEscolhaAjuste(null);
+      garantiaConfirmadaRef.current = false;
+      const origem = `/equipamentos/${idAjusteRota}`;
+      db.buscarEquipamento(idAjusteRota)
+        .then(async (eq) => {
+          if (!ativo) return;
+          const aberto = await abrirAlterarOrcamento(eq, origem, () => ativo);
+          if (!aberto && ativo) navigate(origem, { replace: true });
+        })
+        .catch((err) => {
+          if (!ativo) return;
+          showError("Equipamentos", "Abrir ajuste de orçamento", err, { manterAoTrocarDeTela: true });
+          navigate("/equipamentos", { replace: true });
+        });
+    } else if (idAjusteRota == null && anterior != null && paginaAjusteAbertaRef.current) {
+      // Saiu da página pelo navegador: o ajuste não salvo é descartado.
+      setStatusDialogOpen(false);
+      setAjusteOrcamentoSemMudancaStatus(false);
+      setCarregandoCatalogoAjuste(false);
+    }
+    return () => {
+      ativo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idAjusteRota]);
 
   async function abrirConsumosOrcamento(eq: Equipamento) {
     const liberado = await ensureSensitiveAccess({
@@ -1016,6 +1982,9 @@ export default function Equipamentos() {
    */
   async function onSubmit(data: EquipamentoFormData) {
     const sequenciaEdicao = fotoEdicaoSeq.current;
+    const meuRascunhoEntrada = donoRascunhoEntrada.current;
+    // Mesma trava do botão, também para o Enter: série repetida exige confirmar o novo ciclo.
+    if (restaurandoVinculo || conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)) return;
     const baselineFotos = editando ? baselineFotosRef.current : null;
     if (editando && (carregandoImagensFormulario || !baselineFotos || baselineFotos.equipamentoId !== editando.id)) {
       setErroImagens("As fotos ainda não foram carregadas com segurança. Recarregue as fotos antes de salvar.");
@@ -1028,6 +1997,11 @@ export default function Equipamentos() {
       return;
     }
     setErroCliente(null);
+    const erroTecnico = erroTecnicoDaEntrada(tecnicoNovoEquipamento, tecnicos);
+    if (erroTecnico) {
+      showError("Equipamentos", "Salvar equipamento", new Error(erroTecnico));
+      return;
+    }
     setSalvando(true);
     try {
       // Nome de exibição do cliente
@@ -1038,9 +2012,14 @@ export default function Equipamentos() {
       const acessoriosTexto = (data.acessorios || []).filter(Boolean).join(", ");
 
       const observacoesSemTecnico = removerTecnicoInicialDasObservacoes(data.observacoes || "");
-      const emailTecnicoInicial = EMAIL_POR_TECNICO[tecnicoNovoEquipamento] || "";
-      const linhaTecnicoInicial = `Técnico inicial: ${tecnicoNovoEquipamento}${emailTecnicoInicial ? ` (${emailTecnicoInicial})` : ""}`;
-      const observacoesComTecnico = [linhaTecnicoInicial, observacoesSemTecnico]
+      // Sem técnico (empresa sem nenhum marcado): a linha fica de fora.
+      const linhaTecnico = linhaTecnicoInicial(tecnicoNovoEquipamento, emailDoTecnico(tecnicoNovoEquipamento));
+      // Retorno dentro da garantia: a OS nova registra de onde veio (só avisa; ninguém marca garantia sozinho).
+      const ultimaAnterior = !editando && confirmouNovoCiclo ? ultimaPassagem(registrosAnteriores) : null;
+      const linhaGarantia = ultimaAnterior && garantiaServicos.dias != null && retornoNaGarantia(ultimaAnterior, garantiaServicos.dias, todayLocalIsoDate())
+        ? linhaRetornoGarantia(ultimaAnterior, garantiaServicos.dias)
+        : "";
+      const observacoesComTecnico = [linhaTecnico, linhaGarantia && !observacoesSemTecnico.includes(linhaGarantia) ? linhaGarantia : "", observacoesSemTecnico]
         .filter(Boolean)
         .join("\n");
 
@@ -1079,6 +2058,12 @@ export default function Equipamentos() {
       }
       const equipamentoSalvo = resultado.data;
       const equipamentoIdSalvo = equipamentoSalvo.id!;
+      // Só apaga o rascunho deste formulário (a identidade vai gravada com ele): se outra
+      // Nova entrada já gravou por cima, mesmo depois de sair e voltar da tela, ele fica.
+      if (!editando) {
+        rascunhoEntrada.limparSe((rascunho) => rascunho.dono === meuRascunhoEntrada);
+        if (donoRascunhoEntrada.current === meuRascunhoEntrada) setRascunhoRecuperadoEm(null);
+      }
 
       if (fotosAlteradas) {
         try {
@@ -1166,12 +2151,22 @@ export default function Equipamentos() {
           });
           setEmailDialogOpen(true);
         }
-      }
 
-      fotoEdicaoSeq.current += 1;
-      fotoEdicaoEquipamentoId.current = null;
-      baselineFotosRef.current = null;
-      setDialogOpen(false);
+        const destino = destinoNovaEntrada(equipamentoIdSalvo, origemEntradaRef.current);
+        if (liberadoEmail && !destino.startsWith("/equipamentos/")) {
+          // Sair deste módulo agora desmontaria o diálogo de e-mail.
+          origemAposEmailRef.current = destino;
+          avisoEdicao.liberarProximaSaida();
+          fecharFormulario(false);
+          navigate("/equipamentos");
+        } else {
+          fecharFormulario(false);
+          avisoEdicao.liberarProximaSaida();
+          navigate(destino);
+        }
+      } else {
+        fecharFormulario();
+      }
       setImagensFormulario([]);
       setErroImagens(null);
     } catch (err: any) {
@@ -1210,7 +2205,11 @@ export default function Equipamentos() {
    * Conecta-se a: useStatusEquipamento.finalizarVerificacao
    */
   async function handleConcluirVerificacao(dados: DadosVerificacao): Promise<boolean> {
-    if (!selecionado) return false;
+    if (!selecionado || selecionado.id !== idVerificacaoRota) return false;
+    // A geração muda a cada troca de OS ou de editor na rota: A → B → A abre outro editor de A,
+    // e esta tentativa não pode gravar, enviar nem fechar esse editor novo.
+    const geracao = geracaoAjusteRef.current;
+    const rotaVigente = () => geracaoAjusteRef.current === geracao;
     // Total 0 só chega aqui em OS só de garantia, que sai aprovada: só quem aprova orçamento finaliza.
     const garantiaAprovada = dados.custo_total === 0;
     const liberado = await ensureSensitiveAccess({
@@ -1220,16 +2219,18 @@ export default function Equipamentos() {
         : "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
       anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
     });
-    if (!liberado) return false;
+    if (!liberado || !rotaVigente()) return false;
 
     async function finalizar(eq: Equipamento): Promise<boolean> {
+      if (!rotaVigente() || eq.id !== idVerificacaoRota) return false;
       setSalvando(true);
       try {
         const resultado = await finalizarVerificacao(eq, dados);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
-        setVerificacaoDialogOpen(false);
+        // Já gravado: o resultado é informado mesmo se a rota mudou, mas só fecha o próprio editor.
+        if (rotaVigente()) fecharPaginaVerificacao(resultado.salvo);
         await recarregar();
         const resumoCanais = mensagemResultadoCanais(resultado);
         if (resumoCanais) {
@@ -1257,6 +2258,7 @@ export default function Equipamentos() {
       return false;
     }
 
+    if (!rotaVigente()) return false;
     if (precisaPerguntarQuemRecebeOrcamento(precisaContato, garantiaAprovada)) {
       setQuemRecebe({
         eq: selecionado,
@@ -1265,7 +2267,7 @@ export default function Equipamentos() {
           telefone: selecionado.cliente_telefone || "",
           email: selecionado.cliente_email || "",
         },
-        continuar: async (eqAtualizado) => { await finalizar(eqAtualizado); },
+        continuar: async (eqAtualizado) => { if (rotaVigente()) await finalizar(eqAtualizado); },
       });
       return false;
     }
@@ -1298,7 +2300,7 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
-    async function executarComEmail(email: string | undefined, nomeDestinatario?: string, emailSalvo = false): Promise<boolean> {
+    async function executarComEmail(email: string | null, nomeDestinatario?: string, emailSalvo = false): Promise<boolean> {
       setSalvando(true);
       try {
         const resultado = await marcarComoPronto(eq, email, nomeDestinatario);
@@ -1337,7 +2339,7 @@ export default function Equipamentos() {
         }
         await executarComEmail(email, recipient.nome, salvar);
       },
-      onSkip: async () => { await executarComEmail(""); },
+      onSkip: async () => { await executarComEmail(null); },
     });
     setEmailDialogOpen(true);
   }
@@ -1546,6 +2548,11 @@ export default function Equipamentos() {
 
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
+    const geracaoAjuste = geracaoAjusteRef.current;
+    const ajusteNaRota = () => !ajusteOrcamentoSemMudancaStatus || (
+      selecionado.id === idAjusteRota && geracaoAjusteRef.current === geracaoAjuste
+    );
+    if (!ajusteNaRota()) return;
     if (servicosAjuste.some((s) => !validarPecas(s.pecas ?? []))) {
       warning("Equipamentos", "Informe quantidade inteira positiva e preço válido para as peças.");
       return;
@@ -1626,7 +2633,7 @@ export default function Equipamentos() {
           : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS })
         : {}),
     });
-    if (!liberado) {
+    if (!liberado || !ajusteNaRota()) {
       garantiaConfirmadaRef.current = false;
       return;
     }
@@ -1636,6 +2643,7 @@ export default function Equipamentos() {
     if (ajusteOrcamentoSemMudancaStatus && verificacaoAjusteOrcamento && selecionado.id) {
       try {
         const analise = await db.analisarAjusteOrcamento(selecionado.id);
+        if (!ajusteNaRota()) return;
         const aprovado = orcamentoJaAprovado(selecionado.status);
         const variante = aprovado ? "aprovado" : analise.respostaPendente ? "pendente" : null;
         if (variante && orcamentoMudou(verificacaoAjusteOrcamento, servicosAjuste, totalAtual)) {
@@ -1644,6 +2652,7 @@ export default function Equipamentos() {
             garantiaConfirmadaRef.current = false;
             return;
           }
+          if (!ajusteNaRota()) return;
           opcoesAjuste = escolha;
         }
       } catch (err) {
@@ -1665,6 +2674,7 @@ export default function Equipamentos() {
       }
     }
 
+    if (!ajusteNaRota()) return;
     setSalvando(true);
     try {
       if (novoStatus === "ENTREGUE") {
@@ -1726,6 +2736,8 @@ export default function Equipamentos() {
           },
           profileId,
         );
+        // Gravado: daqui em diante o resultado é sempre informado, mesmo que a rota mude.
+        // A troca de rota só impede prorrogar o prazo e fechar o editor.
         if (!ajusteOrcamentoSemMudancaStatus) versaoAtual = (await db.buscarEquipamento(selecionado.id!)).atualizado_em;
         portalAjuste = resultado?.portal;
       }
@@ -1736,10 +2748,13 @@ export default function Equipamentos() {
           && !!prazoAprovacao
           && prazoAprovacao !== (selecionado.prazo_aprovacao || "").slice(0, 10);
         if (prazoMudou) {
+          const avisarPrazoNaoProrrogado = () =>
+            warning("Equipamentos", "Orçamento salvo, mas o prazo não foi prorrogado.");
           try {
             const equipamentoId = selecionado.id!;
             const prorrogar = async (confirmarRespostaPendente?: boolean) => {
               const versao = (await db.buscarEquipamento(equipamentoId)).atualizado_em;
+              if (!ajusteNaRota()) return undefined;
               if (!versao) throw new Error("Versão do equipamento não encontrada.");
               return db.prorrogarPrazoOrcamento({
                 equipamentoId,
@@ -1748,28 +2763,33 @@ export default function Equipamentos() {
                 ...(confirmarRespostaPendente ? { confirmarRespostaPendente: true } : {}),
               });
             };
-            let resultadoProrrogacao = await prorrogar();
-            if (!resultadoProrrogacao.prorrogado) {
-              const confirmado = await confirmarComOperador(
+            // Sem resultado = a rota mudou antes de prorrogar: o prazo ficou como estava.
+            let resultadoProrrogacao = ajusteNaRota() ? await prorrogar() : undefined;
+            let operadorRecusou = false;
+            if (resultadoProrrogacao && !resultadoProrrogacao.prorrogado) {
+              const confirmado = ajusteNaRota() && await confirmarComOperador(
                 "O cliente já respondeu",
                 "Prorrogar anula a resposta pendente. Continuar?",
                 "Prorrogar",
               );
-              if (confirmado) {
+              if (confirmado && ajusteNaRota()) {
                 resultadoProrrogacao = await prorrogar(true);
-              } else {
+              } else if (!confirmado && ajusteNaRota()) {
+                operadorRecusou = true;
                 warning("Equipamentos", "Orçamento salvo. O prazo não foi prorrogado.");
+              } else {
+                resultadoProrrogacao = undefined;
               }
             }
-            if (resultadoProrrogacao.prorrogado) portalProrrogacao = resultadoProrrogacao.portal;
+            if (resultadoProrrogacao?.prorrogado) portalProrrogacao = resultadoProrrogacao.portal;
+            else if (!operadorRecusou) avisarPrazoNaoProrrogado();
           } catch (err) {
             const detalhe = err instanceof Error ? err.message : String(err);
             warning("Equipamentos", `Orçamento salvo, mas o prazo não foi prorrogado: ${detalhe}`);
           }
         }
         await recarregar();
-        setStatusDialogOpen(false);
-        setAjusteOrcamentoSemMudancaStatus(false);
+        if (ajusteNaRota()) fecharPaginaAjuste();
         success(
           "Equipamentos",
           ["Orçamento atualizado.", portalAjuste?.mensagem, portalProrrogacao?.mensagem].filter(Boolean).join(" "),
@@ -1906,13 +2926,20 @@ export default function Equipamentos() {
   /** Pergunta ao operador e devolve a resposta (usa o diálogo de confirmação da página). */
   function confirmarComOperador(title: string, description: string, confirmLabel: string): Promise<boolean> {
     return new Promise((resolve) => {
+      const responder = (confirmado: boolean) => {
+        cancelarConfirmacaoRef.current = null;
+        setConfirmOpen(false);
+        resolve(confirmado);
+      };
+      const cancelar = () => responder(false);
+      cancelarConfirmacaoRef.current = cancelar;
       setConfirmProps({
         title,
         description,
         confirmLabel,
         cancelLabel: "Cancelar",
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
+        onConfirm: () => responder(true),
+        onCancel: cancelar,
       });
       setConfirmOpen(true);
     });
@@ -1927,8 +2954,11 @@ export default function Equipamentos() {
     try {
       verificacao = await db.buscarVerificacao(eq.id!);
     } catch (err) {
-      showError("Equipamentos", "Enviar WhatsApp", err);
-      return;
+      if (eq !== selecionado || !verificacaoDetalhes || verificacaoDetalhes.equipamento_id !== eq.id) {
+        showError("Equipamentos", "Enviar WhatsApp", err);
+        return;
+      }
+      verificacao = verificacaoDetalhes;
     }
     if (!verificacao) {
       warning("Equipamentos", "Verificação não encontrada; o orçamento não foi enviado.");
@@ -1959,6 +2989,85 @@ export default function Equipamentos() {
       showError("Equipamentos", "Enviar WhatsApp", new Error(wa.erro || "Falha ao enviar WhatsApp."));
     }
     if (envio.avisos.length) warning("Equipamentos", envio.avisos.join("\n"));
+  }
+
+  async function reenviarOrcamentoPorEmail(eq: Equipamento) {
+    if (eq.id == null) return;
+    const id = eq.id;
+    const acao = "Reenviar orçamento por e-mail";
+
+    try {
+      const [atual, destinatario] = await Promise.all([
+        db.buscarEquipamento(id),
+        db.obterDestinatarioOrcamento(id),
+      ]);
+      const { email, nome, contatoId } = destinatario;
+      if (atual.status !== "AGUARDANDO_APROVACAO") {
+        warning("Equipamentos", "A OS deve estar aguardando aprovação para reenviar o orçamento.");
+        return;
+      }
+      if (!email?.trim()) {
+        warning("Equipamentos", `O contato ${nome} não tem e-mail; cadastre em Clientes › Contatos.`);
+        return;
+      }
+      if (!emailValido(email)) {
+        warning("Equipamentos", `O contato ${nome} tem um e-mail inválido. Corrija em Clientes › Contatos.`);
+        return;
+      }
+
+      setConfirmProps({
+        title: acao,
+        description: `Enviar o orçamento da OS #${id} para ${nome} (${email})?`,
+        confirmLabel: "Reenviar e-mail",
+        cancelLabel: "Cancelar",
+        onConfirm: () => void enviar(),
+      });
+      setConfirmOpen(true);
+
+      async function enviar() {
+        setSalvando(true);
+        try {
+          const liberado = await ensureSensitiveAccess({
+            title: acao,
+            description: "Confirme seu acesso para reenviar o orçamento.",
+            anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
+          });
+          if (!liberado) return;
+
+          const [recente, verificacao, contato] = await Promise.all([
+            db.buscarEquipamento(id),
+            db.buscarVerificacao(id),
+            db.obterDestinatarioOrcamento(id),
+          ]);
+          if (recente.status !== "AGUARDANDO_APROVACAO" || recente.atualizado_em !== atual.atualizado_em
+            || !contato.email || contato.email !== email || contato.nome !== nome || contato.contatoId !== contatoId) {
+            warning("Equipamentos", "A OS mudou. Revise o orçamento e o destinatário antes de reenviar.");
+            return;
+          }
+          if (!verificacao) {
+            warning("Equipamentos", "Verificação não encontrada. O orçamento não foi reenviado.");
+            return;
+          }
+          const resultado = await EmailService.enviarOrcamento({
+            ...recente,
+            cliente_nome: contato.nome,
+            cliente_email: contato.email,
+          }, verificacao);
+          if (!resultado.sucesso) throw new Error(resultado.erro || "Falha ao enviar o orçamento.");
+          success("Equipamentos", "Orçamento reenviado por e-mail.", acao);
+          if (selecionadoIdRef.current === id && detalhesAbertoRef.current) {
+            const lista = await db.listarComunicacoes(id).catch(() => null);
+            if (lista && selecionadoIdRef.current === id && detalhesAbertoRef.current) setComunicacoes(lista);
+          }
+        } catch (err) {
+          showError("Equipamentos", acao, err);
+        } finally {
+          setSalvando(false);
+        }
+      }
+    } catch (err) {
+      showError("Equipamentos", acao, err);
+    }
   }
 
   async function prorrogarPrazoEEnviar(eq: Equipamento, preparo?: PreparoAcessoPortal | null) {
@@ -2122,10 +3231,7 @@ export default function Equipamentos() {
    * Cada status tem ações específicas (ex: RECEBIDO → "Iniciar Verificação").
    * Conecta-se a: acaoRapida, abrirVerificacao, abrirMudarStatus, handleMarcarPronto, WhatsApp
    */
-  function renderAcoes(eq: Equipamento) {
-    let primary: PriorityAction | null = null;
-    let secondary: PriorityAction | undefined;
-    const overflow: PriorityAction[] = [];
+  function renderAcoes(eq: Equipamento, naPagina = false) {
     const classeAcaoPrincipal = "min-w-[170px] justify-center";
 
     const acaoStatus: PriorityAction = {
@@ -2182,7 +3288,7 @@ export default function Equipamentos() {
       label: "Excluir",
       icon: <Trash2 className="h-3.5 w-3.5" />,
       variant: "ghost",
-      className: "text-red-600",
+      className: "text-destructive",
       onClick: () => void solicitarExclusao(eq),
     };
     const podeFinanceiro = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
@@ -2192,218 +3298,71 @@ export default function Equipamentos() {
       || (hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES) && orcamentoEmElaboracao(eq.status));
     const podeExcluir = hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS);
 
-    switch (eq.status) {
-      case "RECEBIDO":
-        primary = {
-          id: "iniciar_verificacao",
-          label: "Iniciar Verificação",
-          icon: <Play className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void acaoRapida(eq, "EM_VERIFICACAO"),
-          disabled: salvando,
-        };
-        secondary = acaoStatus;
-        overflow.push(
-          {
-            id: "os_pdf",
-            label: "OS PDF",
-            icon: <FileDown className="h-3.5 w-3.5" />,
-            onClick: () => void gerarOrdemServicoPdf(eq),
-            disabled: salvando,
-          },
-          acaoEditar,
-          ...(podeExcluir ? [acaoExcluir] : []),
-        );
-        break;
-      case "EM_VERIFICACAO":
-        primary = {
-          id: "abrir_verificacao",
-          label: "Abrir Verificação",
-          icon: <ClipboardCheck className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => abrirVerificacao(eq),
-        };
-        secondary = acaoStatus;
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "VERIFICADO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "enviar_orcamento",
-            label: "Enviar Orçamento",
-            icon: <Send className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: classeAcaoPrincipal,
-            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-          };
-          secondary = acaoStatus;
-        } else {
-          primary = acaoStatus;
-        }
-        if (eq.cliente_telefone) {
-          overflow.push({
-            id: "whatsapp_orcamento",
-            label: "WhatsApp",
-            icon: <MessageSquare className="h-3.5 w-3.5" />,
-            onClick: () => void enviarWhatsAppOrcamento(eq),
-          });
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "AGUARDANDO_APROVACAO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "aprovar",
-            label: "Aprovar",
-            icon: <CheckCircle className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: "bg-green-600 hover:bg-green-700 text-white",
-            onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
-            disabled: salvando,
-          };
-          secondary = {
-            id: "reprovar",
-            label: "Reprovar",
-            icon: <XCircle className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: "bg-red-600 text-white hover:bg-red-700",
-            onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
-            disabled: salvando,
-          };
-          overflow.push(acaoStatus);
-        } else {
-          primary = acaoStatus;
-        }
-        if (eq.cliente_telefone) {
-          overflow.push({
-            id: "whatsapp_orcamento",
-            label: "WhatsApp",
-            icon: <MessageSquare className="h-3.5 w-3.5" />,
-            onClick: () => void enviarWhatsAppOrcamento(eq),
-          });
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "APROVADO":
-        primary = {
-          id: "iniciar_manutencao",
-          label: "Iniciar Manutenção",
-          icon: <Wrench className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
-          disabled: salvando,
-        };
-        secondary = acaoStatus;
-        overflow.push(
-          ...(podeFinanceiro ? [{ ...acaoCorrigirDecisao, id: "desfazer_aprovacao", label: "Desfazer aprovação" }] : []),
-          acaoEditar,
-          ...(podeExcluir ? [acaoExcluir] : []),
-        );
-        break;
-      case "EM_MANUTENCAO":
-        primary = {
-          id: "marcar_pronto",
-          label: "Marcar Pronto",
-          icon: <PackageCheck className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void handleMarcarPronto(eq),
-          disabled: salvando || loadingAutomacao,
-        };
-        secondary = acaoStatus;
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "AGUARDANDO_PECA":
-        primary = {
-          id: "retomar_manutencao",
-          label: "Retomar Manutenção",
-          icon: <Wrench className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
-          disabled: salvando,
-        };
-        secondary = acaoStatus;
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "PRONTO":
-        primary = {
-          id: "registrar_entrega",
-          label: "Registrar Entrega",
-          icon: <PackageCheck className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "ENTREGUE"),
-        };
-        secondary = acaoStatus;
-        if (eq.cliente_telefone) {
-          overflow.push({
-            id: "whatsapp_pronto",
-            label: "WhatsApp",
-            icon: <MessageSquare className="h-3.5 w-3.5" />,
-            onClick: () => void enviarWhatsAppPronto(eq),
-          });
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "REPROVADO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "reabrir_orcamento",
-            label: "Reabrir Orçamento",
-            icon: <RotateCcw className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: classeAcaoPrincipal,
-            onClick: () => setReabrirAlvo(eq),
-            disabled: salvando,
-          };
-          overflow.push({
-            id: "mudar_status",
-            label: "Mudar Status",
-            icon: <ArrowDownUp className="h-3.5 w-3.5" />,
-            variant: "outline",
-            onClick: () => void abrirMudarStatus(eq),
-            disabled: salvando,
-          });
-        } else {
-          primary = acaoStatus;
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "ORCAMENTO_VENCIDO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "renovar_orcamento",
-            label: "Renovar orçamento",
-            icon: <RefreshCw className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: classeAcaoPrincipal,
-            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-          };
-          secondary = acaoStatus;
-        } else {
-          primary = acaoStatus;
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      default:
-        primary = acaoStatus;
-        secondary = undefined;
-        if (getProximosStatus(eq.status).length > 0) {
-          secondary = {
-            id: "mudar_status",
-            label: "Mudar Status",
-            icon: <ArrowDownUp className="h-3.5 w-3.5" />,
-            variant: "outline",
-            onClick: () => void abrirMudarStatus(eq),
-          };
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-    }
+    const acoes = acoesPorStatus(eq.status, {
+      podeOrcamentoValores,
+      podeFinanceiro,
+      temTelefone: Boolean(eq.cliente_telefone),
+      temProximosStatus: getProximosStatus(eq.status).length > 0,
+    });
+    const criarAcao = ({ id, rotulo }: AcaoStatus): PriorityAction => {
+      switch (id) {
+        case "status":
+          return acaoStatus;
+        case "iniciar_verificacao":
+          return { id, label: rotulo, icon: <Play className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void acaoRapida(eq, "EM_VERIFICACAO"), disabled: salvando };
+        case "abrir_verificacao":
+          return { id, label: rotulo, icon: <ClipboardCheck className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => abrirVerificacao(eq) };
+        case "enviar_orcamento":
+          return { id, label: rotulo, icon: <Send className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO") };
+        case "aprovar":
+          return { id, label: rotulo, icon: <CheckCircle className="h-3.5 w-3.5" />, variant: "default", onClick: () => void abrirDialogoAprovacao(eq, "aprovar"), disabled: salvando };
+        case "reprovar":
+          return { id, label: rotulo, icon: <XCircle className="h-3.5 w-3.5" />, variant: "default", className: "bg-destructive text-destructive-foreground hover:bg-destructive/90", onClick: () => void abrirDialogoAprovacao(eq, "reprovar"), disabled: salvando };
+        case "iniciar_manutencao":
+          return { id, label: rotulo, icon: <Wrench className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"), disabled: salvando };
+        case "marcar_pronto":
+          return { id, label: rotulo, icon: <PackageCheck className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void handleMarcarPronto(eq), disabled: salvando || loadingAutomacao };
+        case "retomar_manutencao":
+          return { id, label: rotulo, icon: <Wrench className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"), disabled: salvando };
+        case "registrar_entrega":
+          return { id, label: rotulo, icon: <PackageCheck className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void abrirMudarStatus(eq, "ENTREGUE") };
+        case "reabrir_orcamento":
+          return { id, label: rotulo, icon: <RotateCcw className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => setReabrirAlvo(eq), disabled: salvando };
+        case "renovar_orcamento":
+          return { id, label: rotulo, icon: <RefreshCw className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO") };
+        case "mudar_status":
+          return { id, label: rotulo, icon: <ArrowDownUp className="h-3.5 w-3.5" />, variant: "outline", onClick: () => void abrirMudarStatus(eq), ...(eq.status === "REPROVADO" ? { disabled: salvando } : {}) };
+        case "os_pdf":
+          return { id, label: rotulo, icon: <FileDown className="h-3.5 w-3.5" />, onClick: () => void gerarOrdemServicoPdf(eq), disabled: salvando };
+        case "whatsapp_orcamento":
+          return { id, label: rotulo, icon: <MessageSquare className="h-3.5 w-3.5" />, onClick: () => void enviarWhatsAppOrcamento(eq) };
+        case "whatsapp_pronto":
+          return { id, label: rotulo, icon: <MessageSquare className="h-3.5 w-3.5" />, onClick: () => void enviarWhatsAppPronto(eq) };
+        case "desfazer_aprovacao":
+          return { ...acaoCorrigirDecisao, id, label: rotulo };
+      }
+    };
+    // AcaoDaLinha: um botão visível por linha. A secundária vai para o ⋯ — "Status"
+    // abre a seção Equipamento; as outras (Reprovar) entram em "Neste status".
+    const nesteStatus = (acao: AcaoStatus): PriorityAction =>
+      acao.id === "status" ? criarAcao(acao) : { ...criarAcao(acao), className: undefined, group: "Neste status" };
+    const primary: PriorityAction = criarAcao(acoes.principal);
+    const secundaria = acoes.secundaria;
+    const overflow: PriorityAction[] = [
+      ...(secundaria && secundaria.id !== "status" ? [nesteStatus(secundaria)] : []),
+      ...acoes.nesteStatus.map(nesteStatus),
+      ...(secundaria?.id === "status" ? [acaoStatus] : []),
+      // Aparelho que voltou: abre a Nova entrada com aparelho, cliente e contato desta OS.
+      ...(atendimentoEncerrado(eq) ? [{
+        id: "nova_entrada_mesmo",
+        label: "Nova entrada deste equipamento",
+        icon: <Plus className="h-3.5 w-3.5" />,
+        variant: "outline" as const,
+        onClick: () => abrirNovo({ origem: pathnameAtualRef.current, base: eq }),
+      }] : []),
+      acaoEditar,
+      ...(podeExcluir ? [acaoExcluir] : []),
+    ];
 
     if (STATUS_COM_ORCAMENTO.includes(eq.status)) {
       const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
@@ -2411,6 +3370,13 @@ export default function Equipamentos() {
         editarIndex >= 0 ? editarIndex : overflow.length,
         0,
         acaoOrcamentoPdf,
+        ...(eq.status === "AGUARDANDO_APROVACAO" && podeOrcamentoValores ? [{
+          id: "reenviar_orcamento_email",
+          label: "Reenviar orçamento por e-mail",
+          icon: <Mail className="h-3.5 w-3.5" />,
+          onClick: () => void reenviarOrcamentoPorEmail(eq),
+          disabled: salvando,
+        }] : []),
         ...(podeAlterarOrcamento ? [acaoAlterarOrcamento] : []),
       );
     }
@@ -2422,28 +3388,27 @@ export default function Equipamentos() {
       overflow.splice(editarIndex >= 0 ? editarIndex : overflow.length, 0, acaoCorrigirStatus);
     }
 
-    return primary
-      ? (
-        <ActionPriorityRow
-          primary={primary}
-          iconOnlyPrimary={eq.status === "ENTREGUE" || eq.status === "ABANDONADO"}
-          secondary={secondary}
-          overflow={agruparAcoesOs(overflow)}
-          iconOnlySecondary
-          iconOnlyOverflowTrigger
-        />
-      )
-      : null;
+    return (
+      <ActionPriorityRow
+        primary={primary}
+        // Na própria página de Detalhes, "Status" (abrir os detalhes) não faz sentido.
+        overflow={agruparAcoesOs(naPagina ? overflow.filter((acao) => acao.id !== "status") : overflow)}
+        acaoDaLinha
+        destaque={naPagina}
+        semPrincipal={naPagina && primary.id === "status"}
+        menuTitulo={`${eq.marca} ${eq.modelo} · ${eq.serial_number}`}
+      />
+    );
   }
 
   // ─── Sub-renders para abas do drawer de detalhes ──────
 
   function renderVerificacaoTab() {
-    if (carregandoDetalhes) return <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>;
+    if (carregandoDetalhes) return <CarregandoSkeleton rotulo="Carregando histórico"><SkeletonLista itens={4} /></CarregandoSkeleton>;
     if (!verificacaoDetalhes) return <div className="text-center py-8 text-muted-foreground"><ClipboardCheck className="h-10 w-10 mx-auto mb-2 opacity-20" /><p>Nenhuma verificação realizada</p></div>;
 
     const v = verificacaoDetalhes;
-    const emailTecnico = EMAIL_POR_TECNICO[v.tecnico_nome] || "—";
+    const emailTecnico = emailDoTecnico(v.tecnico_nome) || "—";
     const itens: ItemVerificacao[] = v.itens_verificados ? JSON.parse(v.itens_verificados) : [];
     const servs: ServicoNecessario[] = v.servicos_necessarios ? JSON.parse(v.servicos_necessarios) : [];
     const pcs: PecaNecessaria[] = v.pecas_necessarias ? JSON.parse(v.pecas_necessarias) : [];
@@ -2457,19 +3422,7 @@ export default function Equipamentos() {
         </div>
         <div className="text-sm"><p className="text-muted-foreground mb-1">Problema Relatado:</p><p className="bg-accent/50 p-2 rounded">{v.problema_relatado}</p></div>
         {v.diagnostico && <div className="text-sm"><p className="text-muted-foreground mb-1">Diagnóstico:</p><p className="bg-accent/50 p-2 rounded">{v.diagnostico}</p></div>}
-        {itens.length > 0 && (
-          <div>
-            <p className="text-sm font-medium mb-2">Checklist</p>
-            <div className="space-y-1">
-              {itens.map(item => (
-                <div key={item.id} className="flex items-center gap-2 text-sm">
-                  {item.verificado ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-400" />}
-                  <span className={item.verificado ? "" : "text-muted-foreground"}>{item.nome}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <ChecklistVerificacao itens={itens} />
         {servs.length > 0 && (
           <div>
             <p className="text-sm font-medium mb-2">Serviços</p>
@@ -2522,33 +3475,210 @@ export default function Equipamentos() {
             Gerar Relatório de Status
           </Button>
         </div>
-        <div className="space-y-0">
-        {eventos.map((ev, idx) => (
-          <div key={`${ev.data}-${ev.status}-${idx}`} className="flex items-start gap-3 pb-4">
-            <div className="flex flex-col items-center">
-              <div className={`w-3 h-3 rounded-full mt-1 ${idx === eventos.length - 1 ? "bg-blue-500 ring-2 ring-blue-200" : "bg-muted-foreground/40"}`} />
-              {idx < eventos.length - 1 && <div className="w-0.5 flex-1 bg-border mt-1 min-h-[16px]" />}
-            </div>
-            <div className="flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                {ev.status_anterior && <><StatusBadge status={ev.status_anterior} /><span className="text-muted-foreground">→</span></>}
-                <StatusBadge status={ev.status} />
-                {ev.tipo === "CORRECAO_STATUS" && <span className="text-xs font-medium text-amber-700">Correção</span>}
-                <span className="text-xs text-muted-foreground">
-                  {ev.data_confiavel !== false ? formatDateTimeSalvador(ev.data) : "Horário legado inconsistente"}
-                </span>
-              </div>
-              <p className="mt-1 text-sm">{ev.motivo}</p>
-              {ev.autor && <p className="text-xs text-muted-foreground">Registrado por {ev.autor}</p>}
-            </div>
-          </div>
-        ))}
-        <div className="mt-2 p-2 bg-accent/50 rounded text-sm flex items-center gap-2">
+        <HistoricoOs eventos={eventos} />
+        <div className="flex items-center gap-2 rounded-lg bg-muted p-2.5 text-sm">
           <span className="text-muted-foreground">Status atual:</span>
-          <StatusBadge status={eq.status} />
-        </div>
+          <StatusBadge status={eq.status} completo />
         </div>
       </div>
+    );
+  }
+
+  // ─── Ajuste de orçamento: peças usadas pela página (/equipamentos/:id/orcamento) e pela janela de status ───
+  function blocoAjusteHistorico() {
+    return (
+      <>
+      {verificacaoAjusteOrcamento?.servicos_orcamento_original && (
+        <details className="rounded-md border p-3 text-sm">
+          <summary className="cursor-pointer font-medium">Orçamento original e decisões do cliente</summary>
+          <p className="mt-2 text-muted-foreground">Itens da primeira decisão. Serviços reprovados precisam de nova aprovação para consumir peças.</p>
+          {normalizarServicosOrcamento(verificacaoAjusteOrcamento.servicos_orcamento_original).map((servico) => (
+            <p key={servico.id} className="mt-1">{servico.descricao} · {verificacaoAjusteOrcamento.decisoes_servicos?.find((d) => d.servico_id === servico.id)?.decisao ?? "Sem decisão"}</p>
+          ))}
+        </details>
+      )}
+      {verificacaoAjusteOrcamento?.adjusted_at && (
+        <div className="rounded-md border bg-status-work-bg px-3 py-2 text-sm text-status-work flex items-center gap-2">
+          <History className="h-4 w-4 text-status-work" />
+          <div>
+            <p className="text-xs text-status-work font-medium">Histórico de Ajustes</p>
+            <p className="text-xs">
+              Último ajuste em {new Date(verificacaoAjusteOrcamento.adjusted_at).toLocaleDateString("pt-BR")}
+            </p>
+          </div>
+        </div>
+      )}
+      </>
+    );
+  }
+
+  function blocoAjusteCampos(selecionado: Equipamento) {
+    return (
+      <>
+      <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} onValidityChange={setValorOrcamentoValido} />
+        {Number(valorOrcamento) === 0 && !totalOrcamentoAjusteValido(0, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento) && (
+          <p className="text-xs text-destructive">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
+        )}
+      </div>
+      {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
+        <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput atalhos="prazo" min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
+      )}
+      <div className="space-y-2">
+        <Label htmlFor="observacoes-ajuste">Observações</Label>
+        <Textarea
+          id="observacoes-ajuste"
+          value={observacoesAjuste}
+          onChange={(event) => setObservacoesAjuste(event.target.value)}
+          placeholder="Observações do orçamento"
+          rows={3}
+        />
+      </div>
+      {ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status) ? (
+        <div className="space-y-3">
+        <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Ao salvar, você escolhe entre ajustar sem nova aprovação (o cliente já concordou; só a quantidade adicional terá baixa) ou pedir nova aprovação pelo portal.
+        </p>
+        <FormaPagamentoFields
+          codigo={formaPagamentoAjuste}
+          detalhe={detalhePagamentoAjuste}
+          onCodigoChange={setFormaPagamentoAjuste}
+          onDetalheChange={setDetalhePagamentoAjuste}
+          required
+        />
+        </div>
+      ) : (
+        <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          A forma de pagamento será definida durante a aprovação.
+        </div>
+      )}
+      {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
+        <p className="text-xs text-status-wait">
+          Novo valor em negociação: {formatCurrency(valorOrcamento)} (antes: {formatCurrency(valorOrcamentoAnterior)}).
+        </p>
+      )}
+      </>
+    );
+  }
+
+  function blocoAjusteServicos(moldura = "space-y-3 rounded-md border p-3") {
+    return (
+      <>
+      {verificacaoAjusteOrcamento && (
+        <div className={moldura}>
+          <AjusteOrcamentoServicos
+            servicos={servicosAjuste}
+            catalogo={catalogoServicosAjuste}
+            carregandoCatalogo={carregandoCatalogoAjuste}
+            onChange={setServicosAjuste}
+            onRemoverTodos={() => {
+              setConfirmProps({
+                title: "Remover todos os serviços",
+                description: "Você está removendo TODOS os serviços do orçamento. Deseja continuar?",
+                variant: "destructive",
+                onConfirm: () => {
+                  setServicosAjuste([]);
+                  setConfirmOpen(false);
+                },
+                onCancel: () => setConfirmOpen(false),
+              });
+              setConfirmOpen(true);
+            }}
+          />
+          {pecasLegadasAjuste.length > 0 && (
+            <div className="rounded-md border border-status-wait/30 bg-status-wait-bg p-2">
+              <p className="text-xs font-semibold text-status-wait">Peças antigas sem serviço vinculado</p>
+              <p className="text-xs text-status-wait">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
+              {pecasLegadasAjuste.map((peca, indice) => (
+                <div key={`${peca.id}-${indice}`} className="flex items-center justify-between gap-2 text-sm">
+                  <span>{peca.nome} × {peca.quantidade} · {formatCurrencyOrMissing(peca.valorTotal)}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((atual) => atual.filter((_, i) => i !== indice))}>Remover linha antiga</Button>
+                </div>
+              ))}
+            </div>
+          )}
+          {pecasLegadasAjuste.length === 0 && servicosAjuste.length === 0 && (
+            <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
+          )}
+        </div>
+      )}
+      </>
+    );
+  }
+
+  /** Mesma regra do botão Confirmar da janela de status, para o ajuste. */
+  function confirmarStatusBloqueado(selecionado: Equipamento) {
+    return salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento));
+  }
+
+  /** Soma dos serviços e peças do ajuste, ao vivo (a mesma conta do aviso de divergência ao confirmar). */
+  function somaDoAjuste() {
+    const servicos = servicosAjuste.reduce((soma, servico) => soma + (Number(servico.valor) || 0), 0);
+    const pecas = [...pecasParaOrcamento(servicosAjuste), ...pecasLegadasAjuste].reduce((soma, peca) => soma + peca.valorTotal, 0);
+    return servicos + pecas;
+  }
+
+  /** Ajuste de orçamento como página (decisão 24): mesmos campos e regras da janela; o status da OS não muda. */
+  function renderPaginaAjuste(selecionado: Equipamento) {
+    const soma = somaDoAjuste();
+    return (
+      <section aria-labelledby="ajuste-orcamento-titulo" className="-mb-4 flex min-h-[calc(100vh-8rem)] flex-col gap-4 lg:-mb-8">
+        <div>
+          <button
+            type="button"
+            onClick={sairDoAjuste}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-rapida hover:text-foreground"
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+            <span className="[overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo} · {selecionado.serial_number}</span>
+          </button>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <h1 id="ajuste-orcamento-titulo" className="text-[26px] font-bold leading-tight tracking-tight">Ajuste de orçamento</h1>
+            <StatusBadge status={selecionado.status} completo />
+          </div>
+        </div>
+
+        {blocoAjusteHistorico()}
+
+        <section className="rounded-2xl border bg-card p-5">
+          <h2 className="mb-3 text-base font-bold">Valores</h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl bg-muted px-4 py-3">
+              <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums">{valorOrcamentoOriginal != null ? formatCurrency(valorOrcamentoOriginal) : "—"}</p>
+            </div>
+            <div className="rounded-xl bg-muted px-4 py-3">
+              <p className="text-xs text-muted-foreground">Valor atual antes do ajuste</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums">{valorOrcamentoAnterior != null ? formatCurrency(valorOrcamentoAnterior) : "—"}</p>
+            </div>
+            <div className="rounded-xl bg-status-ok-bg px-4 py-3 text-status-ok">
+              <p className="text-xs">Novo valor calculado</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums">{formatCurrency(soma)}</p>
+            </div>
+          </div>
+        </section>
+
+        {verificacaoAjusteOrcamento && (
+          <section className="rounded-2xl border bg-card p-5">
+            <h2 className="mb-3 text-base font-bold">Serviços e peças</h2>
+            {blocoAjusteServicos("space-y-3")}
+          </section>
+        )}
+
+        <section className="space-y-4 rounded-2xl border bg-card p-5">
+          <h2 className="text-base font-bold">Orçamento</h2>
+          {blocoAjusteCampos(selecionado)}
+        </section>
+
+        <div className="sticky bottom-0 z-20 -mx-4 mt-auto flex flex-wrap items-center justify-between gap-3 border-t bg-card px-4 py-3 lg:-mx-8 lg:px-8">
+          <p className="text-sm text-muted-foreground">O status atual do equipamento será mantido.</p>
+          <div className="flex w-full gap-2 md:w-auto">
+            <Button type="button" variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={sairDoAjuste}>Cancelar<TeclaNoBotao tecla="Esc" /></Button>
+            <Button type="button" className="h-12 flex-1 md:h-10 md:flex-none" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
+              {salvando ? "Salvando..." : "Confirmar"}
+            </Button>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -2558,47 +3688,20 @@ export default function Equipamentos() {
 
   return (
     <div className="space-y-6">
+      {/* A lista fica montada (só escondida) sob a Nova entrada: volta na mesma rolagem. */}
+      {!detalhesDialogOpen && idAjusteRota == null && !paginaAjusteAberta && idVerificacaoRota == null && !verificacaoDialogOpen && (<div className={cn("space-y-6", (dialogOpen || rotaNovaEntrada || idEdicaoRota != null) && "hidden")}>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Equipamentos</h1>
-          <p className="text-muted-foreground">Gerencie equipamentos, verificações e orçamentos</p>
-        </div>
+      <PageHeader
+        titulo="Equipamentos"
+        descricao={loading
+          ? "Carregando…"
+          : `${totalEquipamentos} ${totalEquipamentos === 1 ? "equipamento" : "equipamentos"}${busca || statusFiltro !== "TODOS" ? " neste filtro" : ""}`}
+      >
         <div className="flex items-center gap-2">
-          <Button onClick={abrirNovo}><Plus className="h-4 w-4 mr-2" />Novo Equipamento</Button>
+          <Button variant="outline" onClick={() => void baixarCsv()} disabled={exportando}>{exportando ? "Exportando…" : "Exportar"}</Button>
+          <Button onClick={() => abrirNovo({ origem: "/equipamentos" })} title="Nova entrada (Alt+N)" aria-keyshortcuts="Alt+N"><Plus className="h-4 w-4 mr-2" />Nova entrada</Button>
         </div>
-      </div>
-
-      {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col lg:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input aria-label="Pesquisar equipamentos" placeholder="Série, patrimônio, equipamento, cliente ou CPF/CNPJ" value={busca} onChange={e => setBusca(e.target.value)} className="pl-9 pr-10" />
-              {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
-            </div>
-            <Select value={statusFiltro} onValueChange={setStatusFiltro}>
-              <SelectTrigger aria-label="Filtrar equipamentos por status" className="w-full lg:w-48">
-                <Filter className="h-4 w-4 mr-2" /><SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map(opt => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}
-              </SelectContent>
-            </Select>
-            <Select value={ordenacao} onValueChange={(value: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE") => setOrdenacao(value)}>
-              <SelectTrigger aria-label="Ordenar equipamentos" className="w-full lg:w-56">
-                <ArrowDownUp className="h-4 w-4 mr-2" /><SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ATUALIZACAO_RECENTE">Alterados recentemente</SelectItem>
-                <SelectItem value="CADASTRO_RECENTE">Cadastros recentes</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="shrink-0" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
-          </div>
-        </CardContent>
-      </Card>
+      </PageHeader>
 
       {erroListaEquipamentos && (
         <ErrorAlert
@@ -2610,84 +3713,181 @@ export default function Equipamentos() {
         />
       )}
 
-      {/* Tabela */}
-      <Card>
-        <CardContent className="pt-6">
+      {/* Lista: filtros, tabela e paginação num painel só */}
+      <Card className="rounded-2xl">
+        <CardContent className="space-y-4 p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <FiltroDeStatus
+              rotulo="Filtrar equipamentos por status"
+              principais={FILTRO_STATUS_PRINCIPAIS}
+              outros={FILTRO_STATUS_OUTROS}
+              valor={statusFiltro}
+              contagens={contagensStatus}
+              onChange={setStatusFiltro}
+              multiplo
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* "Minhas": as OS em que este perfil é o técnico. Só aparece para quem já tem alguma. */}
+            {meuNomeTecnico && (
+              <PilulaFiltro
+                rotulo="Minhas"
+                ligado={tecnicoFiltro === meuNomeTecnico}
+                titulo="Só as OS em que você é o técnico"
+                onClick={() => setTecnicoFiltro(tecnicoFiltro === meuNomeTecnico ? "TODOS" : meuNomeTecnico)}
+              />
+            )}
+            <div className="relative min-w-48 flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input aria-label="Pesquisar equipamentos" placeholder="Série, patrimônio, equipamento, cliente, contato ou CPF/CNPJ" value={busca} onChange={e => setBusca(e.target.value)} className="h-10 bg-muted pl-9 pr-10" />
+              {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
+            </div>
+            <div className="flex gap-3">
+            <Select value={tecnicoFiltro} onValueChange={setTecnicoFiltro}>
+              <SelectTrigger aria-label="Filtrar por técnico" className="h-10 min-w-0 flex-1 lg:w-44 lg:flex-none">
+                <span className="truncate">Técnico: {tecnicoFiltro === "TODOS" ? "todos" : tecnicoFiltro}</span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TODOS">Todos os técnicos</SelectItem>
+                {nomesFiltroTecnico.map((nome) => (
+                  <SelectItem key={nome} value={nome}>{nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={ordenacao} onValueChange={(value: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE") => setOrdenacao(value)}>
+              <SelectTrigger aria-label="Ordenar equipamentos" className="h-10 min-w-0 flex-1 lg:w-56 lg:flex-none">
+                <ArrowDownUp className="h-4 w-4 mr-2" /><SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ATUALIZACAO_RECENTE">Alterados recentemente</SelectItem>
+                <SelectItem value="CADASTRO_RECENTE">Cadastros recentes</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="h-10 w-10 shrink-0" onClick={() => void recarregar()}><RefreshCw className="h-4 w-4" /></Button>
+            </div>
+          </div>
+
           {loading ? (
-            <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+            <CarregandoSkeleton rotulo="Carregando equipamentos">
+              {telaLarga ? <SkeletonTabela colunas={6} /> : <SkeletonLista itens={5} />}
+            </CarregandoSkeleton>
+          ) : equipamentos.length === 0 && erroListaEquipamentos ? (
+            <ListaIndisponivel oque="equipamentos" onTentarDeNovo={() => void recarregar()} />
           ) : equipamentos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Printer className="h-16 w-16 mx-auto mb-4 opacity-20" />
               <p className="text-lg font-medium mb-1">Nenhum equipamento encontrado</p>
-              <p className="text-sm">{busca || statusFiltro !== "TODOS" ? "Tente ajustar os filtros" : "Clique em 'Novo Equipamento' para cadastrar"}</p>
+              <p className="text-sm">{busca || statusFiltro !== "TODOS" ? "Tente ajustar os filtros" : "Clique em 'Nova entrada' para cadastrar"}</p>
             </div>
           ) : (
             <>
-              <PaginationControls
-                page={paginaEquipamentosExibida}
-                totalPages={totalPaginasEquipamentos}
-                onPageChange={setPaginaEquipamentos}
-                label="Paginação de equipamentos"
-              />
-              <div className="rounded-md border">
-                <Table className="min-w-[76rem] table-fixed border-separate border-spacing-0">
-                <TableHeader className="[&_tr]:!border-b-0 [&_th]:border-b">
+              {/* Celular: um cartão por equipamento; a tabela larga com a coluna fixa só a partir de md. */}
+              {!telaLarga ? (
+              <ul className="space-y-3" aria-label="Equipamentos">
+                {equipamentosExibidos.map(eq => (
+                  <li key={eq.id} className={cn("space-y-3 rounded-xl border p-4 transition-colors duration-lenta", classeDestaque(eq.id != null ? destaquesAoVivo?.get(eq.id) : undefined))}>
+                    <div className="flex items-start justify-between gap-3">
+                      <Checkbox
+                        className="mt-1"
+                        aria-label={`Selecionar OS #${eq.id} (${eq.marca} ${eq.modelo})`}
+                        checked={eq.id != null && selecaoLote.has(eq.id)}
+                        onCheckedChange={(marcado) => alternarSelecao(eq, marcado)}
+                      />
+                      <button
+                        type="button"
+                        className="min-w-0 text-left"
+                        aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
+                        onClick={() => void abrirDetalhes(eq)}
+                      >
+                        <span className="block truncate font-semibold">{eq.marca} {eq.modelo}</span>
+                        <span className="block truncate font-mono text-xs text-muted-foreground">{eq.serial_number}</span>
+                      </button>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">
+                        {eq.valor_orcamento != null && eq.valor_orcamento > 0 ? formatCurrency(eq.valor_orcamento) : <span className="font-normal text-muted-foreground">—</span>}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="truncate text-sm">
+                        {eq.cliente_nome || "—"}
+                        <span className="text-muted-foreground"> · entrada {formatDatePtBr(eq.data_entrada)}</span>
+                      </p>
+                      <p className="text-sm font-medium">{STATUS_LABELS[eq.status as StatusEquipamento] || eq.status}</p>
+                      <BarraDeEtapas status={eq.status} />
+                    </div>
+                    <div className="flex justify-end">{renderAcoes(eq)}</div>
+                  </li>
+                ))}
+              </ul>
+              ) : (
+              <div className="overflow-hidden rounded-xl border">
+                <Table className="min-w-[70rem] table-fixed border-separate border-spacing-0">
+                <TableHeader className="bg-muted [&_tr]:!border-b-0 [&_th]:h-10 [&_th]:border-b [&_th]:text-xs [&_th]:font-semibold">
                   <TableRow>
-                    <TableHead className="w-[8rem]">Nº Série</TableHead>
-                    <TableHead className="w-[14rem]">Equipamento</TableHead>
-                    <TableHead className="w-[10rem]">Cliente</TableHead>
-                    <TableHead className="w-[11rem]">Status</TableHead>
-                    <TableHead className="w-[7rem]">Entrada</TableHead>
-                    <TableHead className="w-[8rem]">Última alteração</TableHead>
-                    <TableHead className="sticky right-0 z-20 w-[18rem] min-w-[18rem] bg-card text-right">Ações</TableHead>
+                    <TableHead className="w-10 pr-0">
+                      <Checkbox
+                        aria-label="Selecionar as OS desta página"
+                        checked={equipamentosExibidos.length > 0 && equipamentosExibidos.every((eq) => eq.id != null && selecaoLote.has(eq.id))}
+                        onCheckedChange={(marcado) => equipamentosExibidos.forEach((eq) => alternarSelecao(eq, marcado))}
+                      />
+                    </TableHead>
+                    <TableHead className="w-[12rem]">Equipamento</TableHead>
+                    <TableHead className="w-[11rem]">Cliente</TableHead>
+                    <TableHead className="w-[11rem]">Andamento</TableHead>
+                    <TableHead className="w-[8.5rem]">Técnico</TableHead>
+                    <TableHead className="w-[5rem]">Entrada</TableHead>
+                    <TableHead className="w-[7.5rem] text-right">Orçamento</TableHead>
+                    <TableHead className="sticky right-0 z-20 w-[15.5rem] min-w-[15.5rem] bg-muted text-right">Próxima ação</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0">
+                <TableBody className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0 [&_td]:py-2.5">
                   {equipamentosExibidos.map(eq => (
                     <TableRow
                       key={eq.id}
-                      className="group cursor-pointer"
+                      className={cn("group cursor-pointer transition-colors duration-lenta", classeDestaque(eq.id != null ? destaquesAoVivo?.get(eq.id) : undefined))}
                       onClick={() => void abrirDetalhes(eq)}
                     >
-                      <TableCell className={`overflow-hidden font-mono font-medium ${EQUIPMENT_ROW_FOCUS_FIRST}`}>
-                        <span className="block truncate" title={eq.serial_number}>{eq.serial_number}</span>
+                      <TableCell className={`w-10 pr-0 ${EQUIPMENT_ROW_FOCUS_FIRST}`} onClick={(event) => event.stopPropagation()}>
+                        <Checkbox
+                          aria-label={`Selecionar OS #${eq.id} (${eq.marca} ${eq.modelo})`}
+                          checked={eq.id != null && selecaoLote.has(eq.id)}
+                          onCheckedChange={(marcado) => alternarSelecao(eq, marcado)}
+                        />
                       </TableCell>
                       <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <div className="min-w-0">
                           <button
                             type="button"
-                            className="equipment-row-open block w-full min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-inherit focus-visible:outline-none"
+                            className="equipment-row-open block w-full min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-semibold text-inherit focus-visible:outline-none"
                             aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
                             onClick={(event) => {
                               event.stopPropagation();
                               void abrirDetalhes(eq);
                             }}
                           >
-                            <span className="block truncate" title={`${eq.marca} ${eq.modelo}`}>{eq.marca} {eq.modelo}</span>
+                            <span className="block truncate" title={`${eq.marca} ${eq.modelo} · ${eq.tipo}`}>{eq.marca} {eq.modelo}</span>
                           </button>
-                          <p className="truncate text-xs text-muted-foreground" title={eq.tipo}>{eq.tipo}</p>
+                          <p className="truncate font-mono text-xs text-muted-foreground" title={eq.serial_number}>{eq.serial_number}</p>
                         </div>
                       </TableCell>
                       <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         {eq.cliente_nome ? (
                           <div className="min-w-0">
                             <span className="block truncate text-sm" title={eq.cliente_nome}>{eq.cliente_nome}</span>
-                            {eq.cliente_telefone && <p className="truncate text-xs text-muted-foreground" title={eq.cliente_telefone}>{eq.cliente_telefone}</p>}
+                            {(eq.responsavel_nome || eq.cliente_telefone) && (
+                              <p className="truncate text-xs text-muted-foreground" title={eq.responsavel_nome || eq.cliente_telefone || undefined}>{eq.responsavel_nome || eq.cliente_telefone}</p>
+                            )}
                           </div>
                         ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <StatusBadge status={eq.status} />
-                          {(eq.status === "AGUARDANDO_APROVACAO" || eq.status === "ORCAMENTO_VENCIDO") &&
-                            eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
-                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
-                                Orçamento: {formatCurrency(eq.valor_orcamento)}
-                              </div>
-                            )}
+                        <div className="min-w-0 space-y-1.5">
+                          <span className="block truncate text-sm font-medium">
+                            {STATUS_LABELS[eq.status as StatusEquipamento] || eq.status}
+                          </span>
+                          <BarraDeEtapas status={eq.status} />
                           {eq.status === "AGUARDANDO_APROVACAO" &&
                             (eq.resposta_cliente === "APROVAR" || eq.resposta_cliente === "RECUSAR") && (
-                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-900">
+                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-status-work/30 bg-status-work-bg px-2 py-0.5 text-xs font-medium text-status-work">
                                 Cliente respondeu: {eq.resposta_cliente === "APROVAR" ? "aprovou" : "recusou"} — {
                                   eq.resposta_cliente_situacao === "EM_CORRECAO" ? "em prazo de correção"
                                     : eq.resposta_cliente_situacao === "PROCESSANDO" ? "aguardando efetivação automática"
@@ -2698,13 +3898,16 @@ export default function Equipamentos() {
                         </div>
                       </TableCell>
                       <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <span className="block truncate">{formatDatePtBr(eq.data_entrada)}</span>
+                        <span className="block break-words" title={eq.tecnico_nome ?? undefined}>{eq.tecnico_nome || "—"}</span>
                       </TableCell>
-                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <span className="block truncate">{formatDatePtBr(eq.atualizado_em || eq.criado_em)}</span>
+                      <TableCell className={`overflow-hidden text-sm text-muted-foreground tabular-nums ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                        <span className="block truncate" title={`Entrada em ${formatDatePtBr(eq.data_entrada)} · última alteração: ${formatDatePtBr(eq.atualizado_em || eq.criado_em)}`}>{formatDatePtBr(eq.data_entrada).slice(0, 5)}</span>
+                      </TableCell>
+                      <TableCell className={`overflow-hidden text-right text-sm font-semibold tabular-nums ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                        {eq.valor_orcamento != null && eq.valor_orcamento > 0 ? formatCurrency(eq.valor_orcamento) : <span className="font-normal text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell
-                        className={`sticky right-0 z-10 w-[18rem] min-w-[18rem] bg-card text-right group-hover:bg-muted/50 ${EQUIPMENT_ROW_FOCUS_LAST}`}
+                        className={`sticky right-0 z-10 w-[15.5rem] min-w-[15.5rem] bg-card text-right group-hover:bg-muted/50 ${EQUIPMENT_ROW_FOCUS_LAST}`}
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => event.stopPropagation()}
                       >
@@ -2717,41 +3920,85 @@ export default function Equipamentos() {
                 </TableBody>
                 </Table>
               </div>
+              )}
+              <PaginationControls
+                page={paginaEquipamentosExibida}
+                totalPages={totalPaginasEquipamentos}
+                onPageChange={setPaginaEquipamentos}
+                label="Paginação de equipamentos"
+                totalItems={totalEquipamentos}
+                className="pb-0"
+              />
             </>
+          )}
+          {/* Fora do bloco de carregamento: a tabela mantém a posição ao selecionar as OS. */}
+          {(selecaoLote.size > 0 || loteOcupado || relatorioLote) && (
+            <div className="sticky bottom-0 z-30 rounded-xl bg-card pb-2 shadow-lg">
+              <AcoesEmLote
+                selecionados={[...selecaoLote.values()]}
+                ocupado={loteOcupado}
+                onOcupadoChange={setLoteOcupado}
+                relatorio={relatorioLote}
+                onRelatorioChange={setRelatorioLote}
+                onLimpar={() => setSelecaoLote(new Map())}
+                onConcluido={async (idsComFalha, recarregarLista) => {
+                  setSelecaoLote((atual) => new Map([...atual].filter(([id]) => idsComFalha.includes(id))));
+                  if (recarregarLista) await recarregar();
+                }}
+              />
+            </div>
           )}
         </CardContent>
       </Card>
+      </div>)}
 
-      {/* ═══ Dialog Criar/Editar ═══ */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => {
-        if (!open) {
-          fotoEdicaoSeq.current += 1;
-          fotoEdicaoEquipamentoId.current = null;
-          baselineFotosRef.current = null;
-          setRegistrosAnteriores([]);
-          setConfirmouNovoCiclo(false);
-          setAnteriorEmAtendimento(null);
-        }
-        setDialogOpen(open);
-      }}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editando ? "Editar Equipamento" : "Novo Equipamento"}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      {/* ═══ Nova entrada e edição em página (/equipamentos/nova e /equipamentos/:id/editar, decisão 27) ═══ */}
+      {(rotaNovaEntrada || idEdicaoRota != null) && !dialogOpen && (
+        <CarregandoSkeleton rotulo="Carregando cadastro">
+          <SkeletonPagina><div className="space-y-6 rounded-xl border p-5"><SkeletonFormulario campos={8} /></div></SkeletonPagina>
+        </CarregandoSkeleton>
+      )}
+      {dialogOpen && (editando || entradaDaChaveAtual) && (
+        <section aria-labelledby="entrada-titulo" className="-mb-4 flex min-h-[calc(100vh-8rem)] flex-col gap-4 lg:-mb-8">
+          <div>
+            <button
+              type="button"
+              onClick={sairDoFormulario}
+              aria-label="Voltar"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-rapida hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              <span className="[overflow-wrap:anywhere]">
+                {editando ? `${editando.marca} ${editando.modelo} · ${editando.serial_number}` : "Equipamentos"}
+              </span>
+              {!editando && <TeclaNoBotao tecla="Esc" />}
+            </button>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <h1 id="entrada-titulo" className="text-[26px] font-bold leading-tight tracking-tight">{editando ? "Editar equipamento" : "Nova entrada"}</h1>
+              {editando && <StatusBadge status={editando.status} completo />}
+            </div>
+          </div>
+          <form onSubmit={form.handleSubmit(onSubmit)} onPaste={colarNoFormulario} className="flex flex-1 flex-col gap-4">
+            <div className="space-y-6 rounded-2xl border bg-card p-5 md:p-6">
+            {!editando && rascunhoRecuperadoEm && (
+              <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-status-work-bg px-4 py-3 text-sm">
+                <span>Rascunho de {quandoRascunho(rascunhoRecuperadoEm)} recuperado. Fotos não ficam no rascunho.</span>
+                <Button type="button" variant="ghost" size="sm" onClick={comecarEntradaDoZero}>Começar do zero</Button>
+              </div>
+            )}
             {/* ── Cliente ── */}
             <div className="space-y-2">
               <ClienteSelector
                 clienteInicial={clienteVinculado}
-                onClienteSelecionado={(c) => { setClienteVinculado(c); setResponsavelVinculado(null); setErroCliente(null); setAnteriorEmAtendimento(null); }}
-                onClienteRemovido={() => { setClienteVinculado(null); setResponsavelVinculado(null); setAnteriorEmAtendimento(null); }}
+                onClienteSelecionado={(c) => { cancelarRestauracaoVinculo(); setClienteVinculado(c); setResponsavelVinculado(null); setErroCliente(null); setAnteriorEmAtendimento(null); }}
+                onClienteRemovido={() => { cancelarRestauracaoVinculo(); setClienteVinculado(null); setResponsavelVinculado(null); setAnteriorEmAtendimento(null); }}
                 onEquipamentoSelecionado={editando ? undefined : (anterior) => void usarEquipamentoAnterior(anterior)}
                 readOnly={false}
               />
               {anteriorEmAtendimento && (
                 <AnteriorEmAtendimentoAviso
                   equipamento={anteriorEmAtendimento}
-                  onAbrirAtendimento={(eq) => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
+                  onAbrirAtendimento={(eq) => { fecharFormulario(false); navigate(`/equipamentos/${eq.id}`); }}
                 />
               )}
               <ContatoResponsavelSelector
@@ -2803,37 +4050,6 @@ export default function Equipamentos() {
                     )}
                   </div>
                   <FormValidationError message={form.formState.errors.serial_number?.message} />
-                  {registrosAnteriores.length > 0 && (
-                    <div className="mt-2 rounded-md border border-amber-400 bg-amber-100 p-3 space-y-2">
-                      <p className="text-sm font-bold text-amber-900">
-                        ⚠️ ATENÇÃO: Este número de série já foi registrado anteriormente. Marque esta caixa apenas se realmente deseja criar um NOVO ciclo de manutenção.
-                      </p>
-                      <ul className="space-y-1">
-                        {registrosAnteriores.map((r) => (
-                          <li key={r.id} className="text-xs text-amber-800 flex items-center gap-1 flex-wrap">
-                            <span>• #{r.id}</span>
-                            <StatusBadge status={r.status} />
-                            <span>— Entrada: {formatDatePtBr(r.data_entrada)}</span>
-                            {r.data_saida && (
-                              <span>| Saída: {new Date(r.data_saida).toLocaleDateString("pt-BR")}</span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                      <p className="text-xs text-amber-800">
-                        O histórico anterior será preservado. Este será um registro independente.
-                      </p>
-                      <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
-                        <input
-                          type="checkbox"
-                          checked={confirmouNovoCiclo}
-                          onChange={(e) => setConfirmouNovoCiclo(e.target.checked)}
-                          className="rounded border-amber-400"
-                        />
-                        <span className="text-amber-900 font-semibold">Confirmo que desejo criar um novo ciclo de manutenção para este equipamento</span>
-                      </label>
-                    </div>
-                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Patrimônio</Label>
@@ -2841,6 +4057,18 @@ export default function Equipamentos() {
                   <FormValidationError message={form.formState.errors.patrimonio?.message} />
                 </div>
               </div>
+              {registrosAnteriores.length > 0 && (
+                <AvisoSerieRepetida
+                  registros={registrosAnteriores}
+                  confirmado={confirmouNovoCiclo}
+                  garantiaDias={garantiaServicos.dias}
+                  hojeIso={todayLocalIsoDate()}
+                  onNovaManutencao={usarUltimaPassagem}
+                  // Fecha a Nova entrada antes (o rascunho guarda o que foi digitado): a OS
+                  // anterior nunca abre por baixo de um cadastro em andamento.
+                  onAbrir={(eq) => { fecharFormulario(false); avisoEdicao.liberarProximaSaida(); navigate(`/equipamentos/${eq.id}`); }}
+                />
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Marca *</Label>
@@ -2871,7 +4099,7 @@ export default function Equipamentos() {
                       field.onChange(value);
                     }}>
                       <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                      <SelectContent>{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                      <SelectContent side="bottom" collisionPadding={8} className="max-h-40">{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
                   )} />
                   <FormValidationError message={form.formState.errors.tipo?.message} />
@@ -2886,16 +4114,20 @@ export default function Equipamentos() {
                 <div className="space-y-2">
                   <Label>Técnico (verificação inicial)</Label>
                   <Select
-                    value={tecnicoNovoEquipamento}
+                    value={tecnicoNovoEquipamento || undefined}
                     onValueChange={(value: TecnicoDisponivel) => setTecnicoNovoEquipamento(value)}
                   >
                     <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>
-                      {TECNICOS_DISPONIVEIS.map((tecnico) => (
-                        <SelectItem key={tecnico} value={tecnico}>{tecnico}</SelectItem>
+                      {tecnicoNovoEquipamento && !tecnicos.some((t) => t.nome === tecnicoNovoEquipamento) && (
+                        <SelectItem value={tecnicoNovoEquipamento}>{tecnicoNovoEquipamento}</SelectItem>
+                      )}
+                      {tecnicos.map((tecnico) => (
+                        <SelectItem key={tecnico.id} value={tecnico.nome}>{tecnico.nome}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {tecnicos.length === 0 && <p className="text-sm text-muted-foreground">{AVISO_ENTRADA_SEM_TECNICOS}</p>}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -2965,7 +4197,7 @@ export default function Equipamentos() {
                          <div className="flex items-center gap-2">
                           <div>
                             <Label htmlFor="equipamento-imagens-entrada">Fotos da entrada</Label>
-                            <p className="text-xs text-muted-foreground">Use para registrar avarias e estado no recebimento.</p>
+                            <p className="text-xs text-muted-foreground">Avarias e estado no recebimento. Ctrl+V cola uma imagem.</p>
                           </div>
                           <div className="flex flex-col gap-1">
                             <Button
@@ -2987,7 +4219,7 @@ export default function Equipamentos() {
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="gap-1.5 border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                              className="gap-1.5 border-status-work/30 bg-status-work-bg text-status-work hover:bg-status-work-bg hover:text-status-work"
                               disabled={
                                 salvando ||
                                 carregandoImagensFormulario ||
@@ -3018,13 +4250,13 @@ export default function Equipamentos() {
                       }
                     />
                     {carregandoImagensFormulario ? (
-                      <div role="status" aria-label="Carregando fotos" className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-                      </div>
+                      <CarregandoSkeleton rotulo="Carregando fotos" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                        {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="aspect-square w-full rounded-lg" />)}
+                      </CarregandoSkeleton>
                     ) : (
                       <GaleriaImagensEquipamento
                         imagens={filtrarImagensPorCategoria(imagensFormulario, "ENTRADA")}
-                        mensagemVazia="Nenhuma foto cadastrada para registrar o estado de entrada deste equipamento."
+                        mensagemVazia="Nenhuma foto ainda. Ctrl+V cola uma imagem copiada."
                         onRemover={removerImagemFormulario}
                         onLegendaChange={atualizarLegendaImagem}
                       />
@@ -3033,179 +4265,293 @@ export default function Equipamentos() {
                 </div>
               </div>
             </div>
-            <DialogFooter>
-              <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
-              <Button type="submit" disabled={salvando || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
-                {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}
+            </div>
+            <div className="sticky bottom-0 z-20 -mx-4 mt-auto flex flex-wrap items-center justify-end gap-3 border-t bg-card px-4 py-3 lg:-mx-8 lg:px-8">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  if (editando) {
+                    sairDoFormulario();
+                    return;
+                  }
+                  descartarEntrada();
+                  fecharFormulario();
+                }}
+              >
+                Cancelar{editando && <TeclaNoBotao tecla="Esc" />}
               </Button>
-            </DialogFooter>
+              <Button type="submit" disabled={salvando || restaurandoVinculo || conferindoSerie || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
+                {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}
+                {!salvando && <TeclaNoBotao tecla="Enter" />}
+              </Button>
+            </div>
           </form>
-        </DialogContent>
-      </Dialog>
+        </section>
+      )}
 
-      {/* ═══ Dialog Detalhes com Abas ═══ */}
-      <Dialog open={detalhesDialogOpen} onOpenChange={setDetalhesDialogOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Detalhes do Equipamento</DialogTitle></DialogHeader>
-          {selecionado && (
-            <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal}>
-            <div className="space-y-4">
-              <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <h3 className="break-words text-lg font-bold [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h3>
-                  <p className="break-words text-sm text-muted-foreground font-mono [overflow-wrap:anywhere]">{selecionado.serial_number}</p>
-                  {selecionado.responsavel_nome && (
-                    <p className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
-                      Contato responsável: <span className="font-medium text-foreground">{selecionado.responsavel_nome}</span>
-                    </p>
-                  )}
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <StatusBadge status={selecionado.status} />
-                  <PortalClienteBotao />
+      {/* ═══ Detalhes da OS (rota /equipamentos/:id) ═══ */}
+      {idVerificacaoRota != null && (!verificacaoDialogOpen || selecionado?.id !== idVerificacaoRota) && (
+        <CarregandoSkeleton rotulo="Carregando verificação">
+          <SkeletonPagina><div className="space-y-4 rounded-xl border p-5"><SkeletonTexto linhas={2} /><SkeletonTabela linhas={4} colunas={4} /></div></SkeletonPagina>
+        </CarregandoSkeleton>
+      )}
+      {/* ═══ Verificação técnica (rota /equipamentos/:id/verificacao, decisão 24) ═══ */}
+      <VerificacaoTecnica
+        key={selecionado?.id ?? "verificacao"}
+        equipamento={selecionado}
+        open={verificacaoDialogOpen && selecionado?.id === idVerificacaoRota}
+        onOpenChange={(aberta) => {
+          if (!aberta && pathnameAtualRef.current === location.pathname) fecharPaginaVerificacao();
+        }}
+        onConcluir={handleConcluirVerificacao}
+        salvando={salvando || loadingAutomacao}
+        tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || primeiroTecnico}
+        podeFinalizar={hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS) || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES)}
+        onSujoChange={setVerificacaoSuja}
+        onVoltar={voltarDaVerificacao}
+      />
+      {avisoVerificacao.dialogo}
+
+      {/* ═══ Ajuste de orçamento (rota /equipamentos/:id/orcamento, decisão 24) ═══ */}
+      {idAjusteRota != null && (!paginaAjusteAberta || selecionado?.id !== idAjusteRota) && (
+        <CarregandoSkeleton rotulo="Carregando ajuste de orçamento">
+          <SkeletonPagina><SkeletonTabela linhas={4} colunas={4} /></SkeletonPagina>
+        </CarregandoSkeleton>
+      )}
+      {paginaAjusteAberta && selecionado && selecionado.id === idAjusteRota && renderPaginaAjuste(selecionado)}
+
+      {detalhesDialogOpen && !paginaAjusteAberta && !verificacaoDialogOpen && selecionado?.id !== idDetalhesAberto && (
+        <CarregandoSkeleton rotulo="Carregando atendimento">
+          <SkeletonPagina>
+            <div className="flex gap-2">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-9 w-24" />)}</div>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="space-y-4 rounded-xl border p-5 lg:col-span-2"><SkeletonTexto linhas={5} /></div>
+              <div className="space-y-4 rounded-xl border p-5"><SkeletonLista itens={3} /></div>
+            </div>
+          </SkeletonPagina>
+        </CarregandoSkeleton>
+      )}
+      {detalhesDialogOpen && !paginaAjusteAberta && !verificacaoDialogOpen && selecionado && selecionado.id === idDetalhesAberto && (
+        <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal} onConfigurarPortal={irParaConfiguracoesPortal}>
+          <section aria-labelledby="detalhes-equipamento-titulo" className="space-y-5">
+            <h2 id="detalhes-equipamento-titulo" className="sr-only">Detalhes do Equipamento</h2>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIdDetalhesAberto(null);
+                    navigate("/equipamentos");
+                  }}
+                  className="mb-1 inline-flex items-center gap-0.5 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronLeft className="h-4 w-4" />Equipamentos
+                </button>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                  <h1 className="break-words text-[26px] font-bold leading-tight tracking-tight [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h1>
+                  <span className="inline-flex items-center gap-0.5 font-mono text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                    {selecionado.serial_number}
+                    {selecionado.serial_number && <BotaoCopiar valor={selecionado.serial_number} rotulo="número de série" />}
+                  </span>
+                  <StatusBadge status={selecionado.status} completo />
                 </div>
               </div>
-
-              <DecisaoOrcamentoCard
-                onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
-              />
-
-              <Tabs key={selecionado.id} defaultValue="info">
-                <TabsList className="grid grid-cols-4 w-full">
-                  <TabsTrigger value="info"><FileText className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Informações</TabsTrigger>
-                  <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>
-                  <TabsTrigger value="comunicacoes"><MessageSquare className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Comunicações</TabsTrigger>
-                  <TabsTrigger value="historico"><History className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Histórico</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="info" className="space-y-4 mt-4">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div><span className="text-muted-foreground">Tipo:</span> <span className="ml-1 font-medium">{selecionado.tipo}</span></div>
-                    <div><span className="text-muted-foreground">Entrada:</span> <span className="ml-1 font-medium">{formatDatePtBr(selecionado.data_entrada)}</span></div>
-                    <div><span className="text-muted-foreground">Patrimônio:</span> <span className="ml-1 font-medium">{selecionado.patrimonio || "—"}</span></div>
-                    <div className="min-w-0 [overflow-wrap:anywhere]"><span className="text-muted-foreground">Nº Série:</span> <span className="ml-1 font-medium font-mono">{selecionado.serial_number}</span></div>
-                  </div>
-                  {selecionado.defeito_relatado && <div className="text-sm"><p className="text-muted-foreground mb-1">Defeito na entrada:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.defeito_relatado}</p></div>}
-                  {selecionado.acessorios && <div className="text-sm"><p className="text-muted-foreground mb-1">Acessórios:</p><p className="bg-accent/50 p-2 rounded">{selecionado.acessorios}</p></div>}
-                  {selecionado.acessorios_outros && <div className="text-sm"><p className="text-muted-foreground mb-1">Outros Acessórios:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.acessorios_outros}</p></div>}
-                  {selecionado.observacoes && <div className="text-sm"><p className="text-muted-foreground mb-1">Observação física:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.observacoes}</p></div>}
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">Fotos da entrada</p>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">
-                            {filtrarImagensPorCategoria(imagensDetalhes, "ENTRADA").length} registrada(s)
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => {
-                              setPhotoUploadCategoria("ENTRADA");
-                              setPhotoUploadNewEquip(false);
-                              setPhotoUploadOpen(true);
-                            }}
-                          >
-                            <Smartphone className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                      {carregandoDetalhes ? (
-                        <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-                        </div>
-                      ) : (
-                        <GaleriaImagensEquipamento
-                          imagens={filtrarImagensPorCategoria(imagensDetalhes, "ENTRADA")}
-                          mensagemVazia="Nenhuma foto de entrada foi registrada para este equipamento."
-                          onVisualizar={setImagemExpandida}
-                          onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
-                          onRemover={(imagem) => void removerImagemDetalhes(imagem)}
-                        />
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">Fotos da saída</p>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">
-                            {filtrarImagensPorCategoria(imagensDetalhes, "SAIDA").length} registrada(s)
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => {
-                              setPhotoUploadCategoria("SAIDA");
-                              setPhotoUploadNewEquip(false);
-                              setPhotoUploadOpen(true);
-                            }}
-                          >
-                            <Smartphone className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                      {carregandoDetalhes ? (
-                        <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-                        </div>
-                      ) : (
-                        <GaleriaImagensEquipamento
-                          imagens={filtrarImagensPorCategoria(imagensDetalhes, "SAIDA")}
-                          mensagemVazia="Nenhuma foto de saída foi registrada para este equipamento."
-                          onVisualizar={setImagemExpandida}
-                          onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
-                          onRemover={(imagem) => void removerImagemDetalhes(imagem)}
-                        />
-                      )}
-                    </div>
-                  </div>
-                  {selecionado.cliente_nome && (
-                    <Card>
-                      <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-1"><Users className="h-4 w-4" />Cliente</CardTitle></CardHeader>
-                      <CardContent className="text-sm space-y-1">
-                        <p><strong>{selecionado.cliente_nome}</strong></p>
-                        {selecionado.cliente_telefone && <p>Tel: {selecionado.cliente_telefone}</p>}
-                        {selecionado.cliente_email && <p>Email: {selecionado.cliente_email}</p>}
-                      </CardContent>
-                    </Card>
-                  )}
-                  {selecionado.valor_orcamento != null && (
-                    <Card>
-                      <CardHeader className="py-3"><CardTitle className="text-sm">Orçamento</CardTitle></CardHeader>
-                      <CardContent className="text-sm space-y-1">
-                        <p>Valor: <strong>{formatCurrency(selecionado.valor_orcamento)}</strong></p>
-                        {selecionado.prazo_aprovacao && <p>Prazo: {formatDatePtBr(selecionado.prazo_aprovacao)}</p>}
-                        {selecionado.valor_final != null && <p>Valor final: <strong>{formatCurrency(selecionado.valor_final)}</strong></p>}
-                      </CardContent>
-                    </Card>
-                  )}
-                  {selecionado.observacoes && <div><p className="text-sm text-muted-foreground">Observações:</p><p className="text-sm mt-1 bg-accent/50 p-2 rounded">{selecionado.observacoes}</p></div>}
-                  <DocumentosEquipamento equipamento={selecionado} />
-                </TabsContent>
-
-                <TabsContent value="verificacao" className="mt-4">{renderVerificacaoTab()}</TabsContent>
-
-                {/* Comunicações — agora usa componente extraído */}
-                <TabsContent value="comunicacoes" className="mt-4">
-                  {carregandoDetalhes ? (
-                    <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>
-                  ) : (
-                    <HistoricoComunicacoes
-                      equipamentoId={selecionado.id!}
-                      comunicacoesExternas={comunicacoes}
-                    />
-                  )}
-                </TabsContent>
-
-                <TabsContent value="historico" className="mt-4">{renderHistoricoTab()}</TabsContent>
-              </Tabs>
+              <div className="flex shrink-0 justify-end">{renderAcoes(selecionado, true)}</div>
             </div>
-            </PortalClienteProvider>
-          )}
-        </DialogContent>
-      </Dialog>
+
+            <Card className="rounded-2xl">
+              <CardContent className="p-5">
+                <BarraDeEtapasGrande status={selecionado.status} historico={historicoDetalhes} />
+              </CardContent>
+            </Card>
+
+            <DecisaoOrcamentoCard
+              onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
+            />
+
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+              <Card className="min-w-0 rounded-2xl">
+                <Tabs key={selecionado.id} value={abaDetalhe} onValueChange={setAbaDetalhe}>
+                  <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent px-3 pt-2 [scrollbar-width:none]">
+                    {[
+                      ["orcamento", "Orçamento"],
+                      ["verificacao", "Verificação"],
+                      ["fotos", `Fotos · ${imagensDetalhes.length}`],
+                      ["historico", "Histórico"],
+                      ["comunicacoes", "Comunicação"],
+                    ].map(([valor, rotulo]) => (
+                      <TabsTrigger
+                        key={valor}
+                        value={valor}
+                        className="relative rounded-none border-b-2 border-transparent px-3 pb-2.5 pt-2 text-sm font-semibold text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                      >
+                        {rotulo}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+
+                  <TabsContent value="orcamento" className="mt-0 space-y-4 p-5">
+                    {carregandoDetalhes ? (
+                      <CarregandoSkeleton rotulo="Carregando orçamento"><SkeletonTabela linhas={3} colunas={4} /></CarregandoSkeleton>
+                    ) : (
+                      <OrcamentoDaOs
+                        equipamento={selecionado}
+                        verificacao={verificacaoDetalhes}
+                        enviadoEm={orcamentoEnviadoEm}
+                        pendentes={pecasPendentes}
+                        onAlterar={STATUS_COM_ORCAMENTO.includes(selecionado.status)
+                          && (hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS)
+                            || (hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES) && orcamentoEmElaboracao(selecionado.status)))
+                          ? () => void abrirAlterarOrcamento(selecionado)
+                          : undefined}
+                      />
+                    )}
+                    <DocumentosEquipamento equipamento={selecionado} />
+                  </TabsContent>
+
+                  <TabsContent value="verificacao" className="mt-0 p-5">{renderVerificacaoTab()}</TabsContent>
+
+                  <TabsContent value="fotos" className="mt-0 p-5">
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {(["ENTRADA", "SAIDA"] as const).map((categoria) => (
+                        <div
+                          key={categoria}
+                          tabIndex={0}
+                          aria-label={categoria === "ENTRADA" ? "Fotos da entrada (Ctrl+V cola uma imagem)" : "Fotos da saída (Ctrl+V cola uma imagem)"}
+                          onPaste={(evento) => void colarNosDetalhes(evento, categoria)}
+                          className="space-y-2 rounded-xl p-1 -m-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold">{categoria === "ENTRADA" ? "Fotos da entrada" : "Fotos da saída"}</p>
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground">
+                                {filtrarImagensPorCategoria(imagensDetalhes, categoria).length} registrada(s)
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                aria-label={categoria === "ENTRADA" ? "Enviar fotos da entrada pelo celular" : "Enviar fotos da saída pelo celular"}
+                                onClick={() => {
+                                  setPhotoUploadCategoria(categoria);
+                                  setPhotoUploadNewEquip(false);
+                                  setPhotoUploadOpen(true);
+                                }}
+                              >
+                                <Smartphone className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                          {carregandoDetalhes ? (
+                            <CarregandoSkeleton rotulo="Carregando fotos" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                              {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="aspect-square w-full rounded-lg" />)}
+                            </CarregandoSkeleton>
+                          ) : (
+                            <GaleriaImagensEquipamento
+                              imagens={filtrarImagensPorCategoria(imagensDetalhes, categoria)}
+                              mensagemVazia={categoria === "ENTRADA"
+                                ? "Nenhuma foto da entrada. Clique aqui e use Ctrl+V para colar uma imagem."
+                                : "Nenhuma foto da saída. Clique aqui e use Ctrl+V para colar uma imagem."}
+                              onVisualizar={setImagemExpandida}
+                              onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
+                              onRemover={(imagem) => void removerImagemDetalhes(imagem)}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="historico" className="mt-0 p-5">{renderHistoricoTab()}</TabsContent>
+
+                  <TabsContent value="comunicacoes" className="mt-0 p-5">
+                    {carregandoDetalhes ? (
+                      <CarregandoSkeleton rotulo="Carregando comunicações"><SkeletonLista itens={3} /></CarregandoSkeleton>
+                    ) : (
+                      <HistoricoComunicacoes
+                        equipamentoId={selecionado.id!}
+                        comunicacoesExternas={comunicacoes}
+                      />
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </Card>
+
+              <div className="space-y-5">
+                <CartaoCliente
+                  dados={{
+                    nome: selecionado.cliente_nome,
+                    documento: selecionado.cliente_documento,
+                    email: selecionado.cliente_email,
+                    telefone: selecionado.cliente_telefone,
+                    contato: selecionado.responsavel_nome
+                      ? {
+                          nome: selecionado.responsavel_nome,
+                          papel: "Contato responsável",
+                          email: selecionado.responsavel_email,
+                          telefone: selecionado.responsavel_telefone,
+                        }
+                      : null,
+                  }}
+                  rodape={
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {/* Mensagem pronta para o contato da OS (ou o telefone do cliente). */}
+                      <WhatsappComMensagem
+                        telefone={telefoneParaWhatsapp(selecionado.responsavel_telefone) ? selecionado.responsavel_telefone : selecionado.cliente_telefone}
+                        dados={{
+                          cliente: selecionado.cliente_nome,
+                          contato: selecionado.responsavel_nome || selecionado.cliente_nome,
+                          equipamento: `${selecionado.marca} ${selecionado.modelo}`.trim(),
+                          os: selecionado.id != null ? String(selecionado.id) : "",
+                          status: rotuloStatusEquipamento(selecionado.status),
+                        }}
+                        className="h-9"
+                        onErro={(err) => showError("Equipamentos", "Abrir WhatsApp", err)}
+                      />
+                      <PortalClienteBotao />
+                    </div>
+                  }
+                />
+
+                <ResumoComunicacoes comunicacoes={comunicacoes} onVerTodas={() => setAbaDetalhe("comunicacoes")} />
+
+                <Card className="rounded-2xl">
+                  <CardContent className="space-y-3 p-5">
+                    <h2 className="text-base font-bold">Equipamento</h2>
+                    <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+                      <dt className="text-muted-foreground">Tipo</dt><dd className="font-medium">{selecionado.tipo}</dd>
+                      <dt className="text-muted-foreground">Nº Série</dt><dd className="font-mono [overflow-wrap:anywhere]">{selecionado.serial_number}</dd>
+                      <dt className="text-muted-foreground">Patrimônio</dt><dd className="font-medium">{selecionado.patrimonio || "—"}</dd>
+                      <dt className="text-muted-foreground">Entrada</dt><dd className="font-medium">{formatDatePtBr(selecionado.data_entrada)}</dd>
+                      {verificacaoDetalhes?.tecnico_nome && (<><dt className="text-muted-foreground">Técnico</dt><dd className="font-medium">{verificacaoDetalhes.tecnico_nome}</dd></>)}
+                      {selecionado.ciclo_serial != null && selecionado.ciclo_serial > 0 && (
+                        <><dt className="text-muted-foreground">Ciclos</dt><dd className="font-medium">{selecionado.ciclo_serial}º atendimento deste serial</dd></>
+                      )}
+                    </dl>
+                    {selecionado.acessorios && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selecionado.acessorios.split(",").map((item) => item.trim()).filter(Boolean).map((item) => (
+                          <span key={item} className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium">{item}</span>
+                        ))}
+                      </div>
+                    )}
+                    {selecionado.acessorios_outros && (
+                      <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Outros acessórios</p><p className="whitespace-pre-wrap">{selecionado.acessorios_outros}</p></div>
+                    )}
+                    {selecionado.defeito_relatado && (
+                      <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Defeito relatado</p><p className="whitespace-pre-wrap">{selecionado.defeito_relatado}</p></div>
+                    )}
+                    {removerTecnicoInicialDasObservacoes(selecionado.observacoes) && (
+                      <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Observação física</p><p className="whitespace-pre-wrap">{removerTecnicoInicialDasObservacoes(selecionado.observacoes)}</p></div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </section>
+        </PortalClienteProvider>
+      )}
 
       <EscolhaAjusteOrcamentoDialog
         open={escolhaAjuste !== null}
@@ -3239,20 +4585,9 @@ export default function Equipamentos() {
         onNovaProposta={() => { if (reabrirAlvo) void abrirMudarStatus(reabrirAlvo, "AGUARDANDO_APROVACAO"); }}
       />
 
-      {/* ═══ Dialog Verificação Técnica (componente extraído) ═══ */}
-      <VerificacaoTecnica
-        key={selecionado?.id ?? "verificacao"}
-        equipamento={selecionado}
-        open={verificacaoDialogOpen}
-        onOpenChange={setVerificacaoDialogOpen}
-        onConcluir={handleConcluirVerificacao}
-        salvando={salvando || loadingAutomacao}
-        tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || "Ivan"}
-      />
-
       {/* ═══ Dialog Mudar Status ═══ */}
       <Dialog
-        open={statusDialogOpen}
+        open={statusDialogOpen && !ajusteOrcamentoSemMudancaStatus}
         onOpenChange={(open) => {
           setStatusDialogOpen(open);
           if (!open) {
@@ -3262,7 +4597,7 @@ export default function Equipamentos() {
           }
         }}
       >
-        <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-md">
+        <DialogContent tamanho="m" className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>
               {(
@@ -3299,7 +4634,7 @@ export default function Equipamentos() {
                     </div>
                   )}
                   {correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status) && (
-                    <div role="alert" className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                    <div role="alert" className="space-y-2 rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait">
                       <p>
                         Trocar só o status não desfaz pagamento, serviços aprovados nem baixa de estoque. Use a correção guiada da decisão.
                       </p>
@@ -3333,31 +4668,12 @@ export default function Equipamentos() {
               )}
               {((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && (
                 <>
-                  <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <div className="rounded-md border bg-status-wait-bg px-3 py-2 text-sm text-status-wait">
                     {ajusteOrcamentoSemMudancaStatus
                       ? "Edite o orçamento. O status atual do equipamento será mantido."
                       : "Revise o valor e o prazo para reenviar o orçamento atualizado ao cliente."}
                   </div>
-                  {verificacaoAjusteOrcamento?.servicos_orcamento_original && (
-                    <details className="rounded-md border p-3 text-sm">
-                      <summary className="cursor-pointer font-medium">Orçamento original e decisões do cliente</summary>
-                      <p className="mt-2 text-muted-foreground">Itens da primeira decisão. Serviços reprovados precisam de nova aprovação para consumir peças.</p>
-                      {normalizarServicosOrcamento(verificacaoAjusteOrcamento.servicos_orcamento_original).map((servico) => (
-                        <p key={servico.id} className="mt-1">{servico.descricao} · {verificacaoAjusteOrcamento.decisoes_servicos?.find((d) => d.servico_id === servico.id)?.decisao ?? "Sem decisão"}</p>
-                      ))}
-                    </details>
-                  )}
-                  {verificacaoAjusteOrcamento?.adjusted_at && (
-                    <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900 flex items-center gap-2">
-                      <History className="h-4 w-4 text-blue-700" />
-                      <div>
-                        <p className="text-xs text-blue-700 font-medium">Histórico de Ajustes</p>
-                        <p className="text-xs">
-                          Último ajuste em {new Date(verificacaoAjusteOrcamento.adjusted_at).toLocaleDateString("pt-BR")}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                  {blocoAjusteHistorico()}
                   {(valorOrcamentoOriginal != null || valorOrcamentoAnterior != null) && (
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -3366,101 +4682,24 @@ export default function Equipamentos() {
                           {valorOrcamentoOriginal != null ? formatCurrency(valorOrcamentoOriginal) : "—"}
                         </p>
                       </div>
-                      <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900">
-                        <p className="text-xs text-blue-700">Valor atual antes do ajuste</p>
+                      <div className="rounded-md border bg-status-work-bg px-3 py-2 text-sm text-status-work">
+                        <p className="text-xs text-status-work">Valor atual antes do ajuste</p>
                         <p className="font-semibold">
                           {valorOrcamentoAnterior != null ? formatCurrency(valorOrcamentoAnterior) : "—"}
                         </p>
                       </div>
                     </div>
                   )}
-                  <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} onValidityChange={setValorOrcamentoValido} />
-                    {Number(valorOrcamento) === 0 && !totalOrcamentoAjusteValido(0, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento) && (
-                      <p className="text-xs text-red-600">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
-                    )}
-                  </div>
-                  {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
-                    <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="observacoes-ajuste">Observações</Label>
-                    <Textarea
-                      id="observacoes-ajuste"
-                      value={observacoesAjuste}
-                      onChange={(event) => setObservacoesAjuste(event.target.value)}
-                      placeholder="Observações do orçamento"
-                      rows={3}
-                    />
-                  </div>
-                  {ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status) ? (
-                    <div className="space-y-3">
-                    <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                      Ao salvar, você escolhe entre ajustar sem nova aprovação (o cliente já concordou; só a quantidade adicional terá baixa) ou pedir nova aprovação pelo portal.
-                    </p>
-                    <FormaPagamentoFields
-                      codigo={formaPagamentoAjuste}
-                      detalhe={detalhePagamentoAjuste}
-                      onCodigoChange={setFormaPagamentoAjuste}
-                      onDetalheChange={setDetalhePagamentoAjuste}
-                      required
-                    />
-                    </div>
-                  ) : (
-                    <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                      A forma de pagamento será definida durante a aprovação.
-                    </div>
-                  )}
-                  {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
-                    <p className="text-xs text-amber-700">
-                      Novo valor em negociação: {formatCurrency(valorOrcamento)} (antes: {formatCurrency(valorOrcamentoAnterior)}).
-                    </p>
-                  )}
-                  {verificacaoAjusteOrcamento && (
-                    <div className="space-y-3 rounded-md border p-3">
-                      <AjusteOrcamentoServicos
-                        servicos={servicosAjuste}
-                        catalogo={catalogoServicosAjuste}
-                        carregandoCatalogo={carregandoCatalogoAjuste}
-                        onChange={setServicosAjuste}
-                        onRemoverTodos={() => {
-                          setConfirmProps({
-                            title: "Remover todos os serviços",
-                            description: "Você está removendo TODOS os serviços do orçamento. Deseja continuar?",
-                            variant: "destructive",
-                            onConfirm: () => {
-                              setServicosAjuste([]);
-                              setConfirmOpen(false);
-                            },
-                            onCancel: () => setConfirmOpen(false),
-                          });
-                          setConfirmOpen(true);
-                        }}
-                      />
-                      {pecasLegadasAjuste.length > 0 && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 p-2">
-                          <p className="text-xs font-semibold text-amber-900">Peças antigas sem serviço vinculado</p>
-                          <p className="text-xs text-amber-800">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
-                          {pecasLegadasAjuste.map((peca, indice) => (
-                            <div key={`${peca.id}-${indice}`} className="flex items-center justify-between gap-2 text-sm">
-                              <span>{peca.nome} × {peca.quantidade} · {formatCurrencyOrMissing(peca.valorTotal)}</span>
-                              <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((atual) => atual.filter((_, i) => i !== indice))}>Remover linha antiga</Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {pecasLegadasAjuste.length === 0 && servicosAjuste.length === 0 && (
-                        <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
-                      )}
-                    </div>
-                  )}
+                  {blocoAjusteCampos(selecionado)}
+                  {blocoAjusteServicos()}
                   {valorOrcamentoOriginal != null && (
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                         <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
                         <p className="font-semibold">{formatCurrency(valorOrcamentoOriginal)}</p>
                       </div>
-                      <div className="rounded-md border bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                        <p className="text-xs text-emerald-700">Novo valor calculado</p>
+                      <div className="rounded-md border bg-status-ok-bg px-3 py-2 text-sm text-status-ok">
+                        <p className="text-xs text-status-ok">Novo valor calculado</p>
                         <p className="font-semibold">{formatCurrency(valorOrcamento)}</p>
                       </div>
                     </div>
@@ -3493,7 +4732,7 @@ export default function Equipamentos() {
                     />
                   </div>
                   {acordoExcecaoEntrega && valorFinalSugerido != null && valorFinal !== valorFinalSugerido && (
-                    <p className="text-xs text-amber-600">
+                    <p className="text-xs text-status-wait">
                       Exceção registrada: valor diferente da verificação técnica.
                     </p>
                   )}
@@ -3525,7 +4764,7 @@ export default function Equipamentos() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="gap-1.5 border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                            className="gap-1.5 border-status-work/30 bg-status-work-bg text-status-work hover:bg-status-work-bg hover:text-status-work"
                             disabled={
                               salvando ||
                               carregandoImagensSaidaEntrega ||
@@ -3543,7 +4782,7 @@ export default function Equipamentos() {
                         </div>
                       </div>
                     {erroImagensSaidaEntrega && (
-                      <p className="text-xs text-red-500">{erroImagensSaidaEntrega}</p>
+                      <p className="text-xs text-destructive">{erroImagensSaidaEntrega}</p>
                     )}
                     <input
                       id="equipamento-imagens-saida-entrega"
@@ -3559,9 +4798,9 @@ export default function Equipamentos() {
                       }
                     />
                     {carregandoImagensSaidaEntrega ? (
-                      <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-                      </div>
+                      <CarregandoSkeleton rotulo="Carregando fotos" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                        {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="aspect-square w-full rounded-lg" />)}
+                      </CarregandoSkeleton>
                     ) : (
                       <GaleriaImagensEquipamento
                         imagens={imagensSaidaEntrega}
@@ -3574,9 +4813,9 @@ export default function Equipamentos() {
                 </div>
               )}
             </div>
-            <DialogFooter className="shrink-0 bg-background pt-3">
+            <DialogFooter className="shrink-0 bg-card">
                 <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
@@ -3585,8 +4824,8 @@ export default function Equipamentos() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={consumosDialogOpen} onOpenChange={setConsumosDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+      <Dialog open={consumosDialogOpen} onOpenChange={(aberto) => { setConsumosDialogOpen(aberto); if (!aberto) void recarregarPecasPendentes(); }}>
+        <DialogContent tamanho="m">
           <DialogHeader><DialogTitle>Peças da OS</DialogTitle><DialogDescription>Reposições ficam disponíveis no estoque. Confirme aqui o consumo das peças pendentes.</DialogDescription></DialogHeader>
           <div className="max-h-72 space-y-2 overflow-y-auto">
             {consumosDetalhes.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma peça vinculada a serviços aprovados.</p>}
@@ -3594,13 +4833,13 @@ export default function Equipamentos() {
               <div key={`${consumo.verificacao_id}:${consumo.servico_id}:${consumo.produto_id}`} className="rounded-md border p-2 text-sm">
                 <p className="font-medium">{consumo.nome}</p>
                 <p>{consumo.quantidade_baixada} baixada(s) de {consumo.quantidade_aprovada} aprovada(s)
-                  {consumo.quantidade_baixada < consumo.quantidade_aprovada && <span className="text-amber-700"> · pendente</span>}
+                  {consumo.quantidade_baixada < consumo.quantidade_aprovada && <span className="text-status-wait"> · pendente</span>}
                 </p>
               </div>
             ))}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setConsumosDialogOpen(false)}>Fechar</Button>
+            <Button type="button" variant="outline" onClick={() => { setConsumosDialogOpen(false); void recarregarPecasPendentes(); }}>Fechar</Button>
             <Button type="button" disabled={baixandoPendentes || !consumosDetalhes.some((c) => c.quantidade_baixada < c.quantidade_aprovada)}
               onClick={() => void confirmarBaixaPendente()}>Confirmar baixa pendente</Button>
           </DialogFooter>
@@ -3608,7 +4847,7 @@ export default function Equipamentos() {
       </Dialog>
 
       <Dialog open={selecaoServicosOpen} onOpenChange={setSelecaoServicosOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent tamanho="m" className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Decisão do cliente sobre o orçamento</DialogTitle><DialogDescription>Registre a decisão do cliente antes de movimentar o estoque.</DialogDescription></DialogHeader>
           <div className="space-y-4">
             {servicosAprovacao.length === 0 ? (
@@ -3630,7 +4869,7 @@ export default function Equipamentos() {
                 onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>{servicosAprovacao.length === 0 ? "Reprovar orçamento" : "Não, selecionar"}</Button>
             </div>
             {respostaClienteDecisao && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              <div className="rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait">
                 <p>O cliente respondeu pelo link: <strong>{respostaClienteDecisao === "APROVAR" ? "aprovou" : "recusou"}</strong> o orçamento.</p>
                 {decisaoDivergeDoCliente && (
                   <div className="mt-2 space-y-1">
@@ -3669,7 +4908,7 @@ export default function Equipamentos() {
                 {servicosAprovacao.length > 0 && <p className="font-medium">{idsAprovados.length} de {servicosAprovacao.length} serviços aprovados</p>}
                 {resumirPecas(servicosAprovacao.filter((s) => idsAprovados.includes(s.id))).map((peca, i) => {
                   const saldo = produtosAprovacao.find((p) => p.id === peca.produto_id)?.quantidade_estoque ?? 0;
-                  return <p key={`${peca.produto_id}-${i}`} className={saldo < peca.quantidade ? "text-amber-700" : ""}>
+                  return <p key={`${peca.produto_id}-${i}`} className={saldo < peca.quantidade ? "text-status-wait" : ""}>
                     {peca.nome}: {peca.quantidade} necessária(s), saldo {saldo}{saldo < peca.quantidade ? " · pendência" : ""}
                   </p>;
                 })}
@@ -3710,11 +4949,16 @@ export default function Equipamentos() {
 
       {/* ═══ Dialog Exclusão ═══ */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Confirmar Exclusão</DialogTitle></DialogHeader>
-          <p className="text-muted-foreground">Excluir <strong>{deletando?.marca} {deletando?.modelo}</strong> (SN: {deletando?.serial_number})?</p>
-          <p className="text-sm text-red-500">Esta ação não pode ser desfeita.</p>
-          <DialogFooter>
+        <DialogContent tamanho="p">
+          <span aria-hidden="true" className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-status-bad-bg text-status-bad">
+            <Trash2 className="h-[22px] w-[22px]" />
+          </span>
+          <DialogTitle>Confirmar Exclusão</DialogTitle>
+          <div className="space-y-1">
+            <p className="text-muted-foreground">Excluir <strong className="text-foreground">{deletando?.marca} {deletando?.modelo}</strong> (SN: {deletando?.serial_number})?</p>
+            <p className="text-sm text-destructive">Esta ação não pode ser desfeita.</p>
+          </div>
+          <DialogFooter className="!border-t-0 !pt-2">
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
             <Button variant="destructive" onClick={onDelete} disabled={salvando}>{salvando ? "Excluindo..." : "Excluir"}</Button>
           </DialogFooter>
@@ -3722,33 +4966,38 @@ export default function Equipamentos() {
       </Dialog>
 
       <Dialog open={Boolean(imagemExpandida)} onOpenChange={(open) => { if (!open) setImagemExpandida(null); }}>
-        <DialogContent className="sm:max-w-5xl">
+        <DialogContent tamanho="visualizador">
           <DialogHeader>
             <DialogTitle>Visualização da imagem</DialogTitle>
+            {imagemExpandida && <DialogDescription className="truncate">{imagemExpandida.filename}</DialogDescription>}
           </DialogHeader>
           {imagemExpandida && (
-            <div className="space-y-3">
-              <div className="max-h-[70vh] overflow-auto rounded-lg border bg-muted/20 p-2">
-                <img
-                  src={imagemExpandida.preview_url}
-                  alt={imagemExpandida.filename}
-                  className="mx-auto h-auto max-h-[65vh] w-auto rounded"
-                />
-              </div>
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>{imagemExpandida.filename}</span>
-                <Button variant="outline" size="sm" className="gap-1" onClick={() => void exportarImagemEquipamento(imagemExpandida)}>
+            <>
+              <DialogBody>
+                <div className="flex min-h-[40vh] items-center justify-center rounded-xl bg-muted p-2">
+                  <img
+                    src={imagemExpandida.preview_url}
+                    alt={imagemExpandida.filename}
+                    className="mx-auto h-auto max-h-[65vh] w-auto rounded-lg"
+                  />
+                </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button className="gap-1" onClick={() => void exportarImagemEquipamento(imagemExpandida)}>
                   <Download className="h-3.5 w-3.5" />Exportar imagem
                 </Button>
-              </div>
-            </div>
+              </DialogFooter>
+            </>
           )}
         </DialogContent>
       </Dialog>
 
       <ConfirmDialog
         open={confirmOpen}
-        onOpenChange={setConfirmOpen}
+        onOpenChange={(aberto) => {
+          if (!aberto) cancelarConfirmacaoRef.current?.();
+          setConfirmOpen(aberto);
+        }}
         title={confirmProps.title}
         description={confirmProps.description}
         variant={confirmProps.variant}

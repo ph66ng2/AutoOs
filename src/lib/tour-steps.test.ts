@@ -14,11 +14,11 @@ describe("tour por permissão", () => {
   it("quem nunca viu o tour recebe o tour completo", () => {
     const tour = pendingTour(["VIEW_EXPENSES"], null);
     expect(tour?.kind).toBe("completo");
-    expect(tour?.steps.map((step) => step.id)).toEqual(["menu", "equipamentos", "clientes", "servicos", "perfil", "balcao", "gastos"]);
+    expect(tour?.steps.map((step) => step.id)).toEqual(["menu", "busca", "equipamentos", "clientes", "servicos", "perfil", "balcao", "gastos"]);
   });
 
   it("o tour completo inclui o passo do Modo Balcão apontando para o seletor em Perfil", () => {
-    expect(fullTour([])).toContainEqual(expect.objectContaining({ id: "balcao", route: "/perfil", target: "perfil-modo" }));
+    expect(fullTour([])).toContainEqual(expect.objectContaining({ id: "balcao", route: "/configuracoes", target: "config-modo" }));
   });
 
   it("depois de ver o tour, só permissões novas geram passos", () => {

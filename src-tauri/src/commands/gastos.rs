@@ -60,8 +60,8 @@ fn validate_valor_positivo(valor: f64) -> Result<(), String> {
 /// Listar todos os gastos fixos ordenados por categoria, nome.
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn listar_gastos_fixos() -> Result<Vec<GastoFixoRow>, String> {
-    let _actor = require_permission(PERMISSION_VIEW_EXPENSES)?;
+pub async fn listar_gastos_fixos(segundo_plano: Option<bool>) -> Result<Vec<GastoFixoRow>, String> {
+    super::auth::require_permission_para_leitura(PERMISSION_VIEW_EXPENSES, segundo_plano)?;
     debug!("Listando gastos fixos");
     let pool = get_pool().await.map_err(|e| {
         error!("Erro ao obter pool: {}", e);
@@ -226,8 +226,12 @@ async fn buscar_gasto_fixo(id: i32) -> Result<GastoFixoRow, String> {
 /// Listar gastos variáveis de um mês/ano específico.
 #[tauri::command]
 #[instrument(skip_all, fields(mes = mes, ano = ano))]
-pub async fn listar_gastos_variaveis(mes: i32, ano: i32) -> Result<Vec<GastoVariavelRow>, String> {
-    let _actor = require_permission(PERMISSION_VIEW_EXPENSES)?;
+pub async fn listar_gastos_variaveis(
+    mes: i32,
+    ano: i32,
+    segundo_plano: Option<bool>,
+) -> Result<Vec<GastoVariavelRow>, String> {
+    super::auth::require_permission_para_leitura(PERMISSION_VIEW_EXPENSES, segundo_plano)?;
     debug!("Listando gastos variáveis para {}/{}", mes, ano);
     let pool = get_pool().await.map_err(|e| {
         error!("Erro ao obter pool: {}", e);
@@ -315,8 +319,12 @@ async fn buscar_gasto_variavel(id: i32) -> Result<GastoVariavelRow, String> {
 /// Resumo mensal de gastos (fixos + variáveis + por categoria).
 #[tauri::command]
 #[instrument(skip_all, fields(mes = mes, ano = ano))]
-pub async fn resumo_mensal(mes: i32, ano: i32) -> Result<GastoResumoMensal, String> {
-    let _actor = require_permission(PERMISSION_VIEW_EXPENSES)?;
+pub async fn resumo_mensal(
+    mes: i32,
+    ano: i32,
+    segundo_plano: Option<bool>,
+) -> Result<GastoResumoMensal, String> {
+    super::auth::require_permission_para_leitura(PERMISSION_VIEW_EXPENSES, segundo_plano)?;
     debug!("Calculando resumo mensal para {}/{}", mes, ano);
     let pool = get_pool().await.map_err(|e| {
         error!("Erro ao obter pool: {}", e);

@@ -85,7 +85,7 @@ describe("cofre de senhas indisponível", () => {
     expect(screen.queryByText("Ativar neste computador", { exact: false })).not.toBeInTheDocument();
     expect(screen.queryByText("PIN não configurado neste PC")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /tenho um código do administrador/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Entrar com este perfil|Continuar|Selecione/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Entrar$|Continuar|Selecione/ })).toBeDisabled();
     // O administrador também não cai no fluxo de "Novo PIN" quando o cofre não respondeu.
     expect(screen.queryByLabelText("Novo PIN")).not.toBeInTheDocument();
 
@@ -131,11 +131,11 @@ describe("primeiro acesso neste computador", () => {
     expect(onFirstAccess).toHaveBeenCalledWith(6, false, undefined);
   });
 
-  it("nomes longos são truncados dentro do cartão do perfil e continuam legíveis pelo title", () => {
+  it("nomes longos podem quebrar dentro do cartão e mantêm o nome completo no title", () => {
     const longo = { ...admin, id: 7, nome: "Maria Aparecida de Souza Albuquerque Filho", role: "ATENDENTE", is_default: false, pin_configured: true };
     render(<ProfileSessionDialog {...defaults} profiles={[longo]} selectedProfileId="7" selectedProfile={longo} />);
     const nome = screen.getByTitle(longo.nome);
-    expect(nome).toHaveClass("truncate", "w-full");
+    expect(nome).toHaveClass("break-words", "w-full");
     expect(nome.parentElement).toHaveClass("min-w-0", "w-full");
   });
 });

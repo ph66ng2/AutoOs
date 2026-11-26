@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { cn } from "@/lib/utils";
+import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
 import { needsFirstAccessHere, profileAppearance } from "@/lib/profile-appearance";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { erroPinNovo } from "@/lib/pin-rules";
@@ -64,7 +65,7 @@ interface ProfileSessionDialogProps {
 }
 
 /**
- * Tela "Quem está usando o AutoOS?": grade de perfis com avatar e, abaixo,
+ * Tela "Quem está usando?": grade de perfis com avatar e, abaixo,
  * o PIN do perfil escolhido. Sempre escura, como o splash, porque aparece
  * antes de existir um perfil (e um tema) na sessão.
  */
@@ -112,7 +113,7 @@ export function ProfileSessionDialog({
     if (canStartFirstAccess) return selectedProfile.onboarding_pendente ? "Fazer primeiro acesso" : "Ativar neste computador";
     if (missingRequiredPin) return "PIN não configurado neste PC";
     if (isAdminWithoutPin) return "Configurar PIN e continuar";
-    if (mode === "startup") return "Entrar com este perfil";
+    if (mode === "startup") return "Entrar";
     if (mode === "selector") {
       return isCurrentProfileSelected
         ? (unlocked ? "Continuar com este perfil" : "Desbloquear este perfil")
@@ -135,6 +136,18 @@ export function ProfileSessionDialog({
   // Cada erro novo faz tremer o cadeado de roletes (criar PIN) ou o campo do PIN (entrar).
   const [pinKeys, setPinKeys] = useState(0);
   const [errorShakes, setErrorShakes] = useState(0);
+  /** Só no login: em qual modo este computador entra (a mesma preferência de Perfil › Modo). */
+  const [modoEntrada, setModoEntrada] = useState<AppMode>(() => getAppMode() ?? "standard");
+  const [versao, setVersao] = useState<string | null>(null);
+  useEffect(() => {
+    if (mode !== "startup") return;
+    let ativo = true;
+    import("@tauri-apps/api/app")
+      .then(({ getVersion }) => getVersion())
+      .then((v) => { if (ativo) setVersao(v); })
+      .catch(() => undefined);
+    return () => { ativo = false; };
+  }, [mode]);
   const previousError = useRef(error);
   useEffect(() => {
     if (error && error !== previousError.current && shouldAskForPin) setErrorShakes((n) => n + 1);
@@ -163,6 +176,7 @@ export function ProfileSessionDialog({
       onFirstAccess!(selectedProfile.id, false, avatar ? { avatar, dialog: avatar.closest<HTMLElement>("[role='dialog']") } : undefined);
       return;
     }
+    if (mode === "startup" && modoEntrada !== getAppMode()) setAppMode(modoEntrada);
     onSubmit();
   };
 
@@ -199,8 +213,12 @@ export function ProfileSessionDialog({
       }}
     >
       <DialogContent
+        // Na abertura do app a escolha de perfil é a própria página (canvas "Entrar com PIN"):
+        // fundo claro do app, cartão no centro, sem o escurecido de janela.
+        overlayClassName={mode === "startup" ? "bg-background" : undefined}
         className={cn(
-          "dark max-w-4xl gap-0 overflow-hidden border-sidebar-border bg-background p-0 text-foreground",
+          "max-w-[640px] gap-0 overflow-hidden rounded-2xl bg-card p-0 text-foreground",
+          mode === "startup" && "shadow-[0_12px_40px_hsl(var(--foreground)/0.08)]",
           mandatory && "[&>button]:hidden",
         )}
         onPointerDownOutside={(event) => {
@@ -210,7 +228,11 @@ export function ProfileSessionDialog({
           if (ignoreOutsideInteraction) event.preventDefault();
         }}
       >
-        <div className="max-h-[90vh] overflow-y-auto px-6 py-10 sm:px-12">
+        <div className="max-h-[90vh] overflow-y-auto px-6 py-8 sm:px-8">
+          <p className="mb-6 flex items-center justify-center gap-2.5" aria-hidden="true">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-xs font-extrabold text-primary-foreground">OS</span>
+            <span className="text-base font-extrabold">AutoOS</span>
+          </p>
           {isFirstInstall && selectedProfile ? (
             <div className="mx-auto flex max-w-sm flex-col items-center gap-6 text-center">
               <PinLock checked={lockChecked} spin={pinKeys} shake={errorShakes} />
@@ -237,7 +259,7 @@ export function ProfileSessionDialog({
                   inputClassName={pinInputClass}
                   autoFocus
                 />
-                {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+                {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
                 <Button size="lg" type="submit" disabled={primaryDisabled} className="w-full">
                   {busy ? "Validando..." : <>Criar meu acesso e entrar <ArrowRight className="ml-2 h-4 w-4" /></>}
                 </Button>
@@ -249,11 +271,11 @@ export function ProfileSessionDialog({
           ) : (
             <>
               <DialogHeader className="items-center text-center">
-                <DialogTitle className="text-3xl font-bold tracking-tight">{title}</DialogTitle>
+                <DialogTitle className="text-[26px] font-extrabold tracking-tight">{title}</DialogTitle>
                 <DialogDescription className="max-w-xl">{description}</DialogDescription>
               </DialogHeader>
 
-              <div className="mt-10 flex flex-wrap justify-center gap-4 sm:gap-6">
+              <div className="mt-4 flex max-h-[min(26dvh,15rem)] flex-wrap justify-center gap-3 overflow-y-auto overscroll-contain p-1">
                 {profiles.map((profile) => {
                   const isSelected = String(profile.id) === selectedProfileId;
                   const isCurrent = profile.id === activeProfileId && unlocked;
@@ -269,23 +291,23 @@ export function ProfileSessionDialog({
                       aria-pressed={isSelected}
                       onClick={() => onSelectProfile(String(profile.id))}
                       className={cn(
-                        "flex w-36 flex-col items-center gap-3 rounded-2xl px-2 pb-4 pt-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        isSelected ? "bg-white/[0.06]" : "hover:bg-white/[0.03]",
+                        "flex w-[176px] flex-col items-center gap-2.5 rounded-2xl border-2 px-2 pb-3 pt-3 transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        isSelected ? "border-primary bg-acc-soft/40" : "border-transparent hover:bg-muted",
                       )}
                     >
                       <span
                         data-profile-avatar={profile.id}
                         className="flex rounded-[28px] transition-shadow"
-                        style={isSelected && !neverSetUp ? { boxShadow: `0 0 0 3px hsl(var(--background)), 0 0 0 6px ${look.color}` } : undefined}
+
                       >
-                        <ProfileAvatar icon={look.icon} color={look.color} size="xl" pending={neverSetUp} />
+                        <ProfileAvatar icon={look.icon} color={look.color} size="lg" pending={neverSetUp} />
                       </span>
                       <span className="flex w-full min-w-0 flex-col items-center gap-0.5">
-                        <span className="block w-full truncate text-center text-[15px] font-semibold" title={profile.nome}>{profile.nome}</span>
+                        <span className="block w-full break-words text-center text-[15px] font-semibold" title={profile.nome}>{profile.nome}</span>
                         <span className="block w-full truncate text-center text-xs text-muted-foreground">
                           {neverSetUp ? "Primeiro acesso" : pendingHere ? "Ativar neste computador" : securityRoleLabel(profile.role)}
                         </span>
-                        {isCurrent && <span className="mt-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Perfil atual</span>}
+                        {isCurrent && <span className="mt-1 rounded-full bg-status-ok/15 px-2 py-0.5 text-[11px] font-medium text-status-ok">Perfil atual</span>}
                         {!keyringBlocked && !pendingHere && !profile.pin_configured && (
                           <span className="mt-1 text-[11px] text-muted-foreground">
                             {pinOptionalFor(profile) ? "Não exige PIN" : "PIN não configurado neste PC"}
@@ -297,9 +319,9 @@ export function ProfileSessionDialog({
                 })}
               </div>
 
-              <div className="mx-auto mt-8 flex max-w-md flex-col items-center gap-4 text-center">
+              <div className="mt-6 flex w-full flex-col items-center gap-4 text-center">
                 {keyringBlocked && (
-                  <div role="alert" className="flex flex-col items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                  <div role="alert" className="flex flex-col items-center gap-2 rounded-lg border border-status-wait/40 bg-warning/10 px-4 py-3 text-sm text-status-wait">
                     <p>O cofre de senhas do sistema está bloqueado ou indisponível. Desbloqueie-o e tente de novo.</p>
                     {onRetryKeyring && (
                       <Button type="button" variant="outline" size="sm" onClick={onRetryKeyring} disabled={busy}>
@@ -340,7 +362,7 @@ export function ProfileSessionDialog({
                       />
                     ) : (
                       <div className="space-y-2">
-                        <Label htmlFor="sensitive-pin" className="block text-center">PIN do perfil</Label>
+                        <Label htmlFor="sensitive-pin" className="block text-left">{selectedProfile ? `PIN de ${selectedProfile.nome.split(" ")[0]}` : "PIN do perfil"}</Label>
                         <div className={cn("pin-entry", entryState)}>
                           <Input
                             id="sensitive-pin"
@@ -348,9 +370,10 @@ export function ProfileSessionDialog({
                             inputMode="numeric"
                             value={pin}
                             onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                            placeholder="••••"
+                            placeholder="Digite o PIN"
+                            aria-label="PIN do perfil"
                             autoComplete="current-password"
-                            className={pinInputClass}
+                            className={cn(pinInputClass, "placeholder:text-sm placeholder:font-normal placeholder:tracking-normal")}
                             autoFocus
                           />
                           {accepted && (
@@ -367,12 +390,36 @@ export function ProfileSessionDialog({
                 )}
 
                 {!shouldAskForPin && !error && selectedProfile?.pin_configured && (
-                  <p className="text-sm text-emerald-300">Você já está neste perfil. Use o botão abaixo para continuar sem trocar a conta atual.</p>
+                  <p className="text-sm text-status-ok">Você já está neste perfil. Use o botão abaixo para continuar sem trocar a conta atual.</p>
                 )}
 
-                {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+                {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
-                <div className="flex w-full flex-col-reverse items-center justify-center gap-2 sm:flex-row">
+                {mode === "startup" && !canStartFirstAccess && !isAdminWithoutPin && (
+                  <div className="w-full text-left">
+                    <p id="modo-entrada-rotulo" className="mb-2 text-sm text-muted-foreground">Entrar no</p>
+                    <div role="radiogroup" aria-labelledby="modo-entrada-rotulo" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+                      {([["standard", "Modo completo", "Todas as telas"], ["counter", "Balcão", "Tela de toque"]] as const).map(([valor, rotulo, detalhe]) => (
+                        <button
+                          key={valor}
+                          type="button"
+                          role="radio"
+                          aria-checked={modoEntrada === valor}
+                          onClick={() => setModoEntrada(valor)}
+                          className={cn(
+                            "flex min-h-12 flex-col items-center justify-center rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            modoEntrada === valor ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {rotulo}
+                          <span className="text-xs font-normal text-muted-foreground">{detalhe}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex w-full flex-col-reverse items-stretch justify-center gap-2 sm:flex-row">
                   {mode === "startup" ? (
                     <Button variant="ghost" type="button" onClick={onClose} disabled={busy}>Cancelar</Button>
                   ) : !mandatory ? (
@@ -383,7 +430,7 @@ export function ProfileSessionDialog({
                     form={shouldAskForPin ? "profile-session-pin-form" : undefined}
                     onClick={shouldAskForPin ? undefined : handlePrimaryAction}
                     disabled={primaryDisabled}
-                    className="min-w-[200px]"
+                    className="h-12 min-w-[200px] flex-1 text-base"
                   >
                     {canStartFirstAccess && <KeyRound className="mr-2 h-4 w-4" />}
                     {busy ? "Validando..." : primaryActionLabel}
@@ -391,7 +438,7 @@ export function ProfileSessionDialog({
                 </div>
 
                 {(canRecoverWithCode || (onForgotPassword && mode !== "selector")) && (
-                  <div className="flex flex-col items-center gap-1">
+                  <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1">
                     {canRecoverWithCode && selectedProfile && (
                       <Button variant="link" type="button" onClick={() => onFirstAccess!(selectedProfile.id, true)} className="h-auto px-0 text-sm text-primary">
                         Esqueci meu PIN: tenho um código do administrador
@@ -406,6 +453,9 @@ export function ProfileSessionDialog({
                 )}
               </div>
             </>
+          )}
+          {mode === "startup" && versao && (
+            <p className="mt-6 text-center text-xs text-muted-foreground">Versão {versao} · banco conectado</p>
           )}
         </div>
       </DialogContent>

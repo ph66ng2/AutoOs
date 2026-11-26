@@ -33,11 +33,12 @@ export function ProfilePermissions({
         Permissões adicionais
       </legend>
       <p className="text-sm text-muted-foreground">
-        Sem liberações adicionais, a pessoa mantém apenas o acesso operacional
-        básico. As restrições de cada módulo continuam valendo.
+        {permissions.length === 0
+          ? "Nenhuma permissão adicional selecionada. O acesso operacional básico continua disponível."
+          : "As permissões marcadas complementam o acesso operacional básico."}
       </p>
       {restrito && (
-        <p className="text-xs text-amber-700 dark:text-amber-400">
+        <p className="text-xs text-status-wait">
           {AVISO_COMPATIBILIDADE_056}
         </p>
       )}
@@ -48,7 +49,7 @@ export function ProfilePermissions({
           return (
             <label
               key={permission}
-              className={`flex items-start gap-3 rounded-xl border p-4 ${checked ? "border-cyan-600/40 bg-cyan-500/5" : "bg-background"} ${disabled ? "opacity-70" : "cursor-pointer"}`}
+              className={`flex items-start gap-3 rounded-xl border p-4 ${checked ? "border-primary/40 bg-primary/5" : "bg-background"} ${disabled ? "opacity-70" : "cursor-pointer"}`}
             >
               <Checkbox
                 aria-label={detail.title}
@@ -68,7 +69,7 @@ export function ProfilePermissions({
                   {detail.critical && (
                     <Badge
                       variant="outline"
-                      className="border-amber-500/40 text-amber-700 dark:text-amber-400"
+                      className="border-status-wait/40 text-status-wait"
                     >
                       Sensível
                     </Badge>

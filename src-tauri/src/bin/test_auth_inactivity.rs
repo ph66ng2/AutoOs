@@ -179,7 +179,7 @@ async fn main() -> Result<()> {
         session.unlocked_until = Some(almost_expired);
     }
     // O perfil de teste não tem empresa, então a consulta termina em erro; o que importa é a sessão.
-    let _ = commands::portal_cliente::contar_alertas_portal_nao_lidos().await;
+    let _ = commands::portal_cliente::contar_alertas_portal_nao_lidos(None).await;
     let _ = commands::portal_cliente::listar_alertas_portal(true, Some(5)).await;
     {
         let session = auth::session_state().lock().map_err(|e| anyhow!("{}", e))?;

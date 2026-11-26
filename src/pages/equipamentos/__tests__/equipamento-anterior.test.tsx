@@ -126,3 +126,30 @@ describe("equipamento anterior no cadastro", () => {
     expect(aoAbrir).toHaveBeenCalledWith(emAtendimento);
   });
 });
+
+describe("série repetida: preencher vazios e garantia", () => {
+  it("preencherVaziosComAnterior só completa campos vazios e não mexe na série", async () => {
+    const { preencherVaziosComAnterior } = await import("../equipamento-anterior");
+    const { result } = renderHook(() => useForm<EquipamentoFormData>({
+      defaultValues: { serial_number: "ZD-0042", patrimonio: "", marca: "Zebra", modelo: "", tipo: "", status: "RECEBIDO", defeito_relatado: "", acessorios: [], acessorios_outros: "", observacoes: "" },
+    }));
+    preencherVaziosComAnterior(result.current, { ...anterior, serial_number: "OUTRA" } as Equipamento);
+    expect(result.current.getValues()).toMatchObject({ serial_number: "ZD-0042", patrimonio: "PAT-77", marca: "Zebra", modelo: "PC42t", tipo: "Impressora" });
+  });
+
+  it("retornoNaGarantia conta de quando ficou pronta e exige serviço feito", async () => {
+    const { retornoNaGarantia, ultimaPassagem, linhaRetornoGarantia } = await import("../equipamento-anterior");
+    expect(retornoNaGarantia({ status: "ENTREGUE", data_pronto: "2026-08-23", data_saida: "2026-09-01" }, 90, "2026-11-21")).toEqual({ diasDesdePronto: 90 });
+    expect(retornoNaGarantia({ status: "ENTREGUE", data_pronto: "2026-08-22", data_saida: "2026-11-01" }, 90, "2026-11-21")).toBeNull();
+    // Cadastro antigo sem data de pronto: vale a saída, desde que o orçamento tenha sido aprovado.
+    expect(retornoNaGarantia({ status: "ENTREGUE", data_aprovacao: "2026-10-01", data_saida: "2026-11-01" }, 90, "2026-11-21")).toEqual({ diasDesdePronto: 20 });
+    // Reprovado e devolvido: entregue, sem pronto nem aprovação.
+    expect(retornoNaGarantia({ status: "ENTREGUE", data_saida: "2026-11-01" }, 90, "2026-11-21")).toBeNull();
+    expect(retornoNaGarantia({ status: "ABANDONADO", data_pronto: "2026-11-01" }, 90, "2026-11-21")).toBeNull();
+    expect(retornoNaGarantia({ status: "ENTREGUE", data_pronto: "2026-11-01" }, 0, "2026-11-21")).toBeNull();
+    expect(retornoNaGarantia({ status: "ENTREGUE", data_pronto: "2026-11-01" }, null, "2026-11-21")).toBeNull();
+    const ultima = ultimaPassagem([{ id: 3, data_entrada: "2026-01-01" }, { id: 9, data_entrada: "2026-03-01" }, { id: 8, data_entrada: "2026-03-01" }] as Equipamento[]);
+    expect(ultima?.id).toBe(9);
+    expect(linhaRetornoGarantia({ id: 9 }, 90)).toBe("Retorno da OS #9 dentro da garantia de 90 dias dos serviços.");
+  });
+});

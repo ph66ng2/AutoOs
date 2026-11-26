@@ -1,34 +1,90 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
+import { argSegundoPlano } from "@/lib/ao-vivo";
 import { db } from "@/lib/db";
 import type { GastoFixo, GastoVariavel, GastoVariavelInput, GastoResumoMensal } from "@/types";
 
-export function useGastosFixos() {
-  const [gastosFixos, setGastosFixos] = useState<GastoFixo[]>([]);
+function useLeituraGastos<T>(
+  inicial: T,
+  buscar: (segundoPlano: boolean) => Promise<T>,
+  mensagemErro: string,
+  tabelas: string[],
+) {
+  const [dados, setDados] = useState(inicial);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const carregouUmaVez = useRef(false);
+  const cargaVisivelPendente = useRef(false);
+  // Mudança chegou durante a carga visível: o SELECT dela pode ter rodado antes do COMMIT remoto.
+  const recargaPendente = useRef(false);
+  const pedido = useRef(0);
+  const buscarAtual = useRef<typeof buscar | null>(null);
 
-  const carregar = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await db.listarGastosFixos();
-      setGastosFixos(data);
-    } catch (err: any) {
-      setError(err?.toString() || "Erro ao carregar gastos fixos");
-      console.error("Erro ao carregar gastos fixos:", err);
-    } finally {
-      setLoading(false);
+  useLayoutEffect(() => {
+    buscarAtual.current = buscar;
+    return () => {
+      buscarAtual.current = null;
+      cargaVisivelPendente.current = false;
+      recargaPendente.current = false;
+      ++pedido.current;
+    };
+  }, [buscar]);
+
+  const carregar = useCallback(async (silencioso = false) => {
+    const leitura = buscarAtual.current;
+    if (!leitura) return;
+    if (silencioso && cargaVisivelPendente.current) {
+      recargaPendente.current = true;
+      return;
     }
-  }, []);
+    const meu = ++pedido.current;
+    if (!silencioso) {
+      cargaVisivelPendente.current = true;
+      setLoading(true);
+      setError(null);
+    }
+    try {
+      const dados = await leitura(silencioso);
+      if (meu !== pedido.current) return;
+      carregouUmaVez.current = true;
+      setDados(dados);
+      setError(null);
+    } catch (err) {
+      if (meu !== pedido.current || (silencioso && carregouUmaVez.current)) return;
+      setError(String(err) || mensagemErro);
+      console.error(mensagemErro, err);
+    } finally {
+      if (meu === pedido.current) {
+        cargaVisivelPendente.current = false;
+        setLoading(false);
+        if (!silencioso && recargaPendente.current) {
+          recargaPendente.current = false;
+          void carregar(true);
+        }
+      }
+    }
+  }, [mensagemErro]);
 
+  const recarregar = useCallback(() => carregar(), [carregar]);
   useEffect(() => {
-    void carregar();
-  }, [carregar]);
+    void recarregar();
+  }, [buscar, recarregar]);
+  useAtualizacaoAoVivo(tabelas, () => { void carregar(true); });
+
+  return { dados, loading, error, recarregar };
+}
+
+const buscarFixos = (segundoPlano: boolean) => db.listarGastosFixos(...argSegundoPlano(segundoPlano));
+
+export function useGastosFixos() {
+  const { dados: gastosFixos, loading, error, recarregar } = useLeituraGastos<GastoFixo[]>(
+    [], buscarFixos, "Erro ao carregar gastos fixos", ["gastos_fixos"],
+  );
 
   const criarGastoFixoMutation = async (input: Omit<GastoFixo, "id">) => {
     try {
       await db.criarGastoFixo(input);
-      await carregar();
+      await recarregar();
       return { sucesso: true as const };
     } catch (err: any) {
       return { sucesso: false as const, erro: err?.toString() };
@@ -38,7 +94,7 @@ export function useGastosFixos() {
   const atualizarGastoFixoMutation = async (id: number, input: Omit<GastoFixo, "id">) => {
     try {
       await db.atualizarGastoFixo(id, input);
-      await carregar();
+      await recarregar();
       return { sucesso: true as const };
     } catch (err: any) {
       return { sucesso: false as const, erro: err?.toString() };
@@ -51,37 +107,22 @@ export function useGastosFixos() {
     error,
     criarGastoFixoMutation,
     atualizarGastoFixoMutation,
-    recarregar: carregar,
+    recarregar,
   };
 }
 
 export function useGastosVariaveis(mes: number, ano: number) {
-  const [gastosVariaveis, setGastosVariaveis] = useState<GastoVariavel[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const carregar = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await db.listarGastosVariaveis(mes, ano);
-      setGastosVariaveis(data);
-    } catch (err: any) {
-      setError(err?.toString() || "Erro ao carregar gastos variáveis");
-      console.error("Erro ao carregar gastos variáveis:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [mes, ano]);
-
-  useEffect(() => {
-    void carregar();
-  }, [carregar]);
+  const buscar = useCallback((segundoPlano: boolean) => (
+    db.listarGastosVariaveis(mes, ano, ...argSegundoPlano(segundoPlano))
+  ), [mes, ano]);
+  const { dados: gastosVariaveis, loading, error, recarregar } = useLeituraGastos<GastoVariavel[]>(
+    [], buscar, "Erro ao carregar gastos variáveis", ["gastos_variaveis"],
+  );
 
   const criarGastoVariavelMutation = async (input: GastoVariavelInput) => {
     try {
       await db.criarGastoVariavel(input);
-      await carregar();
+      await recarregar();
       return { sucesso: true as const };
     } catch (err: any) {
       return { sucesso: false as const, erro: err?.toString() };
@@ -93,32 +134,17 @@ export function useGastosVariaveis(mes: number, ano: number) {
     loading,
     error,
     criarGastoVariavelMutation,
-    recarregar: carregar,
+    recarregar,
   };
 }
 
 export function useResumoMensal(mes: number, ano: number) {
-  const [resumo, setResumo] = useState<GastoResumoMensal | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const buscar = useCallback((segundoPlano: boolean) => (
+    db.resumoMensal(mes, ano, ...argSegundoPlano(segundoPlano))
+  ), [mes, ano]);
+  const { dados: resumo, loading, error, recarregar } = useLeituraGastos<GastoResumoMensal | null>(
+    null, buscar, "Erro ao carregar resumo mensal", ["gastos_fixos", "gastos_variaveis"],
+  );
 
-  const carregar = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await db.resumoMensal(mes, ano);
-      setResumo(data);
-    } catch (err: any) {
-      setError(err?.toString() || "Erro ao carregar resumo mensal");
-      console.error("Erro ao carregar resumo mensal:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [mes, ano]);
-
-  useEffect(() => {
-    void carregar();
-  }, [carregar]);
-
-  return { resumo, loading, error, recarregar: carregar };
+  return { resumo, loading, error, recarregar };
 }

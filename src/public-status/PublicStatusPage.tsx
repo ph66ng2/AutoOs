@@ -74,16 +74,20 @@ export default function PublicStatusPage() {
       : { title: "Este acompanhamento não está disponível", description: "Confira se o link está correto ou fale com a equipe BMI TAG pelo canal em que recebeu o link." };
 
   return (
-    <main className="status-shell">
-      <StatusBrand />
+    <main className="status-shell portal-publico">
+      <div className="portal-topbar"><StatusBrand /></div>
 
-      <section className="status-card" aria-live="polite">
+      <section className="status-card is-publico" aria-live="polite">
+        <div className="portal-cartao">
         <p className="eyebrow">Acompanhamento do atendimento</p>
 
         {loading && (
-          <div className="loading-state" role="status">
-            <span className="spinner" aria-hidden="true" />
-            <p>Consultando o atendimento…</p>
+          <div className="loading-state is-skeleton" role="status" aria-label="Consultando o atendimento…" aria-busy="true">
+            <p className="visually-hidden">Consultando o atendimento…</p>
+            <span className="skeleton is-title" aria-hidden="true" />
+            <span className="skeleton" style={{ width: "40%" }} aria-hidden="true" />
+            <span className="skeleton is-card" aria-hidden="true" />
+            <span className="skeleton" style={{ width: "75%" }} aria-hidden="true" />
           </div>
         )}
 
@@ -114,11 +118,14 @@ export default function PublicStatusPage() {
                 />
               </section>
             )}
-
-            <button className="refresh-button" type="button" onClick={() => void loadStatus()}>
-              Atualizar acompanhamento
-            </button>
           </>
+        )}
+        </div>
+
+        {!loading && !error && data && (
+          <button className="secondary-button portal-full portal-atualizar" type="button" onClick={() => void loadStatus()}>
+            Atualizar acompanhamento
+          </button>
         )}
 
         {checkedAt && !loading && !error && (

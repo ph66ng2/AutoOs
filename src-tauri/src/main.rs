@@ -22,6 +22,7 @@
 //! ║  4. Registra todos os comandos IPC usados pelo frontend     ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
+mod ao_vivo;
 mod commands;
 mod db;
 mod release_highlights;
@@ -88,7 +89,8 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|_app| {
+        .plugin(tauri_plugin_notification::init())
+        .setup(|app| {
             info!("Inicializando banco de dados...");
             match tauri::async_runtime::block_on(db::init_database()) {
                 Ok(_pool) => {
@@ -99,6 +101,8 @@ fn main() {
                     info!("{}", msg);
                 }
             }
+            // Atualização ao vivo entre computadores: espera o banco ficar pronto sozinha.
+            ao_vivo::iniciar(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -116,6 +120,7 @@ fn main() {
             commands::auth::verificar_credenciais_banco,
             commands::auth::redefinir_pin_via_db,
             commands::auth::list_security_profiles,
+            commands::auth::listar_tecnicos_da_empresa,
             commands::auth::deactivate_security_profile,
             commands::auth::reactivate_security_profile,
             commands::auth::deletar_perfil,
@@ -129,10 +134,14 @@ fn main() {
             commands::auth::gerar_codigo_primeiro_acesso,
             commands::auth::ativar_perfil_com_codigo,
             commands::auth::salvar_personalizacao_perfil,
+            commands::auth::salvar_tema_perfil,
+            commands::auth::obter_garantia_servicos_dias,
+            commands::auth::salvar_garantia_servicos_dias,
             commands::auth::registrar_tour_visto,
             commands::auth::listar_minhas_acoes,
             // Util
             commands::util::salvar_arquivo_temp,
+            commands::util::salvar_exportacao_csv,
             commands::util::copiar_anexo_email_para_temp,
             commands::util::remover_anexo_email_temp,
             commands::util::salvar_ordem_servico_pdf,
@@ -158,11 +167,17 @@ fn main() {
             commands::util::verificar_status_banco,
             commands::util::obter_erro_inicializacao_banco,
             commands::util::tentar_reconectar_banco,
+            commands::util::verificar_saude_banco,
             commands::util::reiniciar_banco_com_config,
             // Equipamentos
             commands::equipamentos::listar_equipamentos,
             commands::equipamentos::listar_equipamentos_paginados,
+            commands::equipamentos::contar_equipamentos_por_status,
+            commands::equipamentos::listar_nomes_tecnicos_verificacoes,
+            commands::auth::obter_empresa_ativa,
             commands::equipamentos::listar_equipamentos_cliente,
+            commands::equipamentos::listar_receita_aprovada,
+            commands::equipamentos::listar_movimento_bancada,
             commands::equipamentos::buscar_equipamento,
             commands::equipamentos::listar_historico_equipamento,
             commands::equipamentos::buscar_equipamentos_por_serial,
@@ -178,8 +193,24 @@ fn main() {
             commands::portal_cliente::listar_alertas_portal,
             commands::portal_cliente::contar_alertas_portal_nao_lidos,
             commands::portal_cliente::marcar_alertas_portal_lidos,
+            commands::notificacoes::listar_avisos_internos,
+            commands::notificacoes::marcar_avisos_lidos,
+            commands::notificacoes::salvar_avisos_desligados,
+            commands::modelos_mensagem::listar_modelos_mensagem,
+            commands::modelos_mensagem::salvar_modelo_mensagem,
+            commands::modelos_mensagem::excluir_modelo_mensagem,
+            commands::suporte::obter_config_suporte,
+            commands::suporte::salvar_config_suporte,
+            commands::suporte::abrir_chamado_suporte,
+            commands::suporte::listar_chamados_suporte,
+            commands::suporte::buscar_chamado_suporte,
+            commands::suporte::listar_mensagens_chamado,
+            commands::suporte::sincronizar_suporte,
+            commands::suporte::responder_chamado_suporte,
+            commands::suporte::retorno_chamado_suporte,
             commands::portal_cliente::definir_acesso_portal_contato,
             commands::portal_cliente::definir_senha_portal_contato,
+            commands::portal_cliente::ver_senha_portal_contato,
             commands::portal_cliente::publicar_orcamento_portal,
             commands::portal_documentos::publicar_documento_portal,
             commands::portal_cliente::listar_orcamentos_pendentes_portal,
@@ -211,6 +242,8 @@ fn main() {
             // Clientes
             commands::clientes::listar_clientes,
             commands::clientes::listar_clientes_paginados,
+            commands::clientes::contar_clientes_por_filtro,
+            commands::clientes::resumo_cliente,
             commands::clientes::buscar_cliente,
             commands::clientes::criar_cliente,
             commands::clientes::atualizar_cliente,
@@ -228,6 +261,7 @@ fn main() {
             // Produtos
             commands::produtos::listar_produtos,
             commands::produtos::listar_produtos_paginados,
+            commands::produtos::resumo_estoque,
             commands::produtos::buscar_produto,
             commands::produtos::criar_produto,
             commands::produtos::atualizar_produto,
@@ -249,14 +283,18 @@ fn main() {
             commands::servicos::criar_servico,
             commands::servicos::atualizar_servico,
             commands::servicos::deletar_servico,
+            commands::servicos::reativar_servico,
+            commands::servicos::contar_servicos,
             // Verificações
             commands::verificacoes::salvar_verificacao_tecnica,
             commands::verificacoes::buscar_verificacao_tecnica,
             commands::verificacoes::atualizar_servicos_verificacao,
             commands::equipamentos::aprovar_orcamento,
             commands::orcamento_estoque::listar_consumos_orcamento,
+            commands::orcamento_estoque::listar_pecas_baixa_pendente,
             commands::orcamento_estoque::baixar_pecas_pendentes,
             commands::orcamentos_insumos::listar_orcamentos_insumos,
+            commands::orcamentos_insumos::contar_orcamentos_insumos_por_status,
             commands::orcamentos_insumos::obter_orcamento_insumos,
             commands::orcamentos_insumos::criar_orcamento_insumos,
             commands::orcamentos_insumos::atualizar_orcamento_insumos,
@@ -273,6 +311,7 @@ fn main() {
             commands::smtp::salvar_config_smtp,
             commands::smtp::carregar_config_smtp,
             commands::smtp::enviar_email,
+            commands::smtp::copia_gerencia_da_empresa,
             // WhatsApp
             commands::whatsapp::salvar_config_whatsapp,
             commands::whatsapp::carregar_config_whatsapp,

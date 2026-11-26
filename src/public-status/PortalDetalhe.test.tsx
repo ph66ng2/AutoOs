@@ -205,7 +205,7 @@ describe("pronto para retirada", () => {
 
   it("mostra endereço, mapa embutido, botão do Google Maps e o valor", async () => {
     await abrir(pronto());
-    const secao = screen.getByRole("region", { name: "Retire no endereço abaixo" });
+    const secao = screen.getByRole("region", { name: "Pronto para retirada" });
     expect(within(secao).getByText(ENDERECO)).toBeInTheDocument();
     expect(within(secao).getByText(/R\$\s*350,00/)).toBeInTheDocument();
     const mapa = within(secao).getByTitle(`Mapa: ${ENDERECO}`);
@@ -222,7 +222,7 @@ describe("pronto para retirada", () => {
     await abrir(pronto({ contatoEmpresa: null }));
     expect(screen.queryByTitle(/^Mapa/)).toBeNull();
     expect(screen.queryByRole("link", { name: "Abrir no Google Maps" })).toBeNull();
-    expect(screen.getByRole("region", { name: "Seu equipamento está pronto" })).toHaveTextContent(/R\$\s*350,00/);
+    expect(screen.getByRole("region", { name: "Pronto para retirada" })).toHaveTextContent(/R\$\s*350,00/);
   });
 });
 
@@ -269,7 +269,7 @@ describe("Pronto com valor atualizado", () => {
     await abrir(detalhe({
       status: "PRONTO", titulo: "Pronto para retirada", orcamento: orcamento({ estado: "ENCERRADA" }), valores: { orcamento: 350, final: null, atual: 400 },
     }));
-    const destaque = screen.getByRole("region", { name: "Seu equipamento está pronto" });
+    const destaque = screen.getByRole("region", { name: "Pronto para retirada" });
     expect(destaque.textContent?.match(/R\$\s*400,00/g)).toHaveLength(1);
     expect(destaque).toHaveTextContent(/orçamento aprovado: R\$\s*350,00/);
     expect(document.querySelector(".portal-valor-linha")).toHaveTextContent(/R\$\s*400,00/);

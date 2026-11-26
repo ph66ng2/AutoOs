@@ -7,7 +7,7 @@
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_active_session_company_id_without_touch,
     require_any_permission, require_permission,
-    profile_has_permission, require_sensitive_access, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
+    current_session_profile, profile_has_permission, require_sensitive_access, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
     PERMISSION_PREPARE_QUOTES, PERMISSION_COMMUNICATION_SETTINGS,
 };
 use crate::commands::orcamento_decisao::obter_ou_criar_versao;
@@ -89,7 +89,13 @@ fn texto(value: Option<&str>, max: usize) -> Option<String> {
         .map(|v| v.chars().take(max).collect())
 }
 
-/// Alertas do portal da empresa ativa, do mais recente ao mais antigo.
+/// Perfil da sessão para o "lido" do sino; sem sessão (antes do PIN), ninguém leu nada novo.
+fn perfil_do_sino() -> i32 {
+    current_session_profile().ok().flatten().map(|(_, perfil)| perfil.id).unwrap_or(0)
+}
+
+/// Alertas do portal da empresa ativa, do mais recente ao mais antigo. "Lido" é por perfil
+/// (notificacao_leituras, 0052); a leitura antiga da empresa (lido_em) continua valendo para todos.
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn listar_alertas_portal(
@@ -103,36 +109,50 @@ pub async fn listar_alertas_portal(
     sqlx::query_as::<_, AlertaPortal>(sqlx::AssertSqlSafe(format!(
         "SELECT a.id, a.equipamento_id, a.tipo, a.titulo, a.detalhe,
                 to_char(a.criado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS criado_em,
-                to_char(a.lido_em AT TIME ZONE 'UTC', '{TS_FMT}') AS lido_em,
-                p.nome AS lido_por, r.decisao
+                to_char(COALESCE(l.lido_em, a.lido_em) AT TIME ZONE 'UTC', '{TS_FMT}') AS lido_em,
+                CASE WHEN l.lido_em IS NOT NULL THEN eu.nome ELSE p.nome END AS lido_por, r.decisao
          FROM portal_alertas a
+         LEFT JOIN notificacao_leituras l
+                ON l.empresa_id = a.empresa_id AND l.profile_id = $4 AND l.chave = 'portal:' || a.id
+         LEFT JOIN security_profiles eu ON eu.id = $4
          LEFT JOIN security_profiles p ON p.id = a.lido_por_profile_id
          LEFT JOIN orcamento_respostas r ON r.id = a.resposta_id AND r.empresa_id = a.empresa_id
-         WHERE a.empresa_id = $1 AND ($2 = FALSE OR a.lido_em IS NULL)
+         WHERE a.empresa_id = $1 AND ($2 = FALSE OR (a.lido_em IS NULL AND l.id IS NULL))
          ORDER BY a.id DESC
          LIMIT $3"
     )))
     .bind(empresa_id)
     .bind(apenas_nao_lidos)
     .bind(limite)
+    .bind(perfil_do_sino())
     .fetch_all(&pool)
     .await
     .map_err(super::operator_errors::mapear_erro_sql)
 }
 
 #[tauri::command]
-pub async fn contar_alertas_portal_nao_lidos() -> Result<i64, String> {
+/// `apos_id`: conta só os alertas com id maior (o que chegou depois da última abertura do sino).
+pub async fn contar_alertas_portal_nao_lidos(apos_id: Option<i64>) -> Result<i64, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     // Consulta de segundo plano (sino a cada 30 s): não renova a sessão sensível.
     let empresa_id = require_active_session_company_id_without_touch(&pool).await?;
-    sqlx::query_scalar("SELECT COUNT(*) FROM portal_alertas WHERE empresa_id = $1 AND lido_em IS NULL")
-        .bind(empresa_id)
-        .fetch_one(&pool)
-        .await
-        .map_err(super::operator_errors::mapear_erro_sql)
+    sqlx::query_scalar(
+        "SELECT COUNT(*) FROM portal_alertas a
+         WHERE a.empresa_id = $1 AND a.lido_em IS NULL
+           AND NOT EXISTS (SELECT 1 FROM notificacao_leituras l
+                           WHERE l.empresa_id = a.empresa_id AND l.profile_id = $2 AND l.chave = 'portal:' || a.id)
+           AND ($3::BIGINT IS NULL OR a.id > $3)",
+    )
+    .bind(empresa_id)
+    .bind(perfil_do_sino())
+    .bind(apos_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)
 }
 
-/// Marca como lido um alerta (`alerta_id`) ou todos os não lidos (`None`). A leitura fica no histórico.
+/// Marca como lido, para o perfil da sessão, um alerta (`alerta_id`) ou todos os não lidos (`None`).
+/// Os outros perfis continuam vendo o alerta como novo.
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn marcar_alertas_portal_lidos(alerta_id: Option<i64>) -> Result<u64, String> {
@@ -140,8 +160,11 @@ pub async fn marcar_alertas_portal_lidos(alerta_id: Option<i64>) -> Result<u64, 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
     let result = sqlx::query(
-        "UPDATE portal_alertas SET lido_em = NOW(), lido_por_profile_id = $3
-         WHERE empresa_id = $1 AND lido_em IS NULL AND ($2::BIGINT IS NULL OR id = $2)",
+        "INSERT INTO notificacao_leituras (empresa_id, profile_id, chave)
+         SELECT a.empresa_id, $3, 'portal:' || a.id
+         FROM portal_alertas a
+         WHERE a.empresa_id = $1 AND a.lido_em IS NULL AND ($2::BIGINT IS NULL OR a.id = $2)
+         ON CONFLICT (empresa_id, profile_id, chave) DO NOTHING",
     )
     .bind(empresa_id)
     .bind(alerta_id)
@@ -250,6 +273,7 @@ pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>
             Some("SENHA_REPETIDA") => "Outro contato deste CPF/CNPJ já usa essa senha. Escolha outra: é a senha que identifica quem entrou.".to_string(),
             _ => super::operator_errors::mapear_erro_sql(error),
         })?;
+    guardar_senha_visivel(&mut tx, empresa_id, contato_id, senha.as_deref(), actor.id).await?;
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     record_security_event(
@@ -267,6 +291,73 @@ pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>
         .fetch_one(&pool)
         .await
         .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+/// Guarda a senha que a equipe acabou de definir (ou apaga, com `None`) para ser consultada depois
+/// em `ver_senha_portal_contato` (0064). Roda na mesma transação de `portal_definir_senha_contato`.
+async fn guardar_senha_visivel(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    empresa_id: i32,
+    contato_id: i32,
+    senha: Option<&str>,
+    profile_id: i32,
+) -> Result<(), String> {
+    sqlx::query("SELECT public.portal_guardar_senha_visivel($1, $2, $3, $4)")
+        .bind(empresa_id)
+        .bind(contato_id)
+        .bind(senha)
+        .bind(profile_id)
+        .execute(&mut **tx)
+        .await
+        .map(|_| ())
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+/// Senha atual do portal de um contato, para a equipe repassar ao cliente (decisão de 24/11/2026).
+/// `None` quando a senha foi criada antes da 0064 ou trocada por outro caminho: aí só gerando outra.
+/// Exige as mesmas permissões de criar a senha e fica na auditoria.
+#[tauri::command]
+pub async fn ver_senha_portal_contato(contato_id: i32) -> Result<Option<String>, String> {
+    require_sensitive_access()?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    // Ler segredo em texto: tudo numa transação. O contato fica travado da conferência de permissão
+    // até a leitura (outro operador não promove a DECIDIR nem troca a senha no meio), e a auditoria
+    // é gravada antes de devolver: sem o registro, a senha não sai.
+    let map = super::operator_errors::mapear_erro_sql;
+    let mut tx = pool.begin().await.map_err(map)?;
+    let acesso: Option<String> = sqlx::query_scalar(
+        "SELECT portal_acesso FROM cliente_contatos WHERE id = $1 AND empresa_id = $2 FOR UPDATE",
+    )
+    .bind(contato_id)
+    .bind(empresa_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(map)?;
+    if acesso.is_none() {
+        return Err("Contato não encontrado na empresa ativa.".to_string());
+    }
+    let actor = require_any_permission(permissoes_senha_portal(acesso.as_deref()))?;
+
+    let senha: Option<String> = sqlx::query_scalar("SELECT public.portal_ler_senha_visivel($1, $2)")
+        .bind(empresa_id)
+        .bind(contato_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(map)?;
+    sqlx::query(
+        "INSERT INTO security_audit_log (event_type, profile_id, profile_name, details, success, empresa_id)
+         VALUES ('PORTAL_PASSWORD_VIEWED', $1, $2, $3, TRUE, $4)",
+    )
+    .bind(actor.id)
+    .bind(&actor.nome)
+    .bind(format!("empresa_id={empresa_id}; contato_id={contato_id}; disponivel={}", senha.is_some()))
+    .bind(empresa_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| "Não foi possível registrar a consulta na auditoria; a senha não foi mostrada.".to_string())?;
+    tx.commit().await.map_err(map)?;
+    Ok(senha)
 }
 
 /// Permissões que autorizam criar, trocar ou remover a senha do portal de um contato. A senha de
@@ -603,6 +694,7 @@ pub async fn preparar_acesso_portal(
                 .await;
             match resultado {
                 Ok(_) => {
+                    guardar_senha_visivel(&mut savepoint, empresa_id, contato_id, Some(&senha), actor.id).await?;
                     savepoint.commit().await.map_err(map)?;
                     credenciais = Some(CredenciaisPortal {
                         usuario: atual.cliente_documento.clone(),
@@ -653,8 +745,7 @@ pub async fn publicar_orcamento_portal(equipamento_id: i32) -> Result<OrcamentoP
     publicar_versao(&pool, empresa_id, &actor, equipamento_id).await
 }
 
-/// Cria ou reaproveita a versão publicada de uma OS. Cada chamada tem a sua transação e grava o
-/// evento `BUDGET_PUBLISHED_TO_PORTAL`.
+/// Cria ou reaproveita a versão congelada de uma OS e audita após confirmar a transação.
 async fn publicar_versao(
     pool: &PgPool,
     empresa_id: i32,
@@ -675,14 +766,41 @@ async fn publicar_versao(
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     let nova = antes.is_none_or(|id| versao.id > id);
-    record_security_event(
-        "BUDGET_PUBLISHED_TO_PORTAL",
-        Some(actor),
+    auditar_versao_orcamento(
+        pool,
+        empresa_id,
+        actor,
         format!("empresa_id={empresa_id}; equipamento_id={equipamento_id}; versao={}; nova={nova}", versao.numero),
-        true,
     )
     .await;
     Ok(OrcamentoPublicado { versao_id: versao.id, versao: versao.numero, nova })
+}
+
+pub(crate) async fn auditar_versao_orcamento(
+    pool: &PgPool,
+    empresa_id: i32,
+    actor: &SecurityProfileSummary,
+    detalhes: String,
+) {
+    // A versão já foi gravada. A leitura do portal serve apenas à auditoria.
+    match sqlx::query_scalar::<_, bool>("SELECT public.autoos_portal_ligado($1)")
+        .bind(empresa_id)
+        .fetch_one(pool)
+        .await
+    {
+        Ok(ligado) => {
+            record_security_event(evento_versao_orcamento(ligado), Some(actor), detalhes, true).await;
+        }
+        Err(erro) => tracing::warn!(empresa_id, %erro, "Falha ao consultar o portal para auditar a versão do orçamento"),
+    }
+}
+
+fn evento_versao_orcamento(portal_ligado: bool) -> &'static str {
+    if portal_ligado {
+        "BUDGET_PUBLISHED_TO_PORTAL"
+    } else {
+        "BUDGET_VERSION_FROZEN"
+    }
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -838,6 +956,12 @@ pub async fn salvar_contato_portal_empresa(input: ContatoPortalEmpresa) -> Resul
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn estado_do_portal_define_o_evento_da_versao() {
+        assert_eq!(super::evento_versao_orcamento(true), "BUDGET_PUBLISHED_TO_PORTAL");
+        assert_eq!(super::evento_versao_orcamento(false), "BUDGET_VERSION_FROZEN");
+    }
+
     use super::*;
 
     #[test]

@@ -35,6 +35,12 @@ describe("date-utils", () => {
     expect(parseDbTimestampUtc(null)).toBeNull();
   });
 
+  it("lê NOW() gravado em coluna TEXT, com deslocamento só de horas (+00, -03)", () => {
+    expect(parseDbTimestampUtc("2026-11-22 11:36:00.123456+00")?.toISOString()).toBe("2026-11-22T11:36:00.123Z");
+    expect(parseDbTimestampUtc("2026-11-22 08:36:00-03")?.toISOString()).toBe("2026-11-22T11:36:00.000Z");
+    expect(parseDbTimestampUtc("2026-11-22 08:36:00+0530")).not.toBeNull();
+  });
+
   it("exibe data e hora no fuso de Salvador independentemente do computador", () => {
     expect(formatDateTimeSalvador("2026-09-14T12:34:56.000Z")).toBe("14/09/2026, 09:34:56");
   });
