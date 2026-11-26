@@ -71,7 +71,7 @@ export function useVendaInsumos(id: number | null) {
     };
   }, [carregar]);
 
-  useAtualizacaoAoVivo(["orcamentos_insumos", "produtos", "clientes"], () => {
+  useAtualizacaoAoVivo(["orcamentos_insumos", "produtos", "clientes", "cliente_contatos"], () => {
     void carregar({ silencioso: true });
   });
 

@@ -41,6 +41,16 @@ describe("useVendaRetirada", () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it("relê a venda quando o contato muda em outro computador (nome e telefone vêm de cliente_contatos)", async () => {
+    mocks.obterOrcamentoInsumos.mockResolvedValueOnce(venda("APROVADO"));
+    const { result } = renderHook(() => useVendaRetirada(7));
+    await waitFor(() => expect(result.current.venda?.status).toBe("APROVADO"));
+    mocks.obterOrcamentoInsumos.mockResolvedValueOnce({ ...(venda("APROVADO") as object), contato_telefone: "71999990000" } as never);
+    await act(async () => { distribuirMudancas([{ tabela: "cliente_contatos", id: 3, referencia: 4, operacao: "U" }]); });
+    await waitFor(() => expect(mocks.obterOrcamentoInsumos).toHaveBeenLastCalledWith(7, true));
+    await waitFor(() => expect((result.current.venda as unknown as { contato_telefone?: string }).contato_telefone).toBe("71999990000"));
+  });
+
   it("falha da recarga silenciosa mantém a venda e não mostra erro", async () => {
     mocks.obterOrcamentoInsumos.mockResolvedValueOnce(venda("APROVADO")).mockRejectedValueOnce("Acesso sensível bloqueado.");
     const { result } = renderHook(() => useVendaRetirada(7));
