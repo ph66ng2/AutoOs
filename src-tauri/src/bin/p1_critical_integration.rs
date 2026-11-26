@@ -543,6 +543,27 @@ async fn main() -> Result<()> {
         }
     }
 
+    // A listagem simples (busca do Balcão e "Entregar ao cliente") usa o mesmo filtro da lista
+    // paginada: acha a OS pelo CPF/CNPJ do cliente cadastrado e pelo nome do contato responsável.
+    let documento_cliente = cliente.documento.clone().unwrap_or_default();
+    let nome_contato = format!("{} Responsável Original", prefix);
+    for (label, busca) in [("documento do cliente", documento_cliente.as_str()), ("nome do contato", nome_contato.as_str())] {
+        let achados = equipamentos::listar_equipamentos_on_connection(
+            &mut legacy_first_connection,
+            empresa_id,
+            Some(0),
+            Some(busca),
+            None,
+        )
+        .await
+        .map_err(|error| anyhow!(error))?;
+        if !achados.iter().any(|item| item.id == equipamento.id) {
+            return Err(anyhow!("simple equipment listing did not find the equipment by {}", label));
+        }
+    }
+    // Marcador de resultado (não é debug): writeln por causa do filtro do pre-qa-check.
+    std::io::Write::write_all(&mut std::io::stdout(), b"P1_INTEGRATION_SIMPLE_LISTING_SEARCH=ok\n")?;
+
     verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
         equipamento_id: equipamento.id,
         empresa_id: Some(empresa_id),

@@ -593,35 +593,10 @@ pub(crate) async fn listar_equipamentos_on_connection(
 ) -> Result<Vec<EquipamentoRow>, String> {
     let offset = i64::from(page.unwrap_or(0).max(0)) * i64::from(PAGE_SIZE);
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(EQUIPAMENTO_SELECT);
-    query_builder.push(" WHERE empresa_id = ");
-    query_builder.push_bind(empresa_id);
-
-    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
-        let pattern = format!("%{}%", busca);
-        query_builder.push(" AND (");
-        query_builder.push("serial_number ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(patrimonio, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR marca ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR modelo ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(defeito_relatado, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(cliente_nome, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(cliente_email, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(cliente_telefone, '') ILIKE ");
-        query_builder.push_bind(pattern);
-        query_builder.push(")");
-    }
-
-    if let Some(status) = status.map(str::trim).filter(|value| !value.is_empty() && *value != "TODOS") {
-        query_builder.push(" AND status = ");
-        query_builder.push_bind(normalize_status_key(status));
-    }
+    // Mesmo filtro da lista de Equipamentos: série, patrimônio, aparelho, cliente cadastrado (nome,
+    // razão social, nome fantasia, CPF/CNPJ), responsável e contatos. A busca do Balcão ("Série,
+    // nome do cliente, CPF/CNPJ ou telefone") e "Entregar ao cliente" usam esta consulta.
+    add_equipment_filters(&mut query_builder, empresa_id, busca, status, None);
 
     query_builder.push(" ORDER BY id DESC LIMIT ");
     query_builder.push_bind(i64::from(PAGE_SIZE));

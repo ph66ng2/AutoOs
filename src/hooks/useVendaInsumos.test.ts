@@ -60,7 +60,7 @@ describe("useVendaInsumos", () => {
     await waitFor(() => expect(result.current.venda?.id).toBe(2));
   });
 
-  it("recarrega em silêncio quando outro computador muda o orçamento, o estoque ou o cliente", async () => {
+  it("recarrega em silêncio quando outro computador muda o orçamento, o estoque, o cliente ou o contato", async () => {
     mocks.obterOrcamentoInsumos.mockResolvedValueOnce(venda(1));
     const { result } = renderHook(() => useVendaInsumos(1));
     await waitFor(() => expect(result.current.venda?.id).toBe(1));
@@ -76,7 +76,8 @@ describe("useVendaInsumos", () => {
     await act(async () => { pendente.resolver(venda(1, "APROVADO")); });
     expect((result.current.venda as unknown as { status: string }).status).toBe("APROVADO");
 
-    for (const tabela of ["produtos", "clientes"]) {
+    // O contato (nome, e-mail, telefone) vem de cliente_contatos, que muda sem mexer na venda.
+    for (const tabela of ["produtos", "clientes", "cliente_contatos"]) {
       mocks.obterOrcamentoInsumos.mockResolvedValueOnce(venda(1));
       const antes = mocks.obterOrcamentoInsumos.mock.calls.length;
       await act(async () => distribuirMudancas(mudanca(tabela)));
