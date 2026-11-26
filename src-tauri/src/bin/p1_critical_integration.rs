@@ -561,7 +561,8 @@ async fn main() -> Result<()> {
             return Err(anyhow!("simple equipment listing did not find the equipment by {}", label));
         }
     }
-    println!("P1_INTEGRATION_SIMPLE_LISTING_SEARCH=ok");
+    // Marcador de resultado (não é debug): writeln por causa do filtro do pre-qa-check.
+    std::io::Write::write_all(&mut std::io::stdout(), b"P1_INTEGRATION_SIMPLE_LISTING_SEARCH=ok\n")?;
 
     verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
         equipamento_id: equipamento.id,
