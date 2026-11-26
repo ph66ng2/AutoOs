@@ -1,28 +1,65 @@
 {
-  "version": "0.6.3",
-  "baseTag": "v0.6.2",
-  "head": "6c0abfab6ccfe2884e40ae0216192836b8ee8761",
+  "version": "0.7.0",
+  "baseTag": "v0.6.3",
+  "head": "b961d7489942bfc2521f69a97e24e91a6fc0d7e8",
   "pullRequests": [
-    186,
-    193
+    211,
+    214,
+    250
   ],
   "title": "Novidades do AutoOS",
-  "description": "Confira o que mudou no AutoOS 0.6.3.",
+  "description": "Confira o que mudou no AutoOS 0.7.0.",
   "highlights": [
     {
-      "title": "As novidades aparecem uma única vez por versão neste computador, mesmo ao fechar o app sem dispensar o aviso."
+      "title": "Quando o servidor fica fora do ar, o AutoOS tenta reconectar sozinho e mostra quando será a próxima tentativa, sem precisar fechar o app."
     },
     {
-      "title": "As próximas versões trazem um resumo das mudanças escrito pela equipe."
+      "title": "Quando o problema exige o administrador, um botão copia os detalhes do erro para mandar ao suporte."
     },
     {
-      "title": "Agora dá para desligar os sons da interface em Perfil › Personalizar."
+      "title": "Se a conexão cair enquanto o AutoOS confere o banco na abertura, a tela agora mostra \"Sem conexão\" e tenta de novo sozinha, em vez de pedir para chamar o administrador."
     },
     {
-      "title": "Ao ativar o perfil num computador ou usar \"Esqueci meu PIN\", o cursor já fica no campo do código."
+      "title": "Novo visual em todo o app, nos temas claro e escuro, mais leve e com menos cor fora do lugar."
     },
     {
-      "title": "Voltar aos perfis durante a animação do primeiro acesso não fecha mais a janela de perfis."
+      "title": "Nova entrada e Editar equipamento abrem como página. Esc sai, Enter salva, e o rascunho não se perde."
+    },
+    {
+      "title": "Ao cadastrar uma impressora que já passou por aqui, o app avisa, oferece copiar os dados do atendimento anterior e mostra se ainda está na garantia."
+    },
+    {
+      "title": "Dá para colar fotos com Ctrl+V na entrada e na aba Fotos da OS."
+    },
+    {
+      "title": "Ctrl+K busca qualquer coisa, Ctrl+L bloqueia a sessão e os botões mostram a tecla de atalho."
+    },
+    {
+      "title": "As listas lembram o filtro, aceitam vários status e têm o modo compacto. Equipamentos e Vendas ganharam o filtro \"Minhas\"."
+    },
+    {
+      "title": "As telas se atualizam sozinhas quando outro computador muda algo."
+    },
+    {
+      "title": "Sino com avisos internos (OS nova para o técnico, orçamento vencendo, peça que chegou, estoque baixo e outros), aviso do Windows e preferências por perfil. Abrir o sino zera o número sem marcar nada como lido."
+    },
+    {
+      "title": "Mensagens prontas de WhatsApp editáveis em Configurações."
+    },
+    {
+      "title": "Nova página Suporte: abra um chamado com prints e acompanhe a resposta no próprio app. Erros podem ser enviados direto ao suporte."
+    },
+    {
+      "title": "O orçamento avisa quando a soma dos itens não bate com o total."
+    },
+    {
+      "title": "No modo Balcão, dá para registrar a chegada e a baixa de insumos direto na consulta de estoque, com o PIN de quem controla o estoque."
+    },
+    {
+      "title": "Na OS, o acesso ao portal mostra a senha do contato (com PIN), com botão para copiar o login e a senha juntos."
+    },
+    {
+      "title": "A busca do Balcão acha o equipamento pelo CPF/CNPJ do cliente e pelo nome, telefone ou e-mail dos contatos."
     }
   ],
   "badges": []

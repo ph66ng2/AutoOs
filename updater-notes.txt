@@ -1,14 +1,13 @@
-AutoOS 0.6.3
+AutoOS 0.7.0
 
-- Técnico sem acesso financeiro passa a aprovar ou reprovar orçamento, marcar o equipamento como pronto e registrar a entrega só com o PIN da sessão. Entrega com valor final ou exceção continua com o Financeiro.
-- Perfis Personalizados e as Ações financeiras precisam ser ajustados à mão em Equipe e acessos; esta atualização não altera esses perfis automaticamente.
-- No portal, o cliente baixa os mesmos PDFs oficiais de OS e orçamento emitidos pelo AutoOS, com acesso privado.
-- Dados de acesso ao portal mais fáceis de copiar no celular.
-- Novidades do AutoOS exibidas uma única vez por versão neste computador.
-- Confirmação de PIN não fecha mais sozinha quando outra solicitação abre em seguida.
-- Em Clientes, cada contato aparece como um card clicável.
-- Primeiro acesso de um perfil novo com etapas animadas, sons (com opção de silenciar) e proteção para não travar ao salvar.
-- Abertura BMI TAG em toda inicialização do aplicativo.
-- Aviso de atualização mais confiável: canal de homologação, fallback e instalador da versão certa.
-- Permissões de comunicação reorganizadas, com avatares em formas geométricas.
-- PIN novo com cadeado de roletes ao criar e cadeadinho ao entrar.
+- Novo visual em todo o app, nos temas claro e escuro.
+- Nova entrada e Editar equipamento abrem como página, com rascunho que não se perde. Esc sai e Enter salva.
+- Aviso ao cadastrar uma impressora que já passou por aqui, com cópia do atendimento anterior e garantia.
+- Fotos coladas com Ctrl+V, busca geral no Ctrl+K e bloqueio da sessão no Ctrl+L.
+- As telas se atualizam sozinhas quando outro computador muda algo.
+- Sino com avisos internos, aviso do Windows e preferências por perfil.
+- Mensagens prontas de WhatsApp editáveis em Configurações.
+- Nova página Suporte: chamado com prints e resposta no próprio app.
+- No Balcão, chegada e baixa de insumos com o PIN de quem controla o estoque, e busca por CPF/CNPJ e pelos contatos.
+- Na OS, a senha do portal do contato aparece com PIN, para copiar e enviar ao cliente.
+- Quando o servidor cai, o AutoOS tenta reconectar sozinho e mostra quando será a próxima tentativa.
