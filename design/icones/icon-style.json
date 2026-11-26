@@ -1,7 +1,7 @@
 {
  "name": "autoos-duotone-line",
  "grid": 24,
- "live": 20,
+ "live": 22,
  "paint": "stroke",
  "stroke": {
   "width": 2,
@@ -115,6 +115,11 @@
    "decision": "tamanhos 16, 18 e 24",
    "because": "o menu lateral usa 18px; listas e botões 16px",
    "source": "src/components/Layout.tsx:240"
+  },
+  {
+   "decision": "desenho ampliado 10% (área útil 22)",
+   "because": "no menu os novos pareciam menores que os do Lucide, que vão até perto da borda da caixa 24; o traço continua 2",
+   "source": "pedido: ícones do tamanho dos antigos"
   }
  ]
 }
