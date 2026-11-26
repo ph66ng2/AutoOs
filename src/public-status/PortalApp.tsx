@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import PortalDetalhe from "./PortalDetalhe";
 import PortalLista from "./PortalLista";
 import PortalLogin from "./PortalLogin";
-import { definirContatoEmpresa, portalApi, useContatoEmpresa, whatsappUrl } from "./portal-api";
+import { definirContatoEmpresa, portalApi, whatsappUrl } from "./portal-api";
 import { clearSession, loadSession, navigate, parseRoute, saveSession, type PortalSession } from "./portal-session";
 import { StatusBrand } from "./StatusView";
 
@@ -10,11 +10,10 @@ import { StatusBrand } from "./StatusView";
 const MENSAGEM_TESTE = "Olá, equipe BMI TAG! Estou testando o Portal das Impressoras e queria contar o que achei: ";
 
 /**
- * WhatsApp para o feedback do período de testes. Vem da configuração do build
- * (VITE_PORTAL_WHATSAPP_FEEDBACK, variável PORTAL_WHATSAPP_FEEDBACK do repositório) para o botão
- * aparecer já no login; sem ela, usa o WhatsApp da empresa, que chega ao abrir um atendimento.
+ * WhatsApp do feedback do período de testes: o mesmo número principal do site bmitag.com.br.
+ * Fixo de propósito (portal interno da BMI TAG, decisão do responsável): o botão aparece já no login.
  */
-const WHATSAPP_FEEDBACK: string | null = (import.meta.env.VITE_PORTAL_WHATSAPP_FEEDBACK as string | undefined)?.trim() || null;
+const WHATSAPP_FEEDBACK = "5571981650801";
 
 function IconeWhatsapp() {
   return (
@@ -26,17 +25,13 @@ function IconeWhatsapp() {
 
 /** Faixa do período de testes com um botão que abre o WhatsApp com a mensagem já começada. */
 function AvisoTeste() {
-  const contato = useContatoEmpresa();
-  const whatsapp = WHATSAPP_FEEDBACK ?? contato?.whatsapp ?? null;
   return (
     <div className="portal-beta" role="note">
-      <span>Portal em período de testes. Sua opinião ajuda muito{whatsapp ? "." : ": conte o que achou para a equipe."}</span>
-      {whatsapp && (
-        <a className="portal-feedback" href={whatsappUrl(whatsapp, MENSAGEM_TESTE)} target="_blank" rel="noopener noreferrer">
-          <IconeWhatsapp />
-          Enviar feedback pelo WhatsApp
-        </a>
-      )}
+      <span>Portal em período de testes. Sua opinião ajuda muito.</span>
+      <a className="portal-feedback" href={whatsappUrl(WHATSAPP_FEEDBACK, MENSAGEM_TESTE)} target="_blank" rel="noopener noreferrer">
+        <IconeWhatsapp />
+        Enviar feedback pelo WhatsApp
+      </a>
     </div>
   );
 }

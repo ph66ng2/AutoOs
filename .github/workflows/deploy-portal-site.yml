@@ -33,9 +33,6 @@ jobs:
       - run: npm ci
       - run: npx vitest run src/public-status
       - run: npm run build:public-status
-        env:
-          # Número público do WhatsApp para o feedback do período de testes (variável do repositório, não segredo).
-          VITE_PORTAL_WHATSAPP_FEEDBACK: ${{ vars.PORTAL_WHATSAPP_FEEDBACK }}
       - name: Conferir arquivos para publicação
         run: |
           test -f dist-public-status/index.html
