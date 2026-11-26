@@ -74,8 +74,9 @@ export default function PublicStatusPage() {
       : { title: "Este acompanhamento não está disponível", description: "Confira se o link está correto ou fale com a equipe BMI TAG pelo canal em que recebeu o link." };
 
   return (
+    <>
     <main className="status-shell portal-publico">
-      <div className="portal-topbar"><StatusBrand /></div>
+      <div className="portal-topo tem-ceu"><div className="portal-topbar"><StatusBrand /></div></div>
 
       <section className="status-card is-publico" aria-live="polite">
         <div className="portal-cartao">
@@ -138,5 +139,6 @@ export default function PublicStatusPage() {
         <p>Este link mostra somente a etapa atual do atendimento e não permite aprovar orçamento nem alterar informações.</p>
       </footer>
     </main>
+    </>
   );
 }

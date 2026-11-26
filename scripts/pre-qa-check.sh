@@ -41,6 +41,8 @@ COR_FORA=(
   src/components/equipamentos/PdfPreviewDialog.tsx  # papel branco da prévia do PDF
   src/components/ui/dialog.tsx                  # véu do modal, igual nos dois temas
   src/components/ui/alert-dialog.tsx            # véu do modal, igual nos dois temas
+  src/public-status/portal-marca.css            # tokens da marca no portal (hex só no :root)
+  src/public-status/marca                       # pixel art das zebras da marca
 )
 excluir_cor=()
 for arquivo in "${COR_FORA[@]}"; do excluir_cor+=(":!$arquivo"); done

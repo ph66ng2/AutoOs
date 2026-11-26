@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { PortalError, portalApi } from "./portal-api";
 import type { PortalSession } from "./portal-session";
+import { Manada } from "./Zebra";
 
 function formatarDocumento(value: string) {
   const d = value.replace(/\D/g, "").slice(0, 14);
@@ -58,9 +59,17 @@ export default function PortalLogin({ aviso, onEntrou }: Props) {
   );
 
   return (
-    <section className="status-card portal-login-card" aria-live="polite">
-      <p className="eyebrow">Portal das Impressoras</p>
-      <h1 className="portal-title">Acompanhe suas impressoras</h1>
+    <>
+    <div className="portal-hero">
+      <p className="portal-hero-eyebrow">Portal das Impressoras</p>
+      <h1 className="portal-hero-title">
+        Acompanhe suas{" "}
+        <span className="portal-marcado"><span className="portal-marcado-dot" aria-hidden="true" />impressoras</span>
+      </h1>
+      <p className="portal-hero-lead">Etapa, orçamento e fotos de cada atendimento, a qualquer hora.</p>
+    </div>
+    <Manada />
+    <section className="status-card portal-login-card" aria-live="polite" aria-label="Entrar no portal">
       {aviso && <p className="notice-box" role="status">{aviso}</p>}
 
       <form className="portal-form" onSubmit={(event) => void entrarComSenha(event)} noValidate>
@@ -89,5 +98,6 @@ export default function PortalLogin({ aviso, onEntrou }: Props) {
         <p className="answer-hint">Não tem senha ou esqueceu? Peça à equipe BMI TAG uma nova.</p>
       </form>
     </section>
+    </>
   );
 }
