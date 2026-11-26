@@ -464,14 +464,24 @@ fn load_profile_pin_for_record(profile: &SecurityProfileRecord) -> Result<Option
     if pin_record_is_older_than_profile(&stored, profile) {
         warn!(profile_id = profile.id, "PIN órfão removido do keyring");
         let entry = get_keyring_entry(&profile_keyring_user(profile.id))?;
-        entry.delete_password().map_err(|error| {
-            error!("Erro ao remover PIN órfão do keyring: {}", error);
-            "Não foi possível remover o PIN local antigo. Use a recuperação de PIN.".to_string()
-        })?;
+        interpretar_remocao_de_pin_orfao(entry.delete_password())?;
         return Ok(None);
     }
 
     Ok(Some(stored))
+}
+
+/// Remoção do PIN órfão: "não existe mais" é sucesso. Duas leituras de status simultâneas (a
+/// abertura do app faz isso) acham o mesmo órfão; a segunda encontraria a entrada já apagada e,
+/// tratando isso como falha, mostraria "cofre bloqueado" e ninguém entraria naquele computador.
+fn interpretar_remocao_de_pin_orfao(resultado: Result<(), keyring::Error>) -> Result<(), String> {
+    match resultado {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => {
+            error!("Erro ao remover PIN órfão do keyring: {}", error);
+            Err("Não foi possível remover o PIN local antigo. Use a recuperação de PIN.".to_string())
+        }
+    }
 }
 
 fn pin_record_is_older_than_profile(stored: &StoredSensitivePin, profile: &SecurityProfileRecord) -> bool {
@@ -3123,6 +3133,15 @@ mod tests {
         assert_eq!(interpretar_leitura_do_cofre(Err(no_access)).unwrap_err(), KEYRING_UNAVAILABLE_MESSAGE);
 
         assert!(interpretar_leitura_do_cofre(Ok("não é json".to_string())).is_err());
+    }
+
+    #[test]
+    fn removing_an_orphan_pin_that_is_already_gone_is_not_a_vault_failure() {
+        // Duas leituras de status simultâneas acham o mesmo PIN órfão; a segunda não encontra mais nada.
+        assert!(interpretar_remocao_de_pin_orfao(Ok(())).is_ok());
+        assert!(interpretar_remocao_de_pin_orfao(Err(keyring::Error::NoEntry)).is_ok());
+        let travado = keyring::Error::PlatformFailure("zbus error: IsLocked".into());
+        assert!(interpretar_remocao_de_pin_orfao(Err(travado)).is_err());
     }
 
     #[tokio::test]
