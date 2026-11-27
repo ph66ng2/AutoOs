@@ -26,14 +26,15 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   await page.screenshot({ path: `${outDir}/08-selecao-perfil.png`, animations: "disabled" });
   await entry.getByRole("button", { name: /CI Admin Screenshot/ }).click();
   await entry.getByLabel("PIN do perfil", { exact: true }).fill("1234");
-  await entry.getByRole("button", { name: "Entrar com este perfil" }).click();
+  await entry.getByRole("button", { name: "Entrar", exact: true }).click();
   await expect(entry).toBeHidden();
   await expect(page.locator('[aria-label^="Carregando aplicativo"]')).toHaveCount(0);
 
   const highlights = page.getByRole("button", { name: "Começar a usar" });
   if (await highlights.isVisible()) await highlights.click();
 
-  await expect(page.getByRole("heading", { name: "Início", exact: true })).toBeVisible();
+  // A home abre com a saudação do dia ("Bom dia, …"), não com o título "Início".
+  await expect(page.getByRole("heading", { level: 1, name: /^(Bom dia|Boa tarde|Boa noite)/ })).toBeVisible();
   await expect(page.getByText("Zebra ZD620").first()).toBeVisible();
   await expect(page.getByText("Ribbon sintético CI").first()).toBeVisible();
   await page.screenshot({ path: `${outDir}/01-home.png`, fullPage: true, animations: "disabled" });
@@ -60,7 +61,7 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   await expect(detalhes.getByText("CI-UI-ZD620").first()).toBeVisible();
   await page.screenshot({ path: `${outDir}/04-atendimento-os.png`, animations: "disabled" });
   await detalhes.getByRole("tab", { name: /Fotos/ }).click();
-  await expect(detalhes.getByText("Nenhuma foto de entrada foi registrada para este equipamento.")).toBeVisible();
+  await expect(detalhes.getByText(/^Nenhuma foto da entrada\./)).toBeVisible();
   await page.getByRole("button", { name: "Equipamentos", exact: true }).click();
   await expect(detalhes).toBeHidden();
 
@@ -71,7 +72,8 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   await page.screenshot({ path: `${outDir}/05-insumos-estoque.png`, fullPage: true, animations: "disabled" });
 
   // Equipe e acessos é página própria; o perfil pessoal abre pelo cartão do rodapé do menu.
-  await page.goto("/perfil");
+  // Clique no cartão do rodapé (sem recarregar): um goto recarrega o app e a escolha de perfil volta.
+  await page.getByRole("complementary").locator('a[href="/perfil"]').first().click();
   await expect(page.locator("h1", { hasText: "CI Admin Screenshot" })).toBeVisible();
   await expect(page.getByText("O que você pode fazer")).toBeVisible();
   await page.screenshot({ path: `${outDir}/09-perfil-visao-geral.png`, fullPage: true, animations: "disabled" });

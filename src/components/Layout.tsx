@@ -16,14 +16,6 @@ import { db } from "@/lib/db";
 
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  LayoutGrid,
-  Printer,
-  Package,
-  DollarSign,
-  Shield,
-  Wrench,
-  Users,
-  ShoppingBag,
   Menu,
   X,
   Search,
@@ -33,10 +25,10 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
-  Headphones,
   Store,
   Download,
 } from "lucide-react";
+import { InicioIcon, EquipamentosIcon, ClientesIcon, VendasIcon, InsumosIcon, ServicosIcon, FinancasIcon, EquipeIcon, SuporteIcon } from "@/components/icones-autoos";
 import { pedirModoAoNavegar, setAppMode, type AppMode } from "@/lib/app-mode";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { useEmpresaAtiva } from "@/hooks/useEmpresaAtiva";
@@ -78,20 +70,20 @@ interface NavItem {
  * num ícone discreto no pé (e no Ctrl+K); o CounterLayout tem o seu "Modo completo" para voltar.
  */
 const navGroups: { titulo?: string; itens: NavItem[] }[] = [
-  { itens: [{ label: "Início", path: "/", icon: LayoutGrid }] },
+  { itens: [{ label: "Início", path: "/", icon: InicioIcon }] },
   {
     titulo: "Atendimento",
     itens: [
-      { label: "Equipamentos", path: "/equipamentos", icon: Printer },
-      { label: "Clientes", path: "/clientes", icon: Users },
-      { label: "Vendas de insumos", path: "/vendas", icon: ShoppingBag },
+      { label: "Equipamentos", path: "/equipamentos", icon: EquipamentosIcon },
+      { label: "Clientes", path: "/clientes", icon: ClientesIcon },
+      { label: "Vendas de insumos", path: "/vendas", icon: VendasIcon },
     ],
   },
   {
     titulo: "Estoque",
     itens: [
-      { label: "Insumos e peças", path: "/insumos", icon: Package },
-      { label: "Serviços", path: "/servicos", icon: Wrench },
+      { label: "Insumos e peças", path: "/insumos", icon: InsumosIcon },
+      { label: "Serviços", path: "/servicos", icon: ServicosIcon },
     ],
   },
   // Um grupo só para o que tinha um item cada (Financeiro, Administração): menos títulos,
@@ -99,9 +91,9 @@ const navGroups: { titulo?: string; itens: NavItem[] }[] = [
   {
     titulo: "Gestão",
     itens: [
-      { label: "Finanças", path: "/gastos", icon: DollarSign, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES },
-      { label: "Equipe e acessos", path: "/equipe", icon: Shield },
-      { label: "Suporte", path: "/suporte", icon: Headphones },
+      { label: "Finanças", path: "/gastos", icon: FinancasIcon, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES },
+      { label: "Equipe e acessos", path: "/equipe", icon: EquipeIcon },
+      { label: "Suporte", path: "/suporte", icon: SuporteIcon },
     ],
   },
 ];

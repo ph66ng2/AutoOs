@@ -1,0 +1,125 @@
+{
+ "name": "autoos-duotone-line",
+ "grid": 24,
+ "live": 22,
+ "paint": "stroke",
+ "stroke": {
+  "width": 2,
+  "linecap": "round",
+  "linejoin": "round"
+ },
+ "radius": {
+  "outer": 2.5,
+  "inner": 1
+ },
+ "prefix": "aic",
+ "tones": {
+  "line": {
+   "fallbackOpacity": 1
+  },
+  "body": {
+   "fallbackOpacity": 0.28
+  }
+ },
+ "palette": {
+  "light": {
+   "default": {
+    "line": "#5B6573",
+    "body": "#DDE3E9"
+   },
+   "hover": {
+    "line": "#1C2530",
+    "body": "#D3DAE1"
+   },
+   "active": {
+    "line": {
+     "hex": "#1F6B7D",
+     "token": "--primary"
+    },
+    "body": "#DCEBEE"
+   },
+   "disabled": {
+    "line": "#A9B1BB",
+    "body": "#EEF1F4"
+   }
+  },
+  "dark": {
+   "default": {
+    "line": "#A0A9B6",
+    "body": "#222A33"
+   },
+   "hover": {
+    "line": "#E8ECF1",
+    "body": "#2A333D"
+   },
+   "active": {
+    "line": {
+     "hex": "#7FAFBA",
+     "token": "--primary"
+    },
+    "body": "#16292E"
+   },
+   "disabled": {
+    "line": "#4E5866",
+    "body": "#1A2028"
+   }
+  }
+ },
+ "sizes": [
+  16,
+  18,
+  24
+ ],
+ "darkMode": "class",
+ "darkSelector": [
+  ".dark"
+ ],
+ "rendering": "geometricPrecision",
+ "primaryCheck": true,
+ "context": {
+  "font": "Manrope, 'Segoe UI', system-ui, sans-serif",
+  "radius": 8,
+  "brand": "#1F6B7D",
+  "onBrand": "#FFFFFF",
+  "surface": "#FFFFFF",
+  "sidebar": "#F4F5F7",
+  "text": "#1C2530",
+  "border": "#E1E6EB",
+  "surfaceDark": "#11161C",
+  "sidebarDark": "#0C1014",
+  "textDark": "#E8ECF1",
+  "borderDark": "#252E38"
+ },
+ "rationale": [
+  {
+   "decision": "linha de 2 no grid 24, pontas redondas",
+   "because": "o app usa Lucide (100 arquivos) com stroke 2; os ícones novos ficam ao lado deles como uma família",
+   "source": "scan: lucide-react 100 imports, default stroke 2"
+  },
+  {
+   "decision": "segundo tom: preenchimento de 28%",
+   "because": "com 16% o preenchimento sumia a 18px no menu (teste no app real)",
+   "source": "print do menu, rodada 1"
+  },
+  {
+   "decision": "canto 2.5",
+   "because": "--radius é 8px; cerca de 0,3x no grid 24",
+   "source": "src/index.css:30"
+  },
+  {
+   "decision": "ativo no teal da marca",
+   "because": "--primary 192 56% 28% (claro) e 192 29% 59% (escuro)",
+   "source": "src/index.css:13"
+  },
+  {
+   "decision": "tamanhos 16, 18 e 24",
+   "because": "o menu lateral usa 18px; listas e botões 16px",
+   "source": "src/components/Layout.tsx:240"
+  },
+  {
+   "decision": "desenho ampliado 10% (área útil 22)",
+   "because": "no menu os novos pareciam menores que os do Lucide, que vão até perto da borda da caixa 24; o traço continua 2",
+   "source": "pedido: ícones do tamanho dos antigos"
+  }
+ ]
+}

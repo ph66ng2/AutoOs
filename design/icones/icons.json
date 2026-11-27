@@ -1,0 +1,419 @@
+{
+ "package": {
+  "name": "@autoos/icones",
+  "version": "0.1.0"
+ },
+ "framework": "react",
+ "style": "./icon-style.json",
+ "icons": [
+  {
+   "name": "inicio",
+   "label": "Início",
+   "group": "menu",
+   "tags": [
+    "painel",
+    "dashboard"
+   ],
+   "shapes": [
+    {
+     "tone": "body",
+     "type": "rect",
+     "x": 2.65,
+     "y": 2.65,
+     "width": 7.7,
+     "height": 7.7,
+     "rx": 2.2,
+     "paint": "fill"
+    },
+    {
+     "tone": "body",
+     "type": "rect",
+     "x": 13.65,
+     "y": 13.65,
+     "width": 7.7,
+     "height": 7.7,
+     "rx": 2.2,
+     "paint": "fill"
+    },
+    {
+     "type": "rect",
+     "x": 2.65,
+     "y": 2.65,
+     "width": 7.7,
+     "height": 7.7,
+     "rx": 2.2
+    },
+    {
+     "type": "rect",
+     "x": 13.65,
+     "y": 2.65,
+     "width": 7.7,
+     "height": 7.7,
+     "rx": 2.2
+    },
+    {
+     "type": "rect",
+     "x": 2.65,
+     "y": 13.65,
+     "width": 7.7,
+     "height": 7.7,
+     "rx": 2.2
+    },
+    {
+     "type": "rect",
+     "x": 13.65,
+     "y": 13.65,
+     "width": 7.7,
+     "height": 7.7,
+     "rx": 2.2
+    }
+   ]
+  },
+  {
+   "name": "equipamentos",
+   "label": "Equipamentos",
+   "group": "menu",
+   "tags": [
+    "equipamento",
+    "impressora",
+    "coletor",
+    "leitor",
+    "os"
+   ],
+   "shapes": [
+    {
+     "tone": "body",
+     "type": "rect",
+     "x": 5.4,
+     "y": 5.4,
+     "width": 13.2,
+     "height": 13.2,
+     "rx": 2.75,
+     "paint": "fill"
+    },
+    {
+     "type": "rect",
+     "x": 5.4,
+     "y": 5.4,
+     "width": 13.2,
+     "height": 13.2,
+     "rx": 2.75
+    },
+    {
+     "type": "rect",
+     "x": 9.25,
+     "y": 9.25,
+     "width": 5.5,
+     "height": 5.5,
+     "rx": 1.1
+    },
+    {
+     "type": "path",
+     "d": "M 9.25 2.1 v 3.3 M 14.75 2.1 v 3.3 M 9.25 18.6 v 3.3 M 14.75 18.6 v 3.3 M 2.1 9.25 h 3.3 M 2.1 14.75 h 3.3 M 18.6 9.25 h 3.3 M 18.6 14.75 h 3.3"
+    }
+   ]
+  },
+  {
+   "name": "clientes",
+   "label": "Clientes",
+   "group": "menu",
+   "tags": [
+    "pessoa",
+    "contato"
+   ],
+   "shapes": [
+    {
+     "tone": "body",
+     "type": "rect",
+     "x": 2.1,
+     "y": 4.3,
+     "width": 19.8,
+     "height": 15.4,
+     "rx": 2.75,
+     "paint": "fill"
+    },
+    {
+     "type": "rect",
+     "x": 2.1,
+     "y": 4.3,
+     "width": 19.8,
+     "height": 15.4,
+     "rx": 2.75
+    },
+    {
+     "type": "circle",
+     "cx": 8.15,
+     "cy": 10.35,
+     "r": 2.2
+    },
+    {
+     "type": "path",
+     "d": "M 4.85 16.4 a 3.3 3.3 0 0 1 6.6 0"
+    },
+    {
+     "type": "path",
+     "d": "M 14.75 9.8 h 3.85 M 14.75 14.2 h 3.85"
+    }
+   ]
+  },
+  {
+   "name": "insumos",
+   "label": "Insumos e peças (estoque)",
+   "group": "menu",
+   "tags": [
+    "estoque",
+    "caixas",
+    "ribbon",
+    "etiqueta",
+    "peças"
+   ],
+   "shapes": [
+    {
+     "tone": "body",
+     "type": "rect",
+     "x": 2.1,
+     "y": 13.1,
+     "width": 8.8,
+     "height": 8.8,
+     "rx": 1.65,
+     "paint": "fill"
+    },
+    {
+     "tone": "body",
+     "type": "rect",
+     "x": 13.1,
+     "y": 13.1,
+     "width": 8.8,
+     "height": 8.8,
+     "rx": 1.65,
+     "paint": "fill"
+    },
+    {
+     "tone": "body",
+     "type": "rect",
+     "x": 7.6,
+     "y": 2.65,
+     "width": 8.8,
+     "height": 8.8,
+     "rx": 1.65,
+     "paint": "fill"
+    },
+    {
+     "type": "rect",
+     "x": 2.1,
+     "y": 13.1,
+     "width": 8.8,
+     "height": 8.8,
+     "rx": 1.65
+    },
+    {
+     "type": "rect",
+     "x": 13.1,
+     "y": 13.1,
+     "width": 8.8,
+     "height": 8.8,
+     "rx": 1.65
+    },
+    {
+     "type": "rect",
+     "x": 7.6,
+     "y": 2.65,
+     "width": 8.8,
+     "height": 8.8,
+     "rx": 1.65
+    },
+    {
+     "type": "path",
+     "d": "M 6.5 13.1 v 2.75 M 17.5 13.1 v 2.75 M 12 2.65 V 5.4"
+    }
+   ]
+  },
+  {
+   "name": "vendas",
+   "label": "Vendas de insumos",
+   "group": "menu",
+   "tags": [
+    "sacola",
+    "venda",
+    "pedido"
+   ],
+   "shapes": [
+    {
+     "tone": "body",
+     "type": "path",
+     "d": "M 5.4 7.6 h 13.2 l 1.32 12.1 a 1.65 1.65 0 0 1 -1.65 1.87 H 5.73 a 1.65 1.65 0 0 1 -1.65 -1.87 z",
+     "paint": "fill"
+    },
+    {
+     "type": "path",
+     "d": "M 5.4 7.6 h 13.2 l 1.32 12.1 a 1.65 1.65 0 0 1 -1.65 1.87 H 5.73 a 1.65 1.65 0 0 1 -1.65 -1.87 z"
+    },
+    {
+     "type": "path",
+     "d": "M 8.7 10.9 V 6.5 a 3.3 3.3 0 0 1 6.6 0 v 4.4"
+    }
+   ]
+  },
+  {
+   "name": "servicos",
+   "label": "Serviços",
+   "group": "menu",
+   "tags": [
+    "manutenção",
+    "conserto"
+   ],
+   "shapes": [
+    {
+     "tone": "body",
+     "type": "path",
+     "d": "M13.55 13.78A5.5 5.5 0 0 0 20.42 6.34L17.49 9.27L14.73 6.51L17.66 3.58A5.5 5.5 0 0 0 10.22 10.45L3.7 16.98A2.35 2.35 0 0 0 7.02 20.3Z",
+     "paint": "fill"
+    },
+    {
+     "type": "path",
+     "d": "M13.55 13.78A5.5 5.5 0 0 0 20.42 6.34L17.49 9.27L14.73 6.51L17.66 3.58A5.5 5.5 0 0 0 10.22 10.45L3.7 16.98A2.35 2.35 0 0 0 7.02 20.3Z"
+    }
+   ]
+  },
+  {
+   "name": "financas",
+   "label": "Finanças (cédula)",
+   "group": "menu",
+   "tags": [
+    "dinheiro",
+    "gastos"
+   ],
+   "shapes": [
+    {
+     "tone": "body",
+     "type": "rect",
+     "x": 2.1,
+     "y": 5.4,
+     "width": 19.8,
+     "height": 13.2,
+     "rx": 2.75,
+     "paint": "fill"
+    },
+    {
+     "type": "rect",
+     "x": 2.1,
+     "y": 5.4,
+     "width": 19.8,
+     "height": 13.2,
+     "rx": 2.75
+    },
+    {
+     "type": "circle",
+     "cx": 12.0,
+     "cy": 12.0,
+     "r": 2.75
+    },
+    {
+     "type": "circle",
+     "cx": 6.225,
+     "cy": 8.975,
+     "r": 0.99,
+     "paint": "fill"
+    },
+    {
+     "type": "circle",
+     "cx": 17.775,
+     "cy": 15.025,
+     "r": 0.99,
+     "paint": "fill"
+    }
+   ]
+  },
+  {
+   "name": "suporte",
+   "label": "Suporte (fone)",
+   "group": "menu",
+   "tags": [
+    "ajuda",
+    "chamado"
+   ],
+   "shapes": [
+    {
+     "tone": "body",
+     "type": "rect",
+     "x": 2.1,
+     "y": 12.0,
+     "width": 4.4,
+     "height": 6.6,
+     "rx": 1.65,
+     "paint": "fill"
+    },
+    {
+     "tone": "body",
+     "type": "rect",
+     "x": 17.5,
+     "y": 12.0,
+     "width": 4.4,
+     "height": 6.6,
+     "rx": 1.65,
+     "paint": "fill"
+    },
+    {
+     "type": "path",
+     "d": "M 3.2 13.1 v -1.1 a 8.8 8.8 0 0 1 17.6 0 v 1.1"
+    },
+    {
+     "type": "rect",
+     "x": 2.1,
+     "y": 12.0,
+     "width": 4.4,
+     "height": 6.6,
+     "rx": 1.65
+    },
+    {
+     "type": "rect",
+     "x": 17.5,
+     "y": 12.0,
+     "width": 4.4,
+     "height": 6.6,
+     "rx": 1.65
+    },
+    {
+     "type": "path",
+     "d": "M 19.7 18.6 c 0 1.87 -1.76 3.3 -4.4 3.3 h -2.2"
+    }
+   ]
+  },
+  {
+   "name": "equipe",
+   "label": "Equipe e acessos",
+   "group": "menu",
+   "tags": [
+    "perfis",
+    "pin",
+    "acesso"
+   ],
+   "shapes": [
+    {
+     "tone": "body",
+     "type": "path",
+     "d": "M 2.65 20.8 v -0.55 A 6.05 6.05 0 0 1 8.7 14.2 h 2.2 a 6.05 6.05 0 0 1 6.05 6.05 v 0.55 z",
+     "paint": "fill"
+    },
+    {
+     "type": "circle",
+     "cx": 9.8,
+     "cy": 7.6,
+     "r": 3.85
+    },
+    {
+     "type": "path",
+     "d": "M 2.65 20.8 v -0.55 A 6.05 6.05 0 0 1 8.7 14.2 h 2.2 a 6.05 6.05 0 0 1 6.05 6.05 v 0.55"
+    },
+    {
+     "type": "path",
+     "d": "M 15.85 3.86 a 3.85 3.85 0 0 1 0 7.48"
+    },
+    {
+     "type": "path",
+     "d": "M 19.15 14.53 a 6.05 6.05 0 0 1 2.75 5.06 v 1.21"
+    }
+   ]
+  }
+ ]
+}
