@@ -30,20 +30,30 @@ export function useDeslizeDaLista(
   raiz: RefObject<HTMLElement | null>,
   destaques: Map<number | string, Destaque> | undefined,
 ) {
-  const anteriores = useRef<Map<string, Posicao>>(new Map());
+  // As duas últimas medições: a lista nova costuma renderizar um passo antes do mapa de destaques
+  // (useDestaquesAoVivo calcula depois que os itens chegam), então a posição "de antes" pode ser a penúltima.
+  const ultima = useRef<Map<string, Posicao>>(new Map());
+  const penultima = useRef<Map<string, Posicao>>(new Map());
   const ultimoDestaque = useRef<typeof destaques>(undefined);
 
   useLayoutEffect(() => {
     const el = raiz.current;
     if (!el) return;
     const agora = posicoes(el);
-    const antes = anteriores.current;
-    anteriores.current = agora;
+    const medidaAnterior = ultima.current;
+    const medidaDeAntesDaAnterior = penultima.current;
+    penultima.current = medidaAnterior;
+    ultima.current = agora;
 
     if (!destaques || destaques === ultimoDestaque.current) return;
     ultimoDestaque.current = destaques;
     const novos = [...destaques].filter(([, tipo]) => tipo === "novo").map(([id]) => String(id));
-    if (novos.length === 0 || antes.size === 0 || movimentoReduzido()) return;
+    if (novos.length === 0 || movimentoReduzido()) return;
+    // Se o item novo já estava na medição anterior, a lista chegou um render antes dos destaques:
+    // a posição de antes da chegada é a medição anterior a essa.
+    const jaChegou = novos.some((id) => medidaAnterior.has(id));
+    const antes = jaChegou ? medidaDeAntesDaAnterior : medidaAnterior;
+    if (antes.size === 0) return;
 
     el.querySelectorAll<HTMLElement>(`[${ATRIBUTO_CHAVE}]`).forEach((linha) => {
       if (typeof linha.animate !== "function") return;

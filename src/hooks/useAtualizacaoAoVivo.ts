@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { assinarMudancas, calcularDestaques, type Destaque, type MudancaAoVivo } from "@/lib/ao-vivo";
 
 /**
@@ -36,7 +36,9 @@ export function useDestaquesAoVivo<T>(
 
   const lembrar = useCallback(() => { antes.current = atual.current; }, []);
 
-  useEffect(() => {
+  // Layout effect: o destaque entra antes da pintura, junto com a lista nova (o deslize da lista
+  // em useDeslizeDaLista anima a partir do primeiro quadro, sem a lista pular antes).
+  useLayoutEffect(() => {
     const anterior = antes.current;
     if (!anterior || anterior === itens) return;
     antes.current = null;
