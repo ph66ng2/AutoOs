@@ -773,7 +773,9 @@ export default function Configuracoes() {
         orientation="vertical"
         className="grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-2xl border bg-card lg:grid-cols-[260px_minmax(0,1fr)]"
       >
-        <TabsList className="flex h-auto flex-row items-stretch justify-start gap-1 overflow-x-auto rounded-none border-b bg-muted/40 p-3 lg:flex-col lg:border-b-0 lg:border-r">
+        <TabsList
+          classeMarca="-inset-px rounded-xl border border-border bg-card shadow-sm lg:border-l-2 lg:border-l-primary"
+          className="flex h-auto flex-row items-stretch justify-start gap-1 overflow-x-auto rounded-none border-b bg-muted/40 p-3 lg:flex-col lg:border-b-0 lg:border-r">
           {([
             ["geral", true],
             ["smtp", abas.integracoes],
@@ -787,7 +789,7 @@ export default function Configuracoes() {
               <TabsTrigger
                 key={valor}
                 value={valor}
-                className="flex min-h-11 shrink-0 items-center justify-start whitespace-nowrap rounded-xl border border-transparent px-3 py-2 text-left font-semibold text-foreground shadow-none data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:shadow-sm lg:w-full lg:data-[state=active]:border-l-2 lg:data-[state=active]:border-l-primary"
+                className="flex min-h-11 shrink-0 items-center justify-start whitespace-nowrap rounded-xl border border-transparent px-3 py-2 text-left font-semibold text-foreground shadow-none lg:w-full"
               >
                 <span className="text-sm">{ROTULO_ABA[valor]}</span>
               </TabsTrigger>

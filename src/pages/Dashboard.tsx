@@ -43,6 +43,7 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { movimentoDaBancada, saudacao, variacaoPercentual } from "@/lib/inicio";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { NumeroRolante } from "@/components/ui/numero-animado";
 import { db } from "@/lib/db";
 import { formatDatePtBr, todayLocalIsoDate } from "@/lib/date-utils";
 import type { Equipamento, Produto } from "@/types";
@@ -258,7 +259,7 @@ export default function Dashboard() {
             >
               <span className="space-y-3 p-4">
                 <span className="block text-sm font-medium text-muted-foreground">{cartao.titulo}</span>
-                <span className="block text-3xl font-extrabold tabular-nums">{cartao.valor}</span>
+                <NumeroRolante valor={cartao.valor} className="flex text-3xl font-extrabold" />
                 <span className="flex gap-[3px]" aria-hidden="true">
                   {Array.from({ length: TRACOS }, (_, i) => (
                     <span key={i} className={`h-7 flex-1 rounded-sm ${i < cheios ? cartao.cor : "bg-track"}`} />
@@ -406,7 +407,7 @@ export default function Dashboard() {
               </ResponsiveContainer>
               <div className="absolute inset-x-0 bottom-0 text-center">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Na fila</p>
-                <p className="text-3xl font-extrabold tabular-nums">{naFila}</p>
+                <p className="text-3xl font-extrabold"><NumeroRolante valor={naFila} /></p>
               </div>
             </div>
             <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">

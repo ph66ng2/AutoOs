@@ -4,11 +4,16 @@ import { describe, expect, it } from "vitest";
 import { CarregandoSkeleton, Skeleton, SkeletonTabela } from "./skeleton";
 
 describe("Skeleton", () => {
-  it("é decorativo e para o pulso com movimento reduzido", () => {
+  it("é decorativo e esconde o feixe com movimento reduzido", () => {
     const { container } = render(<Skeleton className="h-4" />);
     const bloco = container.firstElementChild!;
     expect(bloco).toHaveAttribute("aria-hidden", "true");
-    expect(bloco).toHaveClass("animate-pulse", "motion-reduce:animate-none", "h-4");
+    expect(bloco).toHaveClass(
+      "before:animate-feixe-skeleton",
+      "motion-reduce:before:hidden",
+      "[[data-movimento=reduzido]_&]:before:hidden",
+      "h-4",
+    );
   });
 
   it("anuncia o carregamento pelo rótulo, sem ler os blocos", () => {

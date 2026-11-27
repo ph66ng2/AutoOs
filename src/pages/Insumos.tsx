@@ -24,6 +24,7 @@ import { PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
 import { EscolherItemDialog } from "@/pages/insumos/EscolherItemDialog";
 import { useEffect, useRef, useState } from "react";
 import { classeDestaque } from "@/lib/ao-vivo";
+import { useDeslizeDaLista } from "@/hooks/useDeslizeDaLista";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import {
   Package,
@@ -137,6 +138,8 @@ export default function Insumos() {
   const totalPaginasInsumos = totalPages(totalProdutos);
   const paginaInsumosExibida = Math.min(paginaInsumos, totalPaginasInsumos);
   const produtosExibidos = produtos;
+  const listaAoVivoRef = useRef<HTMLTableSectionElement>(null);
+  useDeslizeDaLista(listaAoVivoRef, destaquesAoVivo);
 
   usePrimeiraPaginaAoFiltrar([busca, categoriaFiltro, apenasEstoqueBaixo], () => setPaginaInsumos(1));
 
@@ -483,13 +486,13 @@ export default function Insumos() {
                     <TableHead className="text-right">Movimentar</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody ref={listaAoVivoRef}>
                   {produtosExibidos.map((p) => {
                     const estoqueBaixo = p.quantidade_estoque < p.quantidade_minima;
                     const proporcao = p.quantidade_minima > 0 ? Math.min(Math.max(p.quantidade_estoque, 0) / p.quantidade_minima, 1) : 1;
                     const ultima = textoUltimaMovimentacao(p);
                     return (
-                      <TableRow key={p.id} className={`h-14 transition-colors duration-lenta ${p.id != null ? classeDestaque(destaquesAoVivo?.get(p.id)) : ""}`}>
+                      <TableRow key={p.id} data-chave-ao-vivo={p.id ?? undefined} className={`h-14 transition-colors duration-lenta ${p.id != null ? classeDestaque(destaquesAoVivo?.get(p.id)) : ""}`}>
                         <TableCell>
                           <p className="font-semibold leading-snug">{p.nome}</p>
                           <p className="font-mono text-xs text-muted-foreground">{p.codigo || "—"}</p>

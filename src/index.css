@@ -159,6 +159,28 @@
 }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
 
+/* Item novo vindo de outra máquina (classeDestaque "novo"): um feixe de luz atravessa a linha uma vez.
+   O fundo fica preso à janela (background-attachment: fixed), então numa tabela o feixe passa
+   pelas células como uma faixa só, em vez de um pedaço em cada célula. */
+@keyframes feixe-destaque-novo {
+  from { background-position: -24vw 0; }
+  to { background-position: 100vw 0; }
+}
+tr.destaque-novo > td,
+:not(tr).destaque-novo {
+  background-image: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.28), transparent);
+  background-size: 24vw 100%;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  animation: feixe-destaque-novo 1100ms cubic-bezier(0.4, 0, 0.2, 1) 1 both;
+}
+@media (prefers-reduced-motion: reduce) {
+  tr.destaque-novo > td,
+  :not(tr).destaque-novo { background-image: none; animation: none; }
+}
+:root[data-movimento="reduzido"] tr.destaque-novo > td,
+:root[data-movimento="reduzido"] :not(tr).destaque-novo { background-image: none; }
+
 /* Avisos rápidos (sonner): movimento dos tokens, não os 400ms da biblioteca. */
 [data-sonner-toast] {
   transition-duration: var(--dur-padrao) !important;

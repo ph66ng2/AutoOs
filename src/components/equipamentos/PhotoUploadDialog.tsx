@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Smartphone, Clock, AlertCircle, RefreshCw, X, Copy, Check, CheckCircle2 } from "lucide-react";
+import { Smartphone, Clock, AlertCircle, RefreshCw, X, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CheckAnimado } from "@/components/ui/check-animado";
 import {
   Dialog,
   DialogContent,
@@ -301,9 +302,7 @@ export function PhotoUploadDialog({
 
         {success && (
           <div className="flex flex-col items-center justify-center py-8 gap-4">
-            <div className="h-16 w-16 rounded-full bg-status-ok-bg flex items-center justify-center">
-              <CheckCircle2 className="h-10 w-10 text-status-ok" />
-            </div>
+            <CheckAnimado />
             <p className="text-lg font-semibold text-status-ok">Fotos recebidas</p>
             <p className="text-sm text-muted-foreground">
               {successCount} {successCount === 1 ? "foto" : "fotos"} no equipamento

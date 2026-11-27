@@ -95,9 +95,12 @@ export function calcularDestaques<T>(
   return destaques;
 }
 
-/** Classes da linha destacada: entra deslizando (novo) e o fundo some devagar. */
+/**
+ * Classes da linha destacada: o fundo some devagar. A nova ganha também um feixe de luz que a
+ * atravessa uma vez (`destaque-novo`, em index.css); o deslize da lista fica com `useDeslizeDaLista`.
+ */
 export function classeDestaque(destaque: Destaque | undefined): string {
-  if (destaque === "novo") return "animate-in fade-in-0 slide-in-from-top-1 duration-padrao ease-saida bg-acc-soft motion-reduce:animate-none";
+  if (destaque === "novo") return "bg-acc-soft destaque-novo";
   if (destaque === "alterado") return "bg-acc-soft";
   return "";
 }

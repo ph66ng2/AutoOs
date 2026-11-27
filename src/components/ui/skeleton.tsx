@@ -5,14 +5,21 @@ import { cn } from "@/lib/utils";
 /**
  * Bloco cinza que ocupa o lugar do conteúdo enquanto ele carrega.
  * Decorativo: quem anuncia o carregamento é o `CarregandoSkeleton` em volta.
- * Com movimento reduzido (sistema ou Configurações › Geral) o pulso para.
+ * Um feixe de luz suave atravessa o bloco (camada `::before`, só `transform`, barata para a GPU).
+ * Com movimento reduzido (sistema ou Configurações › Geral) o feixe some e fica o bloco parado.
  */
 function Skeleton({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       aria-hidden="true"
       data-skeleton=""
-      className={cn("animate-pulse rounded-md bg-muted motion-reduce:animate-none", className)}
+      className={cn(
+        "relative overflow-hidden rounded-md bg-muted",
+        "before:absolute before:inset-0 before:animate-feixe-skeleton",
+        "before:bg-gradient-to-r before:from-transparent before:via-foreground/[0.07] before:to-transparent",
+        "motion-reduce:before:hidden [[data-movimento=reduzido]_&]:before:hidden",
+        className,
+      )}
       {...props}
     />
   );
