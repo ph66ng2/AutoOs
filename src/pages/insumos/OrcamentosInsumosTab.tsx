@@ -2,8 +2,9 @@
  * Lista da página Vendas de insumos (/vendas): lista dos orçamentos de venda avulsa (OI-<n>)
  * com busca e filtro de status. Editar é página; cada ação abre o seu modal (AcaoVendaDialog).
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { classeDestaque } from "@/lib/ao-vivo";
+import { useDeslizeDaLista } from "@/hooks/useDeslizeDaLista";
 import { cn } from "@/lib/utils";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { Lock, Package, Plus, Search } from "lucide-react";
@@ -106,6 +107,10 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
     perfilId,
   });
   const paginas = totalPages(total);
+  const tabelaAoVivoRef = useRef<HTMLTableSectionElement>(null);
+  const cartoesAoVivoRef = useRef<HTMLUListElement>(null);
+  useDeslizeDaLista(tabelaAoVivoRef, destaquesAoVivo);
+  useDeslizeDaLista(cartoesAoVivoRef, destaquesAoVivo);
   const totalGeral = contagemPorStatus?.reduce((soma, c) => soma + c.total, 0);
   const filtrando = Boolean(busca.trim()) || status !== "TODOS" || minhasLigado;
 
@@ -263,7 +268,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                         <TableHead className="text-right">Próxima ação</TableHead>
                       </TableRow>
                     </TableHeader>
-                    <TableBody aria-busy={loading || undefined}>
+                    <TableBody ref={tabelaAoVivoRef} aria-busy={loading || undefined}>
                       {loading
                         ? Array.from({ length: 4 }, (_, linha) => (
                             <TableRow key={`carregando-${linha}`} className="h-14 hover:bg-transparent">
@@ -281,6 +286,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                             return (
                               <TableRow
                                 key={orcamento.id}
+                                data-chave-ao-vivo={orcamento.id}
                                 className={`h-14 cursor-pointer transition-colors duration-lenta ${classeDestaque(destaquesAoVivo?.get(orcamento.id))}`}
                                 onClick={() => verPagina(orcamento.id)}
                                 tabIndex={0}
@@ -338,7 +344,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                   </Table>
                 </div>
               ) : (
-                <ul aria-label="Orçamentos de insumos" aria-busy={loading || undefined} className="space-y-3">
+                <ul ref={cartoesAoVivoRef} aria-label="Orçamentos de insumos" aria-busy={loading || undefined} className="space-y-3">
                   {loading
                     ? Array.from({ length: 3 }, (_, indice) => (
                         <li key={`carregando-${indice}`} aria-hidden="true" className="space-y-3 rounded-2xl border p-4">
@@ -352,7 +358,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                         const acao = podeAgir ? proximaAcaoVenda(orcamento.status, vencido) : { rotulo: "Ver", tipo: "ver" as const };
                         const acaoNaJanela = acaoDaLista(acao.tipo);
                         return (
-                          <li key={orcamento.id} className={cn("rounded-2xl border bg-card p-4 transition-colors duration-lenta", classeDestaque(destaquesAoVivo?.get(orcamento.id)))}>
+                          <li key={orcamento.id} data-chave-ao-vivo={orcamento.id} className={cn("rounded-2xl border bg-card p-4 transition-colors duration-lenta", classeDestaque(destaquesAoVivo?.get(orcamento.id)))}>
                             <button
                               type="button"
                               className="block w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

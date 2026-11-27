@@ -10,17 +10,19 @@ const DURACAO_MS = 520;
 // Sai rápido e assenta devagar, com um leve passo além (sensação de mola, sem biblioteca).
 const CURVA = "cubic-bezier(0.22, 1.2, 0.36, 1)";
 
-function posicoes(raiz: HTMLElement): Map<string, number> {
-  const mapa = new Map<string, number>();
+type Posicao = { x: number; y: number };
+
+function posicoes(raiz: HTMLElement): Map<string, Posicao> {
+  const mapa = new Map<string, Posicao>();
   raiz.querySelectorAll<HTMLElement>(`[${ATRIBUTO_CHAVE}]`).forEach((el) => {
-    mapa.set(el.getAttribute(ATRIBUTO_CHAVE)!, el.offsetTop);
+    mapa.set(el.getAttribute(ATRIBUTO_CHAVE)!, { x: el.offsetLeft, y: el.offsetTop });
   });
   return mapa;
 }
 
 /**
  * Quando a atualização ao vivo traz um item **novo** (outra máquina registrou), as linhas que já
- * estavam descem deslizando para abrir espaço e a nova desce do alto até o lugar dela.
+ * estavam deslizam para abrir espaço (em grade, também de lado) e a nova desce do alto até o lugar dela.
  * Troca de página, filtro ou busca não anima (só anima quando `destaques` traz um "novo").
  * Usa a Web Animations API só com `transform`/`opacity`; com movimento reduzido não faz nada.
  */
@@ -28,7 +30,7 @@ export function useDeslizeDaLista(
   raiz: RefObject<HTMLElement | null>,
   destaques: Map<number | string, Destaque> | undefined,
 ) {
-  const anteriores = useRef<Map<string, number>>(new Map());
+  const anteriores = useRef<Map<string, Posicao>>(new Map());
   const ultimoDestaque = useRef<typeof destaques>(undefined);
 
   useLayoutEffect(() => {
@@ -56,9 +58,13 @@ export function useDeslizeDaLista(
         );
         return;
       }
-      const delta = (antes.get(chave) ?? agora.get(chave)!) - agora.get(chave)!;
-      if (delta !== 0) {
-        linha.animate([{ transform: `translateY(${delta}px)` }, { transform: "none" }], {
+      const de = antes.get(chave);
+      const para = agora.get(chave);
+      if (!de || !para) return;
+      const dx = de.x - para.x;
+      const dy = de.y - para.y;
+      if (dx !== 0 || dy !== 0) {
+        linha.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], {
           duration: DURACAO_MS,
           easing: CURVA,
         });

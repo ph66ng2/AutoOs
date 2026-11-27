@@ -1,7 +1,8 @@
 import { validarPecas } from "@/lib/orcamento-estoque";
 import { cn, formatCurrency } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { classeDestaque } from "@/lib/ao-vivo";
+import { useDeslizeDaLista } from "@/hooks/useDeslizeDaLista";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { Plus, Search, RefreshCw, Wrench, AlertTriangle } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -64,6 +65,8 @@ export default function Servicos() {
     situacao: mostrar,
     page: paginaServicos,
   });
+  const listaAoVivoRef = useRef<HTMLUListElement>(null);
+  useDeslizeDaLista(listaAoVivoRef, destaquesAoVivo);
   const totalPaginasServicos = totalPages(totalServicos);
   const paginaServicosExibida = Math.min(paginaServicos, totalPaginasServicos);
   const servicosExibidos = servicos;
@@ -281,11 +284,11 @@ export default function Servicos() {
             </div>
           ) : (
             <>
-              <ul aria-label="Serviços" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <ul ref={listaAoVivoRef} aria-label="Serviços" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {servicosExibidos.map((servico) => {
                   const inativo = servico.ativo === false;
                   return (
-                    <li key={servico.id} className={cn("relative flex flex-col gap-3 rounded-2xl border bg-card p-4 transition-colors duration-lenta hover:border-ctl", servico.id != null ? classeDestaque(destaquesAoVivo?.get(servico.id)) : "")}>
+                    <li key={servico.id} data-chave-ao-vivo={servico.id ?? undefined} className={cn("relative flex flex-col gap-3 rounded-2xl border bg-card p-4 transition-colors duration-lenta hover:border-ctl", servico.id != null ? classeDestaque(destaquesAoVivo?.get(servico.id)) : "")}>
                       <div className="flex items-start justify-between gap-3">
                         <div className={cn("min-w-0", inativo && "opacity-55")}>
                           {/* O cartão inteiro abre a edição (o botão se estica sobre ele); o interruptor fica por cima. */}

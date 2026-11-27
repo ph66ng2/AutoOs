@@ -22,6 +22,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { classeDestaque } from "@/lib/ao-vivo";
+import { useDeslizeDaLista } from "@/hooks/useDeslizeDaLista";
 import { useEstadoLembrado, usePrimeiraPaginaAoFiltrar } from "@/hooks/useEstadoLembrado";
 import { useNavigate } from "react-router-dom";
 import { formatDatePtBr } from "@/lib/date-utils";
@@ -140,6 +141,8 @@ export default function Clientes() {
 
   const { clientes, total: totalClientes, loading, error, criar, atualizar, deletar, recarregar, destaques: destaquesAoVivo } =
     useClientes({ busca: busca || undefined, page: abaAtual, filtro });
+  const listaAoVivoRef = useRef<HTMLTableSectionElement>(null);
+  useDeslizeDaLista(listaAoVivoRef, destaquesAoVivo);
   const clientesRef = useRef(clientes);
   clientesRef.current = clientes;
   const { data: contagem, recarregar: recarregarContagem } = useContagemClientes(busca || undefined);
@@ -652,12 +655,13 @@ export default function Clientes() {
                         <th className="w-12"><span className="sr-only">Ações</span></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y">
+                    <tbody ref={listaAoVivoRef} className="divide-y">
                       {clientesExibidos.map(c => {
                         const aberto = contatosExpandido === c.id;
                         return (
                           <tr
                             key={c.id}
+                            data-chave-ao-vivo={c.id ?? undefined}
                             className={`cursor-pointer transition-colors duration-lenta [&>td]:px-3 [&>td]:py-2.5 [&>td]:align-middle ${aberto ? "bg-muted shadow-[inset_3px_0_0_hsl(var(--primary))]" : "hover:bg-muted/50"} ${c.id != null ? classeDestaque(destaquesAoVivo?.get(c.id)) : ""}`}
                             onClick={() => void selecionarCliente(c)}
                           >

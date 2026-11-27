@@ -233,6 +233,7 @@ import { useAvisoAoSair } from "@/hooks/useAvisoAoSair";
 import { useEscSai } from "@/hooks/useEscSai";
 import { TeclaNoBotao } from "@/components/ui/tecla-no-botao";
 import { classeDestaque } from "@/lib/ao-vivo";
+import { useDeslizeDaLista } from "@/hooks/useDeslizeDaLista";
 import { useAtualizacaoAoVivo } from "@/hooks/useAtualizacaoAoVivo";
 import { cn } from "@/lib/utils";
 import { quandoRascunho, useRascunho, type Rascunho } from "@/hooks/useRascunho";
@@ -460,6 +461,11 @@ export default function Equipamentos() {
   }
   const { equipamentos, total: totalEquipamentos, contagens: contagensStatus, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano, destaques: destaquesAoVivo } =
     useEquipamentos({ busca: busca || undefined, status: statusFiltro, tecnico: tecnicoFiltro === "TODOS" ? undefined : tecnicoFiltro, ordenacao, page: paginaEquipamentos });
+  // OS nova vinda de outra máquina: as linhas descem deslizando (cartões no celular, tabela na tela larga).
+  const listaCartoesRef = useRef<HTMLUListElement>(null);
+  const listaTabelaRef = useRef<HTMLTableSectionElement>(null);
+  useDeslizeDaLista(listaCartoesRef, destaquesAoVivo);
+  useDeslizeDaLista(listaTabelaRef, destaquesAoVivo);
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
   const equipamentosExibidos = equipamentos;
@@ -3783,9 +3789,9 @@ export default function Equipamentos() {
             <>
               {/* Celular: um cartão por equipamento; a tabela larga com a coluna fixa só a partir de md. */}
               {!telaLarga ? (
-              <ul className="space-y-3" aria-label="Equipamentos">
+              <ul ref={listaCartoesRef} className="space-y-3" aria-label="Equipamentos">
                 {equipamentosExibidos.map(eq => (
-                  <li key={eq.id} className={cn("space-y-3 rounded-xl border p-4 transition-colors duration-lenta", classeDestaque(eq.id != null ? destaquesAoVivo?.get(eq.id) : undefined))}>
+                  <li key={eq.id} data-chave-ao-vivo={eq.id ?? undefined} className={cn("space-y-3 rounded-xl border p-4 transition-colors duration-lenta", classeDestaque(eq.id != null ? destaquesAoVivo?.get(eq.id) : undefined))}>
                     <div className="flex items-start justify-between gap-3">
                       <Checkbox
                         className="mt-1"
@@ -3839,10 +3845,11 @@ export default function Equipamentos() {
                     <TableHead className="sticky right-0 z-20 w-[15.5rem] min-w-[15.5rem] bg-muted text-right">Próxima ação</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0 [&_td]:py-2.5">
+                <TableBody ref={listaTabelaRef} className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0 [&_td]:py-2.5">
                   {equipamentosExibidos.map(eq => (
                     <TableRow
                       key={eq.id}
+                      data-chave-ao-vivo={eq.id ?? undefined}
                       className={cn("group cursor-pointer transition-colors duration-lenta", classeDestaque(eq.id != null ? destaquesAoVivo?.get(eq.id) : undefined))}
                       onClick={() => void abrirDetalhes(eq)}
                     >
