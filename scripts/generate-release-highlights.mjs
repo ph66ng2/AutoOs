@@ -29,6 +29,9 @@ export function extractUserHighlights(body = "") {
   return items;
 }
 
+/** Tamanho que cabe numa linha da tela de novidades. */
+export const NOVIDADE_MAX = 80;
+
 export function buildHighlights({ version, baseTag, head, commits, pullRequests, baseBranch = "master" }) {
   const includedCommits = new Set(commits.map(({ sha }) => sha));
   const prs = pullRequests
@@ -41,7 +44,7 @@ export function buildHighlights({ version, baseTag, head, commits, pullRequests,
     head,
     pullRequests: prs.filter((pr) => extractUserHighlights(pr.body ?? "").length > 0).map((pr) => pr.number),
     title: "Novidades do AutoOS",
-    description: `Confira o que mudou no AutoOS ${version}.`,
+    description: "O que mudou no seu dia a dia.",
     highlights: items.map((title) => ({ title })),
     badges: [],
   };
@@ -115,6 +118,11 @@ export function generateReleaseHighlights({
     const content = buildHighlights({ version, baseTag, head, commits, pullRequests });
     writeJson(file, content);
     report(`Novidades: ${content.highlights.length} itens para ${version}, desde ${baseTag}.`);
+    // A tela mostra 5 de cara: frases curtas, para quem usa o app (ver o modelo de PR).
+    for (const { title } of content.highlights) {
+      if (title.length > NOVIDADE_MAX) report(`Novidades: item longo (${title.length} caracteres, ideal até ${NOVIDADE_MAX}): ${title.slice(0, 60)}…`);
+    }
+    if (content.highlights.length > 5) report(`Novidades: ${content.highlights.length} itens; só os 5 primeiros aparecem de cara.`);
     return content;
   } catch {
     // Não imprime erros de processos/HTTP: podem conter credenciais do ambiente.

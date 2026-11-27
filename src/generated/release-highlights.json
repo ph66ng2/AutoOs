@@ -8,58 +8,46 @@
     250
   ],
   "title": "Novidades do AutoOS",
-  "description": "Confira o que mudou no AutoOS 0.7.0.",
+  "description": "O que mudou no seu dia a dia.",
   "highlights": [
     {
-      "title": "Quando o servidor fica fora do ar, o AutoOS tenta reconectar sozinho e mostra quando será a próxima tentativa, sem precisar fechar o app."
-    },
-    {
-      "title": "Quando o problema exige o administrador, um botão copia os detalhes do erro para mandar ao suporte."
-    },
-    {
-      "title": "Se a conexão cair enquanto o AutoOS confere o banco na abertura, a tela agora mostra \"Sem conexão\" e tenta de novo sozinha, em vez de pedir para chamar o administrador."
-    },
-    {
-      "title": "Novo visual em todo o app, nos temas claro e escuro, mais leve e com menos cor fora do lugar."
-    },
-    {
-      "title": "Nova entrada e Editar equipamento abrem como página. Esc sai, Enter salva, e o rascunho não se perde."
-    },
-    {
-      "title": "Ao cadastrar uma impressora que já passou por aqui, o app avisa, oferece copiar os dados do atendimento anterior e mostra se ainda está na garantia."
-    },
-    {
-      "title": "Dá para colar fotos com Ctrl+V na entrada e na aba Fotos da OS."
-    },
-    {
-      "title": "Ctrl+K busca qualquer coisa, Ctrl+L bloqueia a sessão e os botões mostram a tecla de atalho."
-    },
-    {
-      "title": "As listas lembram o filtro, aceitam vários status e têm o modo compacto. Equipamentos e Vendas ganharam o filtro \"Minhas\"."
+      "title": "Visual novo no app inteiro, no tema claro e no escuro."
     },
     {
       "title": "As telas se atualizam sozinhas quando outro computador muda algo."
     },
     {
-      "title": "Sino com avisos internos (OS nova para o técnico, orçamento vencendo, peça que chegou, estoque baixo e outros), aviso do Windows e preferências por perfil. Abrir o sino zera o número sem marcar nada como lido."
+      "title": "Nova entrada e Editar abrem como página e guardam o rascunho."
     },
     {
-      "title": "Mensagens prontas de WhatsApp editáveis em Configurações."
+      "title": "Dá para colar fotos com Ctrl+V."
     },
     {
-      "title": "Nova página Suporte: abra um chamado com prints e acompanhe a resposta no próprio app. Erros podem ser enviados direto ao suporte."
+      "title": "Ctrl+K busca qualquer coisa no app."
     },
     {
-      "title": "O orçamento avisa quando a soma dos itens não bate com o total."
+      "title": "Aviso quando uma impressora já passou por aqui antes."
     },
     {
-      "title": "No modo Balcão, dá para registrar a chegada e a baixa de insumos direto na consulta de estoque, com o PIN de quem controla o estoque."
+      "title": "O sino avisa o que precisa da sua atenção."
     },
     {
-      "title": "Na OS, o acesso ao portal mostra a senha do contato (com PIN), com botão para copiar o login e a senha juntos."
+      "title": "Nova página Suporte para pedir ajuda, com prints."
     },
     {
-      "title": "A busca do Balcão acha o equipamento pelo CPF/CNPJ do cliente e pelo nome, telefone ou e-mail dos contatos."
+      "title": "Mensagens prontas de WhatsApp, editáveis em Configurações."
+    },
+    {
+      "title": "No Balcão, a busca acha pelo CPF/CNPJ e pelos contatos."
+    },
+    {
+      "title": "No Balcão, dá para registrar chegada e baixa de insumos."
+    },
+    {
+      "title": "Na OS, a senha do portal do cliente aparece com PIN."
+    },
+    {
+      "title": "Se o servidor cair, o app reconecta sozinho."
     }
   ],
   "badges": []

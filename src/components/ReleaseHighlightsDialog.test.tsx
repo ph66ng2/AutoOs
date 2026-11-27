@@ -39,14 +39,19 @@ describe("ReleaseHighlightsDialog", () => {
     expect(screen.getByText("Versão 0.7.0")).toBeInTheDocument();
     for (const text of [
       "Novidades do AutoOS",
-      "Confira o que mudou no AutoOS 0.7.0.",
-      "Quando o servidor fica fora do ar, o AutoOS tenta reconectar sozinho e mostra quando será a próxima tentativa, sem precisar fechar o app.",
-      "Novo visual em todo o app, nos temas claro e escuro, mais leve e com menos cor fora do lugar.",
+      "O que mudou no seu dia a dia.",
+      "Visual novo no app inteiro, no tema claro e no escuro.",
       "As telas se atualizam sozinhas quando outro computador muda algo.",
-      "Nova página Suporte: abra um chamado com prints e acompanhe a resposta no próprio app. Erros podem ser enviados direto ao suporte.",
-      "A busca do Balcão acha o equipamento pelo CPF/CNPJ do cliente e pelo nome, telefone ou e-mail dos contatos.",
+      "Nova página Suporte para pedir ajuda, com prints.",
+      "No Balcão, a busca acha pelo CPF/CNPJ e pelos contatos.",
     ]) expect(screen.getByText(text)).toBeInTheDocument();
     expect(runtime.getVersion).toHaveBeenCalled();
+
+    // Lista curta: só as 5 primeiras de cara; o resto fica fechado em "Ver mais".
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.querySelector("ul")?.querySelectorAll("li")).toHaveLength(5);
+    expect(dialog.querySelector("details")?.open).toBe(false);
+    expect(screen.getByText("Ver mais 8 novidades")).toBeInTheDocument();
   });
 
   it("grava na apresentação e mostra uma vez por versão, mesmo sem dispensar", async () => {
