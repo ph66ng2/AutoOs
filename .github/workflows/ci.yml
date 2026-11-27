@@ -99,6 +99,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
+          sudo grep -rl "packages.microsoft.com" /etc/apt/sources.list.d/ 2>/dev/null | xargs -r sudo rm -f  # repo da Microsoft (403, sem assinatura); o CI não usa
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev
 
@@ -151,6 +152,7 @@ jobs:
 
       - name: Install Linux dependencies
         run: |
+          sudo grep -rl "packages.microsoft.com" /etc/apt/sources.list.d/ 2>/dev/null | xargs -r sudo rm -f  # repo da Microsoft (403, sem assinatura); o CI não usa
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev
 
@@ -164,6 +166,7 @@ jobs:
           SEED_VERIFY_PGUSER: test_user
           SEED_VERIFY_PGPASSWORD: test_password
         run: |
+          sudo grep -rl "packages.microsoft.com" /etc/apt/sources.list.d/ 2>/dev/null | xargs -r sudo rm -f  # repo da Microsoft (403, sem assinatura); o CI não usa
           sudo apt-get update
           sudo apt-get install -y postgresql-client
           bash scripts/verify-estoque-seed.sh
@@ -218,6 +221,7 @@ jobs:
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-24.04'
         run: |
+          sudo grep -rl "packages.microsoft.com" /etc/apt/sources.list.d/ 2>/dev/null | xargs -r sudo rm -f  # repo da Microsoft (403, sem assinatura); o CI não usa
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev
 
@@ -282,6 +286,7 @@ jobs:
 
       - name: Install PostgreSQL client and Playwright
         run: |
+          sudo grep -rl "packages.microsoft.com" /etc/apt/sources.list.d/ 2>/dev/null | xargs -r sudo rm -f  # repo da Microsoft (403, sem assinatura); o CI não usa
           sudo apt-get update
           sudo apt-get install -y postgresql-client
           npx playwright install --with-deps chromium
