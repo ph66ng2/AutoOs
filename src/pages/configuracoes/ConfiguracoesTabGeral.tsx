@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
+import { motion } from "motion/react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
@@ -255,6 +256,8 @@ function Segmentos<T extends string>({
   aoMudar: (valor: T) => void;
   dataTour?: string;
 }) {
+  // A pílula da opção escolhida desliza até a nova (mesmo movimento das abas).
+  const idPilula = useId();
   return (
     <div role="radiogroup" aria-label={rotulo} data-tour={dataTour} className="inline-flex shrink-0 gap-1 rounded-lg bg-muted p-1">
       {opcoes.map(([opcao, texto]) => (
@@ -266,10 +269,18 @@ function Segmentos<T extends string>({
           disabled={desabilitado}
           onClick={() => valor !== opcao && aoMudar(opcao)}
           className={cn(
-            "h-8 rounded-md px-3 text-sm transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            valor === opcao ? "bg-background font-semibold shadow-sm" : "text-muted-foreground hover:text-foreground",
+            "relative isolate h-8 rounded-md px-3 text-sm transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            valor === opcao ? "font-semibold" : "text-muted-foreground hover:text-foreground",
           )}
         >
+          {valor === opcao && (
+            <motion.span
+              aria-hidden="true"
+              layoutId={`pilula-${idPilula}`}
+              transition={{ type: "spring", stiffness: 520, damping: 40, mass: 0.8 }}
+              className="pointer-events-none absolute inset-0 -z-10 rounded-md bg-background shadow-sm"
+            />
+          )}
           {texto}
         </button>
       ))}

@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { SeloQueSalta } from "@/components/ui/numero-animado";
 import { db } from "@/lib/db";
 import { copyErrorDetails, formatarRelatorioSuporte } from "@/lib/error-utils";
 import { enviarErroAoSuporte, suporteDisponivel } from "@/lib/suporte-ponte";
@@ -405,12 +406,12 @@ export function PortalAlertasSino({ perfilId = null, portalDesligado = false }: 
       >
         <Bell className="h-5 w-5" />
         {naoLidos > 0 ? (
-          <span className={cn(
+          <SeloQueSalta valor={naoLidos} className={cn(
             "absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-extrabold leading-none ring-2 ring-card",
             novos > 0 ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
           )}>
             {naoLidos > 99 ? "99+" : naoLidos}
-          </span>
+          </SeloQueSalta>
         ) : errosNovos > 0 ? (
           <span aria-hidden="true" title="Há erros novos em Sistema" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-muted-foreground ring-2 ring-card" />
         ) : null}

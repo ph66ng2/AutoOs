@@ -113,7 +113,7 @@ export default function Perfil() {
           onValueChange={(proxima) => avisoAoSair.sairComAviso(() => setAbaAberta({ perfil: profile.id, aba: proxima }))}
           className="space-y-6"
         >
-          <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent p-0">
+          <TabsList classeMarca={MARCA_ABA} className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent p-0">
             {[
               ["visao", "Visão geral"],
               ["personalizar", "Personalizar"],
@@ -148,7 +148,9 @@ export default function Perfil() {
 }
 
 const TAB_CLASS =
-  "rounded-none border-b-2 border-transparent px-3.5 py-2.5 text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
+  "rounded-none border-b-2 border-transparent px-3.5 py-2.5 text-muted-foreground shadow-none data-[state=active]:text-foreground";
+/** Sublinhado da aba ativa, que desliza até a aba escolhida. */
+const MARCA_ABA = "inset-x-0 -bottom-0.5 top-auto h-0.5 rounded-none bg-primary shadow-none";
 
 
 function formatWhen(value?: string | null) {

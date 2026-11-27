@@ -4373,7 +4373,10 @@ export default function Equipamentos() {
             <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
               <Card className="min-w-0 rounded-2xl">
                 <Tabs key={selecionado.id} value={abaDetalhe} onValueChange={setAbaDetalhe}>
-                  <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent px-3 pt-2 [scrollbar-width:none]">
+                  <TabsList
+                    classeMarca="inset-x-0 -bottom-0.5 top-auto h-0.5 rounded-none bg-primary shadow-none"
+                    className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent px-3 pt-2 [scrollbar-width:none]"
+                  >
                     {[
                       ["orcamento", "Orçamento"],
                       ["verificacao", "Verificação"],
@@ -4384,7 +4387,7 @@ export default function Equipamentos() {
                       <TabsTrigger
                         key={valor}
                         value={valor}
-                        className="relative rounded-none border-b-2 border-transparent px-3 pb-2.5 pt-2 text-sm font-semibold text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                        className="relative rounded-none border-b-2 border-transparent px-3 pb-2.5 pt-2 text-sm font-semibold text-muted-foreground shadow-none data-[state=active]:text-foreground"
                       >
                         {rotulo}
                       </TabsTrigger>
