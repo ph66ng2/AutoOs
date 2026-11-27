@@ -81,8 +81,8 @@ VITE_E2E_MOCK=1 npm run dev   # http://localhost:1420
 ```bash
 npm run lint                               # TypeScript (tsc --noEmit)
 npm run test:run                           # testes do frontend (Vitest)
-cd src-tauri && cargo check                # Rust
-cd src-tauri && cargo clippy -- -W warnings
+(cd src-tauri && cargo check)              # Rust (entre parênteses: volta para a raiz)
+(cd src-tauri && cargo clippy -- -W warnings)
 scripts/pre-qa-check.sh                    # filtro de lixo: debug esquecido, query!, segredo, migration editada…
 ```
 
@@ -149,7 +149,7 @@ docs/                     Documentação por assunto (índice abaixo)
 
 Resumo; o detalhe está no [AGENTS.md](./AGENTS.md).
 
-- **Só PostgreSQL.** Não reintroduza SQLite em código, docs ou comentários. O `sqlx` usa só queries em
+- **Só PostgreSQL.** Nenhum outro banco em código, docs ou comentários. O `sqlx` usa só queries em
   tempo de execução (`sqlx::query(...)`), nunca as macros `query!`/`query_as!`.
 - **Nunca edite uma migration já aplicada.** O `sqlx` guarda o checksum de cada uma: editar quebra as
   instalações com `migration N was previously applied but has been modified`. Mudança de schema é sempre
