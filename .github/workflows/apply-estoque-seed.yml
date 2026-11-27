@@ -137,7 +137,10 @@ jobs:
           echo "Confirmação e destino do seed conferidos; credenciais omitidas dos logs."
 
       - name: Instalar cliente PostgreSQL
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+        run: |
+          sudo grep -rl "packages.microsoft.com" /etc/apt/sources.list.d/ 2>/dev/null | xargs -r sudo rm -f  # repo da Microsoft (403, sem assinatura); o CI não usa
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
 
       - name: Aplicar scripts/seed-estoque-ribbons-bopp.sql
         id: seed
